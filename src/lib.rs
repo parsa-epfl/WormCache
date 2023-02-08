@@ -1,7 +1,7 @@
 mod qemu_plugin;
 mod warmup;
 use qemu_plugin::*;
-use std::ffi;
+use std::{ffi, io::{BufWriter, Write}};
 use warmup::WarmupLatencyCache;
 
 use once_cell::sync::Lazy;
@@ -13,6 +13,13 @@ const SET_COUNT: usize = 16 * 1024;
 
 static mut WARM_UP_CACHE: Lazy<WarmupLatencyCache<16, SET_COUNT>> = Lazy::new(|| {
     return warmup::WarmupLatencyCache::new();
+});
+
+static mut LOG_FILE: Lazy<BufWriter<std::fs::File>> = Lazy::new(|| {
+    let f = std::fs::File::create("recorded_time.log").unwrap();
+    let res = BufWriter::new(f);
+
+    return res;
 });
 
 const WORKLOAD_CPU: u32 = 1;
@@ -29,7 +36,9 @@ unsafe extern "C" fn vcpu_mem_access(
 ) {
     if vcpu_index == WORKLOAD_CPU {
         let hva = qemu_plugin_get_hwaddr(info, vaddr) as usize;
-        WARM_UP_CACHE.update(hva, false);
+        if WARM_UP_CACHE.update(hva, false) {
+            LOG_FILE.write_fmt(format_args!("{}, {} \n", WARM_UP_CACHE.current_instruction_count(), WARM_UP_CACHE.current_warmup_count())).unwrap();
+        }
     }
 }
 
@@ -40,7 +49,10 @@ unsafe extern "C" fn vcpu_insn_exec(
 ) {
     let hva = user_data as usize;
     if vcpu_index == WORKLOAD_CPU {
-        WARM_UP_CACHE.update(hva, true);
+        if WARM_UP_CACHE.update(hva, true) {
+            // write down the content
+            LOG_FILE.write_fmt(format_args!("{}, {} \n", WARM_UP_CACHE.current_instruction_count(), WARM_UP_CACHE.current_warmup_count())).unwrap();
+        }
     }
 }
 
@@ -72,7 +84,9 @@ unsafe extern "C" fn vcpu_tb_trans(
 }
 
 #[no_mangle]
-unsafe extern "C" fn plugin_exit(id: qemu_plugin::qemu_plugin_id_t, p: *mut ffi::c_void) {}
+unsafe extern "C" fn plugin_exit(id: qemu_plugin::qemu_plugin_id_t, p: *mut ffi::c_void) {
+    LOG_FILE.flush().unwrap();
+}
 
 #[no_mangle]
 unsafe extern "C" fn qemu_plugin_install(
@@ -83,6 +97,8 @@ unsafe extern "C" fn qemu_plugin_install(
 ) -> i32 {
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
+
+    // It is better to open a file to record the time for each arrival point.
 
     return 0;
 }

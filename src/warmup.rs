@@ -52,10 +52,10 @@ impl<const ASSO: usize, const SET_COUNT: usize> WarmupLatencyCache<ASSO, SET_COU
             self.report_counter += 1;
         }
 
-        if self.report_counter % (1024 * 1024) == 0 {
-            // report the warm up count.
-            println!("[WormCache]: {}, {}", self.report_counter, self.warmed_count);
-        }
+        // if self.report_counter % (1024 * 1024) == 0 {
+        //     // report the warm up count.
+        //     println!("[WormCache]: {}, {}", self.report_counter, self.warmed_count);
+        // }
 
         return res;
     }
@@ -64,6 +64,14 @@ impl<const ASSO: usize, const SET_COUNT: usize> WarmupLatencyCache<ASSO, SET_COU
         return self.body.iter().map(WarmupLatencyCacheLine::<ASSO>::is_full).reduce(|x, y| -> bool {
             return x && y;
         }).unwrap();
+    }
+
+    pub fn current_warmup_count(&self) -> usize {
+        return self.warmed_count;
+    }
+
+    pub fn current_instruction_count(&self) -> usize {
+        return self.report_counter;
     }
 
 }
