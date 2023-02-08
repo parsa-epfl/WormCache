@@ -41,14 +41,16 @@ impl<const ASSO: usize, const SET_COUNT: usize> WarmupLatencyCache<ASSO, SET_COU
         }
     }
 
-    pub fn update(&mut self, addr: usize) -> bool {
+    pub fn update(&mut self, addr: usize, increase_counter: bool) -> bool {
         let set_id = (addr >> 6) % SET_COUNT;
         let res = self.body[set_id].update(addr);
         if res {
             self.warmed_count += 1;
         }
-
-        self.report_counter += 1;
+        
+        if increase_counter {
+            self.report_counter += 1;
+        }
 
         if self.report_counter % (1024 * 1024) == 0 {
             // report the warm up count.
@@ -80,10 +82,10 @@ mod test {
     fn functionality() {
         let mut cache_body = WarmupLatencyCache::<8, 2>::new();
         for i in 0..(1024 * 1024 + 1) {
-            cache_body.update((i % 8) * 64 * 2);
+            cache_body.update((i % 8) * 64 * 2, true);
         }
         for i in 0..(1024 * 1024 + 1) {
-            cache_body.update((i % 8) * 64 * 2 + 64);
+            cache_body.update((i % 8) * 64 * 2 + 64, true);
         }
         println!("Warmed:{}", cache_body.is_warmed());
     }

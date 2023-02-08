@@ -9,11 +9,16 @@ use std::collections::HashMap;
 
 static mut TRANSLATIONS: Lazy<HashMap<usize, usize>> = Lazy::new(|| return HashMap::new());
 
-static mut WARM_UP_CACHE: Lazy<WarmupLatencyCache<8, 512>> = Lazy::new(|| {
+const SET_COUNT: usize = 16 * 1024;
+
+static mut WARM_UP_CACHE: Lazy<WarmupLatencyCache<16, SET_COUNT>> = Lazy::new(|| {
     return warmup::WarmupLatencyCache::new();
 });
 
-const WORKLOAD_CPU: u32 = 2;
+const WORKLOAD_CPU: u32 = 1;
+
+#[no_mangle]
+pub static qemu_plugin_version: u32 = QEMU_PLUGIN_VERSION;
 
 #[no_mangle]
 unsafe extern "C" fn vcpu_mem_access(
@@ -24,7 +29,7 @@ unsafe extern "C" fn vcpu_mem_access(
 ) {
     if vcpu_index == WORKLOAD_CPU {
         let hva = qemu_plugin_get_hwaddr(info, vaddr) as usize;
-        WARM_UP_CACHE.update(hva);
+        WARM_UP_CACHE.update(hva, false);
     }
 }
 
@@ -35,7 +40,7 @@ unsafe extern "C" fn vcpu_insn_exec(
 ) {
     let hva = user_data as usize;
     if vcpu_index == WORKLOAD_CPU {
-        WARM_UP_CACHE.update(hva);
+        WARM_UP_CACHE.update(hva, true);
     }
 }
 
