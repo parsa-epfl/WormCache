@@ -1,5 +1,6 @@
 mod qemu_plugin;
 mod warmup;
+mod cache;
 use qemu_plugin::*;
 use std::{ffi, io::{BufWriter, Write}};
 use warmup::WarmupLatencyCache;
@@ -98,7 +99,13 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
-    // It is better to open a file to record the time for each arrival point.
+    // start a thread to report the usage evert 30 seconds.
+    std::thread::spawn(||{
+        loop {
+            std::thread::sleep(std::time::Duration::new(30, 0));
+            LOG_FILE.write_fmt(format_args!("Instruction:{}, Usage: {} \n", WARM_UP_CACHE.current_instruction_count(), WARM_UP_CACHE.current_usage())).unwrap();
+        }
+    });
 
     return 0;
 }

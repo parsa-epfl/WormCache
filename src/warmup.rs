@@ -20,6 +20,10 @@ impl<const N: usize> WarmupLatencyCacheLine<N> {
     pub fn is_full(&self) -> bool {
         return self.data.len() >= N;
     }
+
+    pub fn element_count(&self) -> usize {
+        return self.data.len();
+    }
 }
 
 pub struct WarmupLatencyCache<const ASSO: usize, const SET_COUNT: usize> {
@@ -72,6 +76,12 @@ impl<const ASSO: usize, const SET_COUNT: usize> WarmupLatencyCache<ASSO, SET_COU
 
     pub fn current_instruction_count(&self) -> usize {
         return self.report_counter;
+    }
+
+    pub fn current_usage(&self) -> f64 {
+        return (self.body.iter().map(|x| -> usize {
+            x.element_count()
+        }).sum::<usize>() as f64) / ((ASSO * SET_COUNT)) as f64;
     }
 
 }
