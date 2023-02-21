@@ -43,7 +43,7 @@ impl<const ASSO: usize, const SET_COUNT: usize> WarmupLatencyCache<ASSO, SET_COU
 
     pub fn update(&mut self, addr: usize, increase_counter: bool) -> bool {
         let set_id = (addr >> 6) % SET_COUNT;
-        let res = self.body[set_id].update(addr);
+        let res = self.body[set_id].update(addr >> 6);
         if res {
             self.warmed_count += 1;
         }
@@ -96,5 +96,12 @@ mod test {
             cache_body.update((i % 8) * 64 * 2 + 64, true);
         }
         println!("Warmed:{}", cache_body.is_warmed());
+    }
+
+    #[test]
+    fn access_to_single_block() {
+        let mut cache = WarmupLatencyCache::<2, 8>::new();
+        assert!(cache.update(0, true) != true);
+        assert!(cache.update(1, true) != true);
     }
 }
