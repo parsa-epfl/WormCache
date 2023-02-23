@@ -5,6 +5,7 @@ mod parallel_cache;
 use qemu_plugin::*;
 use std::{ffi, io::{BufWriter, Write}};
 use warmup::WarmupLatencyCache;
+use std::sync::Mutex;
 
 
 use once_cell::sync::Lazy;
@@ -12,10 +13,10 @@ use std::collections::HashMap;
 
 static mut TRANSLATIONS: Lazy<HashMap<usize, usize>> = Lazy::new(|| return HashMap::new());
 
-const SET_COUNT: usize = 16 * 1024;
+const SET_COUNT: usize = 64 * 1024;
 
-static mut WARM_UP_CACHE: Lazy<WarmupLatencyCache<16, SET_COUNT>> = Lazy::new(|| {
-    return warmup::WarmupLatencyCache::new();
+static mut WARM_UP_CACHE: Lazy<Mutex<WarmupLatencyCache<16, SET_COUNT>>> = Lazy::new(|| {
+    return Mutex::new(warmup::WarmupLatencyCache::new());
 });
 
 static mut LOG_FILE: Lazy<BufWriter<std::fs::File>> = Lazy::new(|| {
@@ -39,8 +40,9 @@ unsafe extern "C" fn vcpu_mem_access(
 ) {
     if vcpu_index == WORKLOAD_CPU {
         let hva = qemu_plugin_hwaddr_phys_addr(qemu_plugin_get_hwaddr(info, vaddr)) as usize;
-        if WARM_UP_CACHE.update(hva, false) {
-            LOG_FILE.write_fmt(format_args!("{}, {} \n", WARM_UP_CACHE.current_instruction_count(), WARM_UP_CACHE.current_warmup_count())).unwrap();
+        let cache = WARM_UP_CACHE.get_mut().unwrap();
+        if cache.update(hva, false) {
+            LOG_FILE.write_fmt(format_args!("{}, {} \n", cache.current_instruction_count(), cache.current_warmup_count())).unwrap();
         }
     }
 }
@@ -52,9 +54,10 @@ unsafe extern "C" fn vcpu_insn_exec(
 ) {
     let hva = user_data as usize;
     if vcpu_index == WORKLOAD_CPU {
-        if WARM_UP_CACHE.update(hva, true) {
+        let cache = WARM_UP_CACHE.get_mut().unwrap();
+        if cache.update(hva, true) {
             // write down the content
-            LOG_FILE.write_fmt(format_args!("{}, {} \n", WARM_UP_CACHE.current_instruction_count(), WARM_UP_CACHE.current_warmup_count())).unwrap();
+            LOG_FILE.write_fmt(format_args!("{}, {} \n", cache.current_instruction_count(), cache.current_warmup_count())).unwrap();
         }
     }
 }
@@ -105,7 +108,9 @@ unsafe extern "C" fn qemu_plugin_install(
     std::thread::spawn(||{
         loop {
             std::thread::sleep(std::time::Duration::new(30, 0));
-            LOG_FILE.write_fmt(format_args!("Instruction:{}, Usage: {} \n", WARM_UP_CACHE.current_instruction_count(), WARM_UP_CACHE.current_usage())).unwrap();
+            let cache = WARM_UP_CACHE.get_mut().unwrap();
+            LOG_FILE.write_fmt(format_args!("Instruction:{}, Usage: {} \n", cache.current_instruction_count(), cache.current_usage())).unwrap();
+            LOG_FILE.flush();
         }
     });
 
