@@ -1,9 +1,11 @@
 mod qemu_plugin;
 mod warmup;
 mod cache;
+mod parallel_cache;
 use qemu_plugin::*;
 use std::{ffi, io::{BufWriter, Write}};
 use warmup::WarmupLatencyCache;
+
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
