@@ -38,7 +38,7 @@ unsafe extern "C" fn vcpu_mem_access(
     user_data: *mut ffi::c_void, // should be NULL.
 ) {
     if vcpu_index == WORKLOAD_CPU {
-        let hva = qemu_plugin_get_hwaddr(info, vaddr) as usize;
+        let hva = qemu_plugin_hwaddr_phys_addr(qemu_plugin_get_hwaddr(info, vaddr)) as usize;
         if WARM_UP_CACHE.update(hva, false) {
             LOG_FILE.write_fmt(format_args!("{}, {} \n", WARM_UP_CACHE.current_instruction_count(), WARM_UP_CACHE.current_warmup_count())).unwrap();
         }
