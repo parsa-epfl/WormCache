@@ -12,3 +12,6 @@ lru = "0.9.0"
 
 [lib]
 crate-type=["rlib", "cdylib"]
+
+[profile.release]
+debug = true
