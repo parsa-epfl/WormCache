@@ -2,6 +2,8 @@ use std::{collections::HashSet};
 
 
 // Associativity is defined as a constant in order to enable the optimization from the compiler.
+#[derive(Debug)]
+
 pub struct WarmupLatencyCacheLine<const ASSO: usize> {
     data: HashSet<usize>,
 }
@@ -26,8 +28,9 @@ impl<const N: usize> WarmupLatencyCacheLine<N> {
     }
 }
 
+#[derive(Debug)]
 pub struct WarmupLatencyCache<const ASSO: usize, const SET_COUNT: usize> {
-    body: [WarmupLatencyCacheLine<ASSO>; SET_COUNT],
+    body: Vec<WarmupLatencyCacheLine<ASSO>>,
     warmed_count: usize,
     report_counter: usize,
 }
@@ -35,11 +38,11 @@ pub struct WarmupLatencyCache<const ASSO: usize, const SET_COUNT: usize> {
 impl<const ASSO: usize, const SET_COUNT: usize> WarmupLatencyCache<ASSO, SET_COUNT> {
     pub fn new() -> Self {
         return WarmupLatencyCache {
-            body: std::array::from_fn(|i|{
+            body: Vec::from((0..SET_COUNT).map(|i|{
                 return WarmupLatencyCacheLine::<ASSO> {
                     data: HashSet::new(),
                 }
-            }),
+            }).collect::<Vec<WarmupLatencyCacheLine<ASSO>>>()),
             warmed_count: 0,
             report_counter: 0
         }
