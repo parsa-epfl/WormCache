@@ -3,6 +3,9 @@ use crate::qemu_api;
 use crate::cache::single::PrivateCache;
 use std::collections::HashMap;
 
+use super::QEMUMemoryInfo;
+use super::QEMUPluginBasicBlock;
+
 struct SingleCoreCachePlugin {
     l1i: PrivateCache,
     l1d: PrivateCache,
@@ -10,7 +13,7 @@ struct SingleCoreCachePlugin {
 }
 
 unsafe impl QEMUPlugin for SingleCoreCachePlugin {
-    unsafe fn on_translation(&mut self, tb: *mut qemu_api::qemu_plugin_tb) -> Vec<*mut std::ffi::c_void> {
+    unsafe fn on_translation(&mut self, tb: &QEMUPluginBasicBlock) -> Vec<*mut std::ffi::c_void> {
         todo!()
     }
 
@@ -18,7 +21,7 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
         todo!()
     }
 
-    unsafe fn on_memory_access(&mut self, cpu_idx: u32, info: qemu_api::qemu_plugin_meminfo_t, vaddr: u64, user_data: *mut std::ffi::c_void) {
+    unsafe fn on_memory_access(&mut self, cpu_idx: u32, info: &QEMUMemoryInfo, vaddr: u64, user_data: *mut std::ffi::c_void) {
         todo!()
     }
 

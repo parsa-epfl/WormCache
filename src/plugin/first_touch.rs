@@ -4,6 +4,9 @@ use std::collections::HashSet;
 use std::io::BufWriter;
 use std::io::prelude::*;
 
+use super::QEMUMemoryInfo;
+use super::QEMUPluginBasicBlock;
+
 // Associativity is defined as a constant in order to enable the optimization from the compiler.
 #[derive(Debug)]
 
@@ -118,10 +121,11 @@ pub struct FirstTouchCounterPlugin {
 
 impl FirstTouchCounterPlugin {
     pub fn new() -> Self {
-        return FirstTouchCounterPlugin {
+        let res = FirstTouchCounterPlugin {
             table: WarmupLatencyCache::<16, SET_COUNT>::new(),
             log_file: BufWriter::new(std::fs::File::create("touch_cache.log").unwrap()),
         };
+        return res;
     }
 
     pub fn current_usage(&self) -> f64 {
@@ -132,11 +136,10 @@ impl FirstTouchCounterPlugin {
 unsafe impl QEMUPlugin for FirstTouchCounterPlugin {
     unsafe fn on_translation(
         &mut self,
-        tb: *mut crate::qemu_api::qemu_plugin_tb,
+        tb: &QEMUPluginBasicBlock,
     ) -> Vec<*mut std::ffi::c_void> {
-        let rep = super::QEMUPluginBasicBlock(tb);
-        return rep
-            .into_iter()
+        return tb
+            .iter()
             .map(|x| {
                 return x.physical_address() as *mut std::ffi::c_void;
             })
@@ -162,14 +165,12 @@ unsafe impl QEMUPlugin for FirstTouchCounterPlugin {
     unsafe fn on_memory_access(
         &mut self,
         cpu_idx: u32,
-        info: crate::qemu_api::qemu_plugin_meminfo_t,
+        info: &QEMUMemoryInfo,
         vaddr: u64,
         user_data: *mut std::ffi::c_void,
     ) {
         if cpu_idx == 1 {
-            let hva = qemu_api::qemu_plugin_hwaddr_phys_addr(qemu_api::qemu_plugin_get_hwaddr(
-                info, vaddr,
-            )) as usize;
+            let hva = info.translate(vaddr).unwrap() as usize;
             if self.table.update(hva, false) {
                 self.log_file
                     .write_fmt(format_args!(

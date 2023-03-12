@@ -3,20 +3,7 @@ mod qemu_api;
 use qemu_api::*;
 mod plugin;
 use std::ffi;
-
-pub unsafe trait QEMUPlugin {
-    unsafe fn on_translation(&mut self, tb: *mut qemu_api::qemu_plugin_tb)
-        -> Vec<*mut ffi::c_void>;
-    unsafe fn on_instruction_execution(&mut self, cpu_idx: u32, user_data: *mut ffi::c_void);
-    unsafe fn on_memory_access(
-        &mut self,
-        cpu_idx: u32,
-        info: qemu_api::qemu_plugin_meminfo_t,
-        vaddr: u64,
-        user_data: *mut ffi::c_void,
-    );
-    unsafe fn on_qemu_exit(&mut self);
-}
+use plugin::QEMUPlugin;
 
 use once_cell::sync::Lazy;
 
@@ -32,7 +19,7 @@ unsafe extern "C" fn vcpu_mem_access(
     vaddr: u64,
     user_data: *mut ffi::c_void, // should be NULL.
 ) {
-    PLUGIN.on_memory_access(vcpu_index, info, vaddr, user_data);
+    PLUGIN.on_memory_access(vcpu_index, &plugin::QEMUMemoryInfo(info), vaddr, user_data);
 }
 
 #[no_mangle]
@@ -48,27 +35,23 @@ unsafe extern "C" fn vcpu_tb_trans(
     id: qemu_api::qemu_plugin_id_t,
     tb: *mut qemu_api::qemu_plugin_tb,
 ) {
-    let metadata = PLUGIN.on_translation(tb);
-    let n_instructions = qemu_plugin_tb_n_insns(tb);
-
-    for i in 0..n_instructions {
-        let instruction = qemu_plugin_tb_get_insn(tb, i);
-        let hva = qemu_plugin_insn_haddr(instruction);
-        // insert the normal instruction
+    let wrapped_tb = plugin::QEMUPluginBasicBlock(tb);
+    let metadata = PLUGIN.on_translation(&wrapped_tb);
+    wrapped_tb.into_iter().zip(metadata.into_iter()).for_each(|i|{
         qemu_plugin_register_vcpu_mem_cb(
-            instruction,
+            i.0.0,
             Some(vcpu_mem_access),
             qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
             qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
-            metadata[i],
+            i.1,
         );
         qemu_plugin_register_vcpu_insn_exec_cb(
-            instruction,
+            i.0.0,
             Some(vcpu_insn_exec),
             qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-            metadata[i],
+            i.1,
         );
-    }
+    });
 }
 
 #[no_mangle]
