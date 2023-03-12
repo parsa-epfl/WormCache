@@ -1,8 +1,8 @@
 use crate::qemu_api;
 use crate::QEMUPlugin;
 use std::collections::HashSet;
-use std::io::BufWriter;
 use std::io::prelude::*;
+use std::io::BufWriter;
 
 use super::QEMUMemoryInfo;
 use super::QEMUPluginBasicBlock;
@@ -134,10 +134,7 @@ impl FirstTouchCounterPlugin {
 }
 
 unsafe impl QEMUPlugin for FirstTouchCounterPlugin {
-    unsafe fn on_translation(
-        &mut self,
-        tb: &QEMUPluginBasicBlock,
-    ) -> Vec<*mut std::ffi::c_void> {
+    unsafe fn on_translation(&mut self, tb: &QEMUPluginBasicBlock) -> Vec<*mut std::ffi::c_void> {
         return tb
             .iter()
             .map(|x| {
@@ -170,15 +167,16 @@ unsafe impl QEMUPlugin for FirstTouchCounterPlugin {
         user_data: *mut std::ffi::c_void,
     ) {
         if cpu_idx == 1 {
-            let hva = info.translate(vaddr).unwrap() as usize;
-            if self.table.update(hva, false) {
-                self.log_file
-                    .write_fmt(format_args!(
-                        "{}, {} \n",
-                        self.table.current_instruction_count(),
-                        self.table.current_warmup_count()
-                    ))
-                    .unwrap();
+            if let Some(hva) = info.translate(vaddr) {
+                if self.table.update(hva as usize, false) {
+                    self.log_file
+                        .write_fmt(format_args!(
+                            "{}, {} \n",
+                            self.table.current_instruction_count(),
+                            self.table.current_warmup_count()
+                        ))
+                        .unwrap();
+                }
             }
         }
     }
