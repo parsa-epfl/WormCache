@@ -86,5 +86,12 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
+    std::thread::spawn(||{
+        loop {
+            println!("utilization: {}", PLUGIN.current_usage());
+            std::thread::sleep(std::time::Duration::from_secs(10));
+        }
+    });
+
     return 0;
 }

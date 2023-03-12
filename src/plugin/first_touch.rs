@@ -123,6 +123,10 @@ impl FirstTouchCounterPlugin {
             log_file: BufWriter::new(std::fs::File::create("touch_cache.log").unwrap()),
         };
     }
+
+    pub fn current_usage(&self) -> f64 {
+        return self.table.current_usage();
+    }
 }
 
 unsafe impl QEMUPlugin for FirstTouchCounterPlugin {
