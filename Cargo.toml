@@ -8,7 +8,8 @@ edition = "2021"
 [dependencies]
 once_cell = "1.17.0"
 lru = "0.9.0"
-
+bitvec = "1.0.1"
+chrono = "0.4.23"
 
 [lib]
 crate-type=["rlib", "cdylib"]

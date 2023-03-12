@@ -23,14 +23,24 @@ impl PrivateCache {
         };
     }
 
-    pub fn update(&mut self, addr: usize) {
+    pub fn update(&mut self, addr: usize) -> Option<usize> {
         let set_index = (addr >> BLOCK_SIZE_LOG2) % self.sets.len();
         let set = self.sets.get_mut(set_index).unwrap();
         let previous_length = set.len();
-        set.put(addr >> BLOCK_SIZE_LOG2, true);
+        let replaced = set.push(addr >> BLOCK_SIZE_LOG2, true);
         if previous_length == (self.associativity - 1) && set.len() == self.associativity {
             // this one is warmed up.
             self.warmed_count += 1;
+        }
+        match replaced {
+            Some((evicted_addr, entry)) => {
+                if evicted_addr != addr {
+                    return Some(evicted_addr)
+                } else {
+                    return None;
+                }
+            },
+            None => return None,
         }
     }
 
@@ -154,4 +164,19 @@ mod test {
         c.invalidate(194);
         assert!(c.serialize() == vec![vec![Some(16), Some(4)], vec![None, None]]);
     }
+
+    use chrono::Local;
+
+    #[test]
+    fn time_insertion() {
+        let mut ncache = PrivateCache::new(1024, 16);
+        let t1 = Local::now();
+        for t in 0..1000*1000*10 {
+            ncache.update(t);
+        }
+        let t2 = Local::now();
+        println!("{}", t2 - t1);
+    }
 }
+
+
