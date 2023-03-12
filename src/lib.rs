@@ -2,12 +2,12 @@ mod cache;
 mod qemu_api;
 use qemu_api::*;
 mod plugin;
-use std::ffi;
+use chrono::prelude::*;
+use chrono::Local;
+use plugin::single_core_cache::{SingleCoreCachePlugin, SingleCoreCacheStatistics};
 use plugin::QEMUPlugin;
-use plugin::single_core_cache::{
-    SingleCoreCacheStatistics,
-    SingleCoreCachePlugin
-};
+use std::ffi;
+use std::io::prelude::*;
 
 use once_cell::sync::Lazy;
 
@@ -41,21 +41,24 @@ unsafe extern "C" fn vcpu_tb_trans(
 ) {
     let wrapped_tb = plugin::QEMUPluginBasicBlock(tb);
     let metadata = PLUGIN.on_translation(&wrapped_tb);
-    wrapped_tb.into_iter().zip(metadata.into_iter()).for_each(|i|{
-        qemu_plugin_register_vcpu_mem_cb(
-            i.0.0,
-            Some(vcpu_mem_access),
-            qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-            qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
-            i.1,
-        );
-        qemu_plugin_register_vcpu_insn_exec_cb(
-            i.0.0,
-            Some(vcpu_insn_exec),
-            qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-            i.1,
-        );
-    });
+    wrapped_tb
+        .into_iter()
+        .zip(metadata.into_iter())
+        .for_each(|i| {
+            qemu_plugin_register_vcpu_mem_cb(
+                i.0 .0,
+                Some(vcpu_mem_access),
+                qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
+                i.1,
+            );
+            qemu_plugin_register_vcpu_insn_exec_cb(
+                i.0 .0,
+                Some(vcpu_insn_exec),
+                qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                i.1,
+            );
+        });
 }
 
 #[no_mangle]
@@ -73,9 +76,18 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
-    std::thread::spawn(||{
+    std::thread::spawn(|| {
+        let mut f = std::fs::File::create("statistics.log").unwrap();
+        f.write(b"timestamp,instructions,l1i_miss,l1d_miss,l1d_wb\n").unwrap();
         loop {
-            println!("statistics: {:#?}", PLUGIN.statistics());
+            f.write_fmt(format_args!(
+                "{},{},{},{},{}\n",
+                Local::now().format("%H:%M:%S"),
+                PLUGIN.statistics().instructions,
+                PLUGIN.statistics().l1i_miss,
+                PLUGIN.statistics().l1d_miss,
+                PLUGIN.statistics().l1d_wb
+            )).unwrap();
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
     });

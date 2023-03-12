@@ -1,8 +1,8 @@
 use crate::cache::single::PrivateCache;
-use crate::qemu_api;
 use crate::QEMUPlugin;
-use std::collections::HashMap;
-use std::ffi::c_void;
+
+use std::fs;
+use std::io::prelude::*;
 
 use super::QEMUMemoryInfo;
 use super::QEMUPluginBasicBlock;
@@ -122,5 +122,12 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
         }
     }
 
-    unsafe fn on_qemu_exit(&mut self) {}
+    unsafe fn on_qemu_exit(&mut self) {
+        // now, all the statistically saved.
+        let mut llc_counters = fs::File::create("llc_counter.log").unwrap();
+        for cnt in self.llc_counter.iter() {
+            llc_counters.write_fmt(format_args!("{} ", cnt)).unwrap();
+        }
+        llc_counters.flush().unwrap();
+    }
 }
