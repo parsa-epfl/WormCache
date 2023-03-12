@@ -4,10 +4,14 @@ use qemu_api::*;
 mod plugin;
 use std::ffi;
 use plugin::QEMUPlugin;
+use plugin::single_core_cache::{
+    SingleCoreCacheStatistics,
+    SingleCoreCachePlugin
+};
 
 use once_cell::sync::Lazy;
 
-static mut PLUGIN: Lazy<plugin::first_touch::FirstTouchCounterPlugin> = Lazy::new(plugin::first_touch::FirstTouchCounterPlugin::new);
+static mut PLUGIN: Lazy<SingleCoreCachePlugin> = Lazy::new(SingleCoreCachePlugin::new);
 
 #[no_mangle]
 pub static qemu_plugin_version: u32 = QEMU_PLUGIN_VERSION;
@@ -71,7 +75,7 @@ unsafe extern "C" fn qemu_plugin_install(
 
     std::thread::spawn(||{
         loop {
-            println!("utilization: {}", PLUGIN.current_usage());
+            println!("statistics: {:#?}", PLUGIN.statistics());
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
     });

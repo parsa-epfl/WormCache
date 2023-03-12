@@ -103,4 +103,8 @@ impl QEMUMemoryInfo {
         }
         return Some(qemu_api::qemu_plugin_hwaddr_phys_addr(handler));
     }
+
+    pub unsafe fn is_store_operation(&self) -> bool {
+        return qemu_api::qemu_plugin_mem_is_store(self.0);
+    }
 }

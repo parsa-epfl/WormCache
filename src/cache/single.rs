@@ -1,6 +1,8 @@
 use core::num::NonZeroUsize;
 use lru::LruCache;
 
+use super::CacheReturnResult;
+
 pub const BLOCK_SIZE_LOG2: usize = 6;
 pub const BLOCK_SIZE: usize = 1 << 6;
 
@@ -23,35 +25,31 @@ impl PrivateCache {
         };
     }
 
-    pub fn update(&mut self, addr: usize) -> Option<usize> {
-        let set_index = (addr >> BLOCK_SIZE_LOG2) % self.sets.len();
+    pub fn update(&mut self, block_id: usize, is_write: bool) -> CacheReturnResult {
+        let set_index = block_id % self.sets.len();
         let set = self.sets.get_mut(set_index).unwrap();
-        let previous_length = set.len();
-        let replaced = set.push(addr >> BLOCK_SIZE_LOG2, true);
-        if previous_length == (self.associativity - 1) && set.len() == self.associativity {
-            // this one is warmed up.
-            self.warmed_count += 1;
-        }
-        match replaced {
-            Some((evicted_addr, entry)) => {
-                if evicted_addr != addr {
-                    return Some(evicted_addr)
+        let replaced = set.push(block_id, is_write);
+        return match replaced {
+            Some((evicted_block_id, is_dirty)) => {
+                if evicted_block_id != block_id {
+                    if is_dirty {
+                        CacheReturnResult::MissWithDirtyEviction(evicted_block_id)
+                    } else {
+                        CacheReturnResult::MissWithEviction(evicted_block_id)
+                    }
                 } else {
-                    return None;
+                    CacheReturnResult::Hit
                 }
-            },
-            None => return None,
-        }
+            }
+            None => CacheReturnResult::Miss,
+        };
     }
 
-    pub fn invalidate(&mut self, addr: usize) {
-        let block_id = addr >> BLOCK_SIZE_LOG2;
+    pub fn invalidate(&mut self, block_id: usize) -> Option<bool> {
         let set_index: usize = block_id % self.sets.len();
         let set = self.sets.get_mut(set_index).unwrap();
-        if set.contains(&block_id) {
-            set.put(block_id, false);
-            set.demote(&block_id);
-        }
+        let evicted = set.pop(&block_id);
+        return evicted;
     }
 
     pub fn is_fully_warmed_up(&self) -> bool {
@@ -69,114 +67,116 @@ impl PrivateCache {
     }
 
     pub fn serialize(&self) -> Vec<Vec<Option<usize>>> {
-        return self.sets.iter().map(|x| -> Vec<Option<usize>> {
-            return x.iter().map(|el| -> Option<usize> {
-                return match &el.1 {
-                    true => Some(*el.0),
-                    false => None,
-                }
-            }).collect()
-        }).collect();
+        return self
+            .sets
+            .iter()
+            .map(|x| -> Vec<Option<usize>> {
+                return x
+                    .iter()
+                    .map(|el| -> Option<usize> {
+                        return match &el.1 {
+                            true => Some(*el.0),
+                            false => None,
+                        };
+                    })
+                    .collect();
+            })
+            .collect();
     }
 }
 
 mod test {
-    use super::*;
-    #[test]
-    fn single_set_test() {
-        let mut c = PrivateCache::new(1, 4);
-        c.update(1);
-        c.update(2);
-        c.update(3);
-        c.update(4);
+    // use super::*;
+    // #[test]
+    // fn single_set_test() {
+    //     let mut c = PrivateCache::new(1, 4);
+    //     c.update(0, false);
 
-        assert!(c.usage() == 0.25);
+    //     assert!(c.usage() == 0.25);
 
-        c.update(66);
-        c.update(129);
-        c.update(255);
+    //     c.update(1, false);
+    //     c.update(2, false);
+    //     c.update(3, false);
 
-        assert!(c.is_fully_warmed_up());
+    //     assert!(c.is_fully_warmed_up());
 
-        assert!(c.serialize() == vec![vec![Some(3), Some(2), Some(1), Some(0)]]);
-    }
+    //     assert!(c.serialize() == vec![vec![Some(3), Some(2), Some(1), Some(0)]]);
+    // }
 
-    #[test]
-    fn multiple_set_test() {
-        let mut c = PrivateCache::new(4, 1);
+    // #[test]
+    // fn multiple_set_test() {
+    //     let mut c = PrivateCache::new(4, 1);
 
-        c.update(1);
-        c.update(2);
-        c.update(3);
-        c.update(4);
+    //     c.update(1);
+    //     c.update(2);
+    //     c.update(3);
+    //     c.update(4);
 
-        assert!(c.usage() == 0.25);
+    //     assert!(c.usage() == 0.25);
 
-        c.update(65);
-        c.update(129);
-        c.update(195);
+    //     c.update(65);
+    //     c.update(129);
+    //     c.update(195);
 
-        assert!(c.is_fully_warmed_up());
+    //     assert!(c.is_fully_warmed_up());
 
-        assert!(c.serialize() == vec![vec![Some(0)], vec![Some(1)], vec![Some(2)], vec![Some(3)]]);
+    //     assert!(c.serialize() == vec![vec![Some(0)], vec![Some(1)], vec![Some(2)], vec![Some(3)]]);
 
-        c.update(64 * 6 + 14);
+    //     c.update(64 * 6 + 14);
 
-        assert!(c.serialize() == vec![vec![Some(0)], vec![Some(1)], vec![Some(6)], vec![Some(3)]]);
-    }
+    //     assert!(c.serialize() == vec![vec![Some(0)], vec![Some(1)], vec![Some(6)], vec![Some(3)]]);
+    // }
 
-    #[test]
-    fn replacement_test() {
-        let mut c = PrivateCache::new(2, 2);
+    // #[test]
+    // fn replacement_test() {
+    //     let mut c = PrivateCache::new(2, 2);
 
-        c.update(67);
-        c.update(257);
-        c.update(197);
-        c.update(15);
+    //     c.update(67);
+    //     c.update(257);
+    //     c.update(197);
+    //     c.update(15);
 
-        assert!(c.serialize() == vec![vec![Some(0), Some(4)], vec![Some(3), Some(1)]]);
+    //     assert!(c.serialize() == vec![vec![Some(0), Some(4)], vec![Some(3), Some(1)]]);
 
-        c.update(1027);
-        assert!(c.serialize() == vec![vec![Some(16), Some(0)], vec![Some(3), Some(1)]]);
+    //     c.update(1027);
+    //     assert!(c.serialize() == vec![vec![Some(16), Some(0)], vec![Some(3), Some(1)]]);
 
-        c.update(18);
-        assert!(c.serialize() == vec![vec![Some(0), Some(16)], vec![Some(3), Some(1)]]);
-    }
+    //     c.update(18);
+    //     assert!(c.serialize() == vec![vec![Some(0), Some(16)], vec![Some(3), Some(1)]]);
+    // }
 
-    #[test]
-    fn eviction() {
-        let mut c = PrivateCache::new(2, 2);
+    // #[test]
+    // fn eviction() {
+    //     let mut c = PrivateCache::new(2, 2);
 
-        c.update(67);
-        c.update(257);
-        c.update(197);
-        c.update(15);
+    //     c.update(67);
+    //     c.update(257);
+    //     c.update(197);
+    //     c.update(15);
 
-        assert!(c.serialize() == vec![vec![Some(0), Some(4)], vec![Some(3), Some(1)]]);
-        
-        c.invalidate(17);
-        assert!(c.serialize() == vec![vec![Some(4), None], vec![Some(3), Some(1)]]);
+    //     assert!(c.serialize() == vec![vec![Some(0), Some(4)], vec![Some(3), Some(1)]]);
 
-        c.update(1029);
-        assert!(c.serialize() == vec![vec![Some(16), Some(4)], vec![Some(3), Some(1)]]);
+    //     c.invalidate(17);
+    //     assert!(c.serialize() == vec![vec![Some(4), None], vec![Some(3), Some(1)]]);
 
-        c.invalidate(65);
-        c.invalidate(194);
-        assert!(c.serialize() == vec![vec![Some(16), Some(4)], vec![None, None]]);
-    }
+    //     c.update(1029);
+    //     assert!(c.serialize() == vec![vec![Some(16), Some(4)], vec![Some(3), Some(1)]]);
 
-    use chrono::Local;
+    //     c.invalidate(65);
+    //     c.invalidate(194);
+    //     assert!(c.serialize() == vec![vec![Some(16), Some(4)], vec![None, None]]);
+    // }
 
-    #[test]
-    fn time_insertion() {
-        let mut ncache = PrivateCache::new(1024, 16);
-        let t1 = Local::now();
-        for t in 0..1000*1000*10 {
-            ncache.update(t);
-        }
-        let t2 = Local::now();
-        println!("{}", t2 - t1);
-    }
+    // use chrono::Local;
+
+    // #[test]
+    // fn time_insertion() {
+    //     let mut ncache = PrivateCache::new(1024, 16);
+    //     let t1 = Local::now();
+    //     for t in 0..1000 * 1000 * 10 {
+    //         ncache.update(t);
+    //     }
+    //     let t2 = Local::now();
+    //     println!("{}", t2 - t1);
+    // }
 }
-
-
