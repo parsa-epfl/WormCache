@@ -1,15 +1,15 @@
+use chrono::Local;
 use once_cell::sync::OnceCell;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use std::fs;
 use std::sync;
 use std::thread;
-use chrono::Local;
 
 use worm_cache::cache::parallel::{BlockState, CacheEntry, ParallelCache};
 use worm_cache::cache::CacheReturnResult;
 
-const THREAD_COUNT: usize = 64;
+const THREAD_COUNT: usize = 8;
 const LLC_SET: usize = 64 * 1024;
 
 static SEEDS: OnceCell<Vec<u32>> = once_cell::sync::OnceCell::new();
@@ -20,7 +20,12 @@ fn main() {
     let mut f = fs::read_to_string("./llc_counter.log").unwrap();
     let seeds: Vec<_> = f
         .split(" ")
-        .map(|s| return s.parse::<u32>().unwrap())
+        .filter_map(|s| {
+            return match s.parse::<u32>() {
+                Ok(v) => Some(v),
+                Err(_) => None,
+            };
+        })
         .collect();
     SEEDS.set(seeds).unwrap();
     THREAD_BARRIER
@@ -59,10 +64,9 @@ fn main() {
     THREAD_BARRIER.wait();
     let after_exp = Local::now();
 
-    threads_handlers.into_iter().for_each(|x|{
+    threads_handlers.into_iter().for_each(|x| {
         x.join().unwrap();
     });
 
     println!("Finish inteval: {}", after_exp - before_exp);
-
 }
