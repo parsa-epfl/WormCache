@@ -5,27 +5,36 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use bitvec::vec::BitVec;
 
+use super::CacheReturnResult;
+
 pub const BLOCK_SIZE_LOG2: usize = 6;
 pub const BLOCK_SIZE: usize = 1 << 6;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BlockState {
     Exclusive,
     Modified,
     Shared
 }
 
+impl BlockState {
+    pub fn require_exclusive(&self) -> bool {
+        return *self == Self::Exclusive || *self == Self::Modified;
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
-struct CacheEntry {
-    perm: BlockState
+pub struct CacheEntry {
+    pub perm: BlockState
 }
 
 #[derive(Clone, Debug)]
-struct DirectoryEntry {
+pub struct DirectoryEntry {
     perm: BlockState,
     replicas: BitVec
 }
 
+#[derive(Debug)]
 pub struct ParallelCache<E> {
     sets: Vec<Mutex<LruCache<usize, E>>>,
     associativity: AtomicUsize,
@@ -46,22 +55,10 @@ impl<E> ParallelCache<E> {
         };
     }
 
-    // pub fn update(&mut self, addr: usize) {
-    //     let set_index = (addr >> BLOCK_SIZE_LOG2) % self.sets.len();
-    //     let mut set = self.sets.get_mut(set_index).unwrap().lock().unwrap();
-    //     let previous_length = set.len();
-    //     set.put(addr >> BLOCK_SIZE_LOG2, true);
-    //     if previous_length == (self.associativity.load(Ordering::Relaxed) - 1) && set.len() == self.associativity.load(Ordering::Relaxed) {
-    //         // this one is warmed up.
-    //         self.warmed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    //     }
-    // }
-
-    pub fn invalidate(&mut self, addr: usize) -> Option<E> {
-        let block_id = addr >> BLOCK_SIZE_LOG2;
+    pub fn invalidate(&mut self, block_id: usize) -> Option<E> {
         let set_index: usize = block_id % self.sets.len();
         let mut set = self.sets.get_mut(set_index).unwrap().lock().unwrap();
-        return set.pop(&addr);
+        return set.pop(&block_id);
     }
 
     pub fn is_fully_warmed_up(&self) -> bool {
@@ -77,42 +74,30 @@ impl<E> ParallelCache<E> {
 
         return usage / (self.sets.len() * self.associativity.load(Ordering::Relaxed)) as f64;
     }
-
-    // pub fn serialize(&self) -> Vec<Vec<Option<usize>>> {
-    //     return self.sets.iter().map(|x| -> Vec<Option<usize>> {
-    //         return x.lock().unwrap().iter().map(|el| -> Option<usize> {
-    //             return match &el.1 {
-    //                 true => Some(*el.0),
-    //                 false => None,
-    //             }
-    //         }).collect()
-    //     }).collect();
-    // }
 }
 
 
 impl ParallelCache<CacheEntry> {
-    pub fn update(&mut self, addr: usize, perm: BlockState) -> Option<(usize, CacheEntry)> {
-        let set_index = (addr >> BLOCK_SIZE_LOG2) % self.sets.len();
-        let mut set = self.sets.get_mut(set_index).unwrap().lock().unwrap();
-        let previous_length = set.len();
-        let replaced = set.push(addr >> BLOCK_SIZE_LOG2, CacheEntry{ perm });
-        let new_length = set.len();
-        drop(new_length);
-        if previous_length == (self.associativity.load(Ordering::Relaxed) - 1) && new_length == self.associativity.load(Ordering::Relaxed) {
-            // this one is warmed up.
-            self.warmed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
-        match replaced {
-            Some((evicted_addr, entry)) => {
-                if evicted_addr != addr {
-                    return Some((evicted_addr, entry))
+    pub fn update(&self, block_id: usize, perm: BlockState) -> CacheReturnResult {
+        let set_index = block_id % self.sets.len();
+        let mut set = self.sets[set_index].lock().unwrap();
+        let replaced = set.push(block_id, CacheEntry { perm });
+        return match replaced {
+            Some((evicted_block_id, block)) => {
+                if evicted_block_id != block_id {
+                    if block.perm == BlockState::Modified {
+                        CacheReturnResult::MissWithDirtyEviction(evicted_block_id)
+                    } else {
+                        CacheReturnResult::MissWithEviction(evicted_block_id)
+                    }
+                } else if block.perm == BlockState::Shared && perm.require_exclusive() {
+                    CacheReturnResult::MissWithWrongPermission
                 } else {
-                    return None;
+                    CacheReturnResult::Hit
                 }
-            },
-            None => return None,
-        }
+            }
+            None => CacheReturnResult::Miss,
+        };
     }
 }
 

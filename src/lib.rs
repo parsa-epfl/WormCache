@@ -1,4 +1,4 @@
-mod cache;
+pub mod cache;
 mod qemu_api;
 use qemu_api::*;
 mod plugin;

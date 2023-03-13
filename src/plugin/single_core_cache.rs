@@ -1,5 +1,6 @@
 use crate::cache::single::PrivateCache;
 use crate::QEMUPlugin;
+use crate::cache::CacheReturnResult;
 
 use std::fs;
 use std::io::prelude::*;
@@ -16,6 +17,7 @@ pub struct SingleCoreCacheStatistics {
 }
 
 pub struct SingleCoreCachePlugin {
+    last_iblock: usize,
     l1i: PrivateCache,
     l1d: PrivateCache,
     llc_counter: Vec<usize>,
@@ -31,6 +33,7 @@ const LLCSet: usize = 1024 * 64;
 impl SingleCoreCachePlugin {
     pub fn new() -> Self {
         return SingleCoreCachePlugin {
+            last_iblock: 0,
             l1i: PrivateCache::new(L1Set, L1Associativity),
             l1d: PrivateCache::new(L1Set, L1Associativity),
             llc_counter: (0..LLCSet)
@@ -70,17 +73,27 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
         let addr = user_data as usize;
         let block_id = addr >> 6;
 
+        if self.last_iblock == block_id {
+            // filter some process
+            return;
+        }
+
+        self.last_iblock = block_id;
+
         match self.l1i.update(block_id, false) {
-            crate::cache::CacheReturnResult::Miss => {
+            CacheReturnResult::Miss => {
                 self.llc_counter[block_id % LLCSet] += 1;
                 self.c.l1i_miss += 1;
             }
-            crate::cache::CacheReturnResult::Hit => {}
-            crate::cache::CacheReturnResult::MissWithEviction(_) => {
+            CacheReturnResult::Hit => {}
+            CacheReturnResult::MissWithEviction(_) => {
                 self.llc_counter[block_id % LLCSet] += 1;
                 self.c.l1i_miss += 1;
             }
-            crate::cache::CacheReturnResult::MissWithDirtyEviction(_) => {
+            CacheReturnResult::MissWithDirtyEviction(_) => {
+                panic!("This case should not happen!");
+            },
+            CacheReturnResult::MissWithWrongPermission => {
                 panic!("This case should not happen!");
             }
         }
@@ -105,19 +118,22 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
         let block_id = addr >> 6;
 
         match self.l1d.update(addr, info.is_store_operation()) {
-            crate::cache::CacheReturnResult::Miss => {
+            CacheReturnResult::Miss => {
                 self.llc_counter[block_id % LLCSet] += 1;
                 self.c.l1d_miss += 1;
-            }
-            crate::cache::CacheReturnResult::Hit => {}
-            crate::cache::CacheReturnResult::MissWithEviction(_) => {
+            },
+            CacheReturnResult::Hit => {}
+            CacheReturnResult::MissWithEviction(_) => {
                 self.llc_counter[block_id % LLCSet] += 1;
                 self.c.l1d_miss += 1;
-            }
-            crate::cache::CacheReturnResult::MissWithDirtyEviction(write_back_block_id) => {
+            },
+            CacheReturnResult::MissWithDirtyEviction(write_back_block_id) => {
                 self.llc_counter[block_id % LLCSet] += 1;
                 self.llc_counter[write_back_block_id % LLCSet] += 1;
                 self.c.l1d_wb += 1;
+            },
+            CacheReturnResult::MissWithWrongPermission => {
+                panic!("This case should not happen!");
             }
         }
     }

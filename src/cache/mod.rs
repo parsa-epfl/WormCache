@@ -5,5 +5,6 @@ pub enum CacheReturnResult {
     Miss,
     Hit,
     MissWithEviction(usize),
-    MissWithDirtyEviction(usize)
+    MissWithDirtyEviction(usize),
+    MissWithWrongPermission // shared -> modified, exclusive.
 }
