@@ -48,7 +48,7 @@ fn main() {
                 // now, send the request to the cache and start timing.
                 for _ in 0..100 {
                     for s in seeds.iter() {
-                        match local_cache.update(s, BlockState::Exclusive) {
+                        match local_cache.update(*s, BlockState::Exclusive) {
                             CacheReturnResult::Miss => cnt += 1,
                             CacheReturnResult::Hit => {}
                             CacheReturnResult::MissWithEviction(_) => {}
