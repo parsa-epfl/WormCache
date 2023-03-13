@@ -28,6 +28,8 @@ fn main() {
         })
         .collect();
     SEEDS.set(seeds).unwrap();
+    println!("Seed count: {}", SEEDS.get().unwrap().len());
+
     THREAD_BARRIER
         .set(sync::Barrier::new(THREAD_COUNT + 1))
         .unwrap();
@@ -44,13 +46,15 @@ fn main() {
                 THREAD_BARRIER.wait();
                 let mut cnt = 0u64;
                 // now, send the request to the cache and start timing.
-                for s in seeds {
-                    match local_cache.update(s, BlockState::Exclusive) {
-                        CacheReturnResult::Miss => cnt += 1,
-                        CacheReturnResult::Hit => {}
-                        CacheReturnResult::MissWithEviction(_) => {}
-                        CacheReturnResult::MissWithDirtyEviction(_) => {}
-                        CacheReturnResult::MissWithWrongPermission => {}
+                for _ in 0..100 {
+                    for s in seeds.iter() {
+                        match local_cache.update(s, BlockState::Exclusive) {
+                            CacheReturnResult::Miss => cnt += 1,
+                            CacheReturnResult::Hit => {}
+                            CacheReturnResult::MissWithEviction(_) => {}
+                            CacheReturnResult::MissWithDirtyEviction(_) => {}
+                            CacheReturnResult::MissWithWrongPermission => {}
+                        }
                     }
                 }
                 THREAD_BARRIER.wait();
