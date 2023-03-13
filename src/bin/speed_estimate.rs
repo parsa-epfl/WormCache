@@ -41,12 +41,12 @@ fn main() {
                 // step1, generate 10M requests
                 let dist = WeightedIndex::new(SEEDS.get().unwrap()).unwrap();
                 let mut rng = thread_rng();
-                let seeds: Vec<_> = dist.sample_iter(&mut rng).take(1000 * 1000).collect();
+                let seeds: Vec<_> = dist.sample_iter(&mut rng).take(64 * 1000 * 1000).collect();
                 let local_cache = CACHE.get().unwrap();
                 THREAD_BARRIER.wait();
                 let mut cnt = 0u64;
                 // now, send the request to the cache and start timing.
-                for _ in 0..100 {
+                for _ in 0..2 {
                     for s in seeds.iter() {
                         match local_cache.update(*s, BlockState::Exclusive) {
                             CacheReturnResult::Miss => cnt += 1,
@@ -57,7 +57,6 @@ fn main() {
                         }
                     }
                 }
-                THREAD_BARRIER.wait();
                 println!("Misses: {}", cnt);
             });
         })
@@ -65,12 +64,10 @@ fn main() {
 
     THREAD_BARRIER.wait();
     let before_exp = Local::now();
-    THREAD_BARRIER.wait();
-    let after_exp = Local::now();
-
     threads_handlers.into_iter().for_each(|x| {
         x.join().unwrap();
     });
+    let after_exp = Local::now();
 
-    println!("Finish inteval: {}", after_exp - before_exp);
+    println!("Finish interval: {}", (after_exp - before_exp).num_milliseconds());
 }
