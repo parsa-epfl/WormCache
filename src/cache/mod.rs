@@ -1,7 +1,4 @@
-pub mod parallel;
 pub mod single;
-pub mod directory;
-pub mod mtmodel;
 
 pub enum CacheReturnResult {
     Miss,

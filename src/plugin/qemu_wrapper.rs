@@ -1,5 +1,4 @@
 use crate::qemu_api;
-use std::ffi;
 
 pub struct QEMUPluginBasicBlock(pub *mut qemu_api::qemu_plugin_tb);
 
