@@ -8,7 +8,7 @@ use std::sync;
 use std::thread;
 use std::time::Instant;
 
-use worm_cache::cache::parallel::{BlockState, CacheEntry, ParallelCache};
+use worm_cache::cache::parallel::{BlockState, ParallelCache};
 use worm_cache::cache::CacheReturnResult;
 
 const LLC_SET: usize = 64 * 1024;
@@ -74,6 +74,7 @@ fn main() {
                             CacheReturnResult::MissWithDirtyEviction(_) => {}
                             CacheReturnResult::MissWithWrongPermission => {}
                         }
+                        std::thread::sleep(std::time::Duration::from_micros(1));
                     }
                 }
                 let el = t.elapsed();
