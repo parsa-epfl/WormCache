@@ -18,25 +18,23 @@ pub struct SingleCoreCacheStatistics {
 
 pub struct SingleCoreCachePlugin {
     last_iblock: usize,
-    l1i: PrivateCache,
-    l1d: PrivateCache,
+    l1i: PrivateCache<8, 1024>,
+    l1d: PrivateCache<8, 1024>,
     llc_counter: Vec<usize>,
 
     // counters
     c: SingleCoreCacheStatistics,
 }
 
-const L1Associativity: usize = 8;
-const L1Set: usize = 128;
-const LLCSet: usize = 1024 * 64;
+const LLC_SET: usize = 1024 * 64;
 
 impl SingleCoreCachePlugin {
     pub fn new() -> Self {
         return SingleCoreCachePlugin {
             last_iblock: 0,
-            l1i: PrivateCache::new(L1Set, L1Associativity),
-            l1d: PrivateCache::new(L1Set, L1Associativity),
-            llc_counter: (0..LLCSet)
+            l1i: PrivateCache::new(),
+            l1d: PrivateCache::new(),
+            llc_counter: (0..LLC_SET)
                 .map(|_| {
                     return 0;
                 })
@@ -82,12 +80,12 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
 
         match self.l1i.update(block_id, false) {
             CacheReturnResult::Miss => {
-                self.llc_counter[block_id % LLCSet] += 1;
+                self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1i_miss += 1;
             }
             CacheReturnResult::Hit => {}
             CacheReturnResult::MissWithEviction(_) => {
-                self.llc_counter[block_id % LLCSet] += 1;
+                self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1i_miss += 1;
             }
             CacheReturnResult::MissWithDirtyEviction(_) => {
@@ -119,17 +117,17 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
 
         match self.l1d.update(addr, info.is_store_operation()) {
             CacheReturnResult::Miss => {
-                self.llc_counter[block_id % LLCSet] += 1;
+                self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1d_miss += 1;
             },
             CacheReturnResult::Hit => {}
             CacheReturnResult::MissWithEviction(_) => {
-                self.llc_counter[block_id % LLCSet] += 1;
+                self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1d_miss += 1;
             },
             CacheReturnResult::MissWithDirtyEviction(write_back_block_id) => {
-                self.llc_counter[block_id % LLCSet] += 1;
-                self.llc_counter[write_back_block_id % LLCSet] += 1;
+                self.llc_counter[block_id % LLC_SET] += 1;
+                self.llc_counter[write_back_block_id % LLC_SET] += 1;
                 self.c.l1d_wb += 1;
             },
             CacheReturnResult::MissWithWrongPermission => {
