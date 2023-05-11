@@ -1,11 +1,11 @@
 pub mod single;
-pub mod private_llc;
+pub mod ts_cache;
 
 pub enum CacheReturnResult {
     Miss,
     Hit,
     MissWithEviction(usize),
-    MissWithDirtyEviction(usize),
+    MissWithWriteBack(usize),
     MissWithWrongPermission // shared -> modified, exclusive.
 }
 

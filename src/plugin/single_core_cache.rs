@@ -88,7 +88,7 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1i_miss += 1;
             }
-            CacheReturnResult::MissWithDirtyEviction(_) => {
+            CacheReturnResult::MissWithWriteBack(_) => {
                 panic!("This case should not happen!");
             },
             CacheReturnResult::MissWithWrongPermission => {
@@ -125,7 +125,7 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1d_miss += 1;
             },
-            CacheReturnResult::MissWithDirtyEviction(write_back_block_id) => {
+            CacheReturnResult::MissWithWriteBack(write_back_block_id) => {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.llc_counter[write_back_block_id % LLC_SET] += 1;
                 self.c.l1d_wb += 1;

@@ -44,7 +44,7 @@ impl <const A: usize, const S: usize> PrivateCache <A, S> {
             Some((evicted_block_id, is_dirty)) => {
                 if evicted_block_id != block_id {
                     if is_dirty {
-                        CacheReturnResult::MissWithDirtyEviction(evicted_block_id)
+                        CacheReturnResult::MissWithWriteBack(evicted_block_id)
                     } else {
                         CacheReturnResult::MissWithEviction(evicted_block_id)
                     }
