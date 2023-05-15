@@ -5,15 +5,15 @@
 use core::num::NonZeroUsize;
 use lru::LruCache;
 
-struct TimestampCacheMetaData {
-    ts: usize,
-    is_dirty: bool,
+pub struct TimestampCacheMetaData {
+    pub ts: usize,
+    pub is_dirty: bool,
 }
 
 pub struct TimestampCache<const A: usize, const S: usize> {
     // A: associativity, S: sets
-    sets: Vec<LruCache<usize, TimestampCacheMetaData>>,
-    warmed_count: usize,
+    pub sets: Vec<LruCache<usize, TimestampCacheMetaData>>,
+    pub warmed_count: usize,
 }
 
 impl<const A: usize, const S: usize> TimestampCache<A, S> {

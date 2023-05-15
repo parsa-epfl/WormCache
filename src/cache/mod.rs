@@ -6,7 +6,6 @@ pub enum CacheReturnResult {
     Hit,
     MissWithEviction(usize),
     MissWithWriteBack(usize),
-    MissWithWrongPermission // shared -> modified, exclusive.
 }
 
 pub const PRIVATE_CACHE_ASSOCIATIVITY: usize = 8;

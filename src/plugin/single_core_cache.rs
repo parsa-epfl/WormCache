@@ -91,9 +91,6 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
             CacheReturnResult::MissWithWriteBack(_) => {
                 panic!("This case should not happen!");
             },
-            CacheReturnResult::MissWithWrongPermission => {
-                panic!("This case should not happen!");
-            }
         }
     }
 
@@ -130,9 +127,6 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
                 self.llc_counter[write_back_block_id % LLC_SET] += 1;
                 self.c.l1d_wb += 1;
             },
-            CacheReturnResult::MissWithWrongPermission => {
-                panic!("This case should not happen!");
-            }
         }
     }
 
