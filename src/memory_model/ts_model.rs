@@ -54,7 +54,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     }
 }
 
-// this struct contains the memory model of this structure.
+// this struct contains the memory model, basically the private .
 pub struct TimestampMemoryHierarchy<
     const P_A: usize,
     const P_S: usize,
@@ -62,6 +62,11 @@ pub struct TimestampMemoryHierarchy<
     const S_S: usize,
 > {
     hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
+}
+
+struct CacheLineSharingInfo {
+    replicas: Vec<(usize, u8)>,
+    last_writer: Option<(usize, u8)>,
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -77,22 +82,15 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         };
     }
 
-    pub fn reconstruct_mesi_per_llc(&mut self) -> MemoryHierarchyCheckPoint {
-        // 1. scan all the content in the private cache and reconstruct the directory.
-        struct DirectoryEntry {
-            replicas: Vec<(usize, u8)>,
-            last_writer: Option<(usize, u8)>,
-        }
-
-        let mut block_sharing_info = HashMap::<usize, DirectoryEntry>::new();
-
+    fn get_private_cache_line_sharing_info(&self) -> HashMap<usize, CacheLineSharingInfo> {
+        let mut res = HashMap::<usize, CacheLineSharingInfo>::new();
         // go over all the cache lines in private cache and understand the permission.
         self.hierarchies.iter().for_each(|(core_id, cache)| {
             cache.private_cache.sets.iter().for_each(|set| {
                 set.iter().for_each(|(block_id, data)| {
-                    if block_sharing_info.contains_key(block_id) {
+                    if res.contains_key(block_id) {
                         // well, this cache line is recorded. 
-                        let record = block_sharing_info.get_mut(block_id).unwrap();
+                        let record = res.get_mut(block_id).unwrap();
                         match data.is_dirty {
                             true => {
                                 // if this is a dirty cache line, I need to check if this guy is the last writer.
@@ -124,7 +122,6 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                                         // good chance, I will take control of this directory.
                                         record.last_writer = Some((data.ts, *core_id));
                                         // clean all the old writer. 
-                                        // TODO: Move this step after constructing the cache.
                                         record.replicas.retain(|(replica_ts, _)|{
                                             return *replica_ts > data.ts;
                                         });
@@ -144,9 +141,9 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                         };
                     } else {
                         // fine, it is a new one, so put it there.
-                        block_sharing_info.insert(
+                        res.insert(
                             *block_id,
-                            DirectoryEntry {
+                            CacheLineSharingInfo {
                                 replicas: vec![(data.ts, *core_id)],
                                 last_writer: match data.is_dirty {
                                     true => Some((data.ts, *core_id)),
@@ -160,11 +157,13 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         });
 
         // clean the outdated replicas.
-        block_sharing_info.iter_mut().for_each(|(block_id, entry)| {
+        res.iter_mut().for_each(|(block_id, entry)| {
             match entry.last_writer {
                 Some((writer_ts, writer_core_id)) => {
-                    entry.replicas.retain(|(replica_ts, replica_core_id)| {
-                        // how to handle the equal case is ambiguous.
+                    // add a sanity check. It is impossible to have one core_id as both read and writer.
+                    assert!(entry.replicas.iter().find(|el|{el.1 == writer_core_id}).is_none(), "it is impossible to have the same core being the reader and writer for a cache line (block_id = {})", block_id);
+                    entry.replicas.retain(|(replica_ts, _)| {
+                        // The way to handle the equal case is ambiguous.
                         return *replica_ts > writer_ts;
                     });
                 }
@@ -172,22 +171,126 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             };
         });
 
-        // now, reconstruct the caches with the content in the directory.
-        // the algorithm is to scan the directory and insert the data into the caches
-        let mut private_caches: HashMap<usize, Vec<Vec<(usize, CacheBlock)>>> = HashMap::new();
+        return res;
+    }
 
-        block_sharing_info.iter().for_each(|(block_id, data)| {
-            // 1. handle the writer
-            match (data.last_writer.is_some(), data.replicas.is_empty()) {
-                (true, true) => {
-                    // there is only one writer, so exclusive and modified.
-                    
-                },
-                (true, false) => todo!(),
-                (false, true) => todo!(),
-                (false, false) => todo!(),
-            };
-        });
+    fn reconstruct_private_cache(
+        sharing_info: &HashMap<usize, CacheLineSharingInfo>,
+        core_ids: Vec<u8>,
+    ) -> HashMap<u8, SerializedCache> {
+        // now, reconstruct the caches with the sharing information.
+        let mut private_caches: HashMap<_, _> = core_ids
+            .into_iter()
+            .map(|core_id| {
+                return (
+                    core_id,
+                    Vec::from_iter((0..P_S).map(|_| Vec::<(usize, CacheBlock)>::new())),
+                );
+            })
+            .collect();
+
+        // the algorithm is to scan the directory and insert the data into the caches
+        sharing_info
+            .iter()
+            .for_each(|(block_id, directory_entry)| {
+                let set_number = (P_S - 1) & block_id;
+                // 1. handle the writer
+                match (
+                    directory_entry.last_writer.is_some(),
+                    directory_entry.replicas.is_empty(),
+                ) {
+                    (true, true) => {
+                        // there is only one writer, so exclusive and modified.
+                        let writer = directory_entry.last_writer.unwrap();
+                        private_caches.get_mut(&writer.1).unwrap()[set_number].push((
+                            writer.0,
+                            CacheBlock {
+                                block_id: *block_id,
+                                perm: CacheBlockPermission::ModifiedExclusive,
+                            },
+                        ));
+                    }
+                    (true, false) => {
+                        // the writer will have owned permission, and others will have shared permission.
+                        // When the checkpoint is loaded into a machine without owned permission, the owned permission is exported as a shared state.
+                        let writer = directory_entry.last_writer.unwrap();
+                        private_caches.get_mut(&writer.1).unwrap()[set_number].push((
+                            writer.0,
+                            CacheBlock {
+                                block_id: *block_id,
+                                perm: CacheBlockPermission::ModifiedOwned,
+                            },
+                        ));
+                        // all the replicas have the shared permission.
+                        directory_entry.replicas.iter().for_each(
+                            |(replica_ts, replica_core_id)| {
+                                private_caches.get_mut(replica_core_id).unwrap()[set_number].push((
+                                    *replica_ts,
+                                    CacheBlock {
+                                        block_id: *block_id,
+                                        perm: CacheBlockPermission::CleanShared,
+                                    },
+                                ))
+                            },
+                        );
+                    }
+                    (false, true) => {
+                        // there is no writer, and all requests are read-only
+                        let perm = if directory_entry.replicas.len() == 1 {
+                            CacheBlockPermission::CleanExclusive
+                        } else {
+                            CacheBlockPermission::CleanShared
+                        };
+                        directory_entry.replicas.iter().for_each(
+                            |(replica_ts, replica_core_id)| {
+                                private_caches.get_mut(replica_core_id).unwrap()[set_number].push((
+                                    *replica_ts,
+                                    CacheBlock {
+                                        block_id: *block_id,
+                                        perm,
+                                    },
+                                ))
+                            },
+                        );
+                    }
+                    (false, false) => {
+                        // Amazing, then why do we even have this cache line???
+                        panic!("A strange cache line (block_id = {}) is detected: It has no replicas and no writer.", block_id);
+                    }
+                };
+            });
+
+        // then build the result
+        return private_caches
+            .into_iter()
+            .map(|(core_id, private_cache_primitive)| {
+                return (
+                    core_id,
+                    private_cache_primitive
+                        .into_iter()
+                        .map(|set| {
+                            let mut set = set;
+                            set.sort_unstable_by(|(ts1, _), (ts2, _)| {
+                                ts2.cmp(ts1) // cache line with larger ts should be kept.
+                            });
+                            // now only keep the first P_A elements
+                            if set.len() > P_A {
+                                set.drain(P_A..set.len());
+                            } else {
+                                // well, then others are not
+                            }
+                            let res: Vec<_> = set.into_iter().map(|x| x.1).collect();
+                            return res;
+                        })
+                        .collect(),
+                );
+            })
+            .collect();
+    }
+
+    pub fn reconstruct_moesi_per_llc(&mut self) -> MemoryHierarchyCheckPoint {
+        // 1. scan all private caches and determine their shared info.
+        let block_sharing_info = self.get_private_cache_line_sharing_info();
 
         return MemoryHierarchyCheckPoint {
             private_cache: todo!(),

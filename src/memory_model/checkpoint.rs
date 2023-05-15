@@ -3,16 +3,17 @@
 use std::collections::HashMap;
 
 // Currently the supported coherence model is MESI, which is the model used by QFlex.
+#[derive(Clone, Copy)]
 pub enum CacheBlockPermission {
     Invalid = 0, // Invalid
-    CleanReplica = 1, // Shared
+    CleanShared = 1, // Shared
     CleanExclusive = 2, // Exclusive
     ModifiedExclusive = 3, // Modified
     ModifiedOwned = 4, // Owned
 }
 
 pub struct CacheBlock {
-    pub tag: usize,
+    pub block_id: usize,
     pub perm: CacheBlockPermission
 }
 

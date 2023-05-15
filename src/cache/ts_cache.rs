@@ -39,9 +39,14 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
         };
     }
 
-    pub fn record(&mut self, block_id: usize, is_dirty: bool, ts: usize) -> super::CacheReturnResult {
-        let set_count = block_id >> Self::SET_SHIFT_COUNT;
-        let set = &mut self.sets[set_count];
+    pub fn record(
+        &mut self,
+        block_id: usize,
+        is_dirty: bool,
+        ts: usize,
+    ) -> super::CacheReturnResult {
+        let set_number = block_id & (S - 1);
+        let set = &mut self.sets[set_number];
 
         let old_element_count = set.len();
 
@@ -57,9 +62,9 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
                     return match evicted_metadata.is_dirty {
                         true => super::CacheReturnResult::MissWithWriteBack(evicted_block_id),
                         false => super::CacheReturnResult::MissWithEviction(evicted_block_id),
-                    }
+                    };
                 }
-            },
+            }
             None => super::CacheReturnResult::Miss,
         };
 
