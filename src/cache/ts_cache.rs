@@ -73,6 +73,8 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
             self.warmed_count += 1;
         }
 
+        
+
         return res;
     }
 }

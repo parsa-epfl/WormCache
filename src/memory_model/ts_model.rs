@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use super::checkpoint::CacheBlockPermission;
+use super::checkpoint::CacheSet;
 use super::checkpoint::MemoryHierarchyCheckPoint;
 use super::checkpoint::SerializedCache;
 use crate::cache::ts_cache::TimestampCache;
-use crate::cache::ts_cache::TimestampCacheMetaData;
 
 use crate::memory_model::checkpoint::CacheBlock;
 use crate::QEMUPlugin;
@@ -175,15 +175,15 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     }
 
     fn reconstruct_private_cache(
+        &self,
         sharing_info: &HashMap<usize, CacheLineSharingInfo>,
-        core_ids: Vec<u8>,
     ) -> HashMap<u8, SerializedCache> {
-        // now, reconstruct the caches with the sharing information.
-        let mut private_caches: HashMap<_, _> = core_ids
-            .into_iter()
-            .map(|core_id| {
+        let mut private_caches: HashMap<_, _> = self
+            .hierarchies
+            .iter()
+            .map(|(core_id, _)| {
                 return (
-                    core_id,
+                    *core_id,
                     Vec::from_iter((0..P_S).map(|_| Vec::<(usize, CacheBlock)>::new())),
                 );
             })
@@ -260,7 +260,25 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                 };
             });
 
-        // then build the result
+        // then, determine the cold blocks.
+        let cold_block_count: HashMap<u8, Vec<usize>> = self
+            .hierarchies
+            .iter()
+            .map(|(core_id, mh)| {
+                return (
+                    *core_id,
+                    mh.private_cache
+                        .sets
+                        .iter()
+                        .map(|s| {
+                            return P_A - s.len();
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            })
+            .collect();
+
+        // finally, build the result
         return private_caches
             .into_iter()
             .map(|(core_id, private_cache_primitive)| {
@@ -268,19 +286,23 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                     core_id,
                     private_cache_primitive
                         .into_iter()
-                        .map(|set| {
+                        .zip(cold_block_count[&core_id].iter())
+                        .map(|(set, cold_lines)| {
                             let mut set = set;
                             set.sort_unstable_by(|(ts1, _), (ts2, _)| {
                                 ts2.cmp(ts1) // cache line with larger ts should be kept.
                             });
-                            // now only keep the first P_A elements
                             if set.len() > P_A {
+                                // this should never happen. 
                                 set.drain(P_A..set.len());
                             } else {
-                                // well, then others are not
+                                // well, then we just left others to be empty.
                             }
-                            let res: Vec<_> = set.into_iter().map(|x| x.1).collect();
-                            return res;
+                            let set: Vec<_> = set.into_iter().map(|x| x.1).collect();
+                            return CacheSet::<CacheBlock> {
+                                set,
+                                untouched_blocks: *cold_lines,
+                            };
                         })
                         .collect(),
                 );
@@ -288,12 +310,14 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             .collect();
     }
 
+    
+
     pub fn reconstruct_moesi_per_llc(&mut self) -> MemoryHierarchyCheckPoint {
         // 1. scan all private caches and determine their shared info.
         let block_sharing_info = self.get_private_cache_line_sharing_info();
 
         return MemoryHierarchyCheckPoint {
-            private_cache: todo!(),
+            private_cache: self.reconstruct_private_cache(&block_sharing_info),
             shared_cache: todo!(),
             directory: todo!(),
         };

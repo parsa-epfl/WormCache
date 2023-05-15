@@ -23,12 +23,17 @@ pub struct DirectoryBlock {
     pub last_writer: Option<u8>
 }
 
-pub type SerializedCache = Vec<Vec<CacheBlock>>;
+pub struct CacheSet<CB> {
+    pub set: Vec<CB>,
+    pub untouched_blocks: usize // this field record the code block that is not even touched during warmup.
+}
 
-pub type SerializedDirectory = Vec<Vec<DirectoryBlock>>;
+pub type SerializedCache = Vec<CacheSet<CacheBlock>>;
+
+pub type SerializedDirectory = Vec<CacheSet<DirectoryBlock>>;
 
 pub struct MemoryHierarchyCheckPoint {
-    pub private_cache: HashMap<usize, SerializedCache>,
+    pub private_cache: HashMap<u8, SerializedCache>,
     pub directory: SerializedDirectory,
     pub shared_cache: SerializedCache
 }
