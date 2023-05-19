@@ -6,6 +6,7 @@ use super::checkpoint::MemoryHierarchyCheckPoint;
 use super::checkpoint::SerializedCache;
 use crate::cache::ts_cache::TimestampCache;
 
+use crate::cache::ts_cache::TimestampCacheMetaData;
 use crate::memory_model::checkpoint::CacheBlock;
 use crate::QEMUPlugin;
 
@@ -37,7 +38,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         let res = self.private_cache.record(block_id, is_store, ts);
         match res {
             crate::cache::CacheReturnResult::Miss => {
-                self.local_shared_cache.record(block_id, is_store, ts);
+                // self.local_shared_cache.record(block_id, is_store, ts);
             }
             crate::cache::CacheReturnResult::Hit => {}
             crate::cache::CacheReturnResult::MissWithEviction(blk) => {
@@ -293,7 +294,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                                 ts2.cmp(ts1) // cache line with larger ts should be kept.
                             });
                             if set.len() > P_A {
-                                // this should never happen. 
+                                // this should never happen.
                                 set.drain(P_A..set.len());
                             } else {
                                 // well, then we just left others to be empty.
@@ -310,7 +311,93 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             .collect();
     }
 
-    
+    fn reconstruct_llc(
+        &self,
+        private_sharing_info: &HashMap<usize, CacheLineSharingInfo>,
+    ) -> SerializedCache {
+        return (0..S_S)
+            .map(|set_idx| {
+                let mut set_hash: HashMap<usize, TimestampCacheMetaData> = HashMap::new();
+                self.hierarchies.values().for_each(|h| {
+                    h.local_shared_cache.sets[set_idx]
+                        .iter()
+                        .for_each(|(block_id, tsc_data)| {
+                            if set_hash.contains_key(block_id) {
+                                // only keep the latest time stamp
+                                let recorded_cache_line = set_hash.get_mut(block_id).unwrap();
+                                if recorded_cache_line.ts < tsc_data.ts {
+                                    recorded_cache_line.ts = tsc_data.ts;
+                                }
+                                if tsc_data.is_dirty {
+                                    // propagate the dirty bit
+                                    recorded_cache_line.is_dirty = true;
+                                }
+                            } else {
+                                // well, just put it inside.
+                                set_hash.insert(*block_id, tsc_data.clone());
+                            }
+                        });
+                });
+
+                // remove the element in the shared cache
+                set_hash.retain(|block_id, _| {
+                    return !private_sharing_info.contains_key(block_id);
+                });
+
+                // turn it into a CacheSet.
+                let mut set: Vec<_> = set_hash
+                    .into_iter()
+                    .map(|(block_id, tsc_data)| {
+                        return (block_id, tsc_data);
+                    })
+                    .collect();
+
+                set.sort_unstable_by(|x, y| {
+                    return y.0.cmp(&x.0);
+                });
+
+                let set = if set.len() > S_A {
+                    set.drain(S_A..set.len());
+                    CacheSet::<CacheBlock> {
+                        set: set
+                            .into_iter()
+                            .map(|(block_id, tsc_data)| {
+                                return CacheBlock {
+                                    block_id: block_id,
+                                    perm: if tsc_data.is_dirty {
+                                        CacheBlockPermission::ModifiedExclusive
+                                    } else {
+                                        CacheBlockPermission::CleanExclusive
+                                    },
+                                };
+                            })
+                            .collect(),
+                        untouched_blocks: 0,
+                    }
+                } else {
+                    let left = S_A - set.len();
+                    CacheSet::<CacheBlock> {
+                        set: set
+                            .into_iter()
+                            .map(|(block_id, tsc_data)| {
+                                return CacheBlock {
+                                    block_id: block_id,
+                                    perm: if tsc_data.is_dirty {
+                                        CacheBlockPermission::ModifiedExclusive
+                                    } else {
+                                        CacheBlockPermission::CleanExclusive
+                                    },
+                                };
+                            })
+                            .collect(),
+                        untouched_blocks: left,
+                    }
+                };
+
+                return set;
+            })
+            .collect();
+    }
 
     pub fn reconstruct_moesi_per_llc(&mut self) -> MemoryHierarchyCheckPoint {
         // 1. scan all private caches and determine their shared info.
@@ -318,7 +405,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
 
         return MemoryHierarchyCheckPoint {
             private_cache: self.reconstruct_private_cache(&block_sharing_info),
-            shared_cache: todo!(),
+            shared_cache: self.reconstruct_llc(&block_sharing_info),
             directory: todo!(),
         };
     }

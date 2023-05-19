@@ -5,6 +5,7 @@
 use core::num::NonZeroUsize;
 use lru::LruCache;
 
+#[derive(Clone)]
 pub struct TimestampCacheMetaData {
     pub ts: usize,
     pub is_dirty: bool,
@@ -72,7 +73,6 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
         if old_element_count == (A - 1) && set.len() == A {
             self.warmed_count += 1;
         }
-
         
 
         return res;
