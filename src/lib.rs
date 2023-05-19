@@ -1,8 +1,8 @@
 pub mod cache;
+pub mod memory_model;
 mod qemu_api;
 use qemu_api::*;
 mod plugin;
-use chrono::prelude::*;
 use chrono::Local;
 use plugin::single_core_cache::{SingleCoreCachePlugin, SingleCoreCacheStatistics};
 use plugin::QEMUPlugin;

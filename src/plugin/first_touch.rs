@@ -1,4 +1,3 @@
-use crate::qemu_api;
 use crate::QEMUPlugin;
 use std::collections::HashSet;
 use std::io::prelude::*;
@@ -187,11 +186,9 @@ unsafe impl QEMUPlugin for FirstTouchCounterPlugin {
 }
 
 mod test {
-    use super::WarmupLatencyCache;
-
     #[test]
     fn functionality() {
-        let mut cache_body = WarmupLatencyCache::<8, 2>::new();
+        let mut cache_body = super::WarmupLatencyCache::<8, 2>::new();
         for i in 0..(1024 * 1024 + 1) {
             cache_body.update((i % 8) * 64 * 2, true);
         }
@@ -203,7 +200,7 @@ mod test {
 
     #[test]
     fn access_to_single_block() {
-        let mut cache = WarmupLatencyCache::<2, 8>::new();
+        let mut cache = super::WarmupLatencyCache::<2, 8>::new();
         assert!(cache.update(0, true) != true);
         assert!(cache.update(1, true) != true);
     }
