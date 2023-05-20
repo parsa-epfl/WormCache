@@ -1,10 +1,11 @@
 use crate::cache::single::PrivateCache;
-use crate::QEMUPlugin;
 use crate::cache::CacheReturnResult;
+use crate::QEMUPlugin;
 
 use std::fs;
 use std::io::prelude::*;
 
+use super::PerInstructionInstrumentation;
 use super::QEMUMemoryInfo;
 use super::QEMUPluginBasicBlock;
 
@@ -54,10 +55,18 @@ impl SingleCoreCachePlugin {
 }
 
 unsafe impl QEMUPlugin for SingleCoreCachePlugin {
-    unsafe fn on_translation(&mut self, tb: &QEMUPluginBasicBlock) -> Vec<*mut std::ffi::c_void> {
+    unsafe fn on_translation(
+        &mut self,
+        tb: &QEMUPluginBasicBlock,
+    ) -> Vec<PerInstructionInstrumentation> {
         return tb
             .iter()
-            .map(|i| i.physical_address() as *mut std::ffi::c_void)
+            .map(|x| {
+                return PerInstructionInstrumentation {
+                    instruction_execution: Some(x.physical_address() as *mut std::ffi::c_void),
+                    memory_access: Some(x.physical_address() as *mut std::ffi::c_void),
+                };
+            })
             .collect();
     }
 
@@ -90,7 +99,7 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
             }
             CacheReturnResult::MissWithWriteBack(_) => {
                 panic!("This case should not happen!");
-            },
+            }
         }
     }
 
@@ -116,17 +125,17 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
             CacheReturnResult::Miss => {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1d_miss += 1;
-            },
+            }
             CacheReturnResult::Hit => {}
             CacheReturnResult::MissWithEviction(_) => {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1d_miss += 1;
-            },
+            }
             CacheReturnResult::MissWithWriteBack(write_back_block_id) => {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.llc_counter[write_back_block_id % LLC_SET] += 1;
                 self.c.l1d_wb += 1;
-            },
+            }
         }
     }
 

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::io::prelude::*;
 use std::io::BufWriter;
 
+use super::PerInstructionInstrumentation;
 use super::QEMUMemoryInfo;
 use super::QEMUPluginBasicBlock;
 
@@ -133,11 +134,17 @@ impl FirstTouchCounterPlugin {
 }
 
 unsafe impl QEMUPlugin for FirstTouchCounterPlugin {
-    unsafe fn on_translation(&mut self, tb: &QEMUPluginBasicBlock) -> Vec<*mut std::ffi::c_void> {
+    unsafe fn on_translation(
+        &mut self,
+        tb: &QEMUPluginBasicBlock,
+    ) -> Vec<PerInstructionInstrumentation> {
         return tb
             .iter()
             .map(|x| {
-                return x.physical_address() as *mut std::ffi::c_void;
+                return PerInstructionInstrumentation {
+                    instruction_execution: Some(x.physical_address() as *mut std::ffi::c_void),
+                    memory_access: Some(x.physical_address() as *mut std::ffi::c_void),
+                };
             })
             .collect();
     }

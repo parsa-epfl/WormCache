@@ -9,6 +9,7 @@ use crate::cache::ts_cache::TimestampCache;
 use crate::cache::ts_cache::TimestampCacheMetaData;
 use crate::memory_model::checkpoint::CacheBlock;
 use crate::QEMUPlugin;
+use crate::plugin::PerInstructionInstrumentation;
 
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
@@ -417,7 +418,7 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
     unsafe fn on_translation(
         &mut self,
         tb: &crate::plugin::QEMUPluginBasicBlock,
-    ) -> Vec<*mut std::ffi::c_void> {
+    ) -> Vec<PerInstructionInstrumentation> {
         todo!()
     }
 
