@@ -10,6 +10,7 @@ once_cell = "1.17.0"
 lru = "0.9.0"
 chrono = "0.4.23"
 rand = { version = "0.8.5", feature ="alloc" }
+serde_json = "1.0"
 
 [lib]
 crate-type=["rlib", "cdylib"]
