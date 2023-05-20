@@ -1,17 +1,16 @@
 pub mod cache;
 pub mod memory_model;
 mod qemu_api;
+use plugin::set_contention_analysis::LLCSetAccessDistributionPlugin;
 use qemu_api::*;
 mod plugin;
-use chrono::Local;
-use plugin::single_core_cache::{SingleCoreCachePlugin, SingleCoreCacheStatistics};
 use plugin::QEMUPlugin;
 use std::ffi;
-use std::io::prelude::*;
 
 use once_cell::sync::Lazy;
 
-static mut PLUGIN: Lazy<SingleCoreCachePlugin> = Lazy::new(SingleCoreCachePlugin::new);
+static mut PLUGIN: Lazy<LLCSetAccessDistributionPlugin> =
+    Lazy::new(LLCSetAccessDistributionPlugin::new);
 
 #[no_mangle]
 pub static qemu_plugin_version: u32 = QEMU_PLUGIN_VERSION;
@@ -85,24 +84,5 @@ unsafe extern "C" fn qemu_plugin_install(
 ) -> i32 {
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
-
-    std::thread::spawn(|| {
-        let mut f = std::fs::File::create("statistics.log").unwrap();
-        f.write(b"timestamp,instructions,l1i_miss,l1d_miss,l1d_wb\n")
-            .unwrap();
-        loop {
-            f.write_fmt(format_args!(
-                "{},{},{},{},{}\n",
-                Local::now().format("%H:%M:%S"),
-                PLUGIN.statistics().instructions,
-                PLUGIN.statistics().l1i_miss,
-                PLUGIN.statistics().l1d_miss,
-                PLUGIN.statistics().l1d_wb
-            ))
-            .unwrap();
-            std::thread::sleep(std::time::Duration::from_secs(10));
-        }
-    });
-
     return 0;
 }

@@ -37,7 +37,7 @@ impl <const A: usize, const S: usize> PrivateCache <A, S> {
     }
 
     pub fn update(&mut self, block_id: usize, is_write: bool) -> CacheReturnResult {
-        let set_index = block_id >> Self::SET_SHIFT_COUNT;
+        let set_index = block_id & (BLOCK_SIZE - 1);
         let set = self.sets.get_mut(set_index).unwrap();
         let replaced = set.push(block_id, is_write);
         return match replaced {
@@ -57,7 +57,7 @@ impl <const A: usize, const S: usize> PrivateCache <A, S> {
     }
 
     pub fn invalidate(&mut self, block_id: usize) -> Option<bool> {
-        let set_index: usize = block_id >> Self::SET_SHIFT_COUNT;
+        let set_index: usize = block_id & (BLOCK_SIZE - 1);
         let set = self.sets.get_mut(set_index).unwrap();
         let evicted = set.pop(&block_id);
         return evicted;
