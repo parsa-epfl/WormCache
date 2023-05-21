@@ -1,4 +1,6 @@
+use crate::cache::single::CacheMetaData;
 use crate::cache::single::PrivateCache;
+use crate::cache::single::SingleCacheResult;
 use crate::cache::CacheReturnResult;
 use crate::QEMUPlugin;
 
@@ -17,10 +19,25 @@ pub struct SingleCoreCacheStatistics {
     pub l1d_wb: usize,
 }
 
+#[derive(Clone, Copy)]
+struct NormalCacheMetadata {
+    dirty: bool,
+}
+
+impl CacheMetaData for NormalCacheMetadata {
+    fn is_dirty(&self) -> bool {
+        return self.dirty;
+    }
+
+    fn set_dirty(&mut self, dirty: bool) {
+        self.dirty = dirty
+    }
+}
+
 pub struct SingleCoreCachePlugin {
     last_iblock: usize,
-    l1i: PrivateCache<8, 1024>,
-    l1d: PrivateCache<8, 1024>,
+    l1i: PrivateCache<8, 1024, NormalCacheMetadata>,
+    l1d: PrivateCache<8, 1024, NormalCacheMetadata>,
     llc_counter: Vec<usize>,
 
     // counters
@@ -87,18 +104,19 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
 
         self.last_iblock = block_id;
 
-        match self.l1i.update(block_id, false) {
-            CacheReturnResult::Miss => {
+        match self
+            .l1i
+            .update(block_id, NormalCacheMetadata { dirty: false })
+        {
+            SingleCacheResult::Miss => {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1i_miss += 1;
             }
-            CacheReturnResult::Hit => {}
-            CacheReturnResult::MissWithEviction(_) => {
+            SingleCacheResult::Hit => {}
+            SingleCacheResult::MissAndEvicted(evicted_block_id, medadata) => {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1i_miss += 1;
-            }
-            CacheReturnResult::MissWithWriteBack(_) => {
-                panic!("This case should not happen!");
+                assert!(!medadata.is_dirty());
             }
         }
     }
@@ -121,20 +139,27 @@ unsafe impl QEMUPlugin for SingleCoreCachePlugin {
         let addr = addr.unwrap() as usize;
         let block_id = addr >> 6;
 
-        match self.l1d.update(addr, info.is_store_operation()) {
-            CacheReturnResult::Miss => {
+        match self.l1d.update(
+            addr,
+            NormalCacheMetadata {
+                dirty: info.is_store_operation(),
+            },
+        ) {
+            SingleCacheResult::Miss => {
                 self.llc_counter[block_id % LLC_SET] += 1;
                 self.c.l1d_miss += 1;
             }
-            CacheReturnResult::Hit => {}
-            CacheReturnResult::MissWithEviction(_) => {
-                self.llc_counter[block_id % LLC_SET] += 1;
-                self.c.l1d_miss += 1;
-            }
-            CacheReturnResult::MissWithWriteBack(write_back_block_id) => {
-                self.llc_counter[block_id % LLC_SET] += 1;
-                self.llc_counter[write_back_block_id % LLC_SET] += 1;
-                self.c.l1d_wb += 1;
+            SingleCacheResult::Hit => {}
+            SingleCacheResult::MissAndEvicted(evicted_block_id, meta_data) => {
+                if meta_data.is_dirty() {
+                    self.llc_counter[block_id % LLC_SET] += 1;
+                    self.llc_counter[evicted_block_id % LLC_SET] += 1;
+                    self.c.l1d_wb += 1;
+                } else {
+                    self.llc_counter[block_id % LLC_SET] += 1;
+                    self.llc_counter[evicted_block_id % LLC_SET] += 1;
+                    self.c.l1d_miss += 1;
+                }
             }
         }
     }

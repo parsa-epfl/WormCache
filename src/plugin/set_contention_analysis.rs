@@ -1,3 +1,4 @@
+use crate::cache::single::CacheMetaData;
 use crate::cache::single::PrivateCache;
 use crate::cache::CacheReturnResult;
 use crate::QEMUPlugin;
@@ -12,9 +13,25 @@ use super::PerInstructionInstrumentation;
 use super::QEMUMemoryInfo;
 use super::QEMUPluginBasicBlock;
 
+#[derive(Clone, Copy)]
+struct CacheMetaWithType {
+    dirty: bool,
+    is_instruction: bool,
+}
+
+impl CacheMetaData for CacheMetaWithType {
+    fn is_dirty(&self) -> bool {
+        return self.dirty;
+    }
+
+    fn set_dirty(&mut self, dirty: bool) {
+        self.dirty = dirty;
+    }
+}
+
 pub struct LLCSetAccessDistributionPlugin {
-    private_cache: PrivateCache<16, 2048>,
-    llc_counter: Vec<HashMap<usize, usize>>,
+    private_cache: PrivateCache<16, 2048, CacheMetaWithType>,
+    llc_counter: Vec<HashMap<usize, (usize, bool)>>,
 }
 
 const LLC_SET: usize = 1024 * 1024;
@@ -31,11 +48,14 @@ impl LLCSetAccessDistributionPlugin {
         };
     }
 
-    pub fn increase_llc_counter(&mut self, block_id: usize) {
+    pub fn increase_llc_counter(&mut self, block_id: usize, is_instruction: bool) {
         match self.llc_counter[block_id % LLC_SET].get_mut(&block_id) {
-            Some(freq) => *freq += 1,
+            Some(freq) => {
+                freq.0 += 1;
+                freq.1 = is_instruction | freq.1; // once a block is touched by instruction, it will become a instruction block.
+            },
             None => {
-                self.llc_counter[block_id % LLC_SET].insert(block_id, 1);
+                self.llc_counter[block_id % LLC_SET].insert(block_id, (1, is_instruction));
             }
         };
     }
@@ -83,19 +103,19 @@ unsafe impl QEMUPlugin for LLCSetAccessDistributionPlugin {
         let addr = user_data as usize;
         let block_id = addr >> 6;
 
-        match self.private_cache.update(block_id, false) {
-            CacheReturnResult::Miss => {
-                self.increase_llc_counter(block_id);
-            }
-            CacheReturnResult::Hit => {}
-            CacheReturnResult::MissWithEviction(eviction_block_id) => {
-                self.increase_llc_counter(block_id);
-                self.increase_llc_counter(eviction_block_id);
-            }
-            CacheReturnResult::MissWithWriteBack(write_back_block_id) => {
-                self.increase_llc_counter(block_id);
-                self.increase_llc_counter(write_back_block_id);
-            }
+        match self.private_cache.update(
+            block_id,
+            CacheMetaWithType {
+                dirty: false,
+                is_instruction: true,
+            },
+        ) {
+            crate::cache::single::SingleCacheResult::Hit => {},
+            crate::cache::single::SingleCacheResult::Miss => self.increase_llc_counter(block_id, true),
+            crate::cache::single::SingleCacheResult::MissAndEvicted(evicted_block_id, meta_data) => {
+                self.increase_llc_counter(block_id, true);
+                self.increase_llc_counter(evicted_block_id, meta_data.is_instruction);
+            },
         }
     }
 
@@ -117,26 +137,32 @@ unsafe impl QEMUPlugin for LLCSetAccessDistributionPlugin {
         let addr = addr.unwrap() as usize;
         let block_id = addr >> 6;
 
-        match self.private_cache.update(block_id, false) {
-            CacheReturnResult::Miss => {
-                self.increase_llc_counter(block_id);
-            }
-            CacheReturnResult::Hit => {}
-            CacheReturnResult::MissWithEviction(eviction_block_id) => {
-                self.increase_llc_counter(block_id);
-                self.increase_llc_counter(eviction_block_id);
-            }
-            CacheReturnResult::MissWithWriteBack(write_back_block_id) => {
-                self.increase_llc_counter(block_id);
-                self.increase_llc_counter(write_back_block_id);
-            }
+        match self.private_cache.update(
+            block_id,
+            CacheMetaWithType {
+                dirty: info.is_store_operation(),
+                is_instruction: false,
+            },
+        ) {
+            crate::cache::single::SingleCacheResult::Hit => {},
+            crate::cache::single::SingleCacheResult::Miss => self.increase_llc_counter(block_id, false),
+            crate::cache::single::SingleCacheResult::MissAndEvicted(evicted_block_id, meta_data) => {
+                self.increase_llc_counter(block_id, false);
+                self.increase_llc_counter(evicted_block_id, meta_data.is_instruction);
+            },
         }
     }
 
     unsafe fn on_qemu_exit(&mut self) {
         // now, all the statistically saved.
         let mut llc_counters = fs::File::create("llc_counter.json").unwrap();
-        llc_counters.write(serde_json::to_string_pretty(&self.llc_counter).unwrap().as_bytes()).unwrap();
+        llc_counters
+            .write(
+                serde_json::to_string_pretty(&self.llc_counter)
+                    .unwrap()
+                    .as_bytes(),
+            )
+            .unwrap();
         llc_counters.flush().unwrap();
     }
 }
