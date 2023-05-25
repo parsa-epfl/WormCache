@@ -2,14 +2,16 @@ use std::collections::HashMap;
 
 use super::checkpoint::CacheBlockPermission;
 use super::checkpoint::CacheSet;
+use super::checkpoint::DirectoryBlock;
 use super::checkpoint::MemoryHierarchyCheckPoint;
 use super::checkpoint::SerializedCache;
+use super::checkpoint::SerializedDirectory;
 use crate::cache::ts_cache::TimestampCache;
 
 use crate::cache::ts_cache::TimestampCacheMetaData;
 use crate::memory_model::checkpoint::CacheBlock;
-use crate::QEMUPlugin;
 use crate::plugin::PerInstructionInstrumentation;
+use crate::QEMUPlugin;
 
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
@@ -66,9 +68,11 @@ pub struct TimestampMemoryHierarchy<
     hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
 }
 
+#[derive(Clone)]
 struct CacheLineSharingInfo {
     replicas: Vec<(usize, u8)>,
     last_writer: Option<(usize, u8)>,
+    ts: usize,
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -141,16 +145,21 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                                 record.replicas.push((data.ts, *core_id));
                             },
                         };
+                        // update the access ts
+                        if data.ts > record.ts {
+                            record.ts = data.ts;
+                        }
                     } else {
                         // fine, it is a new one, so put it there.
                         res.insert(
                             *block_id,
                             CacheLineSharingInfo {
-                                replicas: vec![(data.ts, *core_id)],
+                                replicas: if data.is_dirty { vec![] } else { vec![(data.ts, *core_id)] },
                                 last_writer: match data.is_dirty {
                                     true => Some((data.ts, *core_id)),
                                     false => None,
                                 },
+                                ts: data.ts
                             },
                         );
                     }
@@ -400,14 +409,81 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             .collect();
     }
 
-    pub fn reconstruct_moesi_per_llc(&mut self) -> MemoryHierarchyCheckPoint {
+    fn reconstruct_directiry<const D_S: usize, const D_A: usize>(
+        block_sharing_info: HashMap<usize, CacheLineSharingInfo>,
+    ) -> (
+        SerializedDirectory,
+        HashMap<usize, CacheLineSharingInfo>,
+        HashMap<usize, CacheLineSharingInfo>,
+    ) {
+        let mut cache: Vec<_> = (0..D_S)
+            .map(|_| return Vec::<(usize, CacheLineSharingInfo)>::with_capacity(D_A))
+            .collect();
+
+        let mut drained_share_info: HashMap<usize, CacheLineSharingInfo> = HashMap::new();
+
+        // classify the hash table based on its
+        block_sharing_info
+            .into_iter()
+            .for_each(|(block_id, share_info)| cache[block_id % D_S].push((block_id, share_info)));
+
+        // remove the set based on the associativity
+        cache.iter_mut().for_each(|set| {
+            set.sort_unstable_by(|a, b| {
+                return b.1.ts.cmp(&a.1.ts);
+            });
+            if set.len() > D_A {
+                set.drain(D_A..set.len()).for_each(|drained| {
+                    drained_share_info.insert(drained.0, drained.1);
+                });
+            }
+        });
+
+        let mut fixed_shared_info: HashMap<usize, CacheLineSharingInfo> = HashMap::new();
+
+        cache.iter().for_each(|set| {
+            set.iter().for_each(|el| {
+                fixed_shared_info.insert(el.0, el.1.clone());
+            })
+        });
+
+        let directory: SerializedDirectory = cache
+            .into_iter()
+            .map(|set| {
+                return CacheSet::<DirectoryBlock> {
+                    set: set
+                        .iter()
+                        .map(|el| {
+                            return DirectoryBlock {
+                                tag: el.0,
+                                replicas: el.1.replicas.iter().map(|rep| rep.1).collect(),
+                                last_writer: match el.1.last_writer {
+                                    Some(e) => Some(e.1),
+                                    None => None,
+                                },
+                            };
+                        })
+                        .collect(),
+                    untouched_blocks: D_A - set.len(),
+                };
+            })
+            .collect();
+
+        return (directory, fixed_shared_info, drained_share_info);
+    }
+
+    pub fn reconstruct_moesi_per_llc<const D_S: usize, const D_A: usize>(
+        &mut self,
+    ) -> MemoryHierarchyCheckPoint {
         // 1. scan all private caches and determine their shared info.
         let block_sharing_info = self.get_private_cache_line_sharing_info();
+        let (directory, shared_info, _) =
+            Self::reconstruct_directiry::<D_S, D_A>(block_sharing_info);
 
         return MemoryHierarchyCheckPoint {
-            private_cache: self.reconstruct_private_cache(&block_sharing_info),
-            shared_cache: self.reconstruct_llc(&block_sharing_info),
-            directory: todo!(),
+            private_cache: self.reconstruct_private_cache(&shared_info),
+            shared_cache: self.reconstruct_llc(&shared_info),
+            directory: directory,
         };
     }
 }
