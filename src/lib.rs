@@ -1,5 +1,8 @@
+#![feature(portable_simd)]
+
 pub mod cache;
-pub mod memory_model;
+pub mod checkpoint;
+pub mod mh;
 mod qemu_api;
 use plugin::set_contention_analysis::LLCSetAccessDistributionPlugin;
 use qemu_api::*;

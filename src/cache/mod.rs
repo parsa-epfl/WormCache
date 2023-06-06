@@ -1,5 +1,6 @@
 pub mod single;
 pub mod ts_cache;
+pub use ts_cache::*;
 
 pub enum CacheReturnResult {
     Miss,

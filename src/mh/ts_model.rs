@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
-use super::checkpoint::CacheBlockPermission;
-use super::checkpoint::CacheSet;
-use super::checkpoint::DirectoryBlock;
-use super::checkpoint::MemoryHierarchyCheckPoint;
-use super::checkpoint::SerializedCache;
-use super::checkpoint::SerializedDirectory;
-use crate::cache::ts_cache::TimestampCache;
+use crate::checkpoint::CacheBlockPermission;
+use crate::checkpoint::CacheSet;
+use crate::checkpoint::DirectoryBlock;
+use crate::checkpoint::MemoryHierarchyCheckPoint;
+use crate::checkpoint::SerializedCache;
+use crate::checkpoint::SerializedDirectory;
+use crate::cache::TimestampCache;
 
 use crate::cache::ts_cache::TimestampCacheMetaData;
-use crate::memory_model::checkpoint::CacheBlock;
+use crate::checkpoint::CacheBlock;
 use crate::plugin::PerInstructionInstrumentation;
 use crate::QEMUPlugin;
 
@@ -36,19 +36,19 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         };
     }
 
-    pub fn access_memory(&mut self, ts: usize, paddr: usize, is_store: bool) {
+    pub fn access_memory(&mut self, ts: usize, paddr: usize, is_instruction: bool, is_store: bool) {
         let block_id = paddr >> 6;
-        let res = self.private_cache.record(block_id, is_store, ts);
+        let res = self.private_cache.record(block_id, is_instruction, is_store, ts);
         match res {
             crate::cache::CacheReturnResult::Miss => {
-                // self.local_shared_cache.record(block_id, is_store, ts);
+                self.local_shared_cache.peek(block_id, is_instruction, is_store, ts);
             }
             crate::cache::CacheReturnResult::Hit => {}
             crate::cache::CacheReturnResult::MissWithEviction(blk) => {
-                self.local_shared_cache.record(blk, false, ts);
+                self.local_shared_cache.record(blk, is_instruction, false, ts);
             }
             crate::cache::CacheReturnResult::MissWithWriteBack(blk) => {
-                self.local_shared_cache.record(blk, true, ts);
+                self.local_shared_cache.record(blk, is_instruction, true, ts);
             }
         }
     }
@@ -76,7 +76,7 @@ struct CacheLineSharingInfo {
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
+    TimestampMemoryHierarchy<P_A, P_S, S_A, S_sS>
 {
     pub fn new(core_ids: Vec<u8>) -> Self {
         return TimestampMemoryHierarchy {

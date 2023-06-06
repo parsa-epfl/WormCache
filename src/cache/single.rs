@@ -1,8 +1,6 @@
 use core::num::NonZeroUsize;
 use lru::LruCache;
 
-use super::CacheReturnResult;
-
 pub const BLOCK_SIZE_LOG2: usize = 6;
 pub const BLOCK_SIZE: usize = 1 << 6;
 
