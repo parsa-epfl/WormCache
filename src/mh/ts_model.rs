@@ -76,7 +76,7 @@ struct CacheLineSharingInfo {
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    TimestampMemoryHierarchy<P_A, P_S, S_A, S_sS>
+    TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
 {
     pub fn new(core_ids: Vec<u8>) -> Self {
         return TimestampMemoryHierarchy {
@@ -93,19 +93,19 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         // go over all the cache lines in private cache and understand the permission.
         self.hierarchies.iter().for_each(|(core_id, cache)| {
             cache.private_cache.sets.iter().for_each(|set| {
-                set.iter().for_each(|(block_id, data)| {
-                    if res.contains_key(block_id) {
+                set.iter().for_each(|(block_id, ts, status)| {
+                    if res.contains_key(&block_id) {
                         // well, this cache line is recorded. 
-                        let record = res.get_mut(block_id).unwrap();
-                        match data.is_dirty {
+                        let record = res.get_mut(&block_id).unwrap();
+                        match status.is_dirty() {
                             true => {
                                 // if this is a dirty cache line, I need to check if this guy is the last writer.
                                 match record.last_writer {
                                     Some((writer_ts, writer_core_id)) => {
-                                        if writer_ts > data.ts {
+                                        if writer_ts > ts {
                                             // well, there is no need to argue.
                                             assert_ne!(*core_id, writer_core_id);
-                                        } else if writer_ts == data.ts {
+                                        } else if writer_ts == ts {
                                             if writer_core_id != *core_id {
                                                 // well, ambiguous case happened. 
                                                 eprintln!(
@@ -113,7 +113,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                                                     *core_id,
                                                     writer_core_id,
                                                     block_id * 64,
-                                                    data.ts
+                                                    ts
                                                 );
                                             } else {
                                                 // This case is also not possible, because the same core cannot write the same place with the same ts.
@@ -121,15 +121,15 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                                             }
                                         } else {
                                             // then update the last writer, and invalid all earlier sharer.
-                                            record.last_writer = Some((data.ts, *core_id));
+                                            record.last_writer = Some((ts, *core_id));
                                         }
                                     },
                                     None => {
                                         // good chance, I will take control of this directory.
-                                        record.last_writer = Some((data.ts, *core_id));
+                                        record.last_writer = Some((ts, *core_id));
                                         // clean all the old writer. 
                                         record.replicas.retain(|(replica_ts, _)|{
-                                            return *replica_ts > data.ts;
+                                            return *replica_ts > ts;
                                         });
                                     },
                                 };
@@ -139,27 +139,27 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                                     return x.1 == *core_id
                                 }).is_some() {
                                     // it is impossible for the same thread to 
-                                    panic!("A replica (block_id = {}, core_id = {}) is duplicated.", *block_id, *core_id);
+                                    panic!("A replica (block_id = {}, core_id = {}) is duplicated.", block_id, *core_id);
                                 }
                                 // this is a read request. I just need to append this request to the record list.
-                                record.replicas.push((data.ts, *core_id));
+                                record.replicas.push((ts, *core_id));
                             },
                         };
                         // update the access ts
-                        if data.ts > record.ts {
-                            record.ts = data.ts;
+                        if ts > record.ts {
+                            record.ts = ts;
                         }
                     } else {
                         // fine, it is a new one, so put it there.
                         res.insert(
-                            *block_id,
+                            block_id,
                             CacheLineSharingInfo {
-                                replicas: if data.is_dirty { vec![] } else { vec![(data.ts, *core_id)] },
-                                last_writer: match data.is_dirty {
-                                    true => Some((data.ts, *core_id)),
+                                replicas: if status.is_dirty() { vec![] } else { vec![(ts, *core_id)] },
+                                last_writer: match status.is_dirty() {
+                                    true => Some((ts, *core_id)),
                                     false => None,
                                 },
-                                ts: data.ts
+                                ts: ts
                             },
                         );
                     }
@@ -331,20 +331,20 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                 self.hierarchies.values().for_each(|h| {
                     h.local_shared_cache.sets[set_idx]
                         .iter()
-                        .for_each(|(block_id, tsc_data)| {
-                            if set_hash.contains_key(block_id) {
+                        .for_each(|(block_id, ts, status)| {
+                            if set_hash.contains_key(&block_id) {
                                 // only keep the latest time stamp
-                                let recorded_cache_line = set_hash.get_mut(block_id).unwrap();
-                                if recorded_cache_line.ts < tsc_data.ts {
-                                    recorded_cache_line.ts = tsc_data.ts;
+                                let recorded_cache_line = set_hash.get_mut(&block_id).unwrap();
+                                if recorded_cache_line.ts < ts {
+                                    recorded_cache_line.ts = ts;
                                 }
-                                if tsc_data.is_dirty {
+                                if status.is_dirty() {
                                     // propagate the dirty bit
                                     recorded_cache_line.is_dirty = true;
                                 }
                             } else {
                                 // well, just put it inside.
-                                set_hash.insert(*block_id, tsc_data.clone());
+                                // set_hash.insert(*block_id, tsc_data.clone());
                             }
                         });
                 });

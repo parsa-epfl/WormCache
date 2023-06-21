@@ -3,12 +3,18 @@ use core::panic;
 use crate::cache::CacheReturnResult;
 
 #[derive(PartialEq, Clone, Copy)]
-enum TimestampCacheLineStatus {
+pub enum TimestampCacheLineStatus {
     Invalid,
     Instruction,
     CleanData,
     CleanInstructionAndData,
     DirtyData,
+}
+
+impl TimestampCacheLineStatus {
+    pub fn is_dirty(&self) -> bool {
+        return *self == TimestampCacheLineStatus::DirtyData;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -190,9 +196,49 @@ impl<const A: usize> TimestampCacheSet<A> {
         };
     }
 
+    pub fn invalid(&mut self) {
+        todo!();
+    }
 
     pub fn warm_chunk_count(&self) -> usize {
         return self.cold_element_pointer;
     }
+
+    pub fn len(&self) -> usize {
+        todo!();
+    }
 }
 
+pub struct TimestampCacheSetIterator<'a, const A: usize> {
+    base: &'a TimestampCacheSet<A>,
+    current_idx: usize
+}
+
+impl<'a, const A: usize> Iterator for TimestampCacheSetIterator<'a, A> {
+    type Item = (usize, usize, TimestampCacheLineStatus); // (block_id, ts, status)
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_idx == A {
+            return None;
+        }
+
+        if self.current_idx >= self.base.cold_element_pointer {
+            return None;
+        }
+
+        for it in self.current_idx..A {
+            if self.base.status[it] != TimestampCacheLineStatus::Invalid {
+                // find it! 
+                self.current_idx = it + 1;
+                return Some((self.base.block_ids[it], self.base.ts[it], self.base.status[it]));
+            }
+        }
+        return None;
+    }
+}
+
+impl<const A: usize> TimestampCacheSet<A> {
+    pub fn iter<'a>(&'a self) -> TimestampCacheSetIterator<'a, A> {
+        return TimestampCacheSetIterator { base: self, current_idx: 0 };
+    }
+}

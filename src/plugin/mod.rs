@@ -1,4 +1,6 @@
 use std::ffi;
+use std::ops::DerefMut;
+use std::sync::LazyLock;
 
 pub mod single_core_cache;
 pub mod first_touch;
@@ -29,3 +31,4 @@ pub unsafe trait QEMUPlugin {
     );
     unsafe fn on_qemu_exit(&mut self);
 }
+

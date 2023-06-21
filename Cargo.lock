@@ -473,7 +473,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "lru",
- "once_cell",
  "rand",
  "serde_json",
 ]
