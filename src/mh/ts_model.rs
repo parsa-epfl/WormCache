@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
+use crate::cache::TimestampCache;
 use crate::checkpoint::CacheBlockPermission;
-use crate::checkpoint::CacheSet;
 use crate::checkpoint::DirectoryBlock;
 use crate::checkpoint::MemoryHierarchyCheckPoint;
 use crate::checkpoint::SerializedCache;
 use crate::checkpoint::SerializedDirectory;
-use crate::cache::TimestampCache;
 
 use crate::cache::ts_cache::TimestampCacheMetaData;
 use crate::checkpoint::CacheBlock;
@@ -38,17 +37,22 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
 
     pub fn access_memory(&mut self, ts: usize, paddr: usize, is_instruction: bool, is_store: bool) {
         let block_id = paddr >> 6;
-        let res = self.private_cache.record(block_id, is_instruction, is_store, ts);
+        let res = self
+            .private_cache
+            .record(block_id, is_instruction, is_store, ts);
         match res {
             crate::cache::CacheReturnResult::Miss => {
-                self.local_shared_cache.peek(block_id, is_instruction, is_store, ts);
+                self.local_shared_cache
+                    .peek(block_id, is_instruction, is_store, ts);
             }
             crate::cache::CacheReturnResult::Hit => {}
             crate::cache::CacheReturnResult::MissWithEviction(blk) => {
-                self.local_shared_cache.record(blk, is_instruction, false, ts);
+                self.local_shared_cache
+                    .record(blk, is_instruction, false, ts);
             }
             crate::cache::CacheReturnResult::MissWithWriteBack(blk) => {
-                self.local_shared_cache.record(blk, is_instruction, true, ts);
+                self.local_shared_cache
+                    .record(blk, is_instruction, true, ts);
             }
         }
     }
@@ -310,10 +314,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                                 // well, then we just left others to be empty.
                             }
                             let set: Vec<_> = set.into_iter().map(|x| x.1).collect();
-                            return CacheSet::<CacheBlock> {
-                                set,
-                                untouched_blocks: *cold_lines,
-                            };
+                            return set;
                         })
                         .collect(),
                 );
@@ -368,40 +369,32 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
 
                 let set = if set.len() > S_A {
                     set.drain(S_A..set.len());
-                    CacheSet::<CacheBlock> {
-                        set: set
-                            .into_iter()
-                            .map(|(block_id, tsc_data)| {
-                                return CacheBlock {
-                                    block_id: block_id,
-                                    perm: if tsc_data.is_dirty {
-                                        CacheBlockPermission::ModifiedExclusive
-                                    } else {
-                                        CacheBlockPermission::CleanExclusive
-                                    },
-                                };
-                            })
-                            .collect(),
-                        untouched_blocks: 0,
-                    }
+                    set.into_iter()
+                        .map(|(block_id, tsc_data)| {
+                            return CacheBlock {
+                                block_id: block_id,
+                                perm: if tsc_data.is_dirty {
+                                    CacheBlockPermission::ModifiedExclusive
+                                } else {
+                                    CacheBlockPermission::CleanExclusive
+                                },
+                            };
+                        })
+                        .collect()
                 } else {
                     let left = S_A - set.len();
-                    CacheSet::<CacheBlock> {
-                        set: set
-                            .into_iter()
-                            .map(|(block_id, tsc_data)| {
-                                return CacheBlock {
-                                    block_id: block_id,
-                                    perm: if tsc_data.is_dirty {
-                                        CacheBlockPermission::ModifiedExclusive
-                                    } else {
-                                        CacheBlockPermission::CleanExclusive
-                                    },
-                                };
-                            })
-                            .collect(),
-                        untouched_blocks: left,
-                    }
+                    set.into_iter()
+                        .map(|(block_id, tsc_data)| {
+                            return CacheBlock {
+                                block_id: block_id,
+                                perm: if tsc_data.is_dirty {
+                                    CacheBlockPermission::ModifiedExclusive
+                                } else {
+                                    CacheBlockPermission::CleanExclusive
+                                },
+                            };
+                        })
+                        .collect()
                 };
 
                 return set;
@@ -450,22 +443,19 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         let directory: SerializedDirectory = cache
             .into_iter()
             .map(|set| {
-                return CacheSet::<DirectoryBlock> {
-                    set: set
-                        .iter()
-                        .map(|el| {
-                            return DirectoryBlock {
-                                tag: el.0,
-                                replicas: el.1.replicas.iter().map(|rep| rep.1).collect(),
-                                last_writer: match el.1.last_writer {
-                                    Some(e) => Some(e.1),
-                                    None => None,
-                                },
-                            };
-                        })
-                        .collect(),
-                    untouched_blocks: D_A - set.len(),
-                };
+                return set
+                    .iter()
+                    .map(|el| {
+                        return DirectoryBlock {
+                            tag: el.0,
+                            replicas: el.1.replicas.iter().map(|rep| rep.1).collect(),
+                            last_writer: match el.1.last_writer {
+                                Some(e) => Some(e.1),
+                                None => None,
+                            },
+                        };
+                    })
+                    .collect();
             })
             .collect();
 
