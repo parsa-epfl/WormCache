@@ -1,6 +1,9 @@
 use crate::cache::ts_set::TimestampCacheLineStatus;
 use crate::cache::TimestampCache;
-use crate::checkpoint::{SerializedCache, SerializedDirectory};
+use crate::checkpoint::{
+    CacheBlock, CacheBlockPermission, DirectoryBlock, PrivateCacheParameters, SerializedCache,
+    SerializedDirectory,
+};
 
 use std::collections::HashMap;
 
@@ -27,6 +30,7 @@ type CoreId = u8; // 256 cores' machine should be enough and fine.
 struct MemoryTimestampRecord {
     // Well, this fucking structure has a similar size as a cache block.
     ts: usize,
+    invalid: HashMap<CoreId, usize>,
     readers: HashMap<CoreId, usize>, // CoreID + timestamp
     perm: MTRPermission,
     writer: Option<(CoreId, usize)>, // CoreID + timestamp
@@ -59,23 +63,21 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
         // scan all entries in `other` and insert them into the system
         for set in other.sets.iter() {
             for (b_id, ts, status) in set.iter() {
-                if status == TimestampCacheLineStatus::Invalid {
-                    println!("Warning: ");
-                    continue;
-                }
-
                 let set_number = b_id % S;
 
                 match self.sets[set_number].get_mut(&b_id) {
                     Some(el) => {
                         // well, update the existing one.
-                        if ts > el.ts {
-                            // well, you have a newer core touching this line
+                        if ts > el.ts && status != TimestampCacheLineStatus::Invalid {
+                            // well, you have a newer core touching this line (and it is not invalid)
                             el.ts = ts;
                         }
                         match status {
                             TimestampCacheLineStatus::Invalid => {
-                                unreachable!("Something wrong with the iterator")
+                                assert!(
+                                    el.invalid.insert(core_id, ts).is_none(),
+                                    "Each private cache should only keep cache line once."
+                                );
                             }
                             TimestampCacheLineStatus::Instruction
                             | TimestampCacheLineStatus::CleanData
@@ -111,6 +113,11 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                             b_id,
                             MemoryTimestampRecord {
                                 ts: ts,
+                                invalid: if status == TimestampCacheLineStatus::Invalid {
+                                    HashMap::from([(core_id, ts)])
+                                } else {
+                                    HashMap::new()
+                                },
                                 readers: match status {
                                     TimestampCacheLineStatus::Invalid => {
                                         unreachable!("Something wrong with the iterator.")
@@ -158,16 +165,16 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
 
     /// Remove the invalid reader (e.g., the read record which is before the latest writer.)
     /// This step is necessary before rendering the directory, private caches, and L2.
-    pub fn remove_invalid_reader(&mut self) {
-        self.sets.iter_mut().for_each(|set| {
-            set.iter_mut().for_each(|(block_id, mtr)| match mtr.writer {
-                Some((writer_id, writer_ts)) => mtr.readers.retain(|read_core_id, read_ts| {
-                    return *read_ts >= writer_ts;
-                }),
-                None => {}
-            })
-        })
-    }
+    // pub fn remove_invalid_reader(&mut self) {
+    //     self.sets.iter_mut().for_each(|set| {
+    //         set.iter_mut().for_each(|(block_id, mtr)| match mtr.writer {
+    //             Some((writer_id, writer_ts)) => mtr.readers.retain(|read_core_id, read_ts| {
+    //                 return *read_ts >= writer_ts;
+    //             }),
+    //             None => {}
+    //         })
+    //     })
+    // }
 
     /// Update the MTR Collection by considering a finite associativity.
     pub fn prune_by_associativity(self, associativity: usize) -> Self {
@@ -200,17 +207,156 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
     }
 
     pub fn export_directory(&self) -> SerializedDirectory {
-        return self.sets.iter().map(|x|{
-            todo!();
-        }).collect();
+        return self
+            .sets
+            .iter()
+            .map(|x| {
+                let mut res_with_ts: Vec<_> = x
+                    .iter()
+                    .map(|(block_id, mtr)| {
+                        return (
+                            mtr.ts,
+                            match mtr.writer {
+                                Some((writer, writer_ts)) => DirectoryBlock {
+                                    tag: *block_id,
+                                    replicas: mtr
+                                        .readers
+                                        .iter()
+                                        .filter_map(|(core, ts)| {
+                                            return if *ts < writer_ts {
+                                                None
+                                            } else {
+                                                Some(*core)
+                                            };
+                                        })
+                                        .collect(),
+                                    last_writer: Some(writer),
+                                },
+                                None => DirectoryBlock {
+                                    tag: *block_id,
+                                    replicas: mtr.readers.iter().map(|(core, _)| *core).collect(),
+                                    last_writer: None,
+                                },
+                            },
+                        );
+                    })
+                    .collect();
+
+                res_with_ts.sort_unstable_by(|a, b| {
+                    return b.0.cmp(&a.0);
+                });
+
+                return res_with_ts.into_iter().map(|el| el.1).collect();
+            })
+            .collect();
     }
 
     /// Generate the private cache of a given core_id.
     /// Arguments:
     /// - core_id: which core's private cache will be reconstructed
-    /// - params: A list of parameters for reconstruction, type: (set, associativity, is_instruction)
-    pub fn render_private_caches(&self, core_id: usize, params: Vec<(usize, usize, bool)>) -> Vec<SerializedCache> {
-        
+    pub fn render_private_caches(
+        &self,
+        core_id: CoreId,
+        param: PrivateCacheParameters,
+    ) -> [SerializedCache; 3] {
+        use rayon::prelude::*;
+        let l2_with_ts: Vec<_> = (0..param.l2_sets)
+            .into_par_iter()
+            .map(|group_bias| {
+                let mut collected_blocks = vec![];
+                for group_index in 0..(S / param.l2_sets) {
+                    let set_number = group_index * param.l2_sets + group_bias;
+                    for (blk_id, mtr) in self.sets[set_number].iter() {
+                        if mtr.invalid.contains_key(&core_id) {
+                            // OK, so it has an invalid history there. Amazing.
+                            collected_blocks.push((
+                                mtr.invalid[&core_id],
+                                CacheBlock {
+                                    block_id: *blk_id,
+                                    perm: CacheBlockPermission::Invalid,
+                                },
+                                mtr.perm.is_instruction(),
+                            ));
+                        } else if let Some((w_core_id, w_ts)) = mtr.writer {
+                            // this is a dirty block
+                            if w_core_id == core_id {
+                                // well, it is the writer, so this should include.
+                                collected_blocks.push((
+                                    w_ts,
+                                    CacheBlock {
+                                        block_id: *blk_id,
+                                        perm: if w_ts == mtr.ts {
+                                            // The write operation is the latest writing
+                                            // TODO: Maybe the read operation happens at the same time with the write. (careful debugging here)
+                                            CacheBlockPermission::ModifiedExclusive
+                                        } else {
+                                            // There are read ahead of time
+                                            CacheBlockPermission::ModifiedOwned
+                                        },
+                                    },
+                                    mtr.perm.is_instruction(),
+                                ));
+                            } else {
+                                // so, there is another writer. We need this information to see whether the correct core has a valid replica.
+                                if mtr.readers.contains_key(&core_id) {
+                                    if mtr.readers[&core_id] >= w_ts {
+                                        // it is a valid replica.
+                                        collected_blocks.push((
+                                            mtr.readers[&core_id],
+                                            CacheBlock {
+                                                block_id: *blk_id,
+                                                perm: CacheBlockPermission::CleanShared,
+                                            },
+                                            mtr.perm.is_instruction(),
+                                        ));
+                                    } else {
+                                        // This will be an invalid chunk.
+                                        collected_blocks.push((
+                                            mtr.readers[&core_id],
+                                            CacheBlock {
+                                                block_id: *blk_id,
+                                                perm: CacheBlockPermission::Invalid,
+                                            },
+                                            mtr.perm.is_instruction(),
+                                        ));
+                                    }
+                                }
+                            }
+                        } else {
+                            // OK, now it is clean, and it determines whether this is widely shared.
+                            if mtr.readers.contains_key(&core_id) {
+                                collected_blocks.push((
+                                    mtr.readers[&core_id],
+                                    CacheBlock {
+                                        block_id: *blk_id,
+                                        perm: if mtr.readers.len() == 1 {
+                                            CacheBlockPermission::CleanExclusive
+                                        } else {
+                                            CacheBlockPermission::CleanShared
+                                        },
+                                    },
+                                    mtr.perm.is_instruction(),
+                                ))
+                            }
+                        }
+                    }
+                }
+                // Now, we can sort the array based on the timestamp.
+                collected_blocks.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+
+                if collected_blocks.len() > param.l2_associativity {
+                    // remove excessive elements
+                    collected_blocks.drain(param.l2_associativity..);
+                }
+                return collected_blocks;
+            })
+            .collect();
+        // Now, use L2 to reconstruct L1i and L1d, with the L2.
+        for (set, asso, is_instruction) in param.private_cache_iter() {
+            assert!((param.l2_sets % set) == 0, "L2 cache set count should be a multiple of L1's");
+            // Fuck! I have to merge the set again. 
+            
+        }
         todo!();
     }
 }

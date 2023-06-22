@@ -1,5 +1,4 @@
-#![feature(portable_simd)]
-#![feature(lazy_cell)]
+#![feature(let_chains)]
 
 pub mod cache;
 pub mod checkpoint;

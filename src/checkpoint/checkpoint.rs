@@ -2,6 +2,26 @@
 
 use std::collections::HashMap;
 
+pub struct PrivateCacheParameters {
+    pub l1i_sets: usize,
+    pub l1i_associativity: usize,
+
+    pub l1d_sets: usize,
+    pub l1d_associativity: usize,
+
+    pub l2_sets: usize,
+    pub l2_associativity: usize
+}
+
+impl PrivateCacheParameters {
+    pub fn private_cache_iter(&self) -> [(usize, usize, bool); 2] {
+        return [
+            (self.l1i_sets, self.l1i_associativity, true),
+            (self.l1d_sets, self.l1d_associativity, false)
+        ];
+    }
+}
+
 // Currently the supported coherence model is MESI, which is the model used by QFlex.
 #[derive(Clone, Copy)]
 pub enum CacheBlockPermission {
