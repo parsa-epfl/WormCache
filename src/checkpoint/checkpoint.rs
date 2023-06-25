@@ -23,7 +23,7 @@ impl PrivateCacheParameters {
 }
 
 // Currently the supported coherence model is MESI, which is the model used by QFlex.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CacheBlockPermission {
     Invalid = 0, // Invalid
     CleanShared = 1, // Shared
@@ -32,16 +32,20 @@ pub enum CacheBlockPermission {
     ModifiedOwned = 4, // Owned
 }
 
+// The normal cache blocks
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct CacheBlock {
     pub block_id: usize,
     pub perm: CacheBlockPermission
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct DirectoryBlock {
-    pub tag: usize,
+    pub block_id: usize,
     pub replicas: Vec<u8>, // core_ids
     pub last_writer: Option<u8>
 }
+
 
 pub type SerializedCache = Vec<Vec<CacheBlock>>;
 

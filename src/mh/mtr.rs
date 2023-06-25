@@ -218,7 +218,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                             mtr.ts,
                             match mtr.writer {
                                 Some((writer, writer_ts)) => DirectoryBlock {
-                                    tag: *block_id,
+                                    block_id: *block_id,
                                     replicas: mtr
                                         .readers
                                         .iter()
@@ -233,7 +233,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                                     last_writer: Some(writer),
                                 },
                                 None => DirectoryBlock {
-                                    tag: *block_id,
+                                    block_id: *block_id,
                                     replicas: mtr.readers.iter().map(|(core, _)| *core).collect(),
                                     last_writer: None,
                                 },

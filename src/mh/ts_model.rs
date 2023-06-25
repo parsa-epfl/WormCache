@@ -447,7 +447,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                     .iter()
                     .map(|el| {
                         return DirectoryBlock {
-                            tag: el.0,
+                            block_id: el.0,
                             replicas: el.1.replicas.iter().map(|rep| rep.1).collect(),
                             last_writer: match el.1.last_writer {
                                 Some(e) => Some(e.1),
