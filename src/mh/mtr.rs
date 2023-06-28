@@ -1,11 +1,12 @@
 use crate::cache::ts_set::TimestampCacheLineStatus;
 use crate::cache::TimestampCache;
+use crate::checkpoint::ts_checkpoint::{TsCacheBlock, TsDirectoryBlock};
 use crate::checkpoint::{
-    CacheBlock, CacheBlockPermission, DirectoryBlock, PrivateCacheParameters, SerializedCache,
+    CacheBlock, CacheBlockState, DirectoryBlock, PrivateCacheParameters, SerializedCache,
     SerializedDirectory,
 };
 
-use std::collections::HashMap;
+use std::collections::{BinaryHeap, HashMap};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum MTRPermission {
@@ -19,8 +20,12 @@ impl MTRPermission {
     pub fn is_dirty(&self) -> bool {
         return *self == Self::DirtyData;
     }
-    pub fn is_instruction(&self) -> bool {
+    pub fn in_instruction_cache(&self) -> bool {
         return *self == Self::Instruction || *self == Self::InstructionAndCleanData;
+    }
+
+    pub fn in_data_cache(&self) -> bool {
+        return *self != Self::Instruction;
     }
 }
 
@@ -34,6 +39,32 @@ struct MemoryTimestampRecord {
     readers: HashMap<CoreId, usize>, // CoreID + timestamp
     perm: MTRPermission,
     writer: Option<(CoreId, usize)>, // CoreID + timestamp
+}
+
+impl MemoryTimestampRecord {
+    pub fn generate_directory_block(&self, block_id: usize) -> TsDirectoryBlock {
+        return TsDirectoryBlock {
+            ts: self.ts,
+            d: match self.writer {
+                Some((writer, writer_ts)) => DirectoryBlock {
+                    block_id,
+                    replicas: self
+                        .readers
+                        .iter()
+                        .filter_map(|(core, ts)| {
+                            return if *ts < writer_ts { None } else { Some(*core) };
+                        })
+                        .collect(),
+                    last_writer: Some(writer),
+                },
+                None => DirectoryBlock {
+                    block_id: block_id,
+                    replicas: self.readers.iter().map(|(core, _)| *core).collect(),
+                    last_writer: None,
+                },
+            },
+        };
+    }
 }
 
 struct MemoryTimestampRecordCollection<const S: usize> {
@@ -65,6 +96,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
             for (b_id, ts, status) in set.iter() {
                 let set_number = b_id % S;
 
+                // TODO: make this as a standalone function.
                 match self.sets[set_number].get_mut(&b_id) {
                     Some(el) => {
                         // well, update the existing one.
@@ -213,40 +245,14 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
             .map(|x| {
                 let mut res_with_ts: Vec<_> = x
                     .iter()
-                    .map(|(block_id, mtr)| {
-                        return (
-                            mtr.ts,
-                            match mtr.writer {
-                                Some((writer, writer_ts)) => DirectoryBlock {
-                                    block_id: *block_id,
-                                    replicas: mtr
-                                        .readers
-                                        .iter()
-                                        .filter_map(|(core, ts)| {
-                                            return if *ts < writer_ts {
-                                                None
-                                            } else {
-                                                Some(*core)
-                                            };
-                                        })
-                                        .collect(),
-                                    last_writer: Some(writer),
-                                },
-                                None => DirectoryBlock {
-                                    block_id: *block_id,
-                                    replicas: mtr.readers.iter().map(|(core, _)| *core).collect(),
-                                    last_writer: None,
-                                },
-                            },
-                        );
-                    })
+                    .map(|(block_id, mtr)| mtr.generate_directory_block(*block_id))
                     .collect();
 
                 res_with_ts.sort_unstable_by(|a, b| {
-                    return b.0.cmp(&a.0);
+                    return b.ts.cmp(&a.ts);
                 });
 
-                return res_with_ts.into_iter().map(|el| el.1).collect();
+                return res_with_ts.into_iter().map(|el| el.d).collect();
             })
             .collect();
     }
@@ -260,103 +266,187 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
         param: PrivateCacheParameters,
     ) -> [SerializedCache; 3] {
         use rayon::prelude::*;
+
+        /// Fuck! This implementation might have really bad performance. I am wondering if I can optimize it.
+        #[inline]
+        fn keep_top_n(mut heap: BinaryHeap<TsCacheBlock>, n: usize) -> BinaryHeap<TsCacheBlock> {
+            if n >= heap.len() {
+                return heap;
+            }
+
+            let mut res = BinaryHeap::<TsCacheBlock>::new();
+
+            for _ in 0..n {
+                res.push(heap.pop().unwrap());
+            }
+
+            return res;
+        }
+
+        /// I also don't really know where to put this function, similar to the last one.
+        #[inline]
+        fn convert_to_vec(mut heap: BinaryHeap<TsCacheBlock>) -> Vec<CacheBlock> {
+            let mut res = Vec::with_capacity(heap.len());
+
+            for _ in 0..heap.len() {
+                res.push(heap.pop().unwrap().d);
+            }
+
+            return res;
+        }
+
         let l2_with_ts: Vec<_> = (0..param.l2_sets)
             .into_par_iter()
             .map(|group_bias| {
-                let mut collected_blocks = vec![];
+                let mut collected_blocks = BinaryHeap::new();
                 for group_index in 0..(S / param.l2_sets) {
                     let set_number = group_index * param.l2_sets + group_bias;
                     for (blk_id, mtr) in self.sets[set_number].iter() {
                         if mtr.invalid.contains_key(&core_id) {
                             // OK, so it has an invalid history there. Amazing.
-                            collected_blocks.push((
-                                mtr.invalid[&core_id],
-                                CacheBlock {
+                            collected_blocks.push(TsCacheBlock {
+                                d: CacheBlock {
                                     block_id: *blk_id,
-                                    perm: CacheBlockPermission::Invalid,
+                                    state: CacheBlockState::Invalid,
+                                    in_instruction_cache: mtr.perm.in_instruction_cache(),
+                                    in_data_cache: mtr.perm.in_data_cache(),
                                 },
-                                mtr.perm.is_instruction(),
-                            ));
+                                ts: mtr.invalid[&core_id],
+                            });
                         } else if let Some((w_core_id, w_ts)) = mtr.writer {
                             // this is a dirty block
                             if w_core_id == core_id {
                                 // well, it is the writer, so this should include.
-                                collected_blocks.push((
-                                    w_ts,
-                                    CacheBlock {
+                                collected_blocks.push(TsCacheBlock {
+                                    ts: w_ts,
+                                    d: CacheBlock {
                                         block_id: *blk_id,
-                                        perm: if w_ts == mtr.ts {
+                                        state: if w_ts == mtr.ts {
                                             // The write operation is the latest writing
                                             // TODO: Maybe the read operation happens at the same time with the write. (careful debugging here)
-                                            CacheBlockPermission::ModifiedExclusive
+                                            CacheBlockState::ModifiedExclusive
                                         } else {
                                             // There are read ahead of time
-                                            CacheBlockPermission::ModifiedOwned
+                                            CacheBlockState::ModifiedOwned
                                         },
+                                        in_instruction_cache: mtr.perm.in_instruction_cache(),
+                                        in_data_cache: mtr.perm.in_data_cache(),
                                     },
-                                    mtr.perm.is_instruction(),
-                                ));
+                                });
                             } else {
                                 // so, there is another writer. We need this information to see whether the correct core has a valid replica.
                                 if mtr.readers.contains_key(&core_id) {
                                     if mtr.readers[&core_id] >= w_ts {
                                         // it is a valid replica.
-                                        collected_blocks.push((
-                                            mtr.readers[&core_id],
-                                            CacheBlock {
+                                        collected_blocks.push(TsCacheBlock {
+                                            ts: mtr.readers[&core_id],
+                                            d: CacheBlock {
                                                 block_id: *blk_id,
-                                                perm: CacheBlockPermission::CleanShared,
+                                                state: CacheBlockState::CleanShared,
+                                                in_instruction_cache: mtr
+                                                    .perm
+                                                    .in_instruction_cache(),
+                                                in_data_cache: mtr.perm.in_data_cache(),
                                             },
-                                            mtr.perm.is_instruction(),
-                                        ));
+                                        });
                                     } else {
                                         // This will be an invalid chunk.
-                                        collected_blocks.push((
-                                            mtr.readers[&core_id],
-                                            CacheBlock {
+                                        collected_blocks.push(TsCacheBlock {
+                                            ts: mtr.readers[&core_id],
+                                            d: CacheBlock {
                                                 block_id: *blk_id,
-                                                perm: CacheBlockPermission::Invalid,
+                                                state: CacheBlockState::Invalid,
+                                                in_instruction_cache: mtr
+                                                    .perm
+                                                    .in_instruction_cache(),
+                                                in_data_cache: mtr.perm.in_data_cache(),
                                             },
-                                            mtr.perm.is_instruction(),
-                                        ));
+                                        });
                                     }
                                 }
                             }
                         } else {
                             // OK, now it is clean, and it determines whether this is widely shared.
                             if mtr.readers.contains_key(&core_id) {
-                                collected_blocks.push((
-                                    mtr.readers[&core_id],
-                                    CacheBlock {
+                                collected_blocks.push(TsCacheBlock {
+                                    ts: mtr.readers[&core_id],
+                                    d: CacheBlock {
                                         block_id: *blk_id,
-                                        perm: if mtr.readers.len() == 1 {
-                                            CacheBlockPermission::CleanExclusive
+                                        state: if mtr.readers.len() == 1 {
+                                            CacheBlockState::CleanExclusive
                                         } else {
-                                            CacheBlockPermission::CleanShared
+                                            CacheBlockState::CleanShared
                                         },
+                                        in_instruction_cache: mtr.perm.in_instruction_cache(),
+                                        in_data_cache: mtr.perm.in_data_cache(),
                                     },
-                                    mtr.perm.is_instruction(),
-                                ))
+                                })
                             }
                         }
                     }
                 }
-                // Now, we can sort the array based on the timestamp.
-                collected_blocks.sort_unstable_by(|a, b| b.0.cmp(&a.0));
-
-                if collected_blocks.len() > param.l2_associativity {
-                    // remove excessive elements
-                    collected_blocks.drain(param.l2_associativity..);
-                }
-                return collected_blocks;
+                return keep_top_n(collected_blocks, param.l2_associativity);
             })
             .collect();
         // Now, use L2 to reconstruct L1i and L1d, with the L2.
-        for (set, asso, is_instruction) in param.private_cache_iter() {
-            assert!((param.l2_sets % set) == 0, "L2 cache set count should be a multiple of L1's");
-            // Fuck! I have to merge the set again. 
-            
-        }
-        todo!();
+
+        let mut two_caches = [
+            (param.l1i_sets, param.l1i_associativity, true),
+            (param.l1d_sets, param.l1d_associativity, false),
+        ]
+        .map(
+            |(set, asso, is_instruction)| -> Vec<BinaryHeap<TsCacheBlock>> {
+                assert!(
+                    (param.l2_sets % set) == 0,
+                    "L2 cache set count should be a multiple of L1's"
+                );
+                // collect all chunks
+                return (0..set)
+                    .map(|set_idx| {
+                        let mut related_blocks = BinaryHeap::new();
+                        for affiliated_set_idx in 0..(param.l2_sets / set) {
+                            let target_l2_set = affiliated_set_idx * set + set_idx;
+
+                            for el in l2_with_ts[target_l2_set].iter() {
+                                if is_instruction && el.d.in_instruction_cache {
+                                    related_blocks.push(el.clone());
+                                }
+
+                                if !is_instruction && el.d.in_data_cache {
+                                    related_blocks.push(el.clone());
+                                }
+                            }
+                        }
+                        return keep_top_n(related_blocks, asso);
+                    })
+                    .collect();
+            },
+        )
+        .into_iter();
+
+        // This point is also very dirty.
+        return [
+            two_caches
+                .next()
+                .unwrap()
+                .into_iter()
+                .map(|el| convert_to_vec(el))
+                .collect(),
+            two_caches
+                .next()
+                .unwrap()
+                .into_iter()
+                .map(|el| convert_to_vec(el))
+                .collect(),
+            l2_with_ts
+                .into_iter()
+                .map(|el| convert_to_vec(el))
+                .collect(),
+        ];
+    }
+
+    pub fn look_up(&self, block_id: usize) -> bool {
+        let set_number = block_id % S;
+        return self.sets[set_number].contains_key(&block_id);
     }
 }

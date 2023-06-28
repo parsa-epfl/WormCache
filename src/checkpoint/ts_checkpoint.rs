@@ -11,10 +11,10 @@ pub trait TimestampedBlock {
 }
 
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct TsCacheBlock {
-    d: CacheBlock,
-    ts: usize
+    pub d: CacheBlock,
+    pub ts: usize
 }
 
 impl TimestampedBlock for TsCacheBlock {
@@ -46,8 +46,8 @@ impl PartialOrd for TsCacheBlock {
 #[derive(PartialEq, Eq, Debug)]
 
 pub struct TsDirectoryBlock {
-    d: DirectoryBlock,
-    ts: usize
+    pub d: DirectoryBlock,
+    pub ts: usize
 }
 
 impl TimestampedBlock for TsDirectoryBlock {
@@ -85,6 +85,12 @@ impl<T: TimestampedBlock + Ord> TsOrderingHeap<T> {
     pub fn new() -> Self {
         return Self {
             d: BinaryHeap::new()
+        };
+    }
+
+    pub fn from_binary_heap(heap: BinaryHeap<T>) -> Self {
+        return Self {
+            d: heap
         };
     }
 

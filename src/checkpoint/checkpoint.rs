@@ -13,18 +13,10 @@ pub struct PrivateCacheParameters {
     pub l2_associativity: usize
 }
 
-impl PrivateCacheParameters {
-    pub fn private_cache_iter(&self) -> [(usize, usize, bool); 2] {
-        return [
-            (self.l1i_sets, self.l1i_associativity, true),
-            (self.l1d_sets, self.l1d_associativity, false)
-        ];
-    }
-}
 
 // Currently the supported coherence model is MESI, which is the model used by QFlex.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CacheBlockPermission {
+pub enum CacheBlockState {
     Invalid = 0, // Invalid
     CleanShared = 1, // Shared
     CleanExclusive = 2, // Exclusive
@@ -36,7 +28,9 @@ pub enum CacheBlockPermission {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct CacheBlock {
     pub block_id: usize,
-    pub perm: CacheBlockPermission
+    pub state: CacheBlockState,
+    pub in_instruction_cache: bool,
+    pub in_data_cache: bool
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
