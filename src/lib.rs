@@ -88,3 +88,7 @@ unsafe extern "C" fn qemu_plugin_install(
     PLUGIN.replace(PluginType::new());
     return 0;
 }
+
+/*
+ * Some other callbacks (e.g., qemu_plugin_register_vcpu_init_cb) can be utilized to create the 
+ */

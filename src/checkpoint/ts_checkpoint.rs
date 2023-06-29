@@ -74,6 +74,42 @@ impl PartialOrd for TsDirectoryBlock {
     }
 }
 
+pub trait LRUPrioritizing {
+    type ExportedItem;
+    fn get_top_k(self, k: usize) -> Self;
+
+    fn export(self) -> Vec<Self::ExportedItem>;
+}
+
+impl LRUPrioritizing for BinaryHeap<TsCacheBlock> {
+    type ExportedItem = CacheBlock;
+
+    #[inline]
+    fn get_top_k(self, k: usize) -> Self {
+        if k >= self.len() {
+            return self;
+        }
+        let mut copy = self;
+        let mut res = BinaryHeap::with_capacity(k);
+
+        for _ in 0..k {
+            res.push(copy.pop().unwrap());
+        }
+
+        return res;
+    }
+
+    #[inline]
+    fn export(self) -> Vec<Self::ExportedItem> {
+        let mut copy = self;
+        let mut res = Vec::with_capacity(copy.len());
+        for _ in 0..copy.len() {
+            res.push(copy.pop().unwrap().d)
+        }
+        return res;
+    }
+}
+
 
 /// Heap for ordering the timestamped block. It will automatic sort elements when appending.
 pub struct TsOrderingHeap<T: TimestampedBlock + Ord> {

@@ -46,7 +46,9 @@ pub type SerializedCache = Vec<Vec<CacheBlock>>;
 pub type SerializedDirectory = Vec<Vec<DirectoryBlock>>;
 
 pub struct MemoryHierarchyCheckPoint {
-    pub private_cache: HashMap<u8, SerializedCache>,
+    pub l1i: HashMap<u8, SerializedCache>,
+    pub l1d: HashMap<u8, SerializedCache>,
+    pub l2: HashMap<u8, SerializedCache>,
     pub directory: SerializedDirectory,
     pub shared_cache: SerializedCache
 }

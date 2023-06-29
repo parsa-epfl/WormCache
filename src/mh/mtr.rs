@@ -1,9 +1,9 @@
 use crate::cache::ts_set::TimestampCacheLineStatus;
 use crate::cache::TimestampCache;
-use crate::checkpoint::ts_checkpoint::{TsCacheBlock, TsDirectoryBlock};
+use crate::checkpoint::ts_checkpoint::{TsCacheBlock, TsDirectoryBlock, LRUPrioritizing};
 use crate::checkpoint::{
     CacheBlock, CacheBlockState, DirectoryBlock, PrivateCacheParameters, SerializedCache,
-    SerializedDirectory,
+    SerializedDirectory
 };
 
 use std::collections::{BinaryHeap, HashMap};
@@ -32,7 +32,7 @@ impl MTRPermission {
 type CoreId = u8; // 256 cores' machine should be enough and fine.
 
 #[derive(Debug)]
-struct MemoryTimestampRecord {
+pub struct MemoryTimestampRecord {
     // Well, this fucking structure has a similar size as a cache block.
     ts: usize,
     invalid: HashMap<CoreId, usize>,
@@ -67,7 +67,7 @@ impl MemoryTimestampRecord {
     }
 }
 
-struct MemoryTimestampRecordCollection<const S: usize> {
+pub struct MemoryTimestampRecordCollection<const S: usize> {
     sets: [HashMap<usize, MemoryTimestampRecord>; S],
 }
 
@@ -267,34 +267,6 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
     ) -> [SerializedCache; 3] {
         use rayon::prelude::*;
 
-        /// Fuck! This implementation might have really bad performance. I am wondering if I can optimize it.
-        #[inline]
-        fn keep_top_n(mut heap: BinaryHeap<TsCacheBlock>, n: usize) -> BinaryHeap<TsCacheBlock> {
-            if n >= heap.len() {
-                return heap;
-            }
-
-            let mut res = BinaryHeap::<TsCacheBlock>::new();
-
-            for _ in 0..n {
-                res.push(heap.pop().unwrap());
-            }
-
-            return res;
-        }
-
-        /// I also don't really know where to put this function, similar to the last one.
-        #[inline]
-        fn convert_to_vec(mut heap: BinaryHeap<TsCacheBlock>) -> Vec<CacheBlock> {
-            let mut res = Vec::with_capacity(heap.len());
-
-            for _ in 0..heap.len() {
-                res.push(heap.pop().unwrap().d);
-            }
-
-            return res;
-        }
-
         let l2_with_ts: Vec<_> = (0..param.l2_sets)
             .into_par_iter()
             .map(|group_bias| {
@@ -385,7 +357,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                         }
                     }
                 }
-                return keep_top_n(collected_blocks, param.l2_associativity);
+                return collected_blocks.get_top_k(param.l2_associativity);
             })
             .collect();
         // Now, use L2 to reconstruct L1i and L1d, with the L2.
@@ -417,7 +389,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                                 }
                             }
                         }
-                        return keep_top_n(related_blocks, asso);
+                        return related_blocks.get_top_k(asso);
                     })
                     .collect();
             },
@@ -430,17 +402,17 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                 .next()
                 .unwrap()
                 .into_iter()
-                .map(|el| convert_to_vec(el))
+                .map(|el| el.export())
                 .collect(),
             two_caches
                 .next()
                 .unwrap()
                 .into_iter()
-                .map(|el| convert_to_vec(el))
+                .map(|el| el.export())
                 .collect(),
             l2_with_ts
                 .into_iter()
-                .map(|el| convert_to_vec(el))
+                .map(|el| el.export())
                 .collect(),
         ];
     }

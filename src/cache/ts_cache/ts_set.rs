@@ -15,6 +15,14 @@ impl TimestampCacheLineStatus {
     pub fn is_dirty(&self) -> bool {
         return *self == TimestampCacheLineStatus::DirtyData;
     }
+
+    pub fn is_data(&self) -> bool {
+        return *self == TimestampCacheLineStatus::CleanData || *self == TimestampCacheLineStatus::CleanInstructionAndData || *self == TimestampCacheLineStatus::DirtyData;
+    }
+
+    pub fn is_instruction(&self) -> bool {
+        return *self == TimestampCacheLineStatus::Instruction || *self == TimestampCacheLineStatus::CleanInstructionAndData;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -215,8 +223,9 @@ pub struct TimestampCacheSetIterator<'a, const A: usize> {
 }
 
 impl<'a, const A: usize> Iterator for TimestampCacheSetIterator<'a, A> {
-    type Item = (usize, usize, TimestampCacheLineStatus); // (block_id, ts, status)
+    type Item = (usize, usize, TimestampCacheLineStatus); /// (block_id, ts, status)
 
+    /// Return value: (block_id, ts, status)
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_idx == A {
             return None;

@@ -1,14 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BinaryHeap, HashMap};
 
+use super::mtr::MemoryTimestampRecordCollection;
 use crate::cache::TimestampCache;
-use crate::checkpoint::CacheBlockState;
-use crate::checkpoint::DirectoryBlock;
-use crate::checkpoint::MemoryHierarchyCheckPoint;
-use crate::checkpoint::SerializedCache;
-use crate::checkpoint::SerializedDirectory;
-
-use crate::cache::ts_cache::TimestampCacheMetaData;
-use crate::checkpoint::CacheBlock;
+use crate::checkpoint::ts_checkpoint::{LRUPrioritizing, TsCacheBlock};
+use crate::checkpoint::{CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, SerializedCache};
 use crate::plugin::PerInstructionInstrumentation;
 use crate::QEMUPlugin;
 
@@ -56,10 +51,6 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             }
         }
     }
-
-    pub fn get_serilized_private_cache(&self) -> SerializedCache {
-        todo!();
-    }
 }
 
 // this struct contains the memory model, basically the private .
@@ -70,13 +61,7 @@ pub struct TimestampMemoryHierarchy<
     const S_S: usize,
 > {
     hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
-}
-
-#[derive(Clone)]
-struct CacheLineSharingInfo {
-    replicas: Vec<(usize, u8)>,
-    last_writer: Option<(usize, u8)>,
-    ts: usize,
+    // worker threads to take measurement and reconstruct the content, thus need another threads
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -90,6 +75,79 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                     .map(|i| return (i, TimestampSingleCoreMemoryHierarchy::new())),
             ),
         };
+    }
+
+    pub fn render_mtr<const S: usize>(&self) -> MemoryTimestampRecordCollection<S> {
+        let mut res = MemoryTimestampRecordCollection::new();
+        for (&core_id, v) in self.hierarchies.iter() {
+            res.absorb_ts_cache(core_id, &v.local_shared_cache);
+        }
+        return res;
+    }
+
+    pub fn render_llc<const S: usize>(
+        &self,
+        mtr: &MemoryTimestampRecordCollection<S>,
+    ) -> SerializedCache {
+        let mut merging_sets: [HashMap<usize, TsCacheBlock>; S_S] = std::array::from_fn(|_| HashMap::new());
+
+        for (&core_id, hierarchy) in self.hierarchies.iter() {
+            // putting its private cache to the merging sets.
+            for (idx, set) in hierarchy.private_cache.sets.iter().enumerate() {
+                for (block_id, ts, status) in set.iter() {
+                    if mtr.look_up(block_id) {
+                        continue;
+                    }
+
+                    match merging_sets[idx].get_mut(&block_id) {
+                        Some(existing) => {
+                            // merge request by only updating the dirty bits
+                            if status.is_dirty() {
+                                existing.d.state = CacheBlockState::ModifiedExclusive;
+                                assert!(existing.d.in_data_cache);
+                            }
+                        }
+                        None => {
+                            merging_sets[idx].insert(
+                                block_id,
+                                TsCacheBlock {
+                                    d: CacheBlock {
+                                        block_id,
+                                        state: match status {
+                                            crate::cache::ts_set::TimestampCacheLineStatus::Invalid => unreachable!(),
+                                            crate::cache::ts_set::TimestampCacheLineStatus::DirtyData => CacheBlockState::ModifiedExclusive,
+                                            _ => CacheBlockState::CleanExclusive,
+                                        },
+                                        in_instruction_cache: status.is_instruction(),
+                                        in_data_cache: status.is_data(),
+                                    },
+                                    ts,
+                                },
+                            );
+                        }
+                    };
+                }
+            }
+        }
+
+        // Then, we convert the HashMap to the BinaryHeap, for its order.
+
+        let merging_sets: Vec<_> = merging_sets.into_iter().map(|x|{ 
+            let mut res = BinaryHeap::new();
+            for el in x {
+                res.push(el.1);
+            }
+            return res;
+         }).collect();
+
+        return merging_sets.into_iter().map(|x| x.export()).collect();
+    }
+
+    pub fn render_cache_hierarchy<const S: usize>(
+        &self,
+        mtr: &MemoryTimestampRecordCollection<S>,
+    ) -> MemoryHierarchyCheckPoint {
+        todo!();
     }
 }
 
