@@ -8,10 +8,15 @@ use plugin::set_contention_analysis::LLCSetAccessDistributionPlugin;
 use qemu_api::*;
 mod plugin;
 use plugin::QEMUPlugin;
-use std::ffi;
+use std::{ffi, cell::RefCell};
 
 type PluginType = LLCSetAccessDistributionPlugin;
 static mut PLUGIN: Option<PluginType> = None;
+
+// There might be a centralized data structure and a thread local data structure.
+thread_local! {
+    pub static X: Option<*mut <PluginType as QEMUPlugin>::ThreadLocalDataStructure> = None;
+}
 
 #[no_mangle]
 pub static qemu_plugin_version: u32 = QEMU_PLUGIN_VERSION;
@@ -24,6 +29,12 @@ unsafe extern "C" fn vcpu_mem_access(
     user_data: *mut ffi::c_void, // should be NULL.
 ) {
     PLUGIN.as_mut().unwrap().on_memory_access(vcpu_index, &plugin::QEMUMemoryInfo(info), vaddr, user_data);
+    X.with(|x|{
+        match x {
+            Some(x) => todo!(),
+            None => todo!(),
+        }
+    })
 }
 
 #[no_mangle]

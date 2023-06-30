@@ -60,7 +60,7 @@ pub struct TimestampMemoryHierarchy<
     const S_A: usize,
     const S_S: usize,
 > {
-    hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
+    // hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
     // worker threads to take measurement and reconstruct the content, thus need another threads
 }
 
@@ -68,12 +68,9 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
 {
     pub fn new(core_ids: Vec<u8>) -> Self {
+        // Start a thread here.
         return TimestampMemoryHierarchy {
-            hierarchies: HashMap::from_iter(
-                core_ids
-                    .into_iter()
-                    .map(|i| return (i, TimestampSingleCoreMemoryHierarchy::new())),
-            ),
+            
         };
     }
 
@@ -154,6 +151,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
 unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize> QEMUPlugin
     for TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
 {
+
     unsafe fn on_translation(
         &mut self,
         tb: &crate::plugin::QEMUPluginBasicBlock,
@@ -161,19 +159,19 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         todo!()
     }
 
-    unsafe fn on_instruction_execution(&mut self, cpu_idx: u32, user_data: *mut std::ffi::c_void) {
-        todo!()
-    }
+    // unsafe fn on_instruction_execution(&mut self, cpu_idx: u32, user_data: *mut std::ffi::c_void) {
+    //     todo!()
+    // }
 
-    unsafe fn on_memory_access(
-        &mut self,
-        cpu_idx: u32,
-        info: &crate::plugin::QEMUMemoryInfo,
-        vaddr: u64,
-        user_data: *mut std::ffi::c_void,
-    ) {
-        todo!()
-    }
+    // unsafe fn on_memory_access(
+    //     &mut self,
+    //     cpu_idx: u32,
+    //     info: &crate::plugin::QEMUMemoryInfo,
+    //     vaddr: u64,
+    //     user_data: *mut std::ffi::c_void,
+    // ) {
+    //     todo!()
+    // }
 
     unsafe fn on_qemu_exit(&mut self) {
         todo!()
