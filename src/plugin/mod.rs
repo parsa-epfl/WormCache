@@ -31,6 +31,9 @@ pub unsafe trait QEMUPluginPerCoreActor {
 
 // This one should have access to the Quantum server for synchronization and private data submission.
 pub unsafe trait QEMUPlugin {
+
+    type PerCorePlugin;
+
     unsafe fn on_translation(&mut self, tb: &QEMUPluginBasicBlock)
         -> Vec<PerInstructionInstrumentation>;
     

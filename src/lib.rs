@@ -4,18 +4,23 @@ pub mod checkpoint;
 pub mod mh;
 pub mod bp;
 mod qemu_api;
-use plugin::set_contention_analysis::LLCSetAccessDistributionPlugin;
+use mh::ts_model::TimestampMemoryHierarchy;
+use mh::ts_model::TimestampSingleCoreMemoryHierarchy;
 use qemu_api::*;
 mod plugin;
-use plugin::QEMUPlugin;
+use plugin::{
+    QEMUPlugin,
+    QEMUPluginPerCoreActor
+};
 use std::{ffi, cell::RefCell};
 
-type PluginType = LLCSetAccessDistributionPlugin;
+type PluginType = TimestampMemoryHierarchy<8, 512, 16, 1024>;
 static mut PLUGIN: Option<PluginType> = None;
+type PerCorePlyginType = <PluginType as QEMUPlugin>::PerCorePlugin;
 
 // There might be a centralized data structure and a thread local data structure.
 thread_local! {
-    pub static X: Option<*mut <PluginType as QEMUPlugin>::ThreadLocalDataStructure> = None;
+    pub static per_core_records: Option<*mut PerCorePlyginType> = None;
 }
 
 #[no_mangle]
@@ -28,12 +33,14 @@ unsafe extern "C" fn vcpu_mem_access(
     vaddr: u64,
     user_data: *mut ffi::c_void, // should be NULL.
 ) {
-    PLUGIN.as_mut().unwrap().on_memory_access(vcpu_index, &plugin::QEMUMemoryInfo(info), vaddr, user_data);
-    X.with(|x|{
+    per_core_records.with(|x|{
         match x {
-            Some(x) => todo!(),
-            None => todo!(),
-        }
+            Some(x) => {
+                let x = &mut *x.clone();
+                x.on_memory_access(vcpu_index, &plugin::QEMUMemoryInfo(info), vaddr, user_data);
+            },
+            None => {},
+        };
     })
 }
 
@@ -42,7 +49,15 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_index: u32,
     user_data: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    PLUGIN.as_mut().unwrap().on_instruction_execution(vcpu_index, user_data);
+    per_core_records.with(|x|{
+        match x {
+            Some(x) => {
+                let x = &mut *x.clone();
+                x.on_instruction_execution(vcpu_index, user_data);
+            },
+            None => {},
+        }
+    })
 }
 
 #[no_mangle]
