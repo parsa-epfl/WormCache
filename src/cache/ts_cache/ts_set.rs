@@ -2,7 +2,7 @@ use core::panic;
 
 use crate::cache::CacheReturnResult;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TimestampCacheLineStatus {
     Invalid,
     Instruction,
@@ -48,6 +48,7 @@ impl<const A: usize> SetAccessResult<A> {
     }
 }
 
+#[derive(Debug)]
 pub struct TimestampCacheSet<const A: usize> {
     block_ids: [usize; A],
     ts: [usize; A], // timestamp contains order information, so no necessary for LRU bits.

@@ -11,6 +11,7 @@ pub struct TimestampCacheMetaData {
     pub is_dirty: bool,
 }
 
+#[derive(Debug)]
 pub struct TimestampCache<const A: usize, const S: usize> {
     // A: associativity, S: sets
     pub sets: Box<[TimestampCacheSet<A>; S]>,

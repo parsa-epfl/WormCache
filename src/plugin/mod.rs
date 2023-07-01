@@ -14,6 +14,9 @@ pub struct PerInstructionInstrumentation {
 }
 
 pub unsafe trait QEMUPluginPerCoreActor {
+
+    type PluginType: QEMUPlugin<PerCorePlugin = Self>;
+
     unsafe fn on_instruction_execution(
         &mut self, 
         cpu_idx: u32, 
@@ -32,7 +35,7 @@ pub unsafe trait QEMUPluginPerCoreActor {
 // This one should have access to the Quantum server for synchronization and private data submission.
 pub unsafe trait QEMUPlugin {
 
-    type PerCorePlugin;
+    type PerCorePlugin: QEMUPluginPerCoreActor;
 
     unsafe fn on_translation(&mut self, tb: &QEMUPluginBasicBlock)
         -> Vec<PerInstructionInstrumentation>;

@@ -12,6 +12,7 @@ use std::sync::mpsc::Receiver;
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
 
+#[derive(Debug)]
 pub struct TimestampSingleCoreMemoryHierarchy<
     const P_A: usize, // associativity of the private cache
     const P_S: usize, // set number of the private cache
@@ -58,6 +59,8 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
 unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     QEMUPluginPerCoreActor for TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>
 {
+    type PluginType = TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>;
+
     unsafe fn on_instruction_execution(&mut self, cpu_idx: u32, user_data: *mut std::ffi::c_void) {
         todo!()
     }
@@ -74,6 +77,7 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
 }
 
 // this struct contains the memory model, basically the private .
+#[derive(Debug)]
 pub struct TimestampMemoryHierarchy<
     const P_A: usize,
     const P_S: usize,
