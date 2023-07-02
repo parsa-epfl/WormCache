@@ -7,8 +7,9 @@ use crate::checkpoint::{CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, 
 use crate::plugin::{PerInstructionInstrumentation, QEMUPluginPerCoreActor};
 use crate::QEMUPlugin;
 
-use std::sync::mpsc::Receiver;
-
+use crossbeam_channel::{
+    Sender, Receiver, Select
+};
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
 
@@ -21,15 +22,20 @@ pub struct TimestampSingleCoreMemoryHierarchy<
 > {
     pub private_cache: TimestampCache<P_A, P_S>,
     pub local_shared_cache: TimestampCache<S_A, S_S>,
+
+    pub tx: Sender<usize>,
+    pub rx: Receiver<usize>
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>
 {
-    pub fn new() -> Self {
+    pub fn new(tx: Sender<usize>, rx: Receiver<usize>) -> Self {
         return Self {
             private_cache: TimestampCache::new(),
             local_shared_cache: TimestampCache::new(),
+            tx,
+            rx
         };
     }
 
@@ -85,7 +91,7 @@ pub struct TimestampMemoryHierarchy<
     const S_S: usize,
 > {
     // quantum channels
-    tx: HashMap<u8, Receiver<usize>>,
+    tx: HashMap<u8, Sender<usize>>,
     rx: HashMap<u8, Receiver<usize>>,
 
     // reference to the hierarchy
@@ -107,7 +113,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub unsafe fn register_core_channels(
         &mut self,
         core_id: u8,
-        tx: Receiver<usize>,
+        tx: Sender<usize>,
         rx: Receiver<usize>,
         hierarchy: &'static TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>,
     ) {

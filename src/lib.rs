@@ -6,11 +6,11 @@ mod qemu_api;
 use mh::ts_model::TimestampMemoryHierarchy;
 use qemu_api::*;
 mod plugin;
+use crossbeam_channel::bounded;
 use plugin::{QEMUPlugin, QEMUPluginPerCoreActor};
 use std::cell::RefCell;
 use std::ffi;
 use std::sync::Mutex;
-use std::cell::OnceCell;
 use std::sync::OnceLock;
 
 /// TODO: Store the following variable inside the PluginType.
@@ -59,7 +59,13 @@ unsafe extern "C" fn vcpu_tb_trans(
     tb: *mut qemu_api::qemu_plugin_tb,
 ) {
     let wrapped_tb = plugin::QEMUPluginBasicBlock(tb);
-    let metadata = PLUGIN.get().unwrap().lock().unwrap().on_translation(&wrapped_tb);
+    let metadata = PLUGIN
+        .get()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .on_translation(&wrapped_tb);
+    
     wrapped_tb
         .into_iter()
         .zip(metadata.into_iter())
@@ -96,7 +102,25 @@ unsafe extern "C" fn on_core_init(id: qemu_api::qemu_plugin_id_t, core_id: u32) 
     let core_id = core_id as u8;
     if INSTRUMENTED_CORE_LIST.contains(&core_id) {
         PER_CORE_RECORDS.with(|x| {
-            let per_core_record = Box::new(PerCorePluginType::new());
+            // from per-core structure to shared thread
+            let (p_s, s_r) = bounded(1);
+            let (s_s, p_r) = bounded(1);
+
+            let per_core_record = Box::new(PerCorePluginType::new(p_s, p_r));
+            let per_core_ptr = per_core_record.as_ref() as *const PerCorePluginType;
+
+            // Setup communication
+            PLUGIN
+                .get()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .register_core_channels(
+                    core_id,
+                    s_s,
+                    s_r,
+                    &*per_core_ptr as &'static PerCorePluginType,
+                );
 
             x.replace(Some(per_core_record));
         });
