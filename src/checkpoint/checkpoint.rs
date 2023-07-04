@@ -1,6 +1,7 @@
 // This fine defines the type of the memory hierarchy in the checkpoint for each checkpoint.
 
 use std::collections::HashMap;
+use serde::{self, Serialize};
 
 pub struct PrivateCacheParameters {
     pub l1i_sets: usize,
@@ -15,7 +16,7 @@ pub struct PrivateCacheParameters {
 
 
 // Currently the supported coherence model is MESI, which is the model used by QFlex.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
 pub enum CacheBlockState {
     Invalid = 0, // Invalid
     CleanShared = 1, // Shared
@@ -25,7 +26,7 @@ pub enum CacheBlockState {
 }
 
 // The normal cache blocks
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct CacheBlock {
     pub block_id: usize,
     pub state: CacheBlockState,
@@ -33,7 +34,7 @@ pub struct CacheBlock {
     pub in_data_cache: bool
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct DirectoryBlock {
     pub block_id: usize,
     pub replicas: Vec<u8>, // core_ids
@@ -45,6 +46,7 @@ pub type SerializedCache = Vec<Vec<CacheBlock>>;
 
 pub type SerializedDirectory = Vec<Vec<DirectoryBlock>>;
 
+#[derive(Serialize, Debug)]
 pub struct MemoryHierarchyCheckPoint {
     pub l1i: HashMap<u8, SerializedCache>,
     pub l1d: HashMap<u8, SerializedCache>,

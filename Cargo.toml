@@ -10,6 +10,7 @@ rayon = "1.7.0"
 lru = "0.9.0"
 rand = { version = "0.8.5", feature ="alloc" }
 serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 crossbeam-channel = "0.5"
 
 [lib]

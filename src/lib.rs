@@ -3,6 +3,7 @@ pub mod cache;
 pub mod checkpoint;
 pub mod mh;
 mod qemu_api;
+use mh::quantum::QuantumManager;
 use mh::ts_model::TimestampMemoryHierarchy;
 use qemu_api::*;
 mod plugin;
@@ -10,14 +11,21 @@ use crossbeam_channel::bounded;
 use plugin::{QEMUPlugin, QEMUPluginPerCoreActor};
 use std::cell::RefCell;
 use std::ffi;
+use std::sync::Barrier;
 use std::sync::Mutex;
 use std::sync::OnceLock;
+use std::thread;
 
 /// TODO: Store the following variable inside the PluginType.
 static INSTRUMENTED_CORE_LIST: [u8; 4] = [0, 1, 2, 3];
 type PluginType = TimestampMemoryHierarchy<8, 512, 16, 1024>;
 static PLUGIN: OnceLock<Mutex<PluginType>> = OnceLock::new();
 type PerCorePluginType = <PluginType as QEMUPlugin>::PerCorePlugin;
+
+// Quantum-related parameters
+static QUAMTUM_MANAGER: OnceLock<QuantumManager> = OnceLock::new();
+pub const QUAMTUM: usize = 50 * 1024;
+
 
 // There might be a centralized data structure and a thread local data structure.
 thread_local! {
@@ -36,7 +44,13 @@ unsafe extern "C" fn vcpu_mem_access(
 ) {
     PER_CORE_RECORDS.with(|x| {
         if let Some(ref mut x) = *x.borrow_mut() {
-            x.on_memory_access(cpu_idx, &plugin::QEMUMemoryInfo(info), vaddr, user_data)
+            x.on_memory_access(
+                cpu_idx,
+                &plugin::QEMUMemoryInfo(info),
+                vaddr,
+                user_data,
+                QUAMTUM_MANAGER.get().unwrap(),
+            );
         }
     });
 }
@@ -48,7 +62,7 @@ unsafe extern "C" fn vcpu_insn_exec(
 ) {
     PER_CORE_RECORDS.with(|x| {
         if let Some(ref mut x) = *x.borrow_mut() {
-            x.on_instruction_execution(vcpu_index, user_data);
+            x.on_instruction_execution(vcpu_index, user_data, QUAMTUM_MANAGER.get().unwrap());
         }
     })
 }
@@ -65,7 +79,7 @@ unsafe extern "C" fn vcpu_tb_trans(
         .lock()
         .unwrap()
         .on_translation(&wrapped_tb);
-    
+
     wrapped_tb
         .into_iter()
         .zip(metadata.into_iter())
@@ -103,24 +117,15 @@ unsafe extern "C" fn on_core_init(id: qemu_api::qemu_plugin_id_t, core_id: u32) 
     if INSTRUMENTED_CORE_LIST.contains(&core_id) {
         PER_CORE_RECORDS.with(|x| {
             // from per-core structure to shared thread
-            let (p_s, s_r) = bounded(1);
-            let (s_s, p_r) = bounded(1);
 
-            let per_core_record = Box::new(PerCorePluginType::new(p_s, p_r));
+            let mut center_plugin = PLUGIN.get().unwrap().lock().unwrap();
+
+            let per_core_record = Box::new(PerCorePluginType::new());
             let per_core_ptr = per_core_record.as_ref() as *const PerCorePluginType;
 
             // Setup communication
-            PLUGIN
-                .get()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .register_core_channels(
-                    core_id,
-                    s_s,
-                    s_r,
-                    &*per_core_ptr as &'static PerCorePluginType,
-                );
+            center_plugin
+                .register_core_channels(core_id, &*per_core_ptr as &'static PerCorePluginType);
 
             x.replace(Some(per_core_record));
         });
@@ -144,7 +149,19 @@ unsafe extern "C" fn qemu_plugin_install(
 
     qemu_plugin_register_vcpu_init_cb(id, Some(on_core_init));
 
-    PLUGIN.set(Mutex::new(PluginType::new())).unwrap();
+    PLUGIN
+        .set(Mutex::new(PluginType::new()))
+        .unwrap();
+
+    QUAMTUM_MANAGER
+        .set(QuantumManager::new(INSTRUMENTED_CORE_LIST.len()))
+        .unwrap();
+
+    // Start the quantum thread
+    thread::spawn(||{
+        QUAMTUM_MANAGER.get().unwrap().quantum_thread_exec()
+    });
+
     return 0;
 }
 

@@ -263,7 +263,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
     pub fn render_private_caches(
         &self,
         core_id: CoreId,
-        param: PrivateCacheParameters,
+        param: &PrivateCacheParameters,
     ) -> [SerializedCache; 3] {
         use rayon::prelude::*;
 

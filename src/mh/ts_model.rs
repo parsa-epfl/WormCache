@@ -1,88 +1,22 @@
 use std::collections::{BinaryHeap, HashMap};
+use std::ffi::c_void;
+use std::io::prelude::*;
+use std::fs;
 
 use super::mtr::MemoryTimestampRecordCollection;
-use crate::cache::TimestampCache;
+use super::pbb_metadata::PBBMetadata;
+use super::ts_per_core::TimestampSingleCoreMemoryHierarchy;
 use crate::checkpoint::ts_checkpoint::{LRUPrioritizing, TsCacheBlock};
-use crate::checkpoint::{CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, SerializedCache};
-use crate::plugin::{PerInstructionInstrumentation, QEMUPluginPerCoreActor};
-use crate::QEMUPlugin;
-
-use crossbeam_channel::{
-    Sender, Receiver, Select
+use crate::checkpoint::{
+    CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, PrivateCacheParameters, SerializedCache,
 };
+use crate::plugin::PerInstructionInstrumentation;
+use crate::{QEMUPlugin, INSTRUMENTED_CORE_LIST};
+
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
 
-#[derive(Debug)]
-pub struct TimestampSingleCoreMemoryHierarchy<
-    const P_A: usize, // associativity of the private cache
-    const P_S: usize, // set number of the private cache
-    const S_A: usize, // associativity of the shared cache
-    const S_S: usize, // set number of the shared cache
-> {
-    pub private_cache: TimestampCache<P_A, P_S>,
-    pub local_shared_cache: TimestampCache<S_A, S_S>,
-
-    pub tx: Sender<usize>,
-    pub rx: Receiver<usize>
-}
-
-impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>
-{
-    pub fn new(tx: Sender<usize>, rx: Receiver<usize>) -> Self {
-        return Self {
-            private_cache: TimestampCache::new(),
-            local_shared_cache: TimestampCache::new(),
-            tx,
-            rx
-        };
-    }
-
-    pub fn access_memory(&mut self, ts: usize, paddr: usize, is_instruction: bool, is_store: bool) {
-        let block_id = paddr >> 6;
-        let res = self
-            .private_cache
-            .record(block_id, is_instruction, is_store, ts);
-        match res {
-            crate::cache::CacheReturnResult::Miss => {
-                self.local_shared_cache
-                    .peek(block_id, is_instruction, is_store, ts);
-            }
-            crate::cache::CacheReturnResult::Hit => {}
-            crate::cache::CacheReturnResult::MissWithEviction(blk) => {
-                self.local_shared_cache
-                    .record(blk, is_instruction, false, ts);
-            }
-            crate::cache::CacheReturnResult::MissWithWriteBack(blk) => {
-                self.local_shared_cache
-                    .record(blk, is_instruction, true, ts);
-            }
-        }
-    }
-}
-
-unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    QEMUPluginPerCoreActor for TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>
-{
-    type PluginType = TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>;
-
-    unsafe fn on_instruction_execution(&mut self, cpu_idx: u32, user_data: *mut std::ffi::c_void) {
-        todo!()
-    }
-
-    unsafe fn on_memory_access(
-        &mut self,
-        cpu_idx: u32,
-        info: &crate::plugin::QEMUMemoryInfo,
-        vaddr: u64,
-        user_data: *mut std::ffi::c_void,
-    ) {
-        todo!()
-    }
-}
-
-// this struct contains the memory model, basically the private .
+// This module contains the logic of quantum management and cache reconstruction.
 #[derive(Debug)]
 pub struct TimestampMemoryHierarchy<
     const P_A: usize,
@@ -90,10 +24,6 @@ pub struct TimestampMemoryHierarchy<
     const S_A: usize,
     const S_S: usize,
 > {
-    // quantum channels
-    tx: HashMap<u8, Sender<usize>>,
-    rx: HashMap<u8, Receiver<usize>>,
-
     // reference to the hierarchy
     hierarchies: HashMap<u8, &'static TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
 }
@@ -104,8 +34,6 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub fn new() -> Self {
         // Start a thread here.
         return TimestampMemoryHierarchy {
-            tx: HashMap::new(),
-            rx: HashMap::new(),
             hierarchies: HashMap::new(),
         };
     }
@@ -113,12 +41,8 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub unsafe fn register_core_channels(
         &mut self,
         core_id: u8,
-        tx: Sender<usize>,
-        rx: Receiver<usize>,
         hierarchy: &'static TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>,
     ) {
-        self.tx.insert(core_id, tx);
-        self.rx.insert(core_id, rx);
         self.hierarchies.insert(core_id, hierarchy);
     }
 
@@ -137,14 +61,13 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         let mut merging_sets: [HashMap<usize, TsCacheBlock>; S_S] =
             std::array::from_fn(|_| HashMap::new());
 
-        for (&core_id, hierarchy) in self.hierarchies.iter() {
+        for (&_, hierarchy) in self.hierarchies.iter() {
             // putting its private cache to the merging sets.
             for (idx, set) in hierarchy.private_cache.sets.iter().enumerate() {
                 for (block_id, ts, status) in set.iter() {
                     if mtr.look_up(block_id) {
                         continue;
                     }
-
                     match merging_sets[idx].get_mut(&block_id) {
                         Some(existing) => {
                             // merge request by only updating the dirty bits
@@ -177,7 +100,6 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         }
 
         // Then, we convert the HashMap to the BinaryHeap, for its order.
-
         let merging_sets: Vec<_> = merging_sets
             .into_iter()
             .map(|x| {
@@ -195,8 +117,25 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub fn render_cache_hierarchy<const S: usize>(
         &self,
         mtr: &MemoryTimestampRecordCollection<S>,
+        param: &PrivateCacheParameters,
     ) -> MemoryHierarchyCheckPoint {
-        todo!();
+        let mut l1i = HashMap::new();
+        let mut l1d = HashMap::new();
+        let mut l2 = HashMap::new();
+        for core_id in INSTRUMENTED_CORE_LIST.iter() {
+            let mut pri = mtr.render_private_caches(*core_id, param).into_iter();
+            l1i.insert(*core_id, pri.next().unwrap());
+            l1d.insert(*core_id, pri.next().unwrap());
+            l2.insert(*core_id, pri.next().unwrap());
+        }
+
+        return MemoryHierarchyCheckPoint {
+            l1i,
+            l1d,
+            l2,
+            directory: mtr.export_directory(),
+            shared_cache: self.render_llc(mtr),
+        };
     }
 }
 
@@ -209,10 +148,67 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         &mut self,
         tb: &crate::plugin::QEMUPluginBasicBlock,
     ) -> Vec<PerInstructionInstrumentation> {
-        todo!()
+        // Okay, now it is time to generate the translation.
+        // TODO: Make the `6 (64B)` here a variable.
+        let cache_line_size: Vec<_> = tb.iter().map(|x| x.physical_address() >> 6).collect();
+        let mut first_appearance: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut ordered_cache_line = vec![];
+        let mut base_index: usize = 0;
+        for cache_line in cache_line_size.into_iter() {
+            if !first_appearance.contains_key(&cache_line) {
+                first_appearance.insert(cache_line, vec![]);
+                ordered_cache_line.push(cache_line);
+                base_index = 0;
+            } else {
+                base_index += 1;
+            }
+            first_appearance
+                .get_mut(&cache_line)
+                .unwrap()
+                .push(base_index);
+        }
+
+        // OK, now the goal is to flatten the HashMap
+        let mut res = vec![];
+        for line in ordered_cache_line {
+            for pbb_idx in first_appearance[&line].iter() {
+                if *pbb_idx == 0 {
+                    // Fuck, this is the first instruction of the pBB, thus the helper should be inserted.
+                    let metadata = PBBMetadata {
+                        physical_addr: line << 6,
+                        instruction_count: first_appearance[&line].len() as u8,
+                    };
+                    res.push(PerInstructionInstrumentation {
+                        instruction_execution: Some(metadata.encode() as *mut c_void),
+                        memory_access: Some(*pbb_idx as *mut c_void),
+                    });
+                } else {
+                    // Now it is in the middle, so I just need to insert memory access helper
+                    res.push(PerInstructionInstrumentation {
+                        instruction_execution: None,
+                        memory_access: Some(*pbb_idx as *mut c_void),
+                    });
+                }
+            }
+        }
+        return res;
     }
 
     unsafe fn on_qemu_exit(&mut self) {
-        todo!()
+        let private_param = PrivateCacheParameters {
+            l1i_sets: todo!(),
+            l1i_associativity: todo!(),
+            l1d_sets: todo!(),
+            l1d_associativity: todo!(),
+            l2_sets: todo!(),
+            l2_associativity: todo!(),
+        };
+
+        let mtr = self.render_mtr::<P_S>();
+        let caches = self.render_cache_hierarchy(&mtr, &private_param);
+
+        let exported_json = serde_json::to_string(&caches).unwrap();
+
+        let mut output = fs::File::create("./dumped.json").unwrap();
     }
 }
