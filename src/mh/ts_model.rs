@@ -196,12 +196,12 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
 
     unsafe fn on_qemu_exit(&mut self) {
         let private_param = PrivateCacheParameters {
-            l1i_sets: todo!(),
-            l1i_associativity: todo!(),
-            l1d_sets: todo!(),
-            l1d_associativity: todo!(),
-            l2_sets: todo!(),
-            l2_associativity: todo!(),
+            l1i_sets: 128,
+            l1i_associativity: 8,
+            l1d_sets: 128,
+            l1d_associativity: 8,
+            l2_sets: 2048,
+            l2_associativity: 16,
         };
 
         let mtr = self.render_mtr::<P_S>();
