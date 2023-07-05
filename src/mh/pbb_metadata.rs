@@ -9,7 +9,7 @@ impl PBBMetadata {
     pub fn get_pa(encoding: usize) -> usize {
         // The address is at most 60 bit.
         // The higher 15 bits must be zero on Linux, because the GPA is the HVA, which is in user space.
-        return encoding & (((1 << 60) - 1) as usize);
+        return encoding & ((((1 as usize) << 60) - 1) as usize);
     }
 
     pub fn get_instruction_count(encoding: usize) -> u8 {
