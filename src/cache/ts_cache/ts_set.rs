@@ -252,3 +252,19 @@ impl<const A: usize> TimestampCacheSet<A> {
         return TimestampCacheSetIterator { base: self, current_idx: 0 };
     }
 }
+
+mod test {
+    #[test]
+    fn test_iterator(){
+        let mut s = super::TimestampCacheSet::<4>::new();
+        s.access(1024, 0, false, false);
+        s.access(100, 1, false, false);
+        s.access(23, 2, false, false);
+        s.access(7, 7, false, false);
+        s.access(73, 10, false, false);
+
+        for x in s.iter() {
+        }
+
+    }
+}

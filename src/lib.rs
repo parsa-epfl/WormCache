@@ -162,6 +162,13 @@ unsafe extern "C" fn qemu_plugin_install(
         QUAMTUM_MANAGER.get().unwrap().quantum_thread_exec()
     });
 
+    thread::spawn(||{
+        loop {
+            thread::sleep(std::time::Duration::from_secs(10));
+            println!("Quantum: {}", QUAMTUM_MANAGER.get().unwrap().get_turns());
+        }
+    });
+
     return 0;
 }
 
