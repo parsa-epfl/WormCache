@@ -76,7 +76,7 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         self.i_count += self.i_count_from_last_pbb;
 
         if self.quantum_budget >= self.i_count_from_last_pbb {
-            // self.quantum_budget -= self.i_count_from_last_pbb;
+            self.quantum_budget -= self.i_count_from_last_pbb;
         } else {
             // DMN, we have to wait, and then update the quantum.
             quantum_manager.vcpu_wait();
