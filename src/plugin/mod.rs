@@ -41,9 +41,10 @@ pub unsafe trait QEMUPlugin {
 
     type PerCorePlugin: QEMUPluginPerCoreActor;
 
-    unsafe fn on_translation(&mut self, tb: &QEMUPluginBasicBlock)
+    // Please use concurrency hashmap if possible.
+    unsafe fn on_translation(&self, tb: &QEMUPluginBasicBlock)
         -> Vec<PerInstructionInstrumentation>;
     
-    unsafe fn on_qemu_exit(&mut self);
+    unsafe fn on_qemu_exit(&self);
 }
 

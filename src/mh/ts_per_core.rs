@@ -49,13 +49,14 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                     .peek(block_id, is_instruction, is_store, ts);
             }
             crate::cache::CacheReturnResult::Hit => {}
-            crate::cache::CacheReturnResult::MissWithEviction(blk) => {
+            // TODO: We don't know the permission of evicted caches.
+            crate::cache::CacheReturnResult::MissWithEviction(blk, is_instruction) => {
                 self.local_shared_cache
                     .record(blk, is_instruction, false, ts);
             }
             crate::cache::CacheReturnResult::MissWithWriteBack(blk) => {
                 self.local_shared_cache
-                    .record(blk, is_instruction, true, ts);
+                    .record(blk, false, true, ts);
             }
         }
     }

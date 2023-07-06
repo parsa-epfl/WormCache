@@ -5,8 +5,8 @@ pub use ts_cache::*;
 pub enum CacheReturnResult {
     Miss,
     Hit,
-    MissWithEviction(usize),
-    MissWithWriteBack(usize),
+    MissWithEviction(usize, bool), // (block_id, is_instruction)
+    MissWithWriteBack(usize), // (block_id)
 }
 
 pub const PRIVATE_CACHE_ASSOCIATIVITY: usize = 8;

@@ -72,7 +72,7 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
         is_write: bool,
         ts: usize
     ) -> bool {
-        let set_number = block_id * (S - 1);
+        let set_number = block_id & (S - 1);
         return self.sets[set_number].peek(block_id, ts, is_instruction, is_write);
     }
 }

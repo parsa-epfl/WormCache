@@ -5,6 +5,7 @@ pub mod mh;
 mod qemu_api;
 use mh::quantum::QuantumManager;
 use mh::ts_model::TimestampMemoryHierarchy;
+use plugin::QEMUMemoryInfo;
 use qemu_api::*;
 mod plugin;
 use crossbeam_channel::bounded;
@@ -19,18 +20,12 @@ use std::thread;
 /// TODO: Store the following variable inside the PluginType.
 static INSTRUMENTED_CORE_LIST: [u8; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 type PluginType = TimestampMemoryHierarchy<8, 512, 16, 1024>;
-static PLUGIN: OnceLock<Mutex<PluginType>> = OnceLock::new();
+static PLUGIN: OnceLock<PluginType> = OnceLock::new();
 type PerCorePluginType = <PluginType as QEMUPlugin>::PerCorePlugin;
 
 // Quantum-related parameters
 static QUAMTUM_MANAGER: OnceLock<QuantumManager> = OnceLock::new();
 pub const QUAMTUM: usize = 50 * 1024;
-
-
-// There might be a centralized data structure and a thread local data structure.
-thread_local! {
-    pub static PER_CORE_RECORDS: RefCell<Option<Box<PerCorePluginType>>> = RefCell::new(None);
-}
 
 #[no_mangle]
 pub static qemu_plugin_version: u32 = QEMU_PLUGIN_VERSION;
@@ -42,17 +37,17 @@ unsafe extern "C" fn vcpu_mem_access(
     vaddr: u64,
     user_data: *mut ffi::c_void, // should be NULL.
 ) {
-    PER_CORE_RECORDS.with(|x| {
-        if let Some(ref mut x) = *x.borrow_mut() {
-            x.on_memory_access(
-                cpu_idx,
-                &plugin::QEMUMemoryInfo(info),
-                vaddr,
-                user_data,
-                QUAMTUM_MANAGER.get().unwrap(),
-            );
-        }
-    });
+    let core_id = cpu_idx as u8;
+    if INSTRUMENTED_CORE_LIST.contains(&core_id) {
+        let mut x = PLUGIN.get().unwrap().hierarchies(core_id);
+        x.on_memory_access(
+            cpu_idx,
+            &QEMUMemoryInfo(info),
+            vaddr,
+            user_data,
+            QUAMTUM_MANAGER.get().unwrap(),
+        );
+    }
 }
 
 #[no_mangle]
@@ -60,11 +55,11 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_index: u32,
     user_data: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    PER_CORE_RECORDS.with(|x| {
-        if let Some(ref mut x) = *x.borrow_mut() {
-            x.on_instruction_execution(vcpu_index, user_data, QUAMTUM_MANAGER.get().unwrap());
-        }
-    })
+    let core_id = vcpu_index as u8;
+    if INSTRUMENTED_CORE_LIST.contains(&core_id) {
+        let mut x = PLUGIN.get().unwrap().hierarchies(core_id);
+        x.on_instruction_execution(vcpu_index, user_data, QUAMTUM_MANAGER.get().unwrap());
+    }
 }
 
 #[no_mangle]
@@ -75,8 +70,6 @@ unsafe extern "C" fn vcpu_tb_trans(
     let wrapped_tb = plugin::QEMUPluginBasicBlock(tb);
     let metadata = PLUGIN
         .get()
-        .unwrap()
-        .lock()
         .unwrap()
         .on_translation(&wrapped_tb);
 
@@ -111,30 +104,8 @@ unsafe extern "C" fn vcpu_tb_trans(
 }
 
 #[no_mangle]
-unsafe extern "C" fn on_core_init(id: qemu_api::qemu_plugin_id_t, core_id: u32) {
-    assert!(core_id < 256);
-    let core_id = core_id as u8;
-    if INSTRUMENTED_CORE_LIST.contains(&core_id) {
-        PER_CORE_RECORDS.with(|x| {
-            // from per-core structure to shared thread
-
-            let mut center_plugin = PLUGIN.get().unwrap().lock().unwrap();
-
-            let per_core_record = Box::new(PerCorePluginType::new());
-            let per_core_ptr = per_core_record.as_ref() as *const PerCorePluginType;
-
-            // Setup communication
-            center_plugin
-                .register_core_channels(core_id, &*per_core_ptr as &'static PerCorePluginType);
-
-            x.replace(Some(per_core_record));
-        });
-    }
-}
-
-#[no_mangle]
 unsafe extern "C" fn plugin_exit(id: qemu_api::qemu_plugin_id_t, p: *mut ffi::c_void) {
-    PLUGIN.get().unwrap().lock().unwrap().on_qemu_exit();
+    PLUGIN.get().unwrap().on_qemu_exit();
 }
 
 #[no_mangle]
@@ -147,26 +118,18 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
-    qemu_plugin_register_vcpu_init_cb(id, Some(on_core_init));
-
-    PLUGIN
-        .set(Mutex::new(PluginType::new()))
-        .unwrap();
+    PLUGIN.set(PluginType::new(&INSTRUMENTED_CORE_LIST)).unwrap();
 
     QUAMTUM_MANAGER
         .set(QuantumManager::new(INSTRUMENTED_CORE_LIST.len()))
         .unwrap();
 
     // Start the quantum thread
-    thread::spawn(||{
-        QUAMTUM_MANAGER.get().unwrap().quantum_thread_exec()
-    });
+    thread::spawn(|| QUAMTUM_MANAGER.get().unwrap().quantum_thread_exec());
 
-    thread::spawn(||{
-        loop {
-            thread::sleep(std::time::Duration::from_secs(10));
-            println!("Quantum: {}", QUAMTUM_MANAGER.get().unwrap().get_turns());
-        }
+    thread::spawn(|| loop {
+        thread::sleep(std::time::Duration::from_secs(10));
+        println!("Quantum: {}", QUAMTUM_MANAGER.get().unwrap().get_turns());
     });
 
     return 0;

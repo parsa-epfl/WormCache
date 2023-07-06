@@ -24,6 +24,8 @@ impl QuantumManager {
         // Wait from vcpu side
         let mut element = self.pending_elements.lock().unwrap();
         *element += 1;
+        // immediately give the lock to other.
+        drop(element);
         self.cv.notify_one();
         self.barrier.wait();
     }
@@ -37,6 +39,10 @@ impl QuantumManager {
             // OK, we have all, then we clean the pending elements.
             *element = 0;
             self.turns.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+            // Well, I think I need to release the lock of element here.
+            drop(element);
+
             // there might be a handler before doing advancement.
             // E.g., increase time, but it is a different problem.
             // Let's all vCPU move advance!

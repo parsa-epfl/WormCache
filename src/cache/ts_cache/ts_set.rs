@@ -198,7 +198,7 @@ impl<const A: usize> TimestampCacheSet<A> {
                 if status == TimestampCacheLineStatus::DirtyData {
                     CacheReturnResult::MissWithWriteBack(evicted_block_id)
                 } else {
-                    CacheReturnResult::MissWithEviction(evicted_block_id)
+                    CacheReturnResult::MissWithEviction(evicted_block_id, status.is_instruction())
                 }
             }
             None => CacheReturnResult::Miss,

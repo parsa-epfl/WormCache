@@ -1,7 +1,8 @@
 use std::collections::{BinaryHeap, HashMap};
 use std::ffi::c_void;
-use std::io::prelude::*;
 use std::fs;
+use std::io::prelude::*;
+
 
 use super::mtr::MemoryTimestampRecordCollection;
 use super::pbb_metadata::PBBMetadata;
@@ -24,32 +25,40 @@ pub struct TimestampMemoryHierarchy<
     const S_A: usize,
     const S_S: usize,
 > {
-    // reference to the hierarchy
-    hierarchies: HashMap<u8, &'static TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
+    hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
 {
-    pub fn new() -> Self {
+    pub fn new(core_ids: &[u8]) -> Self {
         // Start a thread here.
-        return TimestampMemoryHierarchy {
-            hierarchies: HashMap::new(),
-        };
+        let hierarchies = HashMap::from_iter(
+            core_ids
+                .iter()
+                .map(|&id| (id, TimestampSingleCoreMemoryHierarchy::new())),
+        );
+        return TimestampMemoryHierarchy { hierarchies };
     }
 
-    pub unsafe fn register_core_channels(
-        &mut self,
-        core_id: u8,
-        hierarchy: &'static TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>,
-    ) {
-        self.hierarchies.insert(core_id, hierarchy);
+    pub fn hierarchies(
+        &self,
+        core_id: u8
+    ) -> &mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S> {
+        // This function can be only called from each vCPU, and it meets the following requirement:
+        // - Each thread has its unique core_id (no cases for two thread access the same hierarchy)
+        // - During reconstruction, all other threads must stop. 
+        unsafe {
+            let target_ref = self.hierarchies.get(&core_id).unwrap() as *const TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
+            let target_ref = target_ref as *mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
+            return &mut *target_ref;
+        }
     }
 
     pub fn render_mtr<const S: usize>(&self) -> MemoryTimestampRecordCollection<S> {
         let mut res = MemoryTimestampRecordCollection::new();
-        for (&core_id, v) in self.hierarchies.iter() {
-            res.absorb_ts_cache(core_id, &v.local_shared_cache);
+        for (core_id, per_core_record) in self.hierarchies.iter() {
+            res.absorb_ts_cache(*core_id, &per_core_record.local_shared_cache);
         }
         return res;
     }
@@ -61,9 +70,9 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         let mut merging_sets: [HashMap<usize, TsCacheBlock>; S_S] =
             std::array::from_fn(|_| HashMap::new());
 
-        for (&_, hierarchy) in self.hierarchies.iter() {
+        for (core_id, per_core_record) in self.hierarchies.iter() {
             // putting its private cache to the merging sets.
-            for (idx, set) in hierarchy.private_cache.sets.iter().enumerate() {
+            for (idx, set) in per_core_record.private_cache.sets.iter().enumerate() {
                 for (block_id, ts, status) in set.iter() {
                     if mtr.look_up(block_id) {
                         continue;
@@ -145,7 +154,7 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
     type PerCorePlugin = TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
 
     unsafe fn on_translation(
-        &mut self,
+        &self,
         tb: &crate::plugin::QEMUPluginBasicBlock,
     ) -> Vec<PerInstructionInstrumentation> {
         // Okay, now it is time to generate the translation.
@@ -194,7 +203,7 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         return res;
     }
 
-    unsafe fn on_qemu_exit(&mut self) {
+    unsafe fn on_qemu_exit(&self) {
         let private_param = PrivateCacheParameters {
             l1i_sets: 128,
             l1i_associativity: 8,
