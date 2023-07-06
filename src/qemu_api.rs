@@ -9,6 +9,11 @@
 #![allow(unused_results)]
 #![allow(unused_mut)]
 
+/**
+ * Warning: This file does not define the same plugin system as the official.
+ * It must be used together with PARSA QEMU. 
+ */
+
 pub const _INTTYPES_H: u32 = 1;
 pub const _FEATURES_H: u32 = 1;
 pub const _DEFAULT_SOURCE: u32 = 1;
