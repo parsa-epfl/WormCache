@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 use std::thread;
 
 /// TODO: Store the following variable inside the PluginType.
-static INSTRUMENTED_CORE_LIST: [u8; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
+static INSTRUMENTED_CORE_LIST: [u8; 4] = [0, 1, 2, 3];
 type PluginType = TimestampMemoryHierarchy<8, 512, 16, 1024>;
 static PLUGIN: OnceLock<PluginType> = OnceLock::new();
 type PerCorePluginType = <PluginType as QEMUPlugin>::PerCorePlugin;

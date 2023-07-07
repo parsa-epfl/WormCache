@@ -219,5 +219,8 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         let exported_json = serde_json::to_string(&caches).unwrap();
 
         let mut output = fs::File::create("./dumped.json").unwrap();
+
+        output.write_all(exported_json.as_bytes()).unwrap();
+        
     }
 }

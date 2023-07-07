@@ -80,7 +80,13 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
             self.quantum_budget -= self.i_count_from_last_pbb;
         } else {
             // DMN, we have to wait, and then update the quantum.
+            // Set this flag so that other thread know you are doing some synchronization.
+            crate::qemu_api::qemu_plugin_set_running_flag(false);
             quantum_manager.vcpu_wait();
+
+            // Release this flag now.
+            crate::qemu_api::qemu_plugin_set_running_flag(true);
+
 
             // After the barrier, we then update the quantum.
             self.quantum_budget += crate::QUAMTUM;

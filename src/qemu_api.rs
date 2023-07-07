@@ -1020,3 +1020,7 @@ extern "C" {
     #[doc = " qemu_plugin_set_running_flag() - setting the \"running\" flag of the current CPU\n\n @is_running: The value of the flag.\n\n Some synchronization mechanism (e.g., exclusive execution) checks\n this flag to make sure all CPUs are not executing instructions and\n wait for all CPUs to be idle.\n\n In you plugin are using locks and synchronization which can block\n execution, you should set the running flag to false before being\n blocked to avoid deadlocks."]
     pub fn qemu_plugin_set_running_flag(is_running: bool);
 }
+extern "C" {
+    #[doc = " qemu_plugin_is_current_cpu_can_run() - check whether the current CPU can\n still continue to run instructions, i.e., not stopped by other threads like quitting.\n\n Returns true if the current cpu can still run.\n\n This function is a wrapper of function `cpu_can_run`."]
+    pub fn qemu_plugin_is_current_cpu_can_run() -> bool;
+}

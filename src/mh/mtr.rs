@@ -1,9 +1,9 @@
 use crate::cache::ts_set::TimestampCacheLineStatus;
 use crate::cache::TimestampCache;
-use crate::checkpoint::ts_checkpoint::{TsCacheBlock, TsDirectoryBlock, LRUPrioritizing};
+use crate::checkpoint::ts_checkpoint::{LRUPrioritizing, TsCacheBlock, TsDirectoryBlock};
 use crate::checkpoint::{
     CacheBlock, CacheBlockState, DirectoryBlock, PrivateCacheParameters, SerializedCache,
-    SerializedDirectory
+    SerializedDirectory,
 };
 
 use std::collections::{BinaryHeap, HashMap};
@@ -114,7 +114,9 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                             TimestampCacheLineStatus::Instruction
                             | TimestampCacheLineStatus::CleanData
                             | TimestampCacheLineStatus::CleanInstructionAndData => {
-                                assert!(el.perm != MTRPermission::DirtyData, "NX violated: It is not possible to have the same data being modified and executable.");
+                                if status.is_instruction() {
+                                    assert!(el.perm.in_instruction_cache(), "NX violated: It is not possible to have the same data being modified and executable.");
+                                }
                                 // Well, if I did meet this problem, I need to add a new permission like DirtyDataAndInstruction
                                 assert!(
                                     el.readers.insert(core_id, ts).is_none(),
@@ -122,7 +124,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                                 )
                             }
                             TimestampCacheLineStatus::DirtyData => {
-                                assert!(el.perm == MTRPermission::DirtyData, "NX violation: It is not possible to have the same data being modified and executable");
+                                assert!(!el.perm.in_instruction_cache(), "NX violation: It is not possible to have the same data being modified and executable");
                                 match el.writer {
                                     Some((writer_id, writer_ts)) => {
                                         assert!(writer_id != core_id, "Are you trying to absorb the ts_cache from the same core multiple times?");
@@ -410,10 +412,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                 .into_iter()
                 .map(|el| el.export())
                 .collect(),
-            l2_with_ts
-                .into_iter()
-                .map(|el| el.export())
-                .collect(),
+            l2_with_ts.into_iter().map(|el| el.export()).collect(),
         ];
     }
 
