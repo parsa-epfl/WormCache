@@ -1024,3 +1024,7 @@ extern "C" {
     #[doc = " qemu_plugin_is_current_cpu_can_run() - check whether the current CPU can\n still continue to run instructions, i.e., not stopped by other threads like quitting.\n\n Returns true if the current cpu can still run.\n\n This function is a wrapper of function `cpu_can_run`."]
     pub fn qemu_plugin_is_current_cpu_can_run() -> bool;
 }
+extern "C" {
+    #[doc = " qemu_plugin_advance_vm_time() - advance VM time by a given bias, in nano second scale.\n\n @advanced_value: The amount of time (in nano second) to add to the VM clock.\n\n This function only has effect when timers_state.vm_clock_remote_master_enable is set to true. (See cpu-timer.c, line 85)"]
+    pub fn qemu_plugin_advance_vm_time(advanced_value: i64);
+}
