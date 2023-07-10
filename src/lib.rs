@@ -77,7 +77,7 @@ unsafe extern "C" fn vcpu_tb_trans(
         .into_iter()
         .zip(metadata.into_iter())
         .for_each(|i| {
-            match i.1.instruction_execution {
+            match i.1.memory_access {
                 Some(userdata) => {
                     qemu_plugin_register_vcpu_mem_cb(
                         i.0 .0,
@@ -89,7 +89,7 @@ unsafe extern "C" fn vcpu_tb_trans(
                 }
                 None => {}
             };
-            match i.1.memory_access {
+            match i.1.instruction_execution {
                 Some(userdata) => {
                     qemu_plugin_register_vcpu_insn_exec_cb(
                         i.0 .0,
