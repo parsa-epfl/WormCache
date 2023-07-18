@@ -10,6 +10,7 @@ pub use qemu_wrapper::QEMUMemoryInfo;
 
 use crate::mh::quantum::QuantumManager;
 
+#[derive(Debug)]
 pub struct PerInstructionInstrumentation {
     pub instruction_execution: Option<*mut std::ffi::c_void>,
     pub memory_access: Option<*mut std::ffi::c_void>

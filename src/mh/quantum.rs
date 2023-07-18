@@ -108,11 +108,6 @@ impl QuantumManager {
                 // I just wait for others to wake me up.
                 drop(self.barrier_cv.wait(barrier_element_count).unwrap());
             }
-
-            unsafe {
-                // the time is updated here. 50K quantum means 20us increment.
-                crate::qemu_api::qemu_plugin_advance_vm_time((crate::QUAMTUM / 5 * 2).try_into().unwrap());
-            }
         }
     }
 

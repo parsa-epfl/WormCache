@@ -19,13 +19,14 @@ use std::thread;
 
 /// TODO: Store the following variable inside the PluginType.
 static INSTRUMENTED_CORE_LIST: [u8; 4] = [0, 1, 2, 3];
-type PluginType = TimestampMemoryHierarchy<8, 512, 16, 1024>;
+type PluginType = TimestampMemoryHierarchy<8, 16, 16, 32>;
 static PLUGIN: OnceLock<PluginType> = OnceLock::new();
 type PerCorePluginType = <PluginType as QEMUPlugin>::PerCorePlugin;
 
 // Quantum-related parameters
 static QUAMTUM_MANAGER: OnceLock<QuantumManager> = OnceLock::new();
 pub const QUAMTUM: usize = 50 * 1024;
+pub const I_COUNT_AS_TIME_CORE_ID: u8 = 0;
 
 #[no_mangle]
 pub static qemu_plugin_version: u32 = QEMU_PLUGIN_VERSION;
@@ -115,6 +116,8 @@ unsafe extern "C" fn qemu_plugin_install(
     argc: i32,
     argv: *const *const u8,
 ) -> i32 {
+    assert!(INSTRUMENTED_CORE_LIST.contains(&I_COUNT_AS_TIME_CORE_ID));
+
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 

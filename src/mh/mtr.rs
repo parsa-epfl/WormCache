@@ -269,6 +269,8 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
     ) -> [SerializedCache; 3] {
         use rayon::prelude::*;
 
+        assert!(S % param.l2_sets == 0, "Required L2 set number must be an multiple of private record set number.");
+
         let l2_with_ts: Vec<_> = (0..param.l2_sets)
             .into_par_iter()
             .map(|group_bias| {
