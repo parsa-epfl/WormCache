@@ -18,7 +18,7 @@ use vtime::VirtualTimeContext;
 
 /// TODO: Store the following variable inside the PluginType.
 /// TODO: Make this data strcture as a constant incicating its length.
-pub const CORE_COUNT: usize = 4;
+pub const CORE_COUNT: usize = 8;
 
 // Parameter for the memory hierarchy.
 pub type PluginType = TimestampMemoryHierarchy<8, 16, 16, 32>;
@@ -124,17 +124,18 @@ unsafe extern "C" fn qemu_plugin_install(
         // open a csv file to store the icounts.
         let mut file = std::fs::File::create("icount.csv").unwrap();
         // write the header.
-        file.write_fmt(format_args!("ts\n")).unwrap();
+        file.write_fmt(format_args!("ts")).unwrap();
         for i in 0..CORE_COUNT {
             file.write_fmt(format_args!(",core{}", i)).unwrap();
         }
+        file.write_fmt(format_args!("\n")).unwrap();
 
         loop {
             let icounts = PLUGIN.get_icounts();
             let mut lines = vec![];
             lines.push(format!("{}", get_real_time()));
             for i in 0..CORE_COUNT {
-                lines.push(format!(",{}", icounts[i]));
+                lines.push(format!("{}", icounts[i]));
             }
             file.write_fmt(format_args!("{}\n", lines.join(","))).unwrap();
             std::thread::sleep(std::time::Duration::from_secs(1));
