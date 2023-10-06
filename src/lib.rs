@@ -23,8 +23,8 @@ pub const CORE_COUNT: usize = 8;
 // Parameter for the memory hierarchy.
 pub type PluginType = TimestampMemoryHierarchy<8, 16, 16, 32>;
 static PLUGIN: Lazy<PluginType> = Lazy::new(|| PluginType::new());
-static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> = Lazy::new(|| Mutex::new(VirtualTimeContext::new()));
-
+static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
+    Lazy::new(|| Mutex::new(VirtualTimeContext::new()));
 
 // convenient time function.
 
@@ -120,15 +120,22 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_plugin_register_virtual_time_cb(Some(calculate_virtual_time));
 
     // set up a thread to periodically print the icount of each core.
-    std::thread::spawn(||{
+    std::thread::spawn(|| {
         // open a csv file to store the icounts.
         let mut file = std::fs::File::create("icount.csv").unwrap();
         // write the header.
-        file.write_fmt(format_args!("ts")).unwrap();
+        // file.write_fmt(format_args!("ts")).unwrap();
+        // for i in 0..CORE_COUNT {
+        //     file.write_fmt(format_args!(",core{}", i)).unwrap();
+        // }
+        // file.write_fmt(format_args!("\n")).unwrap();
+        let mut head = vec!["ts".to_string()];
         for i in 0..CORE_COUNT {
-            file.write_fmt(format_args!(",core{}", i)).unwrap();
+            head.push(format!("core{}", i));
         }
-        file.write_fmt(format_args!("\n")).unwrap();
+        
+        file.write_fmt(format_args!("{}\n", head.join(",")))
+            .unwrap();
 
         loop {
             let icounts = PLUGIN.get_icounts();
@@ -137,11 +144,11 @@ unsafe extern "C" fn qemu_plugin_install(
             for i in 0..CORE_COUNT {
                 lines.push(format!("{}", icounts[i]));
             }
-            file.write_fmt(format_args!("{}\n", lines.join(","))).unwrap();
+            file.write_fmt(format_args!("{}\n", lines.join(",")))
+                .unwrap();
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     });
 
     return 0;
 }
-
