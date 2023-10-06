@@ -63,14 +63,12 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         cpu_idx: u32,
         metadata: *mut std::ffi::c_void,
     ) {
-        // First of all, update the i_count due to the advancement of the last instruction.
-
-        // Now, get the metadata of this turn.
+        // Update the icount for the time calculation.
         let metadata = PBBMetadata::from(metadata as usize);
         self.i_count += metadata.instruction_count as usize;
 
         // Update the cache by instruction access.
-        self.access_memory(self.i_count, metadata.physical_addr, true, false);
+        self.access_memory(crate::get_real_time() as usize, metadata.physical_addr, true, false);
     }
 
     unsafe fn on_memory_access(
@@ -80,11 +78,10 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         vaddr: u64,
         user_data: *mut std::ffi::c_void,
     ) {
-        let bias = user_data as usize;
         match info.translate(vaddr) {
             Some(pa) => {
                 self.access_memory(
-                    self.i_count + bias,
+                    crate::get_real_time() as usize,
                     pa as usize,
                     false,
                     info.is_store_operation(),
