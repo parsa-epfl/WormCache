@@ -37,7 +37,6 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
     const CHECK_PARAM: () = assert!(Self::check_generics());
 
     pub fn new() -> Self {
-        Self::check_generics();
         return TimestampCache::<A, S> {
             sets: Box::new(std::array::from_fn(|_| TimestampCacheSet::new())),
             warmed_count: 0,

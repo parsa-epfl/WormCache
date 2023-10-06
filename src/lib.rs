@@ -3,7 +3,6 @@ pub mod cache;
 pub mod checkpoint;
 pub mod mh;
 mod qemu_api;
-use mh::quantum::QuantumManager;
 use mh::ts_model::TimestampMemoryHierarchy;
 use plugin::QEMUMemoryInfo;
 use qemu_api::*;
@@ -24,8 +23,6 @@ static PLUGIN: OnceLock<PluginType> = OnceLock::new();
 type PerCorePluginType = <PluginType as QEMUPlugin>::PerCorePlugin;
 
 // Quantum-related parameters
-static QUAMTUM_MANAGER: OnceLock<QuantumManager> = OnceLock::new();
-pub const QUAMTUM: usize = 50 * 1024;
 pub const I_COUNT_AS_TIME_CORE_ID: u8 = 0;
 
 #[no_mangle]
@@ -45,8 +42,7 @@ unsafe extern "C" fn vcpu_mem_access(
             cpu_idx,
             &QEMUMemoryInfo(info),
             vaddr,
-            user_data,
-            QUAMTUM_MANAGER.get().unwrap(),
+            user_data
         );
     }
 }
@@ -59,7 +55,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     let core_id = vcpu_index as u8;
     if INSTRUMENTED_CORE_LIST.contains(&core_id) {
         let mut x = PLUGIN.get().unwrap().hierarchies(core_id);
-        x.on_instruction_execution(vcpu_index, user_data, QUAMTUM_MANAGER.get().unwrap());
+        x.on_instruction_execution(vcpu_index, user_data);
     }
 }
 
@@ -122,18 +118,6 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
     PLUGIN.set(PluginType::new(&INSTRUMENTED_CORE_LIST)).unwrap();
-
-    QUAMTUM_MANAGER
-        .set(QuantumManager::new(INSTRUMENTED_CORE_LIST.len()))
-        .unwrap();
-
-    // Start the quantum thread
-    thread::spawn(|| QUAMTUM_MANAGER.get().unwrap().quantum_thread_exec());
-
-    thread::spawn(|| loop {
-        thread::sleep(std::time::Duration::from_secs(10));
-        println!("Quantum: {}", QUAMTUM_MANAGER.get().unwrap().get_turns());
-    });
 
     return 0;
 }

@@ -3,7 +3,7 @@ use std::sync::Barrier;
 use crate::{cache::TimestampCache, mh::pbb_metadata::PBBMetadata, plugin::QEMUPluginPerCoreActor};
 use crossbeam_channel::{Receiver, Sender};
 
-use super::{quantum::QuantumManager, ts_model::TimestampMemoryHierarchy};
+use super::ts_model::TimestampMemoryHierarchy;
 
 #[derive(Debug)]
 pub struct TimestampSingleCoreMemoryHierarchy<
@@ -15,14 +15,8 @@ pub struct TimestampSingleCoreMemoryHierarchy<
     pub private_cache: TimestampCache<P_A, P_S>,
     pub local_shared_cache: TimestampCache<S_A, S_S>,
 
-    // icount for each core
+    // icount for each core, for the time calculation.
     pub i_count: usize,
-
-    // This variable will be added to i_count so that the instructions from last pBB increases the i_count.
-    // By doing this, we don't have to instrument every instruction to increase the i_count.
-    pub i_count_from_last_pbb: usize,
-
-    pub quantum_budget: usize,
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -33,8 +27,6 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             private_cache: TimestampCache::new(),
             local_shared_cache: TimestampCache::new(),
             i_count: 0,
-            i_count_from_last_pbb: 0,
-            quantum_budget: crate::QUAMTUM,
         };
     }
 
@@ -70,37 +62,12 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         &mut self,
         cpu_idx: u32,
         metadata: *mut std::ffi::c_void,
-        quantum_manager: &QuantumManager,
     ) {
         // First of all, update the i_count due to the advancement of the last instruction.
-        self.i_count += self.i_count_from_last_pbb;
-
-        if cpu_idx as u8 == crate::I_COUNT_AS_TIME_CORE_ID {
-            unsafe {
-                // the time is updated here. Now each instruction takes 1ns.
-                crate::qemu_api::qemu_plugin_advance_vm_time(self.i_count_from_last_pbb as i64);
-            }
-        }
-
-        if self.quantum_budget >= self.i_count_from_last_pbb {
-            self.quantum_budget -= self.i_count_from_last_pbb;
-        } else {
-            // DMN, we have to wait, and then update the quantum.
-            // Set this flag so that other thread know you are doing some synchronization.
-            crate::qemu_api::qemu_plugin_set_running_flag(false);
-            quantum_manager.vcpu_wait();
-
-            // Release this flag now.
-            crate::qemu_api::qemu_plugin_set_running_flag(true);
-
-            // After the barrier, we then update the quantum.
-            self.quantum_budget += crate::QUAMTUM;
-            self.quantum_budget -= self.i_count_from_last_pbb;
-        }
 
         // Now, get the metadata of this turn.
         let metadata = PBBMetadata::from(metadata as usize);
-        self.i_count_from_last_pbb = metadata.instruction_count as usize;
+        self.i_count += metadata.instruction_count as usize;
 
         // Update the cache by instruction access.
         self.access_memory(self.i_count, metadata.physical_addr, true, false);
@@ -112,7 +79,6 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         info: &crate::plugin::QEMUMemoryInfo,
         vaddr: u64,
         user_data: *mut std::ffi::c_void,
-        quantum_manager: &QuantumManager,
     ) {
         let bias = user_data as usize;
         match info.translate(vaddr) {
@@ -126,6 +92,7 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
             }
             None => {
                 // This is a device access, thus ignored.
+                // TODO: We should handle this case if the device is accessing the cache.
             }
         }
     }
