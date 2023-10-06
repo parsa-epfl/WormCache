@@ -54,12 +54,14 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         }
     }
 
-    pub fn get_icounts(&self) -> Vec<usize> {
-        return self
-            .hierarchies
-            .iter()
-            .map(|m| m.get_icount())
-            .collect();
+    pub fn get_icounts(&self) -> [usize; crate::CORE_COUNT] {
+        let mut res: [usize; crate::CORE_COUNT] = [0; crate::CORE_COUNT];
+
+        // too stupid, and I have to use for loop here, because map cannot be collected into an array.
+        for (i, m) in self.hierarchies.iter().enumerate() {
+            res[i] = m.get_icount();
+        }
+        return res;
     }
 
     pub fn render_mtr<const S: usize>(&self) -> MemoryTimestampRecordCollection<S> {
