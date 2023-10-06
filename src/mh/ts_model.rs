@@ -3,7 +3,6 @@ use std::ffi::c_void;
 use std::fs;
 use std::io::prelude::*;
 
-
 use super::mtr::MemoryTimestampRecordCollection;
 use super::pbb_metadata::PBBMetadata;
 use super::ts_per_core::TimestampSingleCoreMemoryHierarchy;
@@ -12,7 +11,7 @@ use crate::checkpoint::{
     CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, PrivateCacheParameters, SerializedCache,
 };
 use crate::plugin::PerInstructionInstrumentation;
-use crate::{QEMUPlugin, INSTRUMENTED_CORE_LIST};
+use crate::QEMUPlugin;
 
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
@@ -25,40 +24,48 @@ pub struct TimestampMemoryHierarchy<
     const S_A: usize,
     const S_S: usize,
 > {
-    hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
+    // hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
+    hierarchies: [TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>; crate::CORE_COUNT],
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
 {
-    pub fn new(core_ids: &[u8]) -> Self {
-        // Start a thread here.
-        let hierarchies = HashMap::from_iter(
-            core_ids
-                .iter()
-                .map(|&id| (id, TimestampSingleCoreMemoryHierarchy::new())),
-        );
-        return TimestampMemoryHierarchy { hierarchies };
+    pub fn new() -> Self {
+        return TimestampMemoryHierarchy {
+            hierarchies: std::array::from_fn(|_| TimestampSingleCoreMemoryHierarchy::new()),
+        };
     }
 
     pub fn hierarchies(
         &self,
-        core_id: u8
+        core_id: u8,
     ) -> &mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S> {
         // This function can be only called from each vCPU, and it meets the following requirement:
         // - Each thread has its unique core_id (no cases for two thread access the same hierarchy)
-        // - During reconstruction, all other threads must stop. 
+        // - During reconstruction, all other threads must stop.
+        assert!(core_id < crate::CORE_COUNT as u8);
         unsafe {
-            let target_ref = self.hierarchies.get(&core_id).unwrap() as *const TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
-            let target_ref = target_ref as *mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
+            let target_ref = &self.hierarchies[core_id as usize]
+                as *const TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
+            let target_ref =
+                target_ref as *mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
             return &mut *target_ref;
         }
     }
 
+    pub fn get_icounts(&self) -> Vec<usize> {
+        return self
+            .hierarchies
+            .iter()
+            .map(|m| m.get_icount())
+            .collect();
+    }
+
     pub fn render_mtr<const S: usize>(&self) -> MemoryTimestampRecordCollection<S> {
         let mut res = MemoryTimestampRecordCollection::new();
-        for (core_id, per_core_record) in self.hierarchies.iter() {
-            res.absorb_ts_cache(*core_id, &per_core_record.local_shared_cache);
+        for (core_id, per_core_record) in self.hierarchies.iter().enumerate() {
+            res.absorb_ts_cache(core_id as u8, &per_core_record.local_shared_cache);
         }
         return res;
     }
@@ -70,7 +77,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         let mut merging_sets: [HashMap<usize, TsCacheBlock>; S_S] =
             std::array::from_fn(|_| HashMap::new());
 
-        for (core_id, per_core_record) in self.hierarchies.iter() {
+        for  per_core_record in self.hierarchies.iter() {
             // putting its private cache to the merging sets.
             for (idx, set) in per_core_record.private_cache.sets.iter().enumerate() {
                 for (block_id, ts, status) in set.iter() {
@@ -131,11 +138,11 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         let mut l1i = HashMap::new();
         let mut l1d = HashMap::new();
         let mut l2 = HashMap::new();
-        for core_id in INSTRUMENTED_CORE_LIST.iter() {
-            let mut pri = mtr.render_private_caches(*core_id, param).into_iter();
-            l1i.insert(*core_id, pri.next().unwrap());
-            l1d.insert(*core_id, pri.next().unwrap());
-            l2.insert(*core_id, pri.next().unwrap());
+        for core_id in 0..crate::CORE_COUNT as u8 {
+            let mut pri = mtr.render_private_caches(core_id, param).into_iter();
+            l1i.insert(core_id, pri.next().unwrap());
+            l1d.insert(core_id, pri.next().unwrap());
+            l2.insert(core_id, pri.next().unwrap());
         }
 
         return MemoryHierarchyCheckPoint {
@@ -221,6 +228,5 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         let mut output = fs::File::create("./dumped.json").unwrap();
 
         output.write_all(exported_json.as_bytes()).unwrap();
-        
     }
 }

@@ -1,7 +1,4 @@
-use std::sync::Barrier;
-
 use crate::{cache::TimestampCache, mh::pbb_metadata::PBBMetadata, plugin::QEMUPluginPerCoreActor};
-use crossbeam_channel::{Receiver, Sender};
 
 use super::ts_model::TimestampMemoryHierarchy;
 
@@ -41,7 +38,6 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                     .peek(block_id, is_instruction, is_store, ts);
             }
             crate::cache::CacheReturnResult::Hit => {}
-            // TODO: We don't know the permission of evicted caches.
             crate::cache::CacheReturnResult::MissWithEviction(blk, is_instruction) => {
                 self.local_shared_cache
                     .record(blk, is_instruction, false, ts);
@@ -50,6 +46,10 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                 self.local_shared_cache.record(blk, false, true, ts);
             }
         }
+    }
+
+    pub fn get_icount(&self) -> usize {
+        return self.i_count;
     }
 }
 
