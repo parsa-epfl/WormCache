@@ -55,8 +55,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                     .record(blk, is_instruction, false, ts);
             }
             crate::cache::CacheReturnResult::MissWithWriteBack(blk) => {
-                self.local_shared_cache
-                    .record(blk, false, true, ts);
+                self.local_shared_cache.record(blk, false, true, ts);
             }
         }
     }
@@ -76,6 +75,13 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
         // First of all, update the i_count due to the advancement of the last instruction.
         self.i_count += self.i_count_from_last_pbb;
 
+        if cpu_idx as u8 == crate::I_COUNT_AS_TIME_CORE_ID {
+            unsafe {
+                // the time is updated here. Now each instruction takes 1ns.
+                crate::qemu_api::qemu_plugin_advance_vm_time(self.i_count_from_last_pbb as i64);
+            }
+        }
+
         if self.quantum_budget >= self.i_count_from_last_pbb {
             self.quantum_budget -= self.i_count_from_last_pbb;
         } else {
@@ -86,7 +92,6 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
 
             // Release this flag now.
             crate::qemu_api::qemu_plugin_set_running_flag(true);
-
 
             // After the barrier, we then update the quantum.
             self.quantum_budget += crate::QUAMTUM;

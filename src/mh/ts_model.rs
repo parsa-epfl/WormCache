@@ -205,18 +205,18 @@ unsafe impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usi
 
     unsafe fn on_qemu_exit(&self) {
         let private_param = PrivateCacheParameters {
-            l1i_sets: 128,
+            l1i_sets: 1,
             l1i_associativity: 8,
-            l1d_sets: 128,
+            l1d_sets: 1,
             l1d_associativity: 8,
-            l2_sets: 2048,
-            l2_associativity: 16,
+            l2_sets: P_S,
+            l2_associativity: P_A,
         };
 
         let mtr = self.render_mtr::<P_S>();
         let caches = self.render_cache_hierarchy(&mtr, &private_param);
 
-        let exported_json = serde_json::to_string(&caches).unwrap();
+        let exported_json = serde_json::to_string_pretty(&caches).unwrap();
 
         let mut output = fs::File::create("./dumped.json").unwrap();
 

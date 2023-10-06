@@ -33,7 +33,8 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
         return true;
     }
 
-    const check_param: () = assert!(Self::check_generics());
+    #[allow(unused_variables)]
+    const CHECK_PARAM: () = assert!(Self::check_generics());
 
     pub fn new() -> Self {
         Self::check_generics();
