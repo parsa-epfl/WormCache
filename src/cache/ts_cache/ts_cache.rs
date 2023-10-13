@@ -38,7 +38,11 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
 
     pub fn new() -> Self {
         return TimestampCache::<A, S> {
-            sets: Box::new(std::array::from_fn(|_| TimestampCacheSet::new())),
+            // Man, I have to use unsafe here, because I cannot allocate large array in Box.
+            sets: Vec::from_iter((0..S).map(|_| TimestampCacheSet::<A>::new()))
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
             warmed_count: 0,
         };
     }
@@ -70,7 +74,7 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
         block_id: usize,
         is_instruction: bool,
         is_write: bool,
-        ts: usize
+        ts: usize,
     ) -> bool {
         let set_number = block_id & (S - 1);
         return self.sets[set_number].peek(block_id, ts, is_instruction, is_write);

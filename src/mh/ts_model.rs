@@ -11,7 +11,7 @@ use crate::checkpoint::{
     CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, PrivateCacheParameters, SerializedCache,
 };
 use crate::plugin::PerInstructionInstrumentation;
-use crate::QEMUPlugin;
+use crate::{QEMUPlugin, CORE_COUNT};
 
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
@@ -25,7 +25,7 @@ pub struct TimestampMemoryHierarchy<
     const S_S: usize,
 > {
     // hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
-    hierarchies: [TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>; crate::CORE_COUNT],
+    hierarchies: Box<[TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>; CORE_COUNT]>,
 }
 
 impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -33,7 +33,13 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
 {
     pub fn new() -> Self {
         return TimestampMemoryHierarchy {
-            hierarchies: std::array::from_fn(|_| TimestampSingleCoreMemoryHierarchy::new()),
+            // hierarchies: Box::new([TimestampSingleCoreMemoryHierarchy::new(); crate::CORE_COUNT]),
+            hierarchies: Vec::from_iter(
+                (0..CORE_COUNT).map(|_| TimestampSingleCoreMemoryHierarchy::new()),
+            )
+            .into_boxed_slice()
+            .try_into()
+            .unwrap(),
         };
     }
 
@@ -76,10 +82,10 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         &self,
         mtr: &MemoryTimestampRecordCollection<S>,
     ) -> SerializedCache {
-        let mut merging_sets: [HashMap<usize, TsCacheBlock>; S_S] =
-            std::array::from_fn(|_| HashMap::new());
+        let mut merging_sets: Vec<HashMap<usize, TsCacheBlock>> =
+            Vec::from_iter((0..S).map(|_| HashMap::new()));
 
-        for  per_core_record in self.hierarchies.iter() {
+        for per_core_record in self.hierarchies.iter() {
             // putting its private cache to the merging sets.
             for (idx, set) in per_core_record.private_cache.sets.iter().enumerate() {
                 for (block_id, ts, status) in set.iter() {

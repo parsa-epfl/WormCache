@@ -3,6 +3,7 @@ use crate::{cache::TimestampCache, mh::pbb_metadata::PBBMetadata, plugin::QEMUPl
 use super::ts_model::TimestampMemoryHierarchy;
 
 #[derive(Debug)]
+#[repr(align(64))]
 pub struct TimestampSingleCoreMemoryHierarchy<
     const P_A: usize, // associativity of the private cache
     const P_S: usize, // set number of the private cache

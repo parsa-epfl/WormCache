@@ -18,10 +18,10 @@ use vtime::VirtualTimeContext;
 
 /// TODO: Store the following variable inside the PluginType.
 /// TODO: Make this data strcture as a constant incicating its length.
-pub const CORE_COUNT: usize = 8;
+pub const CORE_COUNT: usize = 16;
 
 // Parameter for the memory hierarchy.
-pub type PluginType = TimestampMemoryHierarchy<8, 16, 16, 32>;
+pub type PluginType = TimestampMemoryHierarchy<16, 1024, 16, { 1024 * 1024 }>;
 static PLUGIN: Lazy<PluginType> = Lazy::new(|| PluginType::new());
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(VirtualTimeContext::new()));
@@ -46,7 +46,7 @@ unsafe extern "C" fn vcpu_mem_access(
     user_data: *mut ffi::c_void, // should be NULL.
 ) {
     let core_id = cpu_idx as u8;
-    let mut x = PLUGIN.hierarchies(core_id);
+    let x = PLUGIN.hierarchies(core_id);
     x.on_memory_access(cpu_idx, &QEMUMemoryInfo(info), vaddr, user_data);
 }
 
@@ -56,13 +56,13 @@ unsafe extern "C" fn vcpu_insn_exec(
     user_data: *mut ffi::c_void, // it is basically its physical address.
 ) {
     let core_id = vcpu_index as u8;
-    let mut x = PLUGIN.hierarchies(core_id);
+    let x = PLUGIN.hierarchies(core_id);
     x.on_instruction_execution(vcpu_index, user_data);
 }
 
 #[no_mangle]
 unsafe extern "C" fn vcpu_tb_trans(
-    id: qemu_api::qemu_plugin_id_t,
+    _: qemu_api::qemu_plugin_id_t,
     tb: *mut qemu_api::qemu_plugin_tb,
 ) {
     let wrapped_tb = plugin::QEMUPluginBasicBlock(tb);
@@ -114,6 +114,10 @@ unsafe extern "C" fn qemu_plugin_install(
     _: i32,
     _: *const *const u8,
 ) -> i32 {
+
+    // make sure that the number of vCPUs is equal to the core count.
+    assert_eq!(qemu_plugin_n_vcpus(), CORE_COUNT as i32, "Unmatched core count, thus exit.");
+
     qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
@@ -122,7 +126,7 @@ unsafe extern "C" fn qemu_plugin_install(
     // set up a thread to periodically print the icount of each core.
     std::thread::spawn(|| {
         // open a csv file to store the icounts.
-        let mut file = std::fs::File::create("icount.csv").unwrap();
+        let mut file = std::fs::File::create("cache-icount.csv").unwrap();
         // write the header.
         // file.write_fmt(format_args!("ts")).unwrap();
         // for i in 0..CORE_COUNT {
