@@ -1030,10 +1030,6 @@ extern "C" {
     pub fn qemu_plugin_advance_vm_time(advanced_value: i64);
 }
 extern "C" {
-    #[doc = " qemu_plugin_print_each_core_icount() - print icount of each core.\n\n Debug function for external plugin."]
-    pub fn qemu_plugin_print_each_core_icount();
-}
-extern "C" {
     #[doc = " qemu_plugin_register_virtual_time_cb() - register the method for CPU to calculate the time.\n\n @callback: The callback to provide virtual time"]
     pub fn qemu_plugin_register_virtual_time_cb(
         callback: ::std::option::Option<unsafe extern "C" fn() -> i64>,
