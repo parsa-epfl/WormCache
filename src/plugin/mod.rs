@@ -8,7 +8,6 @@ pub use qemu_wrapper::QEMUPluginBasicBlockIterator;
 pub use qemu_wrapper::QEMUPluginInstruction;
 pub use qemu_wrapper::QEMUMemoryInfo;
 
-use crate::mh::quantum::QuantumManager;
 
 #[derive(Debug)]
 pub struct PerInstructionInstrumentation {
@@ -23,8 +22,7 @@ pub unsafe trait QEMUPluginPerCoreActor {
     unsafe fn on_instruction_execution(
         &mut self, 
         cpu_idx: u32, 
-        user_data: *mut ffi::c_void,
-        quantum_manager: &QuantumManager
+        user_data: *mut ffi::c_void
     );
     
     unsafe fn on_memory_access(
@@ -32,8 +30,7 @@ pub unsafe trait QEMUPluginPerCoreActor {
         cpu_idx: u32,
         info: &QEMUMemoryInfo,
         vaddr: u64,
-        user_data: *mut ffi::c_void,
-        quantum_manager: &QuantumManager
+        user_data: *mut ffi::c_void
     );
 }
 

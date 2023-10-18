@@ -1,6 +1,13 @@
 use core::panic;
 
-use crate::cache::CacheReturnResult;
+// The return result of accessing a cache line.
+pub enum CacheReturnResult {
+    Miss,
+    Hit,
+    MissWithEviction(usize, bool), // (block_id, is_instruction)
+    MissWithWriteBack(usize), // (block_id)
+}
+
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TimestampCacheLineStatus {
@@ -40,9 +47,11 @@ impl<const A: usize> SetAccessResult<A> {
     pub fn is_hit(&self) -> bool {
         return self.0 != A;
     }
+
     pub fn is_miss(&self) -> bool {
         return self.0 == A;
     }
+    
     pub fn index(&self) -> usize {
         return self.0;
     }
@@ -75,7 +84,7 @@ impl<const A: usize> TimestampCacheSet<A> {
             .find(|(_, v)| {
                 return (*(v.0) == block_id) && (*v.1 != TimestampCacheLineStatus::Invalid);
             }) {
-            Some((idx, v)) => SetAccessResult::new(idx),
+            Some((idx, _)) => SetAccessResult::new(idx),
             None => SetAccessResult::new_miss(),
         };
     }
@@ -109,7 +118,7 @@ impl<const A: usize> TimestampCacheSet<A> {
         }
 
         // Well, now we have to find a victim. We try to first find an invalid place.
-        match self.status.iter().enumerate().find(|(idx, status)| {
+        match self.status.iter().enumerate().find(|(_, status)| {
             return (**status) == TimestampCacheLineStatus::Invalid;
         }) {
             Some((idx, _)) => {
