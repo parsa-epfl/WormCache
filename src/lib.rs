@@ -50,6 +50,7 @@ unsafe extern "C" fn vcpu_insn_exec(
 }
 
 #[cfg(target_pointer_width = "64")]
+#[derive(Debug)]
 pub struct PluginFetchBlockContext {
     /// The virtual address of the first instruction.
     pub va: usize,
@@ -76,7 +77,7 @@ unsafe extern "C" fn vcpu_tb_trans(
     let mut block_id = vec![];
     for i in 0..n_instruction {
         let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
-        block_id.push(qemu_api::qemu_plugin_insn_haddr(inst) as usize);
+        block_id.push(qemu_api::qemu_plugin_insn_haddr(inst) as usize >> CACHE_LINE_SIZE.trailing_zeros());
     }
 
     let fb_info = util::find_fetch_block_from_block_id_sequence(block_id);

@@ -1,5 +1,6 @@
 use crate::CORE_COUNT;
 
+#[derive(Debug)]
 pub struct ICountPlugin {
     data: [u64; CORE_COUNT * 8],
 }
@@ -17,9 +18,9 @@ impl ICountPlugin {
         // DMN, some dirty technology should be used.
         // I guarantee that there is no contention.
         unsafe {
-            let ptr = self.data.as_ptr().add((core_id * 8) as usize);
-            let ptr = ptr as *mut u64;
-            *ptr += count as u64;
+            let pos = &self.data[core_id as usize * 8] as *const u64 as *mut u64;
+            // volatile load and store is necessary, because the compiler will optimize the code.
+            pos.write_volatile(pos.read_volatile() + count as u64);
         }
     }
 
