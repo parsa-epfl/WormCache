@@ -15,13 +15,6 @@ use std::collections::HashMap;
 use std::ffi;
 use std::sync::Mutex;
 
-pub fn get_real_time() -> u128 {
-    return std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u128;
-}
-
 #[no_mangle]
 pub static qemu_plugin_version: u32 = qemu_api::QEMU_PLUGIN_VERSION;
 
