@@ -1,13 +1,14 @@
-use crate::CORE_COUNT;
-use crate::PluginType;
 use crate::qemu_api::qemu_plugin_cpu_is_tick_enabled;
 use crate::qemu_api::qemu_plugin_get_snapshoted_vm_clock;
+use crate::CORE_COUNT;
 
 use std::time::SystemTime;
 
+use super::icount::ICountPlugin;
+
 pub struct VirtualTimeContext {
     last_real_time: i128,
-    last_icounts: [usize; CORE_COUNT],
+    last_icounts: [u64; CORE_COUNT],
     advanced_vclock: i64,
 }
 
@@ -20,7 +21,7 @@ impl VirtualTimeContext {
         };
     }
 
-    pub fn calculate_virtual_time(&mut self, plugin: &PluginType) -> i64 {
+    pub fn calculate_virtual_time(&mut self, icount: &ICountPlugin) -> i64 {
         // 1. get real timestamp in nanosecond
         let real_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -28,7 +29,7 @@ impl VirtualTimeContext {
             .as_nanos() as i128;
 
         // 2. get the icounts from each core
-        let icounts = plugin.get_icounts();
+        let icounts = icount.get_icounts();
 
         // 3. calculate the potential update
         unsafe {
@@ -55,17 +56,22 @@ impl VirtualTimeContext {
         }
 
         // 4. update the context with the new icounts and the real time.
-        self.last_icounts = icounts;
+        self.last_icounts.copy_from_slice(&icounts);
         self.last_real_time = real_time;
-        
+
         // 5. return the calculated virtual time
         // TODO: this way to calculate the time has bug when exporting multiple checkpoints
         // Because qb.qemu_plugin_get_snapshoted_vm_clock() is updated a checkpoint is exported.
         // I didn't see a better solution. Maybe storing this value inside this plugin?
-            
+
         unsafe {
             return self.advanced_vclock + qemu_plugin_get_snapshoted_vm_clock();
         }
     }
-}
 
+    pub fn reset(&mut self) {
+        self.last_real_time = 0;
+        self.last_icounts = [0; CORE_COUNT];
+        self.advanced_vclock = 0;
+    }
+}

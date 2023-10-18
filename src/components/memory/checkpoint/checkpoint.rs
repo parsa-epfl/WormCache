@@ -11,7 +11,9 @@ pub struct PrivateCacheParameters {
     pub l1d_associativity: usize,
 
     pub l2_sets: usize,
-    pub l2_associativity: usize
+    pub l2_associativity: usize,
+
+    pub directory_associativity: usize
 }
 
 

@@ -1,7 +1,7 @@
-use crate::cache::ts_set::TimestampCacheLineStatus;
-use crate::cache::TimestampCache;
-use crate::checkpoint::ts_checkpoint::{LRUPrioritizing, TsCacheBlock, TsDirectoryBlock};
-use crate::checkpoint::{
+use super::TimestampCacheLineStatus;
+use super::TimestampCache;
+use super::checkpoint::ts_checkpoint::{LRUPrioritizing, TsCacheBlock, TsDirectoryBlock};
+use super::checkpoint::{
     CacheBlock, CacheBlockState, DirectoryBlock, PrivateCacheParameters, SerializedCache,
     SerializedDirectory,
 };
@@ -73,7 +73,6 @@ pub struct MemoryTimestampRecordCollection<const S: usize> {
 
 impl<const S: usize> MemoryTimestampRecordCollection<S> {
     const _SET_COUNT_CHECKER: () = assert!((S & (S - 1)) == 0);
-    const S_LOG2: usize = S.trailing_zeros() as usize;
 
     pub fn new() -> Self {
         return Self {

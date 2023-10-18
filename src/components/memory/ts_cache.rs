@@ -2,8 +2,6 @@
  * This module defines the private LLC used for per-core LLC warmup.
  * It contains two information for each block: the timestamp, and the dirty bits
  */
-use crate::cache::CacheReturnResult;
-use super::ts_set::TimestampCacheSet;
 
 #[derive(Clone)]
 pub struct TimestampCacheMetaData {
@@ -14,14 +12,14 @@ pub struct TimestampCacheMetaData {
 #[derive(Debug)]
 pub struct TimestampCache<const A: usize, const S: usize> {
     // A: associativity, S: sets
-    pub sets: Box<[TimestampCacheSet<A>; S]>,
+    pub sets: Box<[super::TimestampCacheSet<A>; S]>,
     pub warmed_count: usize,
 }
 
 impl<const A: usize, const S: usize> TimestampCache<A, S> {
-    pub const SET_SHIFT_COUNT: usize = S.trailing_zeros() as usize;
+    pub const _SET_SHIFT_COUNT: usize = S.trailing_zeros() as usize;
 
-    const fn check_generics() -> bool {
+    const fn _check_generics() -> bool {
         if (S & (S - 1)) != 0 {
             return false;
         }
@@ -34,12 +32,12 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
     }
 
     #[allow(unused_variables)]
-    const CHECK_PARAM: () = assert!(Self::check_generics());
+    const _CHECK_PARAM: () = assert!(Self::_check_generics());
 
     pub fn new() -> Self {
         return TimestampCache::<A, S> {
             // Man, I have to use unsafe here, because I cannot allocate large array in Box.
-            sets: Vec::from_iter((0..S).map(|_| TimestampCacheSet::<A>::new()))
+            sets: Vec::from_iter((0..S).map(|_| super::TimestampCacheSet::<A>::new()))
                 .into_boxed_slice()
                 .try_into()
                 .unwrap(),
@@ -53,7 +51,7 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
         is_instruction: bool,
         is_write: bool,
         ts: usize,
-    ) -> CacheReturnResult {
+    ) -> super::CacheReturnResult {
         let set_number = block_id & (S - 1);
         let set = &mut self.sets[set_number];
 
