@@ -2,13 +2,15 @@ pub mod bp;
 pub mod parameter;
 pub use parameter::*;
 
-mod components;
+pub mod components;
 mod qemu_api;
 mod util;
 
 // Plugin
-use components::memory;
-use components::virtual_time;
+use components::memory::MemoryPlugin;
+use components::trace::TracePlugin;
+use components::virtual_time::VirtualTimePlugin;
+use components::Plugin;
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -31,22 +33,28 @@ unsafe extern "C" fn vcpu_mem_access(
     if !is_device {
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
         let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
-        memory::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);
-        virtual_time::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);
+
+        MemoryPlugin::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);
+        VirtualTimePlugin::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);
+        TracePlugin::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);
     } else {
         // TODO: check the I/O event
     }
-
 }
 
 #[no_mangle]
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
-    user_data: *mut ffi::c_void, // it is basically its physical address.
+    user_data: *mut ffi::c_void, // it is basically its ph
+                                 // MemoryPlugin::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);
+                                 // VirtualTimePlugin::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);
+                                 // TracePlugin::on_data_cacheline_touched(cpu_idx, vaddr as usize, paddr, is_store);ysical address.
 ) {
     let ctx = &*(user_data as *const PluginFetchBlockContext);
-    memory::on_instruction_cacheline_touched(vcpu_idx, ctx);
-    virtual_time::on_instruction_cacheline_touched(vcpu_idx, ctx);
+
+    MemoryPlugin::on_instruction_cacheline_touched(vcpu_idx, ctx);
+    VirtualTimePlugin::on_instruction_cacheline_touched(vcpu_idx, ctx);
+    TracePlugin::on_instruction_cacheline_touched(vcpu_idx, ctx);
 }
 
 #[cfg(target_pointer_width = "64")]
@@ -77,7 +85,9 @@ unsafe extern "C" fn vcpu_tb_trans(
     let mut block_id = vec![];
     for i in 0..n_instruction {
         let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
-        block_id.push(qemu_api::qemu_plugin_insn_haddr(inst) as usize >> CACHE_LINE_SIZE.trailing_zeros());
+        block_id.push(
+            qemu_api::qemu_plugin_insn_haddr(inst) as usize >> CACHE_LINE_SIZE.trailing_zeros(),
+        );
     }
 
     let fb_info = util::find_fetch_block_from_block_id_sequence(block_id);
@@ -129,8 +139,9 @@ unsafe extern "C" fn vcpu_tb_trans(
 
 #[no_mangle]
 unsafe extern "C" fn plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {
-    virtual_time::dump_snapshot();
-    memory::dump_snapshot();
+    MemoryPlugin::dump_snapshot();
+    VirtualTimePlugin::dump_snapshot();
+    TracePlugin::dump_snapshot();
 }
 
 #[no_mangle]
@@ -149,8 +160,9 @@ unsafe extern "C" fn qemu_plugin_install(
 
     qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
 
-    memory::init();
-    virtual_time::init();
+    MemoryPlugin::init();
+    VirtualTimePlugin::init();
+    TracePlugin::init();
 
     // // set up a thread to periodically print the icount of each core.
     // std::thread::spawn(|| {

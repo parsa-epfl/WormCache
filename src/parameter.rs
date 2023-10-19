@@ -6,7 +6,7 @@
  * 
  * Number of vCPUs of QEMU. 
  */
-pub const CORE_COUNT: usize = 16;
+pub const CORE_COUNT: usize = 4;
 
 /**
  * CACHE_LINE_SIZE

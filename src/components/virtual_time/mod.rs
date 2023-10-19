@@ -27,56 +27,62 @@ fn get_memory_ts() -> u128 {
         .as_nanos() as u128;
 }
 
-// For each component, you should provide the following functions.
-// 1. init function.
-#[inline]
-pub unsafe fn init() {
-    qemu_api::qemu_plugin_register_virtual_time_cb(Some(calculate_virtual_time));
-    std::thread::spawn(|| {
-        // open a csv file to store the icounts.
-        let mut file = std::fs::File::create("cache-icount.csv").unwrap();
-        // write the header.
-        // file.write_fmt(format_args!("ts")).unwrap();
-        // for i in 0..CORE_COUNT {
-        //     file.write_fmt(format_args!(",core{}", i)).unwrap();
-        // }
-        // file.write_fmt(format_args!("\n")).unwrap();
-        let mut head = vec!["ts".to_string()];
-        for i in 0..crate::CORE_COUNT {
-            head.push(format!("core{}", i));
+pub struct VirtualTimePlugin {}
+
+impl super::Plugin for VirtualTimePlugin {
+    fn instance() -> Self {
+        return VirtualTimePlugin {};
+    }
+
+    #[inline]
+    fn init() {
+        unsafe {
+            qemu_api::qemu_plugin_register_virtual_time_cb(Some(calculate_virtual_time));
         }
-
-        file.write_fmt(format_args!("{}\n", head.join(",")))
-            .unwrap();
-
-        loop {
-            let icounts = ICOUNT_PLUGIN.get_icounts();
-            let mut lines = vec![];
-            lines.push(format!("{}", get_memory_ts()));
+        std::thread::spawn(|| {
+            // open a csv file to store the icounts.
+            let mut file = std::fs::File::create("cache-icount.csv").unwrap();
+            // write the header.
+            // file.write_fmt(format_args!("ts")).unwrap();
+            // for i in 0..CORE_COUNT {
+            //     file.write_fmt(format_args!(",core{}", i)).unwrap();
+            // }
+            // file.write_fmt(format_args!("\n")).unwrap();
+            let mut head = vec!["ts".to_string()];
             for i in 0..crate::CORE_COUNT {
-                lines.push(format!("{}", icounts[i]));
+                head.push(format!("core{}", i));
             }
-            file.write_fmt(format_args!("{}\n", lines.join(",")))
+
+            file.write_fmt(format_args!("{}\n", head.join(",")))
                 .unwrap();
-            std::thread::sleep(std::time::Duration::from_secs(10));
-        }
-    });
-}
 
-// 2. translation function.
-#[inline]
-pub fn on_instruction_cacheline_touched(vcpu_idx: u32, context: &crate::PluginFetchBlockContext) {
-    ICOUNT_PLUGIN.increase_icount(vcpu_idx as u8, context.size);
-}
+            loop {
+                let icounts = ICOUNT_PLUGIN.get_icounts();
+                let mut lines = vec![];
+                lines.push(format!("{}", get_memory_ts()));
+                for i in 0..crate::CORE_COUNT {
+                    lines.push(format!("{}", icounts[i]));
+                }
+                file.write_fmt(format_args!("{}\n", lines.join(",")))
+                    .unwrap();
+                std::thread::sleep(std::time::Duration::from_secs(10));
+            }
+        });
+        println!("Virtual time plugin initialized.");
+    }
 
-// 3. on memory access
-#[inline]
-pub fn on_data_cacheline_touched(_: u32, _: usize, _: usize, _: bool) {}
+    #[inline]
+    fn on_instruction_cacheline_touched(vcpu_idx: u32, context: &crate::PluginFetchBlockContext) {
+        ICOUNT_PLUGIN.increase_icount(vcpu_idx as u8, context.size);
+    }
 
-// 3. the function to export checkpoint. This function is guaranteed to be serial.
-#[inline]
-pub fn dump_snapshot() {
-    // clean the icount, because the baseline is changed.
-    TIME_PLUGIN.lock().unwrap().reset();
-    ICOUNT_PLUGIN.reset();
+    #[inline]
+    fn on_data_cacheline_touched(vcpu_idx: u32, va: usize, pa: usize, is_write: bool) {}
+
+    #[inline]
+    fn dump_snapshot() {
+        // clean the icount, because the baseline is changed.
+        TIME_PLUGIN.lock().unwrap().reset();
+        ICOUNT_PLUGIN.reset();
+    }
 }
