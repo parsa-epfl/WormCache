@@ -68,7 +68,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
 
         for per_core_record in self.hierarchies.iter() {
             // putting its private cache to the merging sets.
-            for (idx, set) in per_core_record.private_cache.sets.iter().enumerate() {
+            for (idx, set) in per_core_record.local_shared_cache.sets.iter().enumerate() {
                 for (block_id, ts, status) in set.iter() {
                     if mtr.look_up(block_id) {
                         continue;
