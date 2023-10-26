@@ -54,7 +54,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub fn render_mtr<const S: usize>(&self) -> MemoryTimestampRecordCollection<S> {
         let mut res = MemoryTimestampRecordCollection::new();
         for (core_id, per_core_record) in self.hierarchies.iter().enumerate() {
-            res.absorb_ts_cache(core_id as u8, &per_core_record.local_shared_cache);
+            res.absorb_ts_cache(core_id as u8, &per_core_record.private_cache);
         }
         return res;
     }
