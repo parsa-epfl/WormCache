@@ -9,6 +9,7 @@ use std::fs;
 use std::io::Write;
 
 pub use checkpoint::PrivateCacheParameters;
+pub use checkpoint::CacheBlockState;
 pub use per_core_record::TimestampSingleCoreMemoryHierarchy;
 pub use ts_cache::TimestampCache;
 pub use ts_cache::TimestampCacheMetaData;

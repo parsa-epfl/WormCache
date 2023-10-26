@@ -261,6 +261,9 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
     /// Generate the private cache of a given core_id.
     /// Arguments:
     /// - core_id: which core's private cache will be reconstructed
+    /// - param: the parameters of the private cache
+    /// Returns:
+    /// - [L1i, L1d, L2]
     pub fn render_private_caches(
         &self,
         core_id: CoreId,
