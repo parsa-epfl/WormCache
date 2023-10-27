@@ -5,11 +5,9 @@ mod ts_cache;
 mod ts_model;
 mod ts_set;
 
-use std::collections::HashMap;
 use std::ffi;
 use std::fs;
 use std::io::Write;
-use std::sync::Mutex;
 
 pub use checkpoint::CacheBlockState;
 pub use checkpoint::PrivateCacheParameters;
@@ -96,9 +94,6 @@ unsafe extern "C" fn vcpu_insn_exec(
 pub struct MemoryPlugin {}
 
 impl super::Plugin for MemoryPlugin {
-    fn instance() -> Self {
-        return MemoryPlugin {};
-    }
 
     #[inline]
     fn init() {

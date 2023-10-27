@@ -81,11 +81,6 @@ pub struct TracePlugin {}
 
 impl super::Plugin for TracePlugin {
     #[inline]
-    fn instance() -> Self {
-        return Self {};
-    }
-
-    #[inline]
     fn init() {
         // make sure the file is initialized.
         TRACE_FILE.lock().unwrap().flush().unwrap();

@@ -37,10 +37,6 @@ unsafe extern "C" fn vcpu_insn_exec(
 pub struct VirtualTimePlugin {}
 
 impl super::Plugin for VirtualTimePlugin {
-    fn instance() -> Self {
-        return VirtualTimePlugin {};
-    }
-
     #[inline]
     fn init() {
         unsafe {
