@@ -1,10 +1,14 @@
+use crate::qemu_api;
+
 pub trait Plugin: Send + Sync {
     fn instance() -> Self;
     fn init();
-    fn on_instruction_cacheline_touched(vcpu_idx: u32, context: &crate::PluginFetchBlockContext);
-    fn on_data_cacheline_touched(vcpu_idx: u32, va: usize, pa: usize, is_write: bool);
+
+    unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb);
+    
     fn dump_snapshot();
 }
+
 
 pub mod virtual_time;
 pub mod memory;
