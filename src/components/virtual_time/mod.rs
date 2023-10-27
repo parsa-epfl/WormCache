@@ -12,7 +12,6 @@ static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
 
 static ICOUNT_PLUGIN: Lazy<icount::ICountPlugin> = Lazy::new(|| icount::ICountPlugin::new());
 
-#[no_mangle]
 unsafe extern "C" fn calculate_virtual_time() -> i64 {
     return TIME_PLUGIN
         .lock()
@@ -28,7 +27,6 @@ fn get_memory_ts() -> u128 {
         .as_nanos() as u128;
 }
 
-#[no_mangle]
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block

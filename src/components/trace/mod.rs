@@ -38,7 +38,6 @@ pub struct PluginFetchBlockContext {
 static FETCH_BLOCK_CONTEXT_MAP: Lazy<Mutex<HashMap<usize, Box<PluginFetchBlockContext>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-#[no_mangle]
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void,
@@ -53,7 +52,6 @@ unsafe extern "C" fn vcpu_insn_exec(
     TRACE_FILE.lock().unwrap().write(&buffer).unwrap();
 }
 
-#[no_mangle]
 unsafe extern "C" fn vcpu_mem_access(
     cpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,

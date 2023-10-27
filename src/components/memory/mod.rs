@@ -42,7 +42,6 @@ fn get_memory_ts() -> u128 {
         .as_nanos() as u128;
 }
 
-#[no_mangle]
 unsafe extern "C" fn vcpu_mem_access(
     cpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
@@ -67,7 +66,6 @@ unsafe extern "C" fn vcpu_mem_access(
     }
 }
 
-#[no_mangle]
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     paddr: *mut ffi::c_void, // it is basically its physical address.
