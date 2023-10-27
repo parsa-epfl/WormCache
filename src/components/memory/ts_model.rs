@@ -64,7 +64,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         mtr: &MemoryTimestampRecordCollection<S>,
     ) -> SerializedCache {
         let mut merging_sets: Vec<HashMap<usize, TsCacheBlock>> =
-            Vec::from_iter((0..S).map(|_| HashMap::new()));
+            Vec::from_iter((0..crate::parameter::SHARED_CACHE_SET).map(|_| HashMap::new()));
 
         for per_core_record in self.hierarchies.iter() {
             // putting its private cache to the merging sets.
@@ -116,7 +116,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             })
             .collect();
 
-        return merging_sets.into_iter().map(|x| x.export()).collect();
+        return merging_sets.into_iter().map(|x| x.get_top_k(crate::parameter::SHARED_CACHE_ASSO).export()).collect();
     }
 
     pub fn render_cache_hierarchy<const S: usize>(
