@@ -50,6 +50,7 @@ unsafe extern "C" fn qemu_plugin_install(
     );
 
     qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
+    qemu_api::qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
     MemoryPlugin::init();
     VirtualTimePlugin::init();
