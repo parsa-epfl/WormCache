@@ -141,29 +141,8 @@ impl super::Plugin for MemoryPlugin {
         let fb_info = crate::util::find_fetch_block_from_block_id_sequence(block_id);
 
         // bind the instruction call back.
-        for (idx, size) in fb_info.into_iter() {
+        for (idx, _) in fb_info.into_iter() {
             let i = qemu_api::qemu_plugin_tb_get_insn(tb, idx);
-            // register the metadata first.
-            // let mut map = FETCH_BLOCK_CONTEXT_MAP.lock().unwrap();
-            // let ctx_ptr: *const PluginFetchBlockContext = match map.get_mut(&idx) {
-            //     Some(old_ctx) => {
-            //         old_ctx.va = qemu_api::qemu_plugin_insn_vaddr(i) as usize;
-            //         old_ctx.pa = qemu_api::qemu_plugin_insn_haddr(i) as usize;
-            //         old_ctx.size = size;
-            //         let res: *const PluginFetchBlockContext = &**old_ctx;
-            //         res
-            //     }
-            //     None => {
-            //         let ctx = Box::new(PluginFetchBlockContext {
-            //             va: qemu_api::qemu_plugin_insn_vaddr(i) as usize,
-            //             pa: qemu_api::qemu_plugin_insn_haddr(i) as usize,
-            //             size,
-            //         });
-            //         let res: *const PluginFetchBlockContext = &*ctx;
-            //         map.insert(idx, ctx);
-            //         res
-            //     }
-            // };
             qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
                 i,
                 Some(vcpu_insn_exec),
