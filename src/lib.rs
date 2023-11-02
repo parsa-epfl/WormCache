@@ -10,6 +10,7 @@ mod util;
 use components::memory::MemoryPlugin;
 use components::trace::TracePlugin;
 use components::virtual_time::VirtualTimePlugin;
+use components::marker::MarkerPlugin;
 use components::Plugin;
 
 use std::ffi;
