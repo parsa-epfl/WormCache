@@ -70,9 +70,9 @@ unsafe extern "C" fn vcpu_insn_exec(
     });
 }
 
-pub struct MemoryPlugin {}
+pub struct TouchOnePlugin {}
 
-impl super::Plugin for MemoryPlugin {
+impl super::Plugin for TouchOnePlugin {
     #[inline]
     fn init() {
         println!("Touch once plugin initialized.");

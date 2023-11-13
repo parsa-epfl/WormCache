@@ -11,6 +11,7 @@ use components::memory::MemoryPlugin;
 use components::trace::TracePlugin;
 use components::virtual_time::VirtualTimePlugin;
 use components::marker::MarkerPlugin;
+use components::touch_once::TouchOnePlugin;
 use components::Plugin;
 
 use std::ffi;
@@ -23,6 +24,7 @@ unsafe extern "C" fn plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_v
     MemoryPlugin::dump_snapshot();
     VirtualTimePlugin::dump_snapshot();
     MarkerPlugin::dump_snapshot();
+    TouchOnePlugin::dump_snapshot();
 }
 
 #[no_mangle]
@@ -34,6 +36,7 @@ unsafe extern "C" fn vcpu_tb_trans(
     MemoryPlugin::on_translation(tb);
     VirtualTimePlugin::on_translation(tb);
     MarkerPlugin::on_translation(tb);
+    TouchOnePlugin::on_translation(tb);
 }
 
 #[no_mangle]
@@ -56,6 +59,7 @@ unsafe extern "C" fn qemu_plugin_install(
     MemoryPlugin::init();
     VirtualTimePlugin::init();
     MarkerPlugin::init();
+    TouchOnePlugin::init();
 
     return 0;
 }
