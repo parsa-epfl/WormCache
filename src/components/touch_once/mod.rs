@@ -2,6 +2,8 @@ use std::ffi;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
 use crate::qemu_api;
@@ -24,12 +26,15 @@ const CONFIGURATION: [usize; 8] = [
 ];
 
 static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
-    Mutex::new(Vec::from_iter(
-        CONFIGURATION.iter().map(|&set| {
-            return (TouchedCache::new(set, 16), File::create(format!("./{}MB_touched.csv", set / 1024)).unwrap());
-        }),
-    ))
+    Mutex::new(Vec::from_iter(CONFIGURATION.iter().map(|&set| {
+        return (
+            TouchedCache::new(set, 16),
+            File::create(format!("./{}MB_touched.csv", set / 1024)).unwrap(),
+        );
+    })))
 });
+
+static ICOUNT: AtomicUsize = AtomicUsize::new(0);
 
 fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -53,7 +58,13 @@ unsafe extern "C" fn vcpu_mem_access(
 
         PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
             if cache.access(paddr) {
-                file.write_fmt(format_args!("{},{}\n", get_memory_ts(), cache.get_fully_touched_set_count())).unwrap();
+                file.write_fmt(format_args!(
+                    "{},{},{}\n",
+                    get_memory_ts(),
+                    ICOUNT.load(Ordering::Relaxed),
+                    cache.get_fully_touched_set_count()
+                ))
+                .unwrap();
             }
         });
     } else {
@@ -67,9 +78,19 @@ unsafe extern "C" fn vcpu_insn_exec(
 ) {
     PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
         if cache.access(paddr as usize) {
-            file.write_fmt(format_args!("{},{}\n", get_memory_ts(), cache.get_fully_touched_set_count())).unwrap();
+            file.write_fmt(format_args!(
+                "{},{},{}\n",
+                get_memory_ts(),
+                ICOUNT.load(Ordering::Relaxed),
+                cache.get_fully_touched_set_count()
+            ))
+            .unwrap();
         }
     });
+}
+
+unsafe extern "C" fn icount_calcuclation(vcpu_idx: u32, icount: *mut ffi::c_void) {
+    ICOUNT.fetch_add(icount as usize, Ordering::Relaxed);
 }
 
 pub struct TouchOnePlugin {}
@@ -79,19 +100,21 @@ impl super::Plugin for TouchOnePlugin {
     fn init() {
         println!("Touch once plugin initialized.");
         unsafe {
-            assert!(qemu_api::qemu_plugin_n_vcpus() == 1, "Currently this plugin only works for single vCPU.");
+            assert!(
+                qemu_api::qemu_plugin_n_vcpus() == 1,
+                "Currently this plugin only works for single vCPU."
+            );
         }
 
         // all files should be initialized and write the first line.
         PLUGIN.lock().unwrap().iter_mut().for_each(|(_, file)| {
-            file.write_fmt(format_args!("timestamp,fully_touched_set_count\n")).unwrap();
+            file.write_fmt(format_args!("timestamp,icount,fully_touched_set_count\n"))
+                .unwrap();
         });
     }
 
     #[inline]
-    fn dump_snapshot() {
-        
-    }
+    fn dump_snapshot() {}
 
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
@@ -134,5 +157,13 @@ impl super::Plugin for TouchOnePlugin {
                 std::ptr::null_mut(),
             );
         }
+
+        // bind the icount callback.
+        qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+            qemu_api::qemu_plugin_tb_get_insn(tb, 0),
+            Some(icount_calcuclation),
+            qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+            std::ptr::null_mut(),
+        );
     }
 }
