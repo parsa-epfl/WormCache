@@ -163,7 +163,7 @@ impl super::Plugin for TouchOnePlugin {
             qemu_api::qemu_plugin_tb_get_insn(tb, 0),
             Some(icount_calcuclation),
             qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-            std::ptr::null_mut(),
+            n_instruction as *mut ffi::c_void,
         );
     }
 }
