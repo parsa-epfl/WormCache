@@ -1,0 +1,65 @@
+use std::collections::HashSet;
+
+pub struct TouchedCacheSet {
+    set: HashSet<usize>, // The block ID is in the cache.
+    capacity: usize,     // Associativity
+    fully_touched: bool, // All blocks are touched.
+}
+
+impl TouchedCacheSet {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            set: HashSet::new(),
+            capacity,
+            fully_touched: false,
+        }
+    }
+
+    // Returns true if the set is fully touched by the current touch.
+    pub fn touch(&mut self, block_id: usize) -> bool {
+        if self.fully_touched {
+            return false;
+        }
+        let previous_size = self.set.len();
+        self.set.insert(block_id);
+        if previous_size == (self.capacity - 1) && self.set.len() == self.capacity {
+            self.fully_touched = true;
+            return true;
+        }
+        return false;
+    }
+
+    pub fn is_fully_touched(&self) -> bool {
+        self.fully_touched
+    }
+}
+
+pub struct TouchedCache {
+    sets: Vec<TouchedCacheSet>,
+}
+
+impl TouchedCache {
+    pub fn new(sets: usize, associativity: usize) -> Self {
+        Self {
+            sets: Vec::from_iter((0..sets).map(|_| TouchedCacheSet::new(associativity))),
+        }
+    }
+
+    fn touch(&mut self, set_id: usize, block_id: usize) -> bool {
+        return self.sets[set_id].touch(block_id);
+    }
+
+    pub fn access(&mut self, pa: usize) ->  bool {
+        let block_id = pa >> (crate::parameter::CACHE_LINE_SIZE.trailing_zeros());
+        let set_index = block_id & (self.sets.len() - 1);
+        return self.touch(set_index, block_id);
+    }
+
+    pub fn is_fully_touched(&self) -> bool {
+        self.sets.iter().all(|set| set.is_fully_touched())
+    }
+
+    pub fn get_fully_touched_set_count(&self) -> usize {
+        self.sets.iter().filter(|set| set.is_fully_touched()).count()        
+    }
+}

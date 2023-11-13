@@ -13,3 +13,4 @@ pub mod virtual_time;
 pub mod memory;
 pub mod trace;
 pub mod marker;
+pub mod touch_once;
