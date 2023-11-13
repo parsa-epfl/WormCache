@@ -66,7 +66,9 @@ unsafe extern "C" fn vcpu_insn_exec(
     paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
-        file.write_fmt(format_args!("{},{}\n", get_memory_ts(), cache.get_fully_touched_set_count())).unwrap();
+        if cache.access(paddr as usize) {
+            file.write_fmt(format_args!("{},{}\n", get_memory_ts(), cache.get_fully_touched_set_count())).unwrap();
+        }
     });
 }
 

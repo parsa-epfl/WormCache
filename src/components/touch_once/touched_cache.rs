@@ -36,12 +36,14 @@ impl TouchedCacheSet {
 
 pub struct TouchedCache {
     sets: Vec<TouchedCacheSet>,
+    fully_touched_sets: usize
 }
 
 impl TouchedCache {
     pub fn new(sets: usize, associativity: usize) -> Self {
         Self {
             sets: Vec::from_iter((0..sets).map(|_| TouchedCacheSet::new(associativity))),
+            fully_touched_sets: 0
         }
     }
 
@@ -52,7 +54,11 @@ impl TouchedCache {
     pub fn access(&mut self, pa: usize) ->  bool {
         let block_id = pa >> (crate::parameter::CACHE_LINE_SIZE.trailing_zeros());
         let set_index = block_id & (self.sets.len() - 1);
-        return self.touch(set_index, block_id);
+        let res = self.touch(set_index, block_id);
+        if res {
+            self.fully_touched_sets += 1;
+        }
+        return res;
     }
 
     pub fn is_fully_touched(&self) -> bool {
@@ -60,6 +66,6 @@ impl TouchedCache {
     }
 
     pub fn get_fully_touched_set_count(&self) -> usize {
-        self.sets.iter().filter(|set| set.is_fully_touched()).count()        
+        self.fully_touched_sets        
     }
 }
