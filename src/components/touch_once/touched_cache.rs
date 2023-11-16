@@ -68,4 +68,12 @@ impl TouchedCache {
     pub fn get_fully_touched_set_count(&self) -> usize {
         self.fully_touched_sets        
     }
+
+    pub fn reset(&mut self) {
+        self.sets.iter_mut().for_each(|set| {
+            set.fully_touched = false;
+            set.set.clear();
+        });
+        self.fully_touched_sets = 0;
+    }
 }

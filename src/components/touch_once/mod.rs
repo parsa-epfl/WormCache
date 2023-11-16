@@ -65,6 +65,8 @@ unsafe extern "C" fn vcpu_mem_access(
                     cache.get_fully_touched_set_count()
                 ))
                 .unwrap();
+                // reset the cache.
+                cache.reset();
             }
         });
     } else {
@@ -85,6 +87,7 @@ unsafe extern "C" fn vcpu_insn_exec(
                 cache.get_fully_touched_set_count()
             ))
             .unwrap();
+            cache.reset();
         }
     });
 }
