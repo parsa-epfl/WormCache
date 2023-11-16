@@ -28,7 +28,7 @@ const CONFIGURATION: [usize; 8] = [
 static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
     Mutex::new(Vec::from_iter(CONFIGURATION.iter().map(|&set| {
         return (
-            TouchedCache::new(set, 16),
+            TouchedCache::new(1, 16 * set),
             File::create(format!("./{}MB_touched.csv", set / 1024)).unwrap(),
         );
     })))
