@@ -62,7 +62,7 @@ impl TouchedCache {
     }
 
     pub fn is_fully_touched(&self) -> bool {
-        self.sets.iter().all(|set| set.is_fully_touched())
+        return self.fully_touched_sets == self.sets.len();
     }
 
     pub fn get_fully_touched_set_count(&self) -> usize {
