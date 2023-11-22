@@ -15,6 +15,7 @@ pub use per_core_record::TimestampSingleCoreMemoryHierarchy;
 pub use ts_cache::TimestampCache;
 pub use ts_cache::TimestampCacheMetaData;
 pub use ts_model::TimestampMemoryHierarchy;
+pub use ts_set::CacheFlushResult;
 pub use ts_set::CacheReturnResult;
 pub use ts_set::TimestampCacheLineStatus;
 pub use ts_set::TimestampCacheSet;
