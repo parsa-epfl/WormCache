@@ -100,12 +100,14 @@ impl super::Plugin for MemoryPlugin {
         println!("Memory plugin initialized.");
 
         // I need to start a function to reason about the completion rate of LLC.
-        thread::spawn(||{
-            let beginning_ts = get_memory_ts();
+        std::thread::spawn(||{
             const LLC_SET: usize = crate::SHARED_CACHE_SET;
             // Currently this stuff only works for a fully associative cache.
             let mut new_block_count = Vec::from_iter((0..LLC_SET).map(|_| false));
             let mut warmed_count = 0;
+            // open a file to record completion time.
+            let mut output = fs::File::create("./completion_time.csv").unwrap();
+            output.write_fmt(format_args!("timestamp\n")).unwrap();
             // open a file to write the update time.
             loop {
                 for set_index in 0..LLC_SET {
@@ -121,10 +123,18 @@ impl super::Plugin for MemoryPlugin {
                         new_block_count[set_index] = true;
                         warmed_count += 1;
                         if warmed_count == LLC_SET {
-                            println!("[WormCache] All sets are warmed up. Timestamp diff: {}", get_memory_ts() - beginning_ts);
-                            return;
-                        }
+                            output.write_fmt(format_args!("{}\n", get_memory_ts())).unwrap();
+                            output.flush().unwrap();
+                            for core_id in 0..(CORE_COUNT as u8) {
+                                PLUGIN.hierarchies(core_id).clean_local_shared_cache();
+                            }
+                            warmed_count = 0;
+                            for i in 0..LLC_SET {
+                                new_block_count[i] = false;
+                            }
                     }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
                 }
             }
         });
