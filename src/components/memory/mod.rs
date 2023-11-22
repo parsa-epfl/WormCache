@@ -8,6 +8,7 @@ mod ts_set;
 use std::ffi;
 use std::fs;
 use std::io::Write;
+use std::process::exit;
 
 pub use checkpoint::CacheBlockState;
 pub use checkpoint::PrivateCacheParameters;
@@ -114,6 +115,7 @@ impl super::Plugin for MemoryPlugin {
             // Currently this stuff only works for a fully associative cache.
             let mut new_block_count = Vec::from_iter((0..LLC_SET).map(|_| false));
             let mut warmed_count = 0;
+            let mut recorded_count = 0;
             // open a file to record completion time.
             let mut output = fs::File::create("./completion_time.csv").unwrap();
             output.write_fmt(format_args!("timestamp\n")).unwrap();
@@ -128,13 +130,18 @@ impl super::Plugin for MemoryPlugin {
                         let set = PLUGIN.hierarchies(core_id).local_shared_cache.sets.get(set_index).unwrap();
                         touched_entry += set.warm_chunk_count();
                     }
-                    
+
                     if touched_entry >= crate::parameter::SHARED_CACHE_ASSO {
                         new_block_count[set_index] = true;
                         warmed_count += 1;
                         if warmed_count == LLC_SET {
                             output.write_fmt(format_args!("{}\n", get_memory_ts())).unwrap();
                             output.flush().unwrap();
+                            recorded_count += 1;
+                            if recorded_count == 40 {
+                                output.flush().unwrap();
+                                exit(0);
+                            }
                             for core_id in 0..(CORE_COUNT as u8) {
                                 PLUGIN.hierarchies(core_id).clean_local_shared_cache();
                             }
