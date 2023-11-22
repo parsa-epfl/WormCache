@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+
 use super::ts_cache::TimestampCache;
 
 #[derive(Debug)]
@@ -71,9 +72,30 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             }
         }
     }
+
+    pub fn invalidate(&mut self, block_id: usize, ts: usize) {
+        self.private_cache.invalid(block_id);
+        self.local_shared_cache.invalid(block_id);
+        self.invalid_list.insert(block_id, ts);
+        self.evicted_dirty_list.insert(block_id, ts);
+    }
+
+    pub fn get_written_back_dirty_list(&self) -> &HashMap<usize, usize> {
+        return &self.evicted_dirty_list;
+    }
+
+    pub fn get_invalid_list(&self) -> &HashMap<usize, usize> {
+        return &self.invalid_list;
+    }
+
+    pub fn clear_written_back_dirty_list(&mut self) {
+        self.evicted_dirty_list.clear();
+    }
+
     // This is a temporal function to measure the number of instructions to warming the cache.
     pub fn clean_local_shared_cache(&self) {
-        self.local_shared_cache.warmed_count.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.local_shared_cache.sets.iter().for_each(|set| {
+            set.clean();
+        });
     }
 }
-

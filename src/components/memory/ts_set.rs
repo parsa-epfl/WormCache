@@ -1,4 +1,5 @@
 use core::panic;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // The return result of accessing a cache line.
 pub enum CacheReturnResult {
@@ -69,7 +70,7 @@ pub struct TimestampCacheSet<const A: usize> {
     block_ids: [usize; A],
     ts: [usize; A], // timestamp contains order information, so no necessary for LRU bits.
     status: [TimestampCacheLineStatus; A],
-    cold_element_pointer: usize, // from which element the instruction is invalid.
+    cold_element_pointer: AtomicUsize, // from which element the instruction is invalid.
 }
 
 impl<const A: usize> TimestampCacheSet<A> {
@@ -78,7 +79,7 @@ impl<const A: usize> TimestampCacheSet<A> {
             block_ids: std::array::from_fn(|_| 0),
             ts: std::array::from_fn(|_| 0),
             status: std::array::from_fn(|_| TimestampCacheLineStatus::Invalid),
-            cold_element_pointer: 0,
+            cold_element_pointer: AtomicUsize::new(0),
         };
     }
 
@@ -115,11 +116,12 @@ impl<const A: usize> TimestampCacheSet<A> {
         };
 
         // First, we consider whether there is an empty element
-        if self.cold_element_pointer < A {
-            self.block_ids[self.cold_element_pointer] = block_id;
-            self.ts[self.cold_element_pointer] = ts;
-            self.status[self.cold_element_pointer] = potential_status;
-            self.cold_element_pointer += 1;
+        let current_poiter = self.cold_element_pointer.load(Ordering::Relaxed);
+        if current_poiter < A {
+            self.block_ids[current_poiter] = block_id;
+            self.ts[current_poiter] = ts;
+            self.status[current_poiter] = potential_status;
+            self.cold_element_pointer.fetch_add(1, Ordering::Relaxed);
 
             return None;
         }
@@ -241,11 +243,15 @@ impl<const A: usize> TimestampCacheSet<A> {
     }
 
     pub fn warm_chunk_count(&self) -> usize {
-        return self.cold_element_pointer;
+        return self.cold_element_pointer.load(Ordering::Relaxed);
     }
 
     pub fn len(&self) -> usize {
         todo!();
+    }
+
+    pub fn clean(&self) {
+        self.cold_element_pointer.store(0, Ordering::Relaxed);
     }
 }
 
@@ -263,7 +269,7 @@ impl<'a, const A: usize> Iterator for TimestampCacheSetIterator<'a, A> {
             return None;
         }
 
-        if self.current_idx >= self.base.cold_element_pointer {
+        if self.current_idx >= self.base.cold_element_pointer.load(Ordering::Relaxed) {
             return None;
         }
 

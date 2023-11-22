@@ -82,9 +82,9 @@ unsafe extern "C" fn vcpu_invalidate_cache(
     vcpu_idx: u32,
     paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    PLUGIN
-        .hierarchies(vcpu_idx as u8)
-        .invalidate(paddr as usize, get_memory_ts() as usize);
+    // PLUGIN
+    //     .hierarchies(vcpu_idx as u8)
+    //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
 // #[cfg(target_pointer_width = "64")]
@@ -128,6 +128,7 @@ impl super::Plugin for MemoryPlugin {
                         let set = PLUGIN.hierarchies(core_id).local_shared_cache.sets.get(set_index).unwrap();
                         touched_entry += set.warm_chunk_count();
                     }
+                    
                     if touched_entry >= crate::parameter::SHARED_CACHE_ASSO {
                         new_block_count[set_index] = true;
                         warmed_count += 1;
@@ -144,6 +145,9 @@ impl super::Plugin for MemoryPlugin {
                         }
                     }
                 }
+
+                
+
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         });
