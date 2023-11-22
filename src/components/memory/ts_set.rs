@@ -8,6 +8,13 @@ pub enum CacheReturnResult {
     MissWithWriteBack(usize), // (block_id)
 }
 
+#[derive(PartialEq)]
+pub enum CacheFlushResult {
+    Miss,
+    Hit(bool), // (is_instruction)
+    HitWithWriteBack
+}
+
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TimestampCacheLineStatus {
@@ -214,8 +221,23 @@ impl<const A: usize> TimestampCacheSet<A> {
         };
     }
 
-    pub fn invalid(&mut self) {
-        todo!();
+    pub fn invalid(&mut self, block_id: usize) -> CacheFlushResult {
+        let look_index = self.lookup(block_id);
+        if look_index.is_miss() {
+            return CacheFlushResult::Miss;
+        }
+
+        let status = self.status[look_index.index()];
+        self.status[look_index.index()] = TimestampCacheLineStatus::Invalid;
+        return match status {
+            TimestampCacheLineStatus::Invalid => unreachable!(),
+            TimestampCacheLineStatus::Instruction => CacheFlushResult::Hit(true),
+            TimestampCacheLineStatus::CleanData => CacheFlushResult::Hit(false),
+            TimestampCacheLineStatus::CleanInstructionAndData => {
+                CacheFlushResult::Hit(true)
+            }
+            TimestampCacheLineStatus::DirtyData => CacheFlushResult::HitWithWriteBack,
+        };
     }
 
     pub fn warm_chunk_count(&self) -> usize {
