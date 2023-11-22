@@ -72,7 +72,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         }
     }
     // This is a temporal function to measure the number of instructions to warming the cache.
-    pub fn clean_local_shared_cache(&mut self) {
+    pub fn clean_local_shared_cache(&self) {
         self.local_shared_cache.warmed_count.store(0, std::sync::atomic::Ordering::Relaxed);
     }
 }
