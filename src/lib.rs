@@ -42,7 +42,7 @@ unsafe extern "C" fn vcpu_tb_trans(
 #[no_mangle]
 unsafe extern "C" fn qemu_plugin_install(
     id: qemu_api::qemu_plugin_id_t,
-    _: *const qemu_api::qemu_info_t,
+    qemu_info: *const qemu_api::qemu_info_t,
     _: i32,
     _: *const *const u8,
 ) -> i32 {
@@ -51,6 +51,22 @@ unsafe extern "C" fn qemu_plugin_install(
         qemu_api::qemu_plugin_n_vcpus(),
         CORE_COUNT as i32,
         "Unmatched core count, thus exit."
+    );
+
+    // check system emulation cost.
+    assert_eq!(
+        qemu_info.as_ref().unwrap().system_emulation,
+        true,
+        "Only support system emulation mode, thus exit."
+    );
+
+    // check the architectural name
+    assert_eq!(
+        ffi::CStr::from_ptr(qemu_info.as_ref().unwrap().target_name)
+            .to_str()
+            .unwrap(),
+        "aarch64",
+        "Only support aarch64 architecture, thus exit."
     );
 
     qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
