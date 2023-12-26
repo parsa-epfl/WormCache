@@ -12,6 +12,7 @@ use components::trace::TracePlugin;
 use components::virtual_time::VirtualTimePlugin;
 use components::marker::MarkerPlugin;
 use components::touch_once::TouchOnePlugin;
+use components::pw_log::PageWalkLoggerPlugin;
 use components::Plugin;
 
 use std::ffi;
@@ -23,8 +24,7 @@ pub static qemu_plugin_version: u32 = qemu_api::QEMU_PLUGIN_VERSION;
 unsafe extern "C" fn plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {
     MemoryPlugin::dump_snapshot();
     VirtualTimePlugin::dump_snapshot();
-    MarkerPlugin::dump_snapshot();
-    TouchOnePlugin::dump_snapshot();
+    PageWalkLoggerPlugin::dump_snapshot();
 }
 
 #[no_mangle]
@@ -35,8 +35,7 @@ unsafe extern "C" fn vcpu_tb_trans(
 
     MemoryPlugin::on_translation(tb);
     VirtualTimePlugin::on_translation(tb);
-    MarkerPlugin::on_translation(tb);
-    TouchOnePlugin::on_translation(tb);
+    PageWalkLoggerPlugin::on_translation(tb);
 }
 
 #[no_mangle]
@@ -74,8 +73,7 @@ unsafe extern "C" fn qemu_plugin_install(
 
     MemoryPlugin::init();
     VirtualTimePlugin::init();
-    MarkerPlugin::init();
-    TouchOnePlugin::init();
+    PageWalkLoggerPlugin::init();
 
     return 0;
 }

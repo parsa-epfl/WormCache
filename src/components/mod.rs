@@ -14,3 +14,4 @@ pub mod memory;
 pub mod trace;
 pub mod marker;
 pub mod touch_once;
+pub mod pw_log;
