@@ -1055,3 +1055,19 @@ extern "C" {
     pub fn qemu_plugin_hwaddr_translate_walk_trace(hwaddr: *const qemu_plugin_hwaddr)
         -> *const u64;
 }
+extern "C" {
+    #[doc = " qemu_plugin_read_physical_memory - returns the value of the given physical memory address.\n\n This function calls cpu_physical_memory_rw to read the physical memory.\n"]
+    pub fn qemu_plugin_read_physical_memory(
+        physical_address: u64,
+        size: u64,
+        buf: *mut ::std::os::raw::c_void,
+    );
+}
+extern "C" {
+    #[doc = " qemu_plugin_write_physical_memory - write the value to the given physical memory address.\n\n This function calls the cpu_physical_memory_rw to write the physical memory.\n"]
+    pub fn qemu_plugin_write_physical_memory(
+        physical_address: u64,
+        size: u64,
+        buf: *const ::std::os::raw::c_void,
+    );
+}
