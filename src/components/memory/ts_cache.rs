@@ -3,6 +3,8 @@
  * It contains two information for each block: the timestamp, and the dirty bits
  */
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 #[derive(Clone)]
 pub struct TimestampCacheMetaData {
     pub ts: usize,
@@ -13,7 +15,7 @@ pub struct TimestampCacheMetaData {
 pub struct TimestampCache<const A: usize, const S: usize> {
     // A: associativity, S: sets
     pub sets: Box<[super::TimestampCacheSet<A>; S]>,
-    pub warmed_count: usize,
+    pub warmed_count: AtomicUsize, // This is a temporal solution.
 }
 
 impl<const A: usize, const S: usize> TimestampCache<A, S> {
@@ -41,7 +43,7 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
                 .into_boxed_slice()
                 .try_into()
                 .unwrap(),
-            warmed_count: 0,
+            warmed_count: AtomicUsize::new(0),
         };
     }
 
@@ -61,7 +63,7 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
 
         // Counter to know how much is warmed up
         if old_element_count == (A - 1) && set.warm_chunk_count() == A {
-            self.warmed_count += 1;
+            self.warmed_count.fetch_add(1, Ordering::Relaxed);
         }
 
         return res;
@@ -76,5 +78,14 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
     ) -> bool {
         let set_number = block_id & (S - 1);
         return self.sets[set_number].peek(block_id, ts, is_instruction, is_write);
+    }
+
+
+    pub fn invalid(
+        &mut self,
+        block_id: usize
+    ) -> super::CacheFlushResult {
+        let set_number = block_id & (S - 1);
+        return self.sets[set_number].invalid(block_id);
     }
 }

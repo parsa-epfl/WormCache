@@ -54,7 +54,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub fn render_mtr<const S: usize>(&self) -> MemoryTimestampRecordCollection<S> {
         let mut res = MemoryTimestampRecordCollection::new();
         for (core_id, per_core_record) in self.hierarchies.iter().enumerate() {
-            res.absorb_ts_cache(core_id as u8, &per_core_record.local_shared_cache);
+            res.absorb_ts_cache(core_id as u8, &per_core_record.private_cache);
         }
         return res;
     }
@@ -64,11 +64,11 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         mtr: &MemoryTimestampRecordCollection<S>,
     ) -> SerializedCache {
         let mut merging_sets: Vec<HashMap<usize, TsCacheBlock>> =
-            Vec::from_iter((0..S).map(|_| HashMap::new()));
+            Vec::from_iter((0..crate::parameter::SHARED_CACHE_SET).map(|_| HashMap::new()));
 
         for per_core_record in self.hierarchies.iter() {
             // putting its private cache to the merging sets.
-            for (idx, set) in per_core_record.private_cache.sets.iter().enumerate() {
+            for (idx, set) in per_core_record.local_shared_cache.sets.iter().enumerate() {
                 for (block_id, ts, status) in set.iter() {
                     if mtr.look_up(block_id) {
                         continue;
@@ -116,7 +116,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
             })
             .collect();
 
-        return merging_sets.into_iter().map(|x| x.export()).collect();
+        return merging_sets.into_iter().map(|x| x.get_top_k(crate::parameter::SHARED_CACHE_ASSO).export()).collect();
     }
 
     pub fn render_cache_hierarchy<const S: usize>(
