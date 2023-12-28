@@ -4,6 +4,7 @@ mod per_core_record;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
+mod tlb;
 
 use std::ffi;
 use std::fs;
@@ -35,7 +36,7 @@ static PLUGIN: Lazy<
     >,
 > = Lazy::new(|| TimestampMemoryHierarchy::new(crate::CORE_COUNT));
 
-fn get_memory_ts() -> u128 {
+pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .unwrap()

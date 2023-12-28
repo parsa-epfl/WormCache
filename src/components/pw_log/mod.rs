@@ -1,6 +1,8 @@
 use super::Plugin;
 use crate::qemu_api;
+use crate::arch::aarch64;
 use std::ffi::{self, c_void};
+
 
 unsafe extern "C" fn vcpu_mem_access(
     cpu_idx: u32,
@@ -17,7 +19,7 @@ unsafe extern "C" fn vcpu_mem_access(
 
         let traces = std::slice::from_raw_parts(qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler), 4);
 
-        println!("Walk trace for {:x}: ", paddr);
+        // println!("Walk trace for {:x}: ", paddr);
 
         for t in traces.iter() {
             if *t == u64::MAX {
@@ -25,19 +27,52 @@ unsafe extern "C" fn vcpu_mem_access(
             }
             let mut buf : u64 = 0;
             qemu_api::qemu_plugin_read_physical_memory(*t, 8, &mut buf as *mut u64 as *mut c_void);
-            println!("- {:x} -> {:x}", *t, buf);
+            // println!("- {:x} -> {:x}", *t, buf);
         }
+
+        let va = vaddr as u64;
+        let is_kernel = (va & 0xFFFF000000000000) != 0;
+        let ttbr0 = qemu_api::qemu_plugin_read_ttbr_el1(0);
+        let ttbr1 = qemu_api::qemu_plugin_read_ttbr_el1(1);
+        let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
+        let tcr = qemu_api::qemu_plugin_read_tcr_el1();
+
+        // println!("Data at {:x}, TTBR0: {:x}, TTBR1: {:x}, selected TTBR: {:x}, TCR: {:x}", va, ttbr0, ttbr1, ttbr, tcr);
+
+        let res = aarch64::ptw(ttbr, tcr, va, paddr_reader);
+
+        assert!(res.paddr == paddr as u64, "The physical address is not matched! {:x} vs {:x}", res.paddr, paddr);
+        assert!(res.traces == traces, "The traces are not matched!");
 
     } else {
         // TODO: check the I/O event
     }
 }
 
+fn paddr_reader(addr: u64) -> u64 {
+    // make addr aligned with 8.
+    let addr = addr & !0b111;
+    let mut buf: u64 = 0;
+    unsafe {
+        qemu_api::qemu_plugin_read_physical_memory(addr, 8, &mut buf as *mut u64 as *mut c_void);
+    }
+    return buf;
+}
+
 unsafe extern "C" fn vcpu_insn_exec(
-    vcpu_idx: u32,
-    paddr: *mut ffi::c_void, // it is basically its physical address.
+    _: u32,
+    va: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    // TODO: this part of virtual address is ignored. Should be more careful. 
+    // let va = va as u64;
+    // let is_kernel = (va & 0xFFFF000000000000) != 0;
+    // let ttbr0 = qemu_api::qemu_plugin_read_ttbr_el1(0);
+    // let ttbr1 = qemu_api::qemu_plugin_read_ttbr_el1(1);
+    // let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
+    // let tcr = qemu_api::qemu_plugin_read_tcr_el1();
+
+    // println!("Instruction at {:x}, TTBR0: {:x}, TTBR1: {:x}, selected TTBR: {:x}, TCR: {:x}", va, ttbr0, ttbr1, ttbr, tcr);
+
+    // aarch64::ptw(ttbr, tcr, va, paddr_reader);
 }
 
 pub struct PageWalkLoggerPlugin {}
@@ -72,7 +107,7 @@ impl Plugin for PageWalkLoggerPlugin {
                 i,
                 Some(vcpu_insn_exec),
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                qemu_api::qemu_plugin_insn_haddr(i) as *mut ffi::c_void,
+                qemu_api::qemu_plugin_insn_vaddr(i) as *mut ffi::c_void,
             );
         }
 

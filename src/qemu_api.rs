@@ -1044,19 +1044,24 @@ extern "C" {
     pub fn qemu_plugin_cpu_is_tick_enabled() -> bool;
 }
 extern "C" {
-    #[doc = " qemu_plugin_read_cpu_integer_register - returns the value of the given integer register.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will set is_valid to 0."]
-    pub fn qemu_plugin_read_cpu_integer_register(
-        reg_index: ::std::os::raw::c_int,
-        is_valid: *mut bool,
-    ) -> u64;
+    #[doc = " qemu_plugin_read_cpu_integer_register - returns the value of the given integer register.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
+    pub fn qemu_plugin_read_cpu_integer_register(reg_index: ::std::os::raw::c_int) -> u64;
 }
 extern "C" {
-    #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a specific page table entry.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way to optimize the storage."]
+    #[doc = " qemu_plugin_read_ttbr0_el1 - returns the value of the ttbr_el1.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
+    pub fn qemu_plugin_read_ttbr_el1(which_ttbr: ::std::os::raw::c_int) -> u64;
+}
+extern "C" {
+    #[doc = " qemu_plugin_read_tcr_el1 - returns the value of tcr_el1.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
+    pub fn qemu_plugin_read_tcr_el1() -> u64;
+}
+extern "C" {
+    #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a specific page table entry.\n For huge pages or translation error, you will see -1 in the array ahead of time.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way to optimize the storage.\n"]
     pub fn qemu_plugin_hwaddr_translate_walk_trace(hwaddr: *const qemu_plugin_hwaddr)
         -> *const u64;
 }
 extern "C" {
-    #[doc = " qemu_plugin_read_physical_memory - returns the value of the given physical memory address.\n\n This function calls cpu_physical_memory_rw to read the physical memory.\n"]
+    #[doc = " qemu_plugin_read_physical_memory - returns the value of the given physical memory address.\n\n This function calls cpu_physical_memory_rw to read the physical memory.\n\n This function will not trigger memory access plugin."]
     pub fn qemu_plugin_read_physical_memory(
         physical_address: u64,
         size: u64,
@@ -1064,7 +1069,7 @@ extern "C" {
     );
 }
 extern "C" {
-    #[doc = " qemu_plugin_write_physical_memory - write the value to the given physical memory address.\n\n This function calls the cpu_physical_memory_rw to write the physical memory.\n"]
+    #[doc = " qemu_plugin_write_physical_memory - write the value to the given physical memory address.\n\n This function calls the cpu_physical_memory_rw to write the physical memory.\n\n This function will not trigger memory access plugin."]
     pub fn qemu_plugin_write_physical_memory(
         physical_address: u64,
         size: u64,

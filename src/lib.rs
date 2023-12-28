@@ -1,6 +1,7 @@
 pub mod bp;
 pub mod parameter;
 pub use parameter::*;
+pub mod arch;
 
 pub mod components;
 mod qemu_api;
