@@ -1048,12 +1048,16 @@ extern "C" {
     pub fn qemu_plugin_read_cpu_integer_register(reg_index: ::std::os::raw::c_int) -> u64;
 }
 extern "C" {
-    #[doc = " qemu_plugin_read_ttbr0_el1 - returns the value of the ttbr_el1.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
+    #[doc = " qemu_plugin_read_ttbr_el1 - returns the value of the ttbr_el1.\n\n @which_ttbr: 0 for ttbr0_el1, 1 for ttbr1_el1. Other values will trigger assertion failure.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
     pub fn qemu_plugin_read_ttbr_el1(which_ttbr: ::std::os::raw::c_int) -> u64;
 }
 extern "C" {
     #[doc = " qemu_plugin_read_tcr_el1 - returns the value of tcr_el1.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
     pub fn qemu_plugin_read_tcr_el1() -> u64;
+}
+extern "C" {
+    #[doc = " qemu_plugin_get_cvnz - returns the value of the flags register: NZCV.\n\n The return value is a 8-bit integer. The first bit is C, the second bit is V, the third bit is N, and the fourth bit is Z.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
+    pub fn qemu_plugin_get_cvnz() -> u8;
 }
 extern "C" {
     #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a specific page table entry.\n For huge pages or translation error, you will see -1 in the array ahead of time.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way to optimize the storage.\n"]
@@ -1075,4 +1079,9 @@ extern "C" {
         size: u64,
         buf: *const ::std::os::raw::c_void,
     );
+}
+extern "C" {
+    #[doc = " qemu_plugin_resolve_pointer_authentication - resolve an authentication pointer.\n\n @pointer: the pointer to be resolved.\n @key: the key used to resolve the pointer. if it is zero, we use key A. Otherwise, we use key B.\n @modifier: the modifier used to resolve the pointer.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
+    pub fn qemu_plugin_resolve_pointer_authentication(pointer: u64, key: u64, modifier: u64)
+        -> u64;
 }
