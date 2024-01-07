@@ -1,6 +1,8 @@
 // Ref: https://developer.arm.com/documentation/dui0802/b/A64-General-Instructions/A64-general-instructions-in-alphabetical-order?lang=en
 use crate::qemu_api::{self, qemu_plugin_read_cpu_integer_register};
 
+// This file is not used at all, because we finally added the callback to track QEMU branch resolution.
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum BranchType {
     B,
@@ -19,6 +21,7 @@ pub enum BranchType {
     RETEnhancedPAuthReg,
     TBZ,
     TBNZ,
+    None
 }
 
 // Mask, Value, BranchType
@@ -73,14 +76,14 @@ const DECODE_MAP: [(u32, u32, BranchType); 16] = [
     ),
     // Ref: https://developer.arm.com/documentation/ddi0602/2023-12/Base-Instructions/CBZ--Compare-and-Branch-on-Zero-
     (
-        0b1111_1111_0000_0000_0000_0000_0000_0000,
-        0b1011_0100_0000_0000_0000_0000_0000_0000,
+        0b0111_1111_0000_0000_0000_0000_0000_0000,
+        0b0011_0100_0000_0000_0000_0000_0000_0000,
         BranchType::CBZ,
     ),
     // Ref: https://developer.arm.com/documentation/ddi0602/2023-12/Base-Instructions/CBNZ--Compare-and-Branch-on-Nonzero-
     (
-        0b1111_1111_0000_0000_0000_0000_0000_0000,
-        0b1011_0101_0000_0000_0000_0000_0000_0000,
+        0b0111_1111_0000_0000_0000_0000_0000_0000,
+        0b0011_0101_0000_0000_0000_0000_0000_0000,
         BranchType::CBNZ,
     ),
     // Ref: https://developer.arm.com/documentation/ddi0602/2023-12/Base-Instructions/RET--Return-from-subroutine-
@@ -139,10 +142,10 @@ fn sign_extension(imm: u32, msb_index: u32) -> u64 {
 
 #[test]
 pub fn test_sign_extension() {
-    let imm = 0b1000;
-    let msb_index = 3;
+    let imm = 0x3ff4b18;
+    let msb_index = 25;
     let result = sign_extension(imm, msb_index);
-    assert_eq!(result, 0xFFFFFFFFFFFFFFF8);
+    assert_eq!(result << 2, 0xfffffffffffd2c60);
 }
 
 // B, and
@@ -153,12 +156,13 @@ pub fn target_b(pc: u64, instruction: u32) -> u64 {
 }
 
 // B.cond
-pub fn target_bcon(pc: u64, instruction: u32) -> u64 {
+pub fn target_bcon(pc: u64, instruction: u32) -> (u64, u64) {
     let imm = (instruction >> 5) & 0x7FFFF; // lower 19 bits
     let bias = sign_extension(imm, 18);
     let condition_code = instruction & 0xf;
     let condition_match = unsafe {
-        let flags = qemu_api::qemu_plugin_get_cvnz();
+        let flags = 0;
+        // let flags = qemu_api::qemu_plugin_get_cvnz();
         let c = flags & 0x1 != 0;
         let v = flags & 0x2 != 0;
         let n = flags & 0x4 != 0;
@@ -184,14 +188,14 @@ pub fn target_bcon(pc: u64, instruction: u32) -> u64 {
         }
     };
     if condition_match {
-        return pc + (bias << 2);
+        return (pc + (bias << 2), pc + 4);
     } else {
-        return pc + 4;
+        return (pc + 4, pc + (bias << 2));
     }
 }
 
 // BC.cond
-pub fn target_bccon(pc: u64, instruction: u32) -> u64 {
+pub fn target_bccon(pc: u64, instruction: u32) -> (u64, u64) {
     return target_bcon(pc, instruction);
 }
 
@@ -221,7 +225,8 @@ pub fn target_blrpauth(pc: u64, instruction: u32) -> u64 {
         } else {
             qemu_plugin_read_cpu_integer_register(rm as i32)
         };
-        qemu_api::qemu_plugin_resolve_pointer_authentication(raw_target, m as u64, modifier)
+        // qemu_api::qemu_plugin_resolve_pointer_authentication(raw_target, m as u64, modifier)
+        modifier
     };
 }
 
@@ -236,27 +241,27 @@ pub fn target_brpauth(pc: u64, instruction: u32) -> u64 {
 }
 
 // CBZ
-pub fn target_cbz(pc: u64, instruction: u32) -> u64 {
+pub fn target_cbz(pc: u64, instruction: u32) -> (u64, u64) {
     let rt = instruction & 0x1F;
     let imm = (instruction >> 5) & 0x7FFFF; // lower 19 bits
     return unsafe {
         if qemu_plugin_read_cpu_integer_register(rt as i32) == 0 {
-            pc + (sign_extension(imm, 18) << 2)
+            (pc + (sign_extension(imm, 18) << 2), pc + 4)
         } else {
-            pc + 4
+            (pc + 4, pc + (sign_extension(imm, 18) << 2))
         }
     };
 }
 
 // CBNZ
-pub fn target_cbnz(pc: u64, instruction: u32) -> u64 {
+pub fn target_cbnz(pc: u64, instruction: u32) -> (u64, u64) {
     let rt = instruction & 0x1F;
     let imm = (instruction >> 5) & 0x7FFFF; // lower 19 bits
     return unsafe {
         if qemu_plugin_read_cpu_integer_register(rt as i32) != 0 {
-            pc + (sign_extension(imm, 18) << 2)
+            (pc + (sign_extension(imm, 18) << 2), pc + 4)
         } else {
-            pc + 4
+            (pc + 4, pc + (sign_extension(imm, 18) << 2))
         }
     };
 }
@@ -270,8 +275,9 @@ pub fn target_ret(pc: u64, instruction: u32) -> u64 {
 pub fn target_retpauth(pc: u64, instruction: u32) -> u64 {
     let m = (instruction >> 10) & 0x1;
     let target = unsafe { qemu_plugin_read_cpu_integer_register(30) };
-    let sp = unsafe { qemu_plugin_read_cpu_integer_register(31) };
-    return unsafe { qemu_api::qemu_plugin_resolve_pointer_authentication(target, m as u64, sp) };
+    let sp: u64 = unsafe { qemu_plugin_read_cpu_integer_register(31) };
+    // return unsafe { qemu_api::qemu_plugin_resolve_pointer_authentication(target, m as u64, sp) };
+    return target;
 }
 
 // RETAASPPC, RETABSPPC, immediate
@@ -285,34 +291,34 @@ pub fn target_ret_enhanced_pauth_reg(pc: u64, instruction: u32) -> u64 {
 }
 
 // TBNZ
-pub fn target_tbnz(pc: u64, instruction: u32) -> u64 {
+pub fn target_tbnz(pc: u64, instruction: u32) -> (u64, u64) {
     let rt = instruction & 0x1F;
     let rt = unsafe { qemu_plugin_read_cpu_integer_register(rt as i32) };
     let imm14 = (instruction >> 5) & 0x3FFF; // lower 14 bits
     let bit_op_msb = (instruction >> 31) & 0x1;
-    let bit_op_lsbs = (instruction >> 18) & 0x1f;
+    let bit_op_lsbs = (instruction >> 19) & 0x1f;
     let bit_op = (bit_op_msb << 5) | bit_op_lsbs;
 
     if (rt & (1 << bit_op)) != 0 {
-        return pc + (sign_extension(imm14, 13) << 2);
+        return (pc + (sign_extension(imm14, 13) << 2), pc + 4);
     } else {
-        return pc + 4;
+        return (pc + 4, pc + (sign_extension(imm14, 13) << 2));
     }
 }
 
 // TBZ
-pub fn target_tbz(pc: u64, instruction: u32) -> u64 {
+pub fn target_tbz(pc: u64, instruction: u32) -> (u64, u64) {
     let rt = instruction & 0x1F;
     let rt = unsafe { qemu_plugin_read_cpu_integer_register(rt as i32) };
     let imm14 = (instruction >> 5) & 0x3FFF; // lower 14 bits
     let bit_op_msb = (instruction >> 31) & 0x1;
-    let bit_op_lsbs = (instruction >> 18) & 0x1f;
+    let bit_op_lsbs = (instruction >> 19) & 0x1f;
     let bit_op = (bit_op_msb << 5) | bit_op_lsbs;
 
     if (rt & (1 << bit_op)) == 0 {
-        return pc + (sign_extension(imm14, 13) << 2);
+        return (pc + (sign_extension(imm14, 13) << 2), pc + 4);
     } else {
-        return pc + 4;
+        return (pc + 4, pc + (sign_extension(imm14, 13) << 2));
     }
 }
 
@@ -334,5 +340,6 @@ pub fn check_opcode_match(opcode: &str, branch_type: BranchType) -> bool {
         BranchType::RETEnhancedPAuthReg => opcode == "retaa.sppc" || opcode == "retab.sppc",
         BranchType::TBZ => opcode == "tbz",
         BranchType::TBNZ => opcode == "tbnz",
+        BranchType::None => unreachable!("Invalid branch type: {:?}", branch_type)
     }
 }

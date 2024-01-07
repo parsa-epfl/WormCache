@@ -1056,10 +1056,6 @@ extern "C" {
     pub fn qemu_plugin_read_tcr_el1() -> u64;
 }
 extern "C" {
-    #[doc = " qemu_plugin_get_cvnz - returns the value of the flags register: NZCV.\n\n The return value is a 8-bit integer. The first bit is C, the second bit is V, the third bit is N, and the fourth bit is Z.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
-    pub fn qemu_plugin_get_cvnz() -> u8;
-}
-extern "C" {
     #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a specific page table entry.\n For huge pages or translation error, you will see -1 in the array ahead of time.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way to optimize the storage.\n"]
     pub fn qemu_plugin_hwaddr_translate_walk_trace(hwaddr: *const qemu_plugin_hwaddr)
         -> *const u64;
@@ -1080,8 +1076,13 @@ extern "C" {
         buf: *const ::std::os::raw::c_void,
     );
 }
+#[doc = " typedef qemu_plugin_vcpu_branch_resolved_cb_t - vcpu callback\n @vcpu_index: the current vcpu context\n @pc: the PC of the current instruction.\n @target: the target address of the branch.\n @hint_flags: the hint flags of the branch, including the following possible values:\n    - 0x0: conditional branch, taken\n    - 0x1: conditional branch, not taken\n    - 0x2: function call\n    - 0x3: return\n    - 0x4: non-conditional branch\n was registered."]
+pub type qemu_plugin_vcpu_branch_resolved_cb_t = ::std::option::Option<
+    unsafe extern "C" fn(vcpu_index: ::std::os::raw::c_uint, pc: u64, target: u64, hint_flags: u32),
+>;
 extern "C" {
-    #[doc = " qemu_plugin_resolve_pointer_authentication - resolve an authentication pointer.\n\n @pointer: the pointer to be resolved.\n @key: the key used to resolve the pointer. if it is zero, we use key A. Otherwise, we use key B.\n @modifier: the modifier used to resolve the pointer.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
-    pub fn qemu_plugin_resolve_pointer_authentication(pointer: u64, key: u64, modifier: u64)
-        -> u64;
+    #[doc = " qemu_plugin_register_vcpu_branch_resolved_cb() - register a vCPU branch resolved callback\n @cb: callback function\n\n The @cb function is called every time a branch is resolved.\n\n returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.\n"]
+    pub fn qemu_plugin_register_vcpu_branch_resolved_cb(
+        cb: qemu_plugin_vcpu_branch_resolved_cb_t,
+    ) -> bool;
 }
