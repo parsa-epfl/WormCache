@@ -1,6 +1,8 @@
 // This file contains the basic TAGE branch predictor.
 // It is basically an one-to-one translation of the C++ implementation in QFlex.
 
+use crate::components::bp::BranchResolveFlag;
+
 // bits per counter in the global history tables
 const CBITS: usize = 3;
 
@@ -112,7 +114,7 @@ struct TAGEPredictionResultWithBank {
 }
 
 #[derive(Debug)]
-struct TAGEPredictor {
+pub struct TAGEPredictor {
     // pwin: i32,
 
     // 4 bits to determine whether newly allocated entries should be considered as
@@ -350,8 +352,10 @@ impl TAGEPredictor {
         return self.seed;
     }
 
-    fn update_predictor(&mut self, pc: Address, taken: bool, is_conditional: bool) {
+    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64) {
         // we only update the predictor when the branch is conditional, but we update the history all the time.
+        let is_conditional = result == BranchResolveFlag::Taken || result == BranchResolveFlag::NotTaken;
+        let taken = result == BranchResolveFlag::Taken;
         if is_conditional {
             let pc = pc >> 2;
             let prediction_result = self.is_cond_taken(pc);
@@ -454,6 +458,10 @@ impl TAGEPredictor {
 
         // In any case, the history must be updated.
         self.update_history(pc, taken)
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        unimplemented!("TAGEPredictor::serialize")
     }
 }
 

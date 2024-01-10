@@ -1,27 +1,18 @@
-mod tage;
+mod fetch;
 
 mod aarch64;
 mod callbacks;
 use super::Plugin;
 use crate::qemu_api;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
-use std::ffi;
 use std::sync::Mutex;
 use std::io::Write;
 
-struct BranchMetaData {
-    pc: u64,
-    instruction: u32,
-    bb_bias: u32,
-}
 
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo
-static mut BRANCH_METADATA: Lazy<Mutex<HashMap<usize, Box<BranchMetaData>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 enum BranchResolveFlag {
     Taken = 0,
     NotTaken = 1,
@@ -59,7 +50,6 @@ impl Plugin for BranchPredictorPlugin {
     fn init() {
         println!("BranchPredictorPlugin initialized.");
         unsafe {
-            BRANCH_METADATA.lock().unwrap().clear();
         }
 
         assert!(unsafe {
