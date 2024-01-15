@@ -1,11 +1,15 @@
 use crate::components::bp::BranchResolveFlag;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize)]
 struct BTBEntry {
     tag: u64,
     target: u64,
     valid: bool,
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct BTB <const S: usize> {
     array: Vec<BTBEntry>,
 }
@@ -29,10 +33,6 @@ impl<const S: usize> BTB<S> {
         self.array[index].tag = pc;
         self.array[index].target = target;
         self.array[index].valid = true;
-    }
-
-    pub fn serialize(&self) -> Vec<u8> {
-        unimplemented!("BTB::serialize")
     }
 }
 

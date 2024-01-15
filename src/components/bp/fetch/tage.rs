@@ -3,6 +3,8 @@
 
 use crate::components::bp::BranchResolveFlag;
 
+use serde::{Deserialize, Serialize};
+
 // bits per counter in the global history tables
 const CBITS: usize = 3;
 
@@ -29,9 +31,11 @@ const MAXHIST: usize = 131;
 const MINHIST: usize = 5;
 
 type Address = u64;
+
 type History = [bool; MAXHIST];
 
-#[derive(Debug)]
+
+#[derive(Debug, Serialize, Deserialize)]
 struct FoldedHistory {
     comp: u32,
     c_length: u32,
@@ -68,7 +72,7 @@ impl FoldedHistory {
 }
 
 // bimodal table entry
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct TAGEBiModalEntry {
     hyst: i8,
     pred: i8,
@@ -81,7 +85,7 @@ impl TAGEBiModalEntry {
 }
 
 // global table entry
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct TAGEGlobalTableEntry {
     ctr: i8,
     tag: u16,
@@ -459,9 +463,25 @@ impl TAGEPredictor {
         // In any case, the history must be updated.
         self.update_history(pc, taken)
     }
+}
 
-    pub fn serialize(&self) -> Vec<u8> {
-        unimplemented!("TAGEPredictor::serialize")
+
+use serde::ser::{Serializer, SerializeStruct};
+
+impl Serialize for TAGEPredictor {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("TAGEPredictor", 1)?;
+        state.serialize_field("seed", &self.seed)?;
+        state.serialize_field("tick", &self.tick)?;
+        state.serialize_field("phist", &self.phist)?;
+        state.serialize_field("ghist", &self.ghist.as_slice())?;
+        state.serialize_field("ch_i", &self.ch_i)?;
+        state.serialize_field("ch_t", &self.ch_t)?;
+        state.serialize_field("btable", &self.btable.as_slice())?;
+        let gtable = self.gtable.iter().map(|x| x.as_slice()).collect::<Vec<_>>();
+        state.serialize_field("gtable", &gtable)?;
+        state.serialize_field("m", &self.m)?;
+        state.end()
     }
 }
 

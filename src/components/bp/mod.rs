@@ -5,10 +5,9 @@ mod callbacks;
 use super::Plugin;
 use crate::qemu_api;
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
-use std::io::Write;
 use std::cell::UnsafeCell;
-
+use std::io::Write;
+use std::sync::Mutex;
 
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo
@@ -42,7 +41,9 @@ static mut FETCH_UNIT: Lazy<UnsafeCell<fetch::FetchUnit>> = Lazy::new(|| {
 
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
     let result = BranchResolveFlag::from_u32(flags).unwrap();
-    FETCH_UNIT.get_mut().train(vcpu_index as usize, pc, result, target)
+    FETCH_UNIT
+        .get_mut()
+        .train(vcpu_index as usize, pc, result, target)
 }
 
 pub struct BranchPredictorPlugin {}
@@ -60,5 +61,14 @@ impl Plugin for BranchPredictorPlugin {
         // The callback is already inserted into the TB during init.
     }
 
-    fn dump_snapshot() {}
+    fn dump_snapshot() {
+        for (core_id, f) in unsafe { &(*FETCH_UNIT.get()).private_units }
+            .iter()
+            .enumerate()
+        {
+            let mut file = std::fs::File::create(format!("fetch_unit_{}.json", core_id)).unwrap();
+            let json = serde_json::to_string_pretty(f).unwrap();
+            file.write_all(json.as_bytes()).unwrap();
+        }
+    }
 }

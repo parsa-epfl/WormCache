@@ -1,5 +1,8 @@
 use crate::components::bp::BranchResolveFlag;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize)]
 struct BimodalPredictor<const S: usize> {
     array: Vec<u8>,
     // 0, 1 -> Miss

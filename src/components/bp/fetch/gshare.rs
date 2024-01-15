@@ -1,5 +1,9 @@
 use crate::components::bp::BranchResolveFlag;
 
+use serde::{Deserialize, Serialize};
+
+// The maximum size of the global history register is 64 bits.
+#[derive(Deserialize, Serialize)]
 struct GShare<const S: usize> {
     pub history: u64,
     pub table: Vec<u8>,
@@ -40,9 +44,5 @@ impl<const S: usize> GShare<S> {
         if v > 0 {
             self.table[index] = v - 1;
         }
-    }
-
-    pub fn serialize(&self) -> Vec<u8> {
-        unimplemented!("GShare::serialize")
     }
 }

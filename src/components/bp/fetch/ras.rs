@@ -1,7 +1,9 @@
 use std::collections::LinkedList;
 
 use crate::components::bp::BranchResolveFlag;
+use serde::{Deserialize, Serialize};
 
+#[derive(Deserialize, Serialize)]
 pub struct ReturnAddressStacle<const S: usize> {
     stack: LinkedList<u64>,
 }
@@ -29,9 +31,5 @@ impl<const S: usize> ReturnAddressStacle<S> {
             self.stack.pop_front();
         }
         self.stack.push_back(pc);
-    }
-
-    pub fn serialize(&self) -> Vec<u8> {
-        unimplemented!("ReturnAddressStacle::serialize")
     }
 }
