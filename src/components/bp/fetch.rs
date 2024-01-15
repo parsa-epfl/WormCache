@@ -4,19 +4,21 @@ mod gshare;
 mod ras;
 mod tage;
 
-use crate::{parameter::BP_GSHARE_SET, BP_RAS_COUNT};
+use crate::{parameter::BP_GSHARE_SET, BP_RAS_COUNT, parameter::CORE_COUNT};
+use std::cell::UnsafeCell;
 
 use super::BranchResolveFlag;
 
-struct FetchUnit {
+#[repr(align(64))]
+pub struct PerCoreFetchUnit {
     btb: btb::BTB<BP_GSHARE_SET>,
     ras: ras::ReturnAddressStacle<BP_RAS_COUNT>,
     tage: tage::TAGEPredictor,
 }
 
-impl FetchUnit {
-    pub fn new() -> FetchUnit {
-        FetchUnit {
+impl PerCoreFetchUnit {
+    pub fn new() -> PerCoreFetchUnit {
+        PerCoreFetchUnit {
             btb: btb::BTB::new(),
             ras: ras::ReturnAddressStacle::new(),
             tage: tage::TAGEPredictor::new(),
@@ -34,6 +36,30 @@ impl FetchUnit {
         v.extend(self.btb.serialize());
         v.extend(self.ras.serialize());
         v.extend(self.tage.serialize());
+        v
+    }
+}
+
+pub struct FetchUnit {
+    pub cores: [PerCoreFetchUnit; CORE_COUNT],
+}
+
+impl FetchUnit {
+    pub fn new() -> FetchUnit {
+        FetchUnit {
+            cores: [PerCoreFetchUnit::new(); CORE_COUNT],
+        }
+    }
+
+    pub fn train(&mut self, core_id: usize, pc: u64, result: BranchResolveFlag, target: u64) {
+        self.cores[core_id].train(pc, result, target);
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut v = Vec::new();
+        for core in self.cores.iter() {
+            v.extend(core.serialize());
+        }
         v
     }
 }
