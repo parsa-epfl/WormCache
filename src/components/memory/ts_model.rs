@@ -35,20 +35,14 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     }
 
     pub fn hierarchies(
-        &self,
+        &mut self,
         core_id: u8,
     ) -> &mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S> {
         // This function can be only called from each vCPU, and it meets the following requirement:
         // - Each thread has its unique core_id (no cases for two thread access the same hierarchy)
         // - During reconstruction, all other threads must stop.
         assert!(core_id < self.hierarchies.len() as u8);
-        unsafe {
-            let target_ref = &self.hierarchies[core_id as usize]
-                as *const TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
-            let target_ref =
-                target_ref as *mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>;
-            return &mut *target_ref;
-        }
+        return &mut self.hierarchies[core_id as usize];
     }
 
     pub fn render_mtr<const S: usize>(&self) -> MemoryTimestampRecordCollection<S> {
