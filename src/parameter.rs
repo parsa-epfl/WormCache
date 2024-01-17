@@ -48,3 +48,16 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  */
 pub const SHARED_CACHE_SET: usize = 1024 * 1024; // 1GB shared cache.
 
+
+/**
+ * BP_GSHARE_SET
+ * 
+ * The number of sets of the gshare branch predictor.
+ */
+pub const BP_GSHARE_SET: usize = 2048;
+
+
+/**
+ * BP_RAS_COUNT
+ */
+pub const BP_RAS_COUNT: usize = 32;

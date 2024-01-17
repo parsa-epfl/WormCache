@@ -1,10 +1,10 @@
 mod checkpoint;
 mod mtr;
 mod per_core_record;
+mod tlb;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
-mod tlb;
 
 use std::ffi;
 use std::fs;
@@ -26,15 +26,18 @@ use crate::qemu_api;
 use crate::CORE_COUNT;
 
 use once_cell::sync::Lazy;
+use std::cell::UnsafeCell;
 
-static PLUGIN: Lazy<
-    TimestampMemoryHierarchy<
-        { crate::PRI_CACHE_ASSO },
-        { crate::PRI_CACHE_SET },
-        { crate::SHARED_CACHE_ASSO },
-        { crate::SHARED_CACHE_SET },
+static mut PLUGIN: Lazy<
+    UnsafeCell<
+        TimestampMemoryHierarchy<
+            { crate::PRI_CACHE_ASSO },
+            { crate::PRI_CACHE_SET },
+            { crate::SHARED_CACHE_ASSO },
+            { crate::SHARED_CACHE_SET },
+        >,
     >,
-> = Lazy::new(|| TimestampMemoryHierarchy::new(crate::CORE_COUNT));
+> = Lazy::new(|| UnsafeCell::new(TimestampMemoryHierarchy::new(crate::CORE_COUNT)));
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -56,7 +59,7 @@ unsafe extern "C" fn vcpu_mem_access(
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
         let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
 
-        PLUGIN.hierarchies(cpu_idx as u8).access_memory(
+        PLUGIN.get_mut().hierarchies(cpu_idx as u8).access_memory(
             get_memory_ts() as usize,
             paddr as usize,
             false,
@@ -71,7 +74,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    PLUGIN.hierarchies(vcpu_idx as u8).access_memory(
+    PLUGIN.get_mut().hierarchies(vcpu_idx as u8).access_memory(
         get_memory_ts() as usize,
         paddr as usize,
         true,
@@ -111,7 +114,7 @@ impl super::Plugin for MemoryPlugin {
         println!("Memory plugin initialized.");
 
         // I need to start a function to reason about the completion rate of LLC.
-        std::thread::spawn(||{
+        std::thread::spawn(|| {
             const LLC_SET: usize = crate::SHARED_CACHE_SET;
             // Currently this stuff only works for a fully associative cache.
             let mut new_block_count = Vec::from_iter((0..LLC_SET).map(|_| false));
@@ -128,15 +131,25 @@ impl super::Plugin for MemoryPlugin {
                     }
                     let mut touched_entry = 0;
                     for core_id in 0..(CORE_COUNT as u8) {
-                        let set = PLUGIN.hierarchies(core_id).local_shared_cache.sets.get(set_index).unwrap();
-                        touched_entry += set.warm_chunk_count();
+                        unsafe {
+                            let set = PLUGIN
+                                .get_mut()
+                                .hierarchies(core_id)
+                                .local_shared_cache
+                                .sets
+                                .get(set_index)
+                                .unwrap();
+                            touched_entry += set.warm_chunk_count();
+                        }
                     }
 
                     if touched_entry >= crate::parameter::SHARED_CACHE_ASSO {
                         new_block_count[set_index] = true;
                         warmed_count += 1;
                         if warmed_count == LLC_SET {
-                            output.write_fmt(format_args!("{}\n", get_memory_ts())).unwrap();
+                            output
+                                .write_fmt(format_args!("{}\n", get_memory_ts()))
+                                .unwrap();
                             output.flush().unwrap();
                             recorded_count += 1;
                             if recorded_count == 40 {
@@ -144,7 +157,12 @@ impl super::Plugin for MemoryPlugin {
                                 exit(0);
                             }
                             for core_id in 0..(CORE_COUNT as u8) {
-                                PLUGIN.hierarchies(core_id).clean_local_shared_cache();
+                                unsafe {
+                                    PLUGIN
+                                        .get_mut()
+                                        .hierarchies(core_id)
+                                        .clean_local_shared_cache();
+                                }
                             }
                             warmed_count = 0;
                             for i in 0..LLC_SET {
@@ -153,8 +171,6 @@ impl super::Plugin for MemoryPlugin {
                         }
                     }
                 }
-
-                
 
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
@@ -172,16 +188,16 @@ impl super::Plugin for MemoryPlugin {
             l2_associativity: crate::PRI_CACHE_ASSO,
             directory_associativity: crate::PRI_CACHE_ASSO * CORE_COUNT,
         };
-
-        let mtr = PLUGIN.render_mtr::<{ crate::PRI_CACHE_SET }>();
-        let mtr = mtr.prune_by_associativity(private_param.directory_associativity);
-        let caches = PLUGIN.render_cache_hierarchy(&mtr, &private_param);
-        let exported_json = serde_json::to_string_pretty(&caches).unwrap();
-        let mut output = fs::File::create("./dumped.json").unwrap();
-        output.write_all(exported_json.as_bytes()).unwrap();
-        output.flush().unwrap();
+        unsafe {
+            let mtr = PLUGIN.get_mut().render_mtr::<{ crate::PRI_CACHE_SET }>();
+            let mtr = mtr.prune_by_associativity(private_param.directory_associativity);
+            let caches = PLUGIN.get_mut().render_cache_hierarchy(&mtr, &private_param);
+            let exported_json = serde_json::to_string_pretty(&caches).unwrap();
+            let mut output = fs::File::create("./dumped.json").unwrap();
+            output.write_all(exported_json.as_bytes()).unwrap();
+            output.flush().unwrap();
+        }
     }
-
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
         let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);

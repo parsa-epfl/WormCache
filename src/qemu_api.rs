@@ -1048,7 +1048,7 @@ extern "C" {
     pub fn qemu_plugin_read_cpu_integer_register(reg_index: ::std::os::raw::c_int) -> u64;
 }
 extern "C" {
-    #[doc = " qemu_plugin_read_ttbr0_el1 - returns the value of the ttbr_el1.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
+    #[doc = " qemu_plugin_read_ttbr_el1 - returns the value of the ttbr_el1.\n\n @which_ttbr: 0 for ttbr0_el1, 1 for ttbr1_el1. Other values will trigger assertion failure.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure."]
     pub fn qemu_plugin_read_ttbr_el1(which_ttbr: ::std::os::raw::c_int) -> u64;
 }
 extern "C" {
@@ -1075,4 +1075,14 @@ extern "C" {
         size: u64,
         buf: *const ::std::os::raw::c_void,
     );
+}
+#[doc = " typedef qemu_plugin_vcpu_branch_resolved_cb_t - vcpu callback\n @vcpu_index: the current vcpu context\n @pc: the PC of the current instruction.\n @target: the target address of the branch.\n @hint_flags: the hint flags of the branch, including the following possible values:\n    - 0x0: conditional branch, taken\n    - 0x1: conditional branch, not taken\n    - 0x2: function call\n    - 0x3: return\n    - 0x4: non-conditional branch\n was registered."]
+pub type qemu_plugin_vcpu_branch_resolved_cb_t = ::std::option::Option<
+    unsafe extern "C" fn(vcpu_index: ::std::os::raw::c_uint, pc: u64, target: u64, hint_flags: u32),
+>;
+extern "C" {
+    #[doc = " qemu_plugin_register_vcpu_branch_resolved_cb() - register a vCPU branch resolved callback\n @cb: callback function\n\n The @cb function is called every time a branch is resolved.\n\n returns true if the callback is registered successfully. Please note at currently at most one callback can be registered.\n"]
+    pub fn qemu_plugin_register_vcpu_branch_resolved_cb(
+        cb: qemu_plugin_vcpu_branch_resolved_cb_t,
+    ) -> bool;
 }
