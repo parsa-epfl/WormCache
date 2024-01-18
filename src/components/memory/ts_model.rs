@@ -13,17 +13,19 @@ use super::checkpoint::{
 // This module contains the logic of quantum management and cache reconstruction.
 #[derive(Debug)]
 pub struct TimestampMemoryHierarchy<
+    const T_A: usize,
+    const T_S: usize,
     const P_A: usize,
     const P_S: usize,
     const S_A: usize,
     const S_S: usize,
 > {
     // hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
-    hierarchies: Vec<TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
+    hierarchies: Vec<TimestampSingleCoreMemoryHierarchy<T_A, T_S, P_A, P_S, S_A, S_S>>,
 }
 
-impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
+impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
+    TimestampMemoryHierarchy<T_A, T_S, P_A, P_S, S_A, S_S>
 {
     pub fn new(core_count: usize) -> Self {
         return TimestampMemoryHierarchy {
@@ -37,7 +39,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub fn hierarchies(
         &mut self,
         core_id: u8,
-    ) -> &mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S> {
+    ) -> &mut TimestampSingleCoreMemoryHierarchy<T_A, T_S, P_A, P_S, S_A, S_S> {
         // This function can be only called from each vCPU, and it meets the following requirement:
         // - Each thread has its unique core_id (no cases for two thread access the same hierarchy)
         // - During reconstruction, all other threads must stop.

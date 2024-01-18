@@ -31,13 +31,15 @@ use std::cell::UnsafeCell;
 static mut PLUGIN: Lazy<
     UnsafeCell<
         TimestampMemoryHierarchy<
-            { crate::PRI_CACHE_ASSO },
-            { crate::PRI_CACHE_SET },
-            { crate::SHARED_CACHE_ASSO },
-            { crate::SHARED_CACHE_SET },
+            { param::TLB_ASSO },
+            { param::TLB_SET },
+            { param::PRI_CACHE_ASSO },
+            { param::PRI_CACHE_SET },
+            { param::SHARED_CACHE_ASSO },
+            { param::SHARED_CACHE_SET },
         >,
     >,
-> = Lazy::new(|| UnsafeCell::new(TimestampMemoryHierarchy::new(crate::CORE_COUNT)));
+> = Lazy::new(|| UnsafeCell::new(TimestampMemoryHierarchy::new(param::CORE_COUNT)));
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()

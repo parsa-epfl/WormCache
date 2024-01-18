@@ -1,16 +1,22 @@
 use std::collections::HashMap;
 
 use super::ts_cache::TimestampCache;
+use super::tlb::TLB;
+
 use crate::parameter as param;
 
 #[derive(Debug)]
 #[repr(align(64))]
 pub struct TimestampSingleCoreMemoryHierarchy<
+    const T_A: usize, // associativity of the TLB
+    const T_S: usize, // set number of the TLB
     const P_A: usize, // associativity of the private cache
     const P_S: usize, // set number of the private cache
     const S_A: usize, // associativity of the shared cache
     const S_S: usize, // set number of the shared cache
 > {
+
+    pub tlb: TLB<T_S, T_A>, 
     pub private_cache: TimestampCache<P_A, P_S>,
     pub local_shared_cache: TimestampCache<S_A, S_S>,
     // All cache invalidation requests. They are used for coherence state construction.
@@ -19,11 +25,12 @@ pub struct TimestampSingleCoreMemoryHierarchy<
     pub evicted_dirty_list: HashMap<usize, usize>, // block_id -> ts
 }
 
-impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>
+impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
+    TimestampSingleCoreMemoryHierarchy<T_A, T_S, P_A, P_S, S_A, S_S>
 {
     pub fn new() -> Self {
         return Self {
+            tlb: TLB::new(),
             private_cache: TimestampCache::new(),
             local_shared_cache: TimestampCache::new(),
             invalid_list: HashMap::new(),
@@ -31,6 +38,11 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         };
     }
 
+    fn access_memory(&mut self, ts: usize, vaddr: usize, is_instruction: bool, is_store: bool) {
+
+    }
+
+    fn access_memory_with_pa(&mut self, ts: usize, paddr: usize, is_instruction: bool, is_store: bool) {
         let block_id = paddr >> param::CACHE_LINE_SIZE.trailing_zeros();
         let res = self
             .private_cache
@@ -56,7 +68,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                 }
 
                 self.local_shared_cache
-                    .record(blk, is_instruction, false, ts);
+                    .record(blk, is_instruction, false, super::get_memory_ts() as usize);
             }
             super::CacheReturnResult::MissWithWriteBack(blk) => {
                 if self
@@ -67,7 +79,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
                     self.local_shared_cache.invalid(block_id);
                 }
 
-                self.local_shared_cache.record(blk, false, true, ts);
+                self.local_shared_cache.record(blk, false, true, super::get_memory_ts() as usize);
                 self.evicted_dirty_list.insert(block_id, ts);
             }
         }
