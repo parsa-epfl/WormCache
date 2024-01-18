@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::ts_cache::TimestampCache;
-use super::tlb::TLB;
+use crate::arch::AArch64;
 
 use crate::parameter as param;
 
@@ -20,9 +20,9 @@ pub struct TimestampSingleCoreMemoryHierarchy<
     pub private_cache: TimestampCache<P_A, P_S>,
     pub local_shared_cache: TimestampCache<S_A, S_S>,
     // All cache invalidation requests. They are used for coherence state construction.
-    pub invalid_list: HashMap<usize, usize>, // block_id -> ts
+    pub invalid_list: HashMap<u64, usize>, // block_id -> ts
     // All evicted dirty cache line. They are used for coherence state construction.
-    pub evicted_dirty_list: HashMap<usize, usize>, // block_id -> ts
+    pub evicted_dirty_list: HashMap<u64, usize>, // block_id -> ts
 }
 
 impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -38,11 +38,7 @@ impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, con
         };
     }
 
-    fn access_memory(&mut self, ts: usize, vaddr: usize, is_instruction: bool, is_store: bool) {
-
-    }
-
-    fn access_memory_with_pa(&mut self, ts: usize, paddr: usize, is_instruction: bool, is_store: bool) {
+    pub fn access_memory_with_pa(&mut self, ts: usize, paddr: u64, is_instruction: bool, is_store: bool) {
         let block_id = paddr >> param::CACHE_LINE_SIZE.trailing_zeros();
         let res = self
             .private_cache
@@ -85,18 +81,18 @@ impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, con
         }
     }
 
-    pub fn invalidate(&mut self, block_id: usize, ts: usize) {
+    pub fn invalidate(&mut self, block_id: u64, ts: usize) {
         self.private_cache.invalid(block_id);
         self.local_shared_cache.invalid(block_id);
         self.invalid_list.insert(block_id, ts);
         self.evicted_dirty_list.insert(block_id, ts);
     }
 
-    pub fn get_written_back_dirty_list(&self) -> &HashMap<usize, usize> {
+    pub fn get_written_back_dirty_list(&self) -> &HashMap<u64, usize> {
         return &self.evicted_dirty_list;
     }
 
-    pub fn get_invalid_list(&self) -> &HashMap<usize, usize> {
+    pub fn get_invalid_list(&self) -> &HashMap<u64, usize> {
         return &self.invalid_list;
     }
 

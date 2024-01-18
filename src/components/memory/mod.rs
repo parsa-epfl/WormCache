@@ -1,10 +1,10 @@
 mod checkpoint;
 mod mtr;
 mod per_core_record;
-mod tlb;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
+mod mmu;
 
 use std::ffi;
 use std::fs;
@@ -61,12 +61,12 @@ unsafe extern "C" fn vcpu_mem_access(
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
         let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
 
-        PLUGIN.get_mut().hierarchies(cpu_idx as u8).access_memory(
-            get_memory_ts() as usize,
-            paddr as usize,
-            false,
-            is_store,
-        )
+        // PLUGIN.get_mut().hierarchies(cpu_idx as u8).access_memory(
+        //     get_memory_ts() as usize,
+        //     paddr as usize,
+        //     false,
+        //     is_store,
+        // )
     } else {
         // TODO: check the I/O event
     }
@@ -76,12 +76,12 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    PLUGIN.get_mut().hierarchies(vcpu_idx as u8).access_memory(
-        get_memory_ts() as usize,
-        paddr as usize,
-        true,
-        false,
-    )
+    // PLUGIN.get_mut().hierarchies(vcpu_idx as u8).access_memory(
+    //     get_memory_ts() as usize,
+    //     paddr as usize,
+    //     true,
+    //     false,
+    // )
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
@@ -191,7 +191,7 @@ impl super::Plugin for MemoryPlugin {
             directory_associativity: param::PRI_CACHE_ASSO * param::CORE_COUNT,
         };
         unsafe {
-            let mtr = PLUGIN.get_mut().render_mtr::<{ crate::PRI_CACHE_SET }>();
+            let mtr = PLUGIN.get_mut().render_mtr::<{ param::PRI_CACHE_SET }>();
             let mtr = mtr.prune_by_associativity(private_param.directory_associativity);
             let caches = PLUGIN.get_mut().render_cache_hierarchy(&mtr, &private_param);
             let exported_json = serde_json::to_string_pretty(&caches).unwrap();

@@ -59,7 +59,7 @@ impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, con
         &self,
         mtr: &MemoryTimestampRecordCollection<S>,
     ) -> SerializedCache {
-        let mut merging_sets: Vec<HashMap<usize, TsCacheBlock>> =
+        let mut merging_sets: Vec<HashMap<u64, TsCacheBlock>> =
             Vec::from_iter((0..crate::parameter::SHARED_CACHE_SET).map(|_| HashMap::new()));
 
         for per_core_record in self.hierarchies.iter() {
