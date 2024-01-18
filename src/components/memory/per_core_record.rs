@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use super::ts_cache::TimestampCache;
+use crate::parameter as param;
 
 #[derive(Debug)]
 #[repr(align(64))]
@@ -30,8 +31,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         };
     }
 
-    pub fn access_memory(&mut self, ts: usize, paddr: usize, is_instruction: bool, is_store: bool) {
-        let block_id = paddr >> crate::CACHE_LINE_SIZE.trailing_zeros();
+        let block_id = paddr >> param::CACHE_LINE_SIZE.trailing_zeros();
         let res = self
             .private_cache
             .record(block_id, is_instruction, is_store, ts);

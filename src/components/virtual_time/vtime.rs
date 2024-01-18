@@ -1,6 +1,8 @@
+use crate::parameter as param;
 use crate::qemu_api::qemu_plugin_cpu_is_tick_enabled;
 use crate::qemu_api::qemu_plugin_get_snapshoted_vm_clock;
-use crate::CORE_COUNT;
+
+use param::CORE_COUNT;
 
 use std::time::SystemTime;
 

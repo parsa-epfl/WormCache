@@ -57,7 +57,7 @@ unsafe extern "C" fn qemu_plugin_install(
     // make sure that the number of vCPUs is equal to the core count.
     assert_eq!(
         qemu_api::qemu_plugin_n_vcpus(),
-        CORE_COUNT as i32,
+        parameter::CORE_COUNT as i32,
         "Unmatched core count, thus exit."
     );
 

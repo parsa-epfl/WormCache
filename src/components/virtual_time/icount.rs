@@ -1,4 +1,5 @@
-use crate::CORE_COUNT;
+use crate::parameter as param;
+use param::CORE_COUNT;
 
 #[derive(Debug)]
 pub struct ICountPlugin {

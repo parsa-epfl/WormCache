@@ -23,7 +23,7 @@ pub use ts_set::TimestampCacheLineStatus;
 pub use ts_set::TimestampCacheSet;
 
 use crate::qemu_api;
-use crate::CORE_COUNT;
+use crate::parameter as param;
 
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
@@ -115,7 +115,7 @@ impl super::Plugin for MemoryPlugin {
 
         // I need to start a function to reason about the completion rate of LLC.
         std::thread::spawn(|| {
-            const LLC_SET: usize = crate::SHARED_CACHE_SET;
+            const LLC_SET: usize = param::SHARED_CACHE_SET;
             // Currently this stuff only works for a fully associative cache.
             let mut new_block_count = Vec::from_iter((0..LLC_SET).map(|_| false));
             let mut warmed_count = 0;
@@ -130,7 +130,7 @@ impl super::Plugin for MemoryPlugin {
                         continue;
                     }
                     let mut touched_entry = 0;
-                    for core_id in 0..(CORE_COUNT as u8) {
+                    for core_id in 0..(param::CORE_COUNT as u8) {
                         unsafe {
                             let set = PLUGIN
                                 .get_mut()
@@ -156,7 +156,7 @@ impl super::Plugin for MemoryPlugin {
                                 output.flush().unwrap();
                                 exit(0);
                             }
-                            for core_id in 0..(CORE_COUNT as u8) {
+                            for core_id in 0..(param::CORE_COUNT as u8) {
                                 unsafe {
                                     PLUGIN
                                         .get_mut()
@@ -184,9 +184,9 @@ impl super::Plugin for MemoryPlugin {
             l1i_associativity: 16,
             l1d_sets: 32,
             l1d_associativity: 16,
-            l2_sets: crate::PRI_CACHE_SET,
-            l2_associativity: crate::PRI_CACHE_ASSO,
-            directory_associativity: crate::PRI_CACHE_ASSO * CORE_COUNT,
+            l2_sets: param::PRI_CACHE_SET,
+            l2_associativity: param::PRI_CACHE_ASSO,
+            directory_associativity: param::PRI_CACHE_ASSO * param::CORE_COUNT,
         };
         unsafe {
             let mtr = PLUGIN.get_mut().render_mtr::<{ crate::PRI_CACHE_SET }>();
