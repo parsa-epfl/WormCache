@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use super::ts_cache::TimestampCache;
+use super::mmu::AbstractMMU;
 use super::mmu::MemoryManagementUnit;
 use crate::arch::AArch64;
 
@@ -10,14 +11,13 @@ use crate::parameter as param;
 #[derive(Debug)]
 #[repr(align(64))]
 pub struct TimestampSingleCoreMemoryHierarchy<
-    const T_A: usize, // associativity of the TLB
-    const T_S: usize, // set number of the TLB
+    MMU: AbstractMMU,
     const P_A: usize, // associativity of the private cache
     const P_S: usize, // set number of the private cache
     const S_A: usize, // associativity of the shared cache
     const S_S: usize, // set number of the shared cache
 > {
-    pub mmu: MemoryManagementUnit<AArch64, T_A, T_S>, // TODO(fixme): The MMU should be decoupled from the memory hierarchy. In some case (e.g., an unit test), we don't need MMU.
+    pub mmu: MMU,
     pub private_cache: TimestampCache<P_A, P_S>,
     pub local_shared_cache: TimestampCache<S_A, S_S>,
     // All cache invalidation requests. They are used for coherence state construction.
@@ -26,12 +26,12 @@ pub struct TimestampSingleCoreMemoryHierarchy<
     pub evicted_dirty_list: HashMap<u64, usize>, // block_id -> ts
 }
 
-impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    TimestampSingleCoreMemoryHierarchy<T_A, T_S, P_A, P_S, S_A, S_S>
+impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
+    TimestampSingleCoreMemoryHierarchy<MMU, P_A, P_S, S_A, S_S>
 {
     pub fn new() -> Self {
         return Self {
-            mmu: MemoryManagementUnit::new(),
+            mmu: MMU::new(),
             private_cache: TimestampCache::new(),
             local_shared_cache: TimestampCache::new(),
             invalid_list: HashMap::new(),
@@ -42,7 +42,7 @@ impl<const T_A: usize, const T_S: usize, const P_A: usize, const P_S: usize, con
     pub fn access_memory(&mut self, ts: usize, vaddr: u64, is_instruction: bool, is_store: bool) {
         // step 1: translation the VA to the PA. 
         let vpn = vaddr >> 12;
-        let translation = self.mmu.translate_and_refill(vpn as u64, ts as u64);
+        let translation = unsafe { self.mmu.translate_and_refill(vpn as u64, ts as u64) };
         // step 2: if the translation is a miss, we need to replay the trace of accessing physical memory.
         match translation {
             super::mmu::MMUTranslationResult::Hit(ppn) => {

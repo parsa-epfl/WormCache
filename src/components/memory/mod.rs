@@ -4,12 +4,11 @@ mod per_core_record;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
-mod mmu;
+pub mod mmu;
 
 use std::ffi;
 use std::fs;
 use std::io::Write;
-use std::process::exit;
 
 pub use checkpoint::CacheBlockState;
 pub use checkpoint::PrivateCacheParameters;
@@ -24,15 +23,17 @@ pub use ts_set::TimestampCacheSet;
 
 use crate::qemu_api;
 use crate::parameter as param;
+use crate::arch;
 
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
 
+type PluginMMU = mmu::MemoryManagementUnit<arch::AArch64, { param::TLB_ASSO }, { param::TLB_SET }>;
+
 static mut PLUGIN: Lazy<
     UnsafeCell<
         TimestampMemoryHierarchy<
-            { param::TLB_ASSO },
-            { param::TLB_SET },
+            PluginMMU,
             { param::PRI_CACHE_ASSO },
             { param::PRI_CACHE_SET },
             { param::SHARED_CACHE_ASSO },

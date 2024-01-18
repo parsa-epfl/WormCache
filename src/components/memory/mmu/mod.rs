@@ -5,11 +5,26 @@ mod tlb;
 
 use crate::arch;
 use crate::arch::aarch64::ptw;
-use crate::parameter as param;
 use crate::qemu_api;
 
 use std::ffi::c_void;
 use tlb::TLB;
+
+pub trait AbstractMMU {
+    fn new() -> Self;
+    fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult;
+}
+
+pub struct NoMMU {}
+
+impl AbstractMMU for NoMMU {
+    fn new() -> Self {
+        Self {}
+    }
+    fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult {
+        MMUTranslationResult::Hit(vpn)
+    }
+}
 
 #[derive(Debug)]
 pub struct MemoryManagementUnit<
@@ -39,8 +54,8 @@ fn paddr_reader(addr: u64) -> u64 {
     return buf;
 }
 
-impl<const T_A: usize, const T_S: usize> MemoryManagementUnit<arch::AArch64, T_A, T_S> {
-    pub fn new() -> Self {
+impl<const T_A: usize, const T_S: usize> AbstractMMU for MemoryManagementUnit<arch::AArch64, T_A, T_S> {
+    fn new() -> Self {
         Self {
             tlb: TLB::new(),
             last_ttbr: u64::MAX, // This is special for kernel instruction space.
@@ -48,7 +63,7 @@ impl<const T_A: usize, const T_S: usize> MemoryManagementUnit<arch::AArch64, T_A
         }
     }
 
-    pub fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult {
+    fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult {
         let is_kernel = (vpn >> 51) == 1;
 
         if is_kernel {
