@@ -17,7 +17,7 @@ pub struct TimestampSingleCoreMemoryHierarchy<
     const S_A: usize, // associativity of the shared cache
     const S_S: usize, // set number of the shared cache
 > {
-    pub mmu: MemoryManagementUnit<AArch64, T_A, T_S>,
+    pub mmu: MemoryManagementUnit<AArch64, T_A, T_S>, // TODO(fixme): The MMU should be decoupled from the memory hierarchy. In some case (e.g., an unit test), we don't need MMU.
     pub private_cache: TimestampCache<P_A, P_S>,
     pub local_shared_cache: TimestampCache<S_A, S_S>,
     // All cache invalidation requests. They are used for coherence state construction.

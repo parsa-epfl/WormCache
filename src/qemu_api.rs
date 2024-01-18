@@ -1086,3 +1086,7 @@ extern "C" {
         cb: qemu_plugin_vcpu_branch_resolved_cb_t,
     ) -> bool;
 }
+extern "C" {
+    #[doc = " qemu_plugin_read_pc_vpn() - return the 4KB virtual page number of the current PC.\n\n The reason why we return VPN is because QEMU does not frequent update the PC in its CPUArchState.\n I still don't know why. It may be related to the performance impact but I don't know where I should see the update logic.\n However, the PC should be updated when the PC is pointing to a different page. In this case, no chaining or patching of TB is allowed.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.\n\n To get the full PC, you need to also store the PC's offset as the parameter when registering the callback.\n"]
+    pub fn qemu_plugin_read_pc_vpn() -> u64;
+}

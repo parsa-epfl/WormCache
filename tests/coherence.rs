@@ -47,7 +47,7 @@ const PARAM: PrivateCacheParameters = PrivateCacheParameters {
 
 #[test]
 fn invalid_to_exclusive() {
-    let mut cache = TimestampMemoryHierarchy::<4, 1, 4, 1>::new(2);
+    let mut cache = TimestampMemoryHierarchy::<0, 0, 4, 1, 4, 1>::new(2);
 
     let mut ts = 0;
 
@@ -68,7 +68,7 @@ fn invalid_to_exclusive() {
 
 #[test]
 fn exclusive_to_shared() {
-    let mut cache = TimestampMemoryHierarchy::<4, 1, 4, 1>::new(2);
+    let mut cache = TimestampMemoryHierarchy::<0, 0, 4, 1, 4, 1>::new(2);
     let mut ts = 0;
 
     // access order:
@@ -88,7 +88,7 @@ fn exclusive_to_shared() {
 
 #[test]
 fn exclusive_to_modified() {
-    let mut cache =TimestampMemoryHierarchy::<4, 1, 4, 1>::new(2);
+    let mut cache =TimestampMemoryHierarchy::<0, 0, 4, 1, 4, 1>::new(2);
     let mut ts = 0;
 
     // access logic:
@@ -114,7 +114,7 @@ fn exclusive_to_owned() {
     // C0: write 0x0
     // C1: read 0x0
 
-    let mut cache = TimestampMemoryHierarchy::<4, 1, 4, 1>::new(2);
+    let mut cache = TimestampMemoryHierarchy::<0, 0, 4, 1, 4, 1>::new(2);
     let mut ts = 0;
 
     access_cache!(cache, ts, 0, 0, true);
@@ -135,7 +135,7 @@ fn shared_to_invalid_and_modified() {
     // C1: read 0x0
     // C0: write 0x0
 
-    let mut cache = TimestampMemoryHierarchy::<4, 1, 4, 1>::new(2);
+    let mut cache = TimestampMemoryHierarchy::<0, 0, 4, 1, 4, 1>::new(2);
     let mut ts = 0;
 
     access_cache!(cache, ts, 0, 0, false);
@@ -158,7 +158,7 @@ fn shared_to_owned() {
     // C0: write 0x0
     // C1: read 0x0
 
-    let mut cache = TimestampMemoryHierarchy::<4, 1, 4, 1>::new(2);
+    let mut cache = TimestampMemoryHierarchy::<0, 0, 4, 1, 4, 1>::new(2);
     let mut ts = 0;
 
     access_cache!(cache, ts, 0, 0, false);
