@@ -41,7 +41,7 @@ pub struct FetchUnit {
 impl FetchUnit {
     pub fn new() -> FetchUnit {
         FetchUnit {
-            private_units: [PerCoreFetchUnit::new(); CORE_COUNT],
+            private_units: std::array::from_fn(|_| PerCoreFetchUnit::new()),
         }
     }
 
