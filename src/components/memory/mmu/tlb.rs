@@ -1,3 +1,5 @@
+
+#[derive(Debug)]
 pub struct TLBEntry {
     valid: bool,
     ts: u64,
@@ -6,6 +8,7 @@ pub struct TLBEntry {
     ppn: u64,
 }
 
+#[derive(Debug)]
 struct TLBSet<const ASSO: usize> {
     entries: [TLBEntry; ASSO],
     current_pointer: usize,
@@ -81,6 +84,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
     }
 }
 
+#[derive(Debug)]
 pub struct TLB<const SET_COUNT: usize, const ASSO: usize> {
     entries: Vec<TLBSet<ASSO>>,
     warmed_set: usize,

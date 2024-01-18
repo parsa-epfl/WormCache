@@ -1,5 +1,4 @@
 pub mod parameter;
-pub use parameter::*;
 pub mod arch;
 
 pub mod components;
@@ -29,7 +28,7 @@ unsafe extern "C" fn plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_v
     // MarkerPlugin::dump_snapshot();
     // TouchOnePlugin::dump_snapshot();
     // PageWalkLoggerPlugin::dump_snapshot();
-    BranchPredictorPlugin::dump_snapshot();
+    // BranchPredictorPlugin::dump_snapshot();
 }
 
 #[no_mangle]
@@ -44,7 +43,7 @@ unsafe extern "C" fn vcpu_tb_trans(
     // MarkerPlugin::on_translation(tb);
     //TouchOnePlugin::on_translation(tb);
     // PageWalkLoggerPlugin::on_translation(tb);
-    BranchPredictorPlugin::on_translation(tb);
+    // BranchPredictorPlugin::on_translation(tb);
 }
 
 #[no_mangle]
@@ -86,7 +85,7 @@ unsafe extern "C" fn qemu_plugin_install(
     // MarkerPlugin::init();
     // TouchOnePlugin::init();
     // PageWalkLoggerPlugin::init();
-    BranchPredictorPlugin::init();
+    // BranchPredictorPlugin::init();
 
     return 0;
 }
