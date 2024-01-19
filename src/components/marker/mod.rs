@@ -8,7 +8,7 @@ pub struct MarkerPlugin {}
 unsafe extern "C" fn on_hint_executed(vcpu_index: u32, hint_value: *mut ffi::c_void) {
     let hint_value = hint_value as u32;
 
-    if hint_value == 91 {
+    if hint_value == 110 {
         // print the current timestamp, in us.
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
