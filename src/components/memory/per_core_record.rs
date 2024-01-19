@@ -53,6 +53,9 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
                 // replay the trace.
                 let paddr = (ppn << 12) | (vaddr & 0xfff);
                 for pa in walk_trace {
+                    if pa == u64::MAX {
+                        break;
+                    }
                     self.access_memory_with_pa(ts, pa, false, false);
                 }
                 self.access_memory_with_pa(ts, paddr, is_instruction, is_store);

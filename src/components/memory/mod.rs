@@ -103,7 +103,11 @@ pub struct MemoryPlugin {}
 impl super::Plugin for MemoryPlugin {
     #[inline]
     fn init() {
+        unsafe {
+            PLUGIN.get_mut().hierarchies(0).clear_written_back_dirty_list();
+        }
         println!("Memory plugin initialized.");
+
 
         // I need to start a function to reason about the completion rate of LLC.
         "The following code is for querying LLC warming time.";

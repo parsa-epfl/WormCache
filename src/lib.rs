@@ -22,13 +22,13 @@ pub static qemu_plugin_version: u32 = qemu_api::QEMU_PLUGIN_VERSION;
 
 #[no_mangle]
 unsafe extern "C" fn plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {
-    // MemoryPlugin::dump_snapshot();
+    MemoryPlugin::dump_snapshot();
     VirtualTimePlugin::dump_snapshot();
     // TracePlugin::dump_snapshot();
-    // MarkerPlugin::dump_snapshot();
+    MarkerPlugin::dump_snapshot();
     // TouchOnePlugin::dump_snapshot();
     // PageWalkLoggerPlugin::dump_snapshot();
-    // BranchPredictorPlugin::dump_snapshot();
+    BranchPredictorPlugin::dump_snapshot();
 }
 
 #[no_mangle]
@@ -37,13 +37,13 @@ unsafe extern "C" fn vcpu_tb_trans(
     tb: *mut qemu_api::qemu_plugin_tb,
 ) {
 
-    // MemoryPlugin::on_translation(tb);
+    MemoryPlugin::on_translation(tb);
     VirtualTimePlugin::on_translation(tb);
     // TracePlugin::on_translation(tb);
-    // MarkerPlugin::on_translation(tb);
+    MarkerPlugin::on_translation(tb);
     //TouchOnePlugin::on_translation(tb);
     // PageWalkLoggerPlugin::on_translation(tb);
-    // BranchPredictorPlugin::on_translation(tb);
+    BranchPredictorPlugin::on_translation(tb);
 }
 
 #[no_mangle]
@@ -79,13 +79,13 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_api::qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
 
-    // MemoryPlugin::init();
+    MemoryPlugin::init();
     VirtualTimePlugin::init();
     // TracePlugin::init();
-    // MarkerPlugin::init();
+    MarkerPlugin::init();
     // TouchOnePlugin::init();
     // PageWalkLoggerPlugin::init();
-    // BranchPredictorPlugin::init();
+    BranchPredictorPlugin::init();
 
     return 0;
 }

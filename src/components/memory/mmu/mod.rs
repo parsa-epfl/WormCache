@@ -84,7 +84,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU for MemoryManagementUnit<ar
 
         let ptw_result = unsafe {
             let tcr = qemu_api::qemu_plugin_read_tcr_el1();
-            let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 0 } else { 1 });
+            let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
             ptw(ttbr, tcr, vpn << 12, paddr_reader)
         };
 
