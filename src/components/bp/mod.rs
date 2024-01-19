@@ -55,6 +55,12 @@ impl Plugin for BranchPredictorPlugin {
         assert!(unsafe {
             qemu_api::qemu_plugin_register_vcpu_branch_resolved_cb(Some(branch_resolved_cb))
         });
+
+        unsafe {
+            FETCH_UNIT.get_mut().private_units.iter_mut().for_each(|_|{
+                println!("Init fetch unit");
+            });
+        };
     }
 
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
