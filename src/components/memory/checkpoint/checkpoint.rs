@@ -30,7 +30,7 @@ pub enum CacheBlockState {
 // The normal cache blocks
 #[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct CacheBlock {
-    pub block_id: usize,
+    pub block_id: u64,
     pub state: CacheBlockState,
     pub in_instruction_cache: bool,
     pub in_data_cache: bool
@@ -38,7 +38,7 @@ pub struct CacheBlock {
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct DirectoryBlock {
-    pub block_id: usize,
+    pub block_id: u64,
     pub replicas: Vec<u8>, // core_ids
     pub last_writer: Option<u8>
 }

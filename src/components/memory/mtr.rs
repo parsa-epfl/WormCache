@@ -1,10 +1,10 @@
-use super::TimestampCacheLineStatus;
-use super::TimestampCache;
 use super::checkpoint::ts_checkpoint::{LRUPrioritizing, TsCacheBlock, TsDirectoryBlock};
 use super::checkpoint::{
     CacheBlock, CacheBlockState, DirectoryBlock, PrivateCacheParameters, SerializedCache,
     SerializedDirectory,
 };
+use super::TimestampCache;
+use super::TimestampCacheLineStatus;
 
 use std::collections::{BinaryHeap, HashMap};
 
@@ -32,43 +32,166 @@ impl MTRPermission {
 type CoreId = u8; // 256 cores' machine should be enough and fine.
 
 #[derive(Debug)]
+pub enum WriterType {
+    None,
+    Evicted(CoreId, usize), // CoreID + timestamp
+    Normal(CoreId, usize),  // CoreID + timestamp
+}
+
+impl WriterType {
+    pub fn compare_and_replace(
+        &mut self,
+        core_id: CoreId,
+        timestamp: usize,
+        is_evicted: bool,
+    ) -> bool {
+        let new_line = if is_evicted {
+            WriterType::Evicted(core_id, timestamp)
+        } else {
+            WriterType::Normal(core_id, timestamp)
+        };
+        match self {
+            WriterType::None => {
+                *self = new_line;
+                return true;
+            }
+            WriterType::Evicted(core_id, ts) => {
+                if *ts < timestamp {
+                    *self = new_line;
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            WriterType::Normal(core_id, ts) => {
+                if *ts < timestamp {
+                    *self = new_line;
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+
+    pub fn get_timestamp(&self) -> Option<usize> {
+        match self {
+            WriterType::None => None,
+            WriterType::Evicted(_, ts) => Some(*ts),
+            WriterType::Normal(_, ts) => Some(*ts),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct MemoryTimestampRecord {
     // Well, this fucking structure has a similar size as a cache block.
     ts: usize,
     invalid: HashMap<CoreId, usize>,
     readers: HashMap<CoreId, usize>, // CoreID + timestamp
     perm: MTRPermission,
-    writer: Option<(CoreId, usize)>, // CoreID + timestamp
+    writer: WriterType,
 }
 
 impl MemoryTimestampRecord {
-    pub fn generate_directory_block(&self, block_id: usize) -> TsDirectoryBlock {
-        return TsDirectoryBlock {
-            ts: self.ts,
-            d: match self.writer {
-                Some((writer, writer_ts)) => DirectoryBlock {
-                    block_id,
-                    replicas: self
-                        .readers
-                        .iter()
-                        .filter_map(|(core, ts)| {
-                            return if *ts < writer_ts { None } else { Some(*core) };
-                        })
-                        .collect(),
-                    last_writer: Some(writer),
-                },
-                None => DirectoryBlock {
+    // Filter readers. This only happens when a new writer is registered.
+    pub fn filter_readers_by_ts(&mut self, ts: usize) {
+        self.readers.retain(|_, &mut reader_ts| reader_ts >= ts);
+    }
+
+    pub fn check_non_outdated_reader(&self) {
+        if let Some(writer_ts) = self.writer.get_timestamp() {
+            self.readers.iter().for_each(|(core_id, ts)| {
+                assert!(
+                    *ts <= writer_ts,
+                    "Reader with larger timestamp than the writer should be evicted."
+                );
+            })
+        }
+    }
+
+    pub fn merge_cache_block(
+        &mut self,
+        core_id: CoreId,
+        block_id: u64,
+        ts: usize,
+        status: TimestampCacheLineStatus,
+    ) {
+        // TODO: Filter cache block at this point.
+        // well, update the existing one.
+        if ts > self.ts && status != TimestampCacheLineStatus::Invalid {
+            // well, you have a newer core touching this line (antsd it is not invalid)
+            self.ts = ts;
+        }
+        match status {
+            TimestampCacheLineStatus::Invalid => {} // no action for the invalid block. They are handled by a different function.
+            TimestampCacheLineStatus::Instruction
+            | TimestampCacheLineStatus::CleanData
+            | TimestampCacheLineStatus::CleanInstructionAndData => {
+                if let Some(writer_ts) = self.writer.get_timestamp() {
+                    if ts < writer_ts {
+                        // There is no need to insert this writer.
+                        return;
+                    }
+                }
+
+                if status.is_instruction() {
+                    assert!(self.perm.in_instruction_cache(), "NX violated: It is not possible to have the same data being modified and executable.");
+                }
+                // Well, if I did meet this problem, I need to add a new permission like DirtyDataAndInstruction
+                assert!(
+                    self.readers.insert(core_id, ts).is_none(),
+                    "Each private cache should only keep each cache line once."
+                )
+            }
+            TimestampCacheLineStatus::DirtyData => {
+                assert!(!self.perm.in_instruction_cache(), "NX violation: It is not possible to have the same data being modified and executable");
+                self.writer.compare_and_replace(core_id, ts, false);
+                self.filter_readers_by_ts(ts);
+            }
+        }
+    }
+
+    pub fn merge_evicted_writer(&mut self, core_id: CoreId, ts: usize) {
+        // keep the one with a larger timestamp.
+        self.writer.compare_and_replace(core_id, ts, true);
+        self.filter_readers_by_ts(ts);
+    }
+
+    pub fn genreate_each_holder_state_moesi(&self) -> HashMap<CoreId, CacheBlockState> {
+        todo!()
+    }
+
+    pub fn genreate_each_holder_state_mesi(&self) -> HashMap<CoreId, CacheBlockState> {
+        todo!();
+    }
+
+    pub fn generate_directory_block(&self, block_id: u64) -> Option<TsDirectoryBlock> {
+        self.check_non_outdated_reader();
+        return match self.writer {
+            WriterType::None => Some(TsDirectoryBlock {
+                d: DirectoryBlock {
                     block_id: block_id,
                     replicas: self.readers.iter().map(|(core, _)| *core).collect(),
                     last_writer: None,
                 },
-            },
+                ts: self.ts,
+            }),
+            WriterType::Evicted(_, _) => None,
+            WriterType::Normal(core_id, _) => Some(TsDirectoryBlock {
+                d: DirectoryBlock {
+                    block_id: block_id,
+                    replicas: self.readers.iter().map(|(core, _)| *core).collect(),
+                    last_writer: Some(core_id),
+                },
+                ts: self.ts,
+            }),
         };
     }
 }
 
 pub struct MemoryTimestampRecordCollection<const S: usize> {
-    sets: [HashMap<usize, MemoryTimestampRecord>; S],
+    sets: [HashMap<u64, MemoryTimestampRecord>; S],
 }
 
 impl<const S: usize> MemoryTimestampRecordCollection<S> {
@@ -93,52 +216,12 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
         // scan all entries in `other` and insert them into the system
         for set in other.sets.iter() {
             for (b_id, ts, status) in set.iter() {
-                let set_number = b_id % S;
+                let set_number = b_id as usize % S;
 
                 // TODO: make this as a standalone function.
                 match self.sets[set_number].get_mut(&b_id) {
                     Some(el) => {
-                        // well, update the existing one.
-                        if ts > el.ts && status != TimestampCacheLineStatus::Invalid {
-                            // well, you have a newer core touching this line (and it is not invalid)
-                            el.ts = ts;
-                        }
-                        match status {
-                            TimestampCacheLineStatus::Invalid => {
-                                assert!(
-                                    el.invalid.insert(core_id, ts).is_none(),
-                                    "Each private cache should only keep cache line once."
-                                );
-                            }
-                            TimestampCacheLineStatus::Instruction
-                            | TimestampCacheLineStatus::CleanData
-                            | TimestampCacheLineStatus::CleanInstructionAndData => {
-                                if status.is_instruction() {
-                                    assert!(el.perm.in_instruction_cache(), "NX violated: It is not possible to have the same data being modified and executable.");
-                                }
-                                // Well, if I did meet this problem, I need to add a new permission like DirtyDataAndInstruction
-                                assert!(
-                                    el.readers.insert(core_id, ts).is_none(),
-                                    "Each private cache should only keep each cache line once."
-                                )
-                            }
-                            TimestampCacheLineStatus::DirtyData => {
-                                assert!(!el.perm.in_instruction_cache(), "NX violation: It is not possible to have the same data being modified and executable");
-                                match el.writer {
-                                    Some((writer_id, writer_ts)) => {
-                                        assert!(writer_id != core_id, "Are you trying to absorb the ts_cache from the same core multiple times?");
-                                        if writer_ts < ts {
-                                            el.writer = Some((core_id, ts));
-                                        } else if writer_ts == ts {
-                                            println!("Possible inaccuracy: two cores Core[{}] and Core[{}] are writing to the same cache block({:x}) at the same time (ts={}).", writer_id, core_id, b_id, ts);
-                                        }
-                                    }
-                                    None => {
-                                        el.writer = Some((core_id, ts));
-                                    }
-                                }
-                            }
-                        }
+                        el.merge_cache_block(core_id, b_id, ts, status);
                     }
                     None => {
                         // append a new one
@@ -146,11 +229,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                             b_id,
                             MemoryTimestampRecord {
                                 ts: ts,
-                                invalid: if status == TimestampCacheLineStatus::Invalid {
-                                    HashMap::from([(core_id, ts)])
-                                } else {
-                                    HashMap::new()
-                                },
+                                invalid: HashMap::new(), // invalid is handled by a different function. (absorb_invalid_information)
                                 readers: match status {
                                     TimestampCacheLineStatus::Invalid => {
                                         unreachable!("Something wrong with the iterator.")
@@ -183,14 +262,86 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                                     TimestampCacheLineStatus::Invalid => {
                                         unreachable!("Something wrong with the iterator.")
                                     }
-                                    TimestampCacheLineStatus::Instruction => None,
-                                    TimestampCacheLineStatus::CleanData => None,
-                                    TimestampCacheLineStatus::CleanInstructionAndData => None,
-                                    TimestampCacheLineStatus::DirtyData => Some((core_id, ts)),
+                                    TimestampCacheLineStatus::Instruction => WriterType::None,
+                                    TimestampCacheLineStatus::CleanData => WriterType::None,
+                                    TimestampCacheLineStatus::CleanInstructionAndData => {
+                                        WriterType::None
+                                    }
+                                    TimestampCacheLineStatus::DirtyData => {
+                                        WriterType::Normal(core_id, ts)
+                                    }
                                 },
                             },
                         );
                     }
+                }
+            }
+        }
+    }
+
+    pub fn absorb_evicted_writer(
+        &mut self,
+        core_id: CoreId,
+        evicted_writer_list: &HashMap<u64, usize>,
+    ) {
+        // This function will absorb the invalid list from the private cache.
+        for (block_id, ts) in evicted_writer_list.iter() {
+            let set_number = (*block_id) as usize % S;
+            match self.sets[set_number].get_mut(block_id) {
+                Some(el) => {
+                    el.merge_evicted_writer(core_id, *ts);
+                }
+                None => {
+                    self.sets[set_number].insert(
+                        *block_id,
+                        MemoryTimestampRecord {
+                            ts: *ts,
+                            invalid: HashMap::new(),
+                            readers: HashMap::new(),
+                            perm: MTRPermission::DirtyData,
+                            writer: WriterType::None,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn absorb_invalid_history(
+        &mut self,
+        core_id: CoreId,
+        invalid_list: &HashMap<u64, usize>,
+    ) {
+        // This function will absorb the invalid list from the private cache.
+        for (block_id, ts) in invalid_list.iter() {
+            let set_number = (*block_id as usize) % S;
+            match self.sets[set_number].get_mut(block_id) {
+                Some(el) => {
+                    // insert the invalid history
+                    match el.invalid.get_mut(&core_id) {
+                        Some(_) => {
+                            // impossible!
+                            assert!(
+                                false,
+                                "Impossible: the same core invalid the same cache line twice."
+                            );
+                        }
+                        None => {
+                            el.invalid.insert(core_id, *ts);
+                        }
+                    }
+                }
+                None => {
+                    self.sets[set_number].insert(
+                        *block_id,
+                        MemoryTimestampRecord {
+                            ts: *ts,
+                            invalid: HashMap::from([(core_id, *ts)]),
+                            readers: HashMap::new(),
+                            perm: MTRPermission::DirtyData,
+                            writer: WriterType::None,
+                        },
+                    );
                 }
             }
         }
@@ -246,7 +397,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
             .map(|x| {
                 let mut res_with_ts: Vec<_> = x
                     .iter()
-                    .map(|(block_id, mtr)| mtr.generate_directory_block(*block_id))
+                    .filter_map(|(block_id, mtr)| mtr.generate_directory_block(*block_id))
                     .collect();
 
                 res_with_ts.sort_unstable_by(|a, b| {
@@ -271,7 +422,10 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
     ) -> [SerializedCache; 3] {
         use rayon::prelude::*;
 
-        assert!(S % param.l2_sets == 0, "Required L2 set number must be an multiple of private record set number.");
+        assert!(
+            S % param.l2_sets == 0,
+            "Required L2 set number must be an multiple of private record set number."
+        );
 
         let l2_with_ts: Vec<_> = (0..param.l2_sets)
             .into_par_iter()
@@ -291,58 +445,58 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
                                 },
                                 ts: mtr.invalid[&core_id],
                             });
-                        } else if let Some((w_core_id, w_ts)) = mtr.writer {
-                            // this is a dirty block
-                            if w_core_id == core_id {
-                                // well, it is the writer, so this should include.
-                                collected_blocks.push(TsCacheBlock {
-                                    ts: w_ts,
-                                    d: CacheBlock {
-                                        block_id: *blk_id,
-                                        state: if w_ts == mtr.ts {
-                                            // The write operation is the latest writing
-                                            // TODO: Maybe the read operation happens at the same time with the write. (careful debugging here)
-                                            CacheBlockState::ModifiedExclusive
-                                        } else {
-                                            // There are read ahead of time
-                                            CacheBlockState::ModifiedOwned
-                                        },
-                                        in_instruction_cache: mtr.perm.in_instruction_cache(),
-                                        in_data_cache: mtr.perm.in_data_cache(),
-                                    },
-                                });
-                            } else {
-                                // so, there is another writer. We need this information to see whether the correct core has a valid replica.
-                                if mtr.readers.contains_key(&core_id) {
-                                    if mtr.readers[&core_id] >= w_ts {
-                                        // it is a valid replica.
-                                        collected_blocks.push(TsCacheBlock {
-                                            ts: mtr.readers[&core_id],
-                                            d: CacheBlock {
-                                                block_id: *blk_id,
-                                                state: CacheBlockState::CleanShared,
-                                                in_instruction_cache: mtr
-                                                    .perm
-                                                    .in_instruction_cache(),
-                                                in_data_cache: mtr.perm.in_data_cache(),
-                                            },
-                                        });
-                                    } else {
-                                        // This will be an invalid chunk.
-                                        collected_blocks.push(TsCacheBlock {
-                                            ts: mtr.readers[&core_id],
-                                            d: CacheBlock {
-                                                block_id: *blk_id,
-                                                state: CacheBlockState::Invalid,
-                                                in_instruction_cache: mtr
-                                                    .perm
-                                                    .in_instruction_cache(),
-                                                in_data_cache: mtr.perm.in_data_cache(),
-                                            },
-                                        });
-                                    }
-                                }
-                            }
+                        // } else if let Some((w_core_id, w_ts)) = mtr.writer {
+                        //     // this is a dirty block
+                        //     if w_core_id == core_id {
+                        //         // well, it is the writer, so this should include.
+                        //         collected_blocks.push(TsCacheBlock {
+                        //             ts: w_ts,
+                        //             d: CacheBlock {
+                        //                 block_id: *blk_id,
+                        //                 state: if w_ts == mtr.ts {
+                        //                     // The write operation is the latest writing
+                        //                     // TODO: Maybe the read operation happens at the same time with the write. (careful debugging here)
+                        //                     CacheBlockState::ModifiedExclusive
+                        //                 } else {
+                        //                     // There are read ahead of time
+                        //                     CacheBlockState::ModifiedOwned
+                        //                 },
+                        //                 in_instruction_cache: mtr.perm.in_instruction_cache(),
+                        //                 in_data_cache: mtr.perm.in_data_cache(),
+                        //             },
+                        //         });
+                        //     } else {
+                        //         // so, there is another writer. We need this information to see whether the correct core has a valid replica.
+                        //         if mtr.readers.contains_key(&core_id) {
+                        //             if mtr.readers[&core_id] >= w_ts {
+                        //                 // it is a valid replica.
+                        //                 collected_blocks.push(TsCacheBlock {
+                        //                     ts: mtr.readers[&core_id],
+                        //                     d: CacheBlock {
+                        //                         block_id: *blk_id,
+                        //                         state: CacheBlockState::CleanShared,
+                        //                         in_instruction_cache: mtr
+                        //                             .perm
+                        //                             .in_instruction_cache(),
+                        //                         in_data_cache: mtr.perm.in_data_cache(),
+                        //                     },
+                        //                 });
+                        //             } else {
+                        //                 // This will be an invalid chunk.
+                        //                 collected_blocks.push(TsCacheBlock {
+                        //                     ts: mtr.readers[&core_id],
+                        //                     d: CacheBlock {
+                        //                         block_id: *blk_id,
+                        //                         state: CacheBlockState::Invalid,
+                        //                         in_instruction_cache: mtr
+                        //                             .perm
+                        //                             .in_instruction_cache(),
+                        //                         in_data_cache: mtr.perm.in_data_cache(),
+                        //                     },
+                        //                 });
+                        //             }
+                        //         }
+                        //     }
                         } else {
                             // OK, now it is clean, and it determines whether this is widely shared.
                             if mtr.readers.contains_key(&core_id) {
@@ -420,8 +574,8 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
         ];
     }
 
-    pub fn look_up(&self, block_id: usize) -> bool {
-        let set_number = block_id % S;
+    pub fn look_up(&self, block_id: u64) -> bool {
+        let set_number = block_id as usize % S;
         return self.sets[set_number].contains_key(&block_id);
     }
 }

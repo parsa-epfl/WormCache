@@ -49,12 +49,12 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
 
     pub fn record(
         &mut self,
-        block_id: usize,
+        block_id: u64,
         is_instruction: bool,
         is_write: bool,
         ts: usize,
     ) -> super::CacheReturnResult {
-        let set_number = block_id & (S - 1);
+        let set_number = block_id as usize & (S - 1);
         let set = &mut self.sets[set_number];
 
         let old_element_count = set.warm_chunk_count();
@@ -71,21 +71,21 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
 
     pub fn peek(
         &mut self,
-        block_id: usize,
+        block_id: u64,
         is_instruction: bool,
         is_write: bool,
         ts: usize,
     ) -> bool {
-        let set_number = block_id & (S - 1);
+        let set_number = block_id as usize & (S - 1);
         return self.sets[set_number].peek(block_id, ts, is_instruction, is_write);
     }
 
 
     pub fn invalid(
         &mut self,
-        block_id: usize
+        block_id: u64
     ) -> super::CacheFlushResult {
-        let set_number = block_id & (S - 1);
+        let set_number = block_id as usize & (S - 1);
         return self.sets[set_number].invalid(block_id);
     }
 }

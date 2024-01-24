@@ -6,6 +6,7 @@ use std::env;
 use std::io::{BufReader, Write};
 use std::{fs::File, io::Read};
 use worm_cache::components::memory::{PrivateCacheParameters, TimestampMemoryHierarchy};
+use worm_cache::components::memory::mmu::NoMMU;
 
 #[repr(C)]
 #[cfg(target_pointer_width = "64")]
@@ -68,7 +69,7 @@ fn main() {
 
     let core_count: usize = args[1].parse().unwrap();
 
-    let mut mh = TimestampMemoryHierarchy::<{ P_A }, { P_S }, { S_A }, { S_S }>::new(core_count);
+    let mut mh = TimestampMemoryHierarchy::<NoMMU, { P_A }, { P_S }, { S_A }, { S_S }>::new(core_count);
 
     // read the trace file.
     let file = File::open(&args[2]).unwrap();
@@ -91,7 +92,7 @@ fn main() {
         let is_write: bool = entry.permission == 2;
         mh.hierarchies(entry.core_id).access_memory(
             entry.timestamp as usize,
-            entry.paddr as usize,
+            entry.paddr,
             is_instruction,
             is_write,
         );

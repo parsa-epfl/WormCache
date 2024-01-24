@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub enum CacheReturnResult {
     Miss,
     Hit,
-    MissWithEviction(usize, bool), // (block_id, is_instruction)
-    MissWithWriteBack(usize), // (block_id)
+    MissWithEviction(u64, bool), // (block_id, is_instruction)
+    MissWithWriteBack(u64), // (block_id)
 }
 
 #[derive(PartialEq)]
@@ -67,7 +67,7 @@ impl<const A: usize> SetAccessResult<A> {
 
 #[derive(Debug)]
 pub struct TimestampCacheSet<const A: usize> {
-    block_ids: [usize; A],
+    block_ids: [u64; A],
     ts: [usize; A], // timestamp contains order information, so no necessary for LRU bits.
     status: [TimestampCacheLineStatus; A],
     cold_element_pointer: AtomicUsize, // from which element the instruction is invalid.
@@ -83,7 +83,7 @@ impl<const A: usize> TimestampCacheSet<A> {
         };
     }
 
-    fn lookup(&self, block_id: usize) -> SetAccessResult<A> {
+    fn lookup(&self, block_id: u64) -> SetAccessResult<A> {
         return match self
             .block_ids
             .iter()
@@ -99,11 +99,11 @@ impl<const A: usize> TimestampCacheSet<A> {
 
     fn add_new(
         &mut self,
-        block_id: usize,
+        block_id: u64,
         ts: usize,
         is_instruction: bool,
         is_write: bool,
-    ) -> Option<(usize, TimestampCacheLineStatus)> {
+    ) -> Option<(u64, TimestampCacheLineStatus)> {
         // always triggers a replacement.
         // please make sure you check the result of lookup first before adding an element
         // otherwise it can cause redundancy.
@@ -158,7 +158,7 @@ impl<const A: usize> TimestampCacheSet<A> {
 
     pub fn peek(
         &mut self,
-        block_id: usize,
+        block_id: u64,
         ts: usize,
         is_instruction: bool,
         is_write: bool,
@@ -203,7 +203,7 @@ impl<const A: usize> TimestampCacheSet<A> {
 
     pub fn access(
         &mut self,
-        block_id: usize,
+        block_id: u64,
         ts: usize,
         is_instruction: bool,
         is_write: bool,
@@ -223,7 +223,7 @@ impl<const A: usize> TimestampCacheSet<A> {
         };
     }
 
-    pub fn invalid(&mut self, block_id: usize) -> CacheFlushResult {
+    pub fn invalid(&mut self, block_id: u64) -> CacheFlushResult {
         let look_index = self.lookup(block_id);
         if look_index.is_miss() {
             return CacheFlushResult::Miss;
@@ -261,7 +261,7 @@ pub struct TimestampCacheSetIterator<'a, const A: usize> {
 }
 
 impl<'a, const A: usize> Iterator for TimestampCacheSetIterator<'a, A> {
-    type Item = (usize, usize, TimestampCacheLineStatus); /// (block_id, ts, status)
+    type Item = (u64, usize, TimestampCacheLineStatus); /// (block_id, ts, status)
 
     /// Return value: (block_id, ts, status)
     fn next(&mut self) -> Option<Self::Item> {

@@ -1,15 +1,14 @@
 mod checkpoint;
 mod mtr;
 mod per_core_record;
-mod tlb;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
+pub mod mmu;
 
 use std::ffi;
 use std::fs;
 use std::io::Write;
-use std::process::exit;
 
 pub use checkpoint::CacheBlockState;
 pub use checkpoint::PrivateCacheParameters;
@@ -23,21 +22,25 @@ pub use ts_set::TimestampCacheLineStatus;
 pub use ts_set::TimestampCacheSet;
 
 use crate::qemu_api;
-use crate::CORE_COUNT;
+use crate::parameter as param;
+use crate::arch;
 
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
 
+type PluginMMU = mmu::MemoryManagementUnit<arch::AArch64, { param::TLB_ASSO }, { param::TLB_SET }>;
+
 static mut PLUGIN: Lazy<
     UnsafeCell<
         TimestampMemoryHierarchy<
-            { crate::PRI_CACHE_ASSO },
-            { crate::PRI_CACHE_SET },
-            { crate::SHARED_CACHE_ASSO },
-            { crate::SHARED_CACHE_SET },
+            PluginMMU,
+            { param::PRI_CACHE_ASSO },
+            { param::PRI_CACHE_SET },
+            { param::SHARED_CACHE_ASSO },
+            { param::SHARED_CACHE_SET },
         >,
     >,
-> = Lazy::new(|| UnsafeCell::new(TimestampMemoryHierarchy::new(crate::CORE_COUNT)));
+> = Lazy::new(|| UnsafeCell::new(TimestampMemoryHierarchy::new(param::CORE_COUNT)));
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -57,11 +60,10 @@ unsafe extern "C" fn vcpu_mem_access(
 
     if !is_device {
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
-        let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
 
         PLUGIN.get_mut().hierarchies(cpu_idx as u8).access_memory(
             get_memory_ts() as usize,
-            paddr as usize,
+            vaddr,
             false,
             is_store,
         )
@@ -72,11 +74,15 @@ unsafe extern "C" fn vcpu_mem_access(
 
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
-    paddr: *mut ffi::c_void, // it is basically its physical address.
+    voffset: *mut ffi::c_void, // it is basically its physical address.
 ) {
+    let vpn = unsafe {
+        qemu_api::qemu_plugin_read_pc_vpn()
+    };
+    let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
     PLUGIN.get_mut().hierarchies(vcpu_idx as u8).access_memory(
         get_memory_ts() as usize,
-        paddr as usize,
+        vaddr,
         true,
         false,
     )
@@ -92,89 +98,80 @@ unsafe extern "C" fn vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-// #[cfg(target_pointer_width = "64")]
-// #[derive(Debug)]
-// pub struct PluginFetchBlockContext {
-//     /// The virtual address of the first instruction.
-//     pub va: usize,
-//     /// The physical address of the first instruction.
-//     pub pa: usize,
-//     /// The number of instructions in this fetch block.
-//     pub size: usize,
-// }
-
-// static FETCH_BLOCK_CONTEXT_MAP: Lazy<Mutex<HashMap<usize, Box<PluginFetchBlockContext>>>> =
-//     Lazy::new(|| Mutex::new(HashMap::new()));
-
 pub struct MemoryPlugin {}
 
 impl super::Plugin for MemoryPlugin {
     #[inline]
     fn init() {
+        unsafe {
+            PLUGIN.get_mut().hierarchies(0).clear_written_back_dirty_list();
+        }
         println!("Memory plugin initialized.");
 
+
         // I need to start a function to reason about the completion rate of LLC.
-        std::thread::spawn(|| {
-            const LLC_SET: usize = crate::SHARED_CACHE_SET;
-            // Currently this stuff only works for a fully associative cache.
-            let mut new_block_count = Vec::from_iter((0..LLC_SET).map(|_| false));
-            let mut warmed_count = 0;
-            let mut recorded_count = 0;
-            // open a file to record completion time.
-            let mut output = fs::File::create("./completion_time.csv").unwrap();
-            output.write_fmt(format_args!("timestamp\n")).unwrap();
-            // open a file to write the update time.
-            loop {
-                for set_index in 0..LLC_SET {
-                    if new_block_count[set_index] {
-                        continue;
-                    }
-                    let mut touched_entry = 0;
-                    for core_id in 0..(CORE_COUNT as u8) {
-                        unsafe {
-                            let set = PLUGIN
-                                .get_mut()
-                                .hierarchies(core_id)
-                                .local_shared_cache
-                                .sets
-                                .get(set_index)
-                                .unwrap();
-                            touched_entry += set.warm_chunk_count();
-                        }
-                    }
+        "The following code is for querying LLC warming time.";
+        // std::thread::spawn(|| {
+        //     const LLC_SET: usize = param::SHARED_CACHE_SET;
+        //     // Currently this stuff only works for a fully associative cache.
+        //     let mut new_block_count = Vec::from_iter((0..LLC_SET).map(|_| false));
+        //     let mut warmed_count = 0;
+        //     let mut recorded_count = 0;
+        //     // open a file to record completion time.
+        //     let mut output = fs::File::create("./completion_time.csv").unwrap();
+        //     output.write_fmt(format_args!("timestamp\n")).unwrap();
+        //     // open a file to write the update time.
+        //     loop {
+        //         for set_index in 0..LLC_SET {
+        //             if new_block_count[set_index] {
+        //                 continue;
+        //             }
+        //             let mut touched_entry = 0;
+        //             for core_id in 0..(param::CORE_COUNT as u8) {
+        //                 unsafe {
+        //                     let set = PLUGIN
+        //                         .get_mut()
+        //                         .hierarchies(core_id)
+        //                         .local_shared_cache
+        //                         .sets
+        //                         .get(set_index)
+        //                         .unwrap();
+        //                     touched_entry += set.warm_chunk_count();
+        //                 }
+        //             }
 
-                    if touched_entry >= crate::parameter::SHARED_CACHE_ASSO {
-                        new_block_count[set_index] = true;
-                        warmed_count += 1;
-                        if warmed_count == LLC_SET {
-                            output
-                                .write_fmt(format_args!("{}\n", get_memory_ts()))
-                                .unwrap();
-                            output.flush().unwrap();
-                            recorded_count += 1;
-                            if recorded_count == 40 {
-                                output.flush().unwrap();
-                                exit(0);
-                            }
-                            for core_id in 0..(CORE_COUNT as u8) {
-                                unsafe {
-                                    PLUGIN
-                                        .get_mut()
-                                        .hierarchies(core_id)
-                                        .clean_local_shared_cache();
-                                }
-                            }
-                            warmed_count = 0;
-                            for i in 0..LLC_SET {
-                                new_block_count[i] = false;
-                            }
-                        }
-                    }
-                }
+        //             if touched_entry >= crate::parameter::SHARED_CACHE_ASSO {
+        //                 new_block_count[set_index] = true;
+        //                 warmed_count += 1;
+        //                 if warmed_count == LLC_SET {
+        //                     output
+        //                         .write_fmt(format_args!("{}\n", get_memory_ts()))
+        //                         .unwrap();
+        //                     output.flush().unwrap();
+        //                     recorded_count += 1;
+        //                     if recorded_count == 40 {
+        //                         output.flush().unwrap();
+        //                         exit(0);
+        //                     }
+        //                     for core_id in 0..(param::CORE_COUNT as u8) {
+        //                         unsafe {
+        //                             PLUGIN
+        //                                 .get_mut()
+        //                                 .hierarchies(core_id)
+        //                                 .clean_local_shared_cache();
+        //                         }
+        //                     }
+        //                     warmed_count = 0;
+        //                     for i in 0..LLC_SET {
+        //                         new_block_count[i] = false;
+        //                     }
+        //                 }
+        //             }
+        //         }
 
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
-        });
+        //         std::thread::sleep(std::time::Duration::from_secs(1));
+        //     }
+        // });
     }
 
     #[inline]
@@ -184,12 +181,12 @@ impl super::Plugin for MemoryPlugin {
             l1i_associativity: 16,
             l1d_sets: 32,
             l1d_associativity: 16,
-            l2_sets: crate::PRI_CACHE_SET,
-            l2_associativity: crate::PRI_CACHE_ASSO,
-            directory_associativity: crate::PRI_CACHE_ASSO * CORE_COUNT,
+            l2_sets: param::PRI_CACHE_SET,
+            l2_associativity: param::PRI_CACHE_ASSO,
+            directory_associativity: param::PRI_CACHE_ASSO * param::CORE_COUNT,
         };
         unsafe {
-            let mtr = PLUGIN.get_mut().render_mtr::<{ crate::PRI_CACHE_SET }>();
+            let mtr = PLUGIN.get_mut().render_mtr::<{ param::PRI_CACHE_SET }>();
             let mtr = mtr.prune_by_associativity(private_param.directory_associativity);
             let caches = PLUGIN.get_mut().render_cache_hierarchy(&mtr, &private_param);
             let exported_json = serde_json::to_string_pretty(&caches).unwrap();
@@ -224,7 +221,7 @@ impl super::Plugin for MemoryPlugin {
                 i,
                 Some(vcpu_insn_exec),
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                qemu_api::qemu_plugin_insn_haddr(i) as *mut ffi::c_void,
+                (qemu_api::qemu_plugin_insn_vaddr(i) & 0xfff) as *mut ffi::c_void,
             );
         }
 

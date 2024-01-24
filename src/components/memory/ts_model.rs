@@ -7,23 +7,26 @@ use super::checkpoint::{
     CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, PrivateCacheParameters, SerializedCache,
 };
 
+use super::mmu::AbstractMMU;
+
 // This file builds a memory hierarchy model using Cache recording timestamp.
 // TODO: Add the traffic from the page walker and the prefetcher.
 
 // This module contains the logic of quantum management and cache reconstruction.
 #[derive(Debug)]
 pub struct TimestampMemoryHierarchy<
+    MMU: AbstractMMU,
     const P_A: usize,
     const P_S: usize,
     const S_A: usize,
     const S_S: usize,
 > {
     // hierarchies: HashMap<u8, TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
-    hierarchies: Vec<TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S>>,
+    hierarchies: Vec<TimestampSingleCoreMemoryHierarchy<MMU, P_A, P_S, S_A, S_S>>,
 }
 
-impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
-    TimestampMemoryHierarchy<P_A, P_S, S_A, S_S>
+impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
+    TimestampMemoryHierarchy<MMU, P_A, P_S, S_A, S_S>
 {
     pub fn new(core_count: usize) -> Self {
         return TimestampMemoryHierarchy {
@@ -37,7 +40,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
     pub fn hierarchies(
         &mut self,
         core_id: u8,
-    ) -> &mut TimestampSingleCoreMemoryHierarchy<P_A, P_S, S_A, S_S> {
+    ) -> &mut TimestampSingleCoreMemoryHierarchy<MMU, P_A, P_S, S_A, S_S> {
         // This function can be only called from each vCPU, and it meets the following requirement:
         // - Each thread has its unique core_id (no cases for two thread access the same hierarchy)
         // - During reconstruction, all other threads must stop.
@@ -57,7 +60,7 @@ impl<const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
         &self,
         mtr: &MemoryTimestampRecordCollection<S>,
     ) -> SerializedCache {
-        let mut merging_sets: Vec<HashMap<usize, TsCacheBlock>> =
+        let mut merging_sets: Vec<HashMap<u64, TsCacheBlock>> =
             Vec::from_iter((0..crate::parameter::SHARED_CACHE_SET).map(|_| HashMap::new()));
 
         for per_core_record in self.hierarchies.iter() {

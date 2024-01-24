@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use std::{io::Write, sync::Mutex};
 
 use crate::qemu_api;
+use crate::parameter as param;
 
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
@@ -52,7 +53,7 @@ impl super::Plugin for VirtualTimePlugin {
             // }
             // file.write_fmt(format_args!("\n")).unwrap();
             let mut head = vec!["ts".to_string()];
-            for i in 0..crate::CORE_COUNT {
+            for i in 0..param::CORE_COUNT {
                 head.push(format!("core{}", i));
             }
 
@@ -63,7 +64,7 @@ impl super::Plugin for VirtualTimePlugin {
                 let icounts = ICOUNT_PLUGIN.get_icounts();
                 let mut lines = vec![];
                 lines.push(format!("{}", get_memory_ts()));
-                for i in 0..crate::CORE_COUNT {
+                for i in 0..param::CORE_COUNT {
                     lines.push(format!("{}", icounts[i]));
                 }
                 file.write_fmt(format_args!("{}\n", lines.join(",")))

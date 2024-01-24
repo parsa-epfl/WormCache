@@ -1,4 +1,6 @@
-struct TLBEntry {
+
+#[derive(Debug)]
+pub struct TLBEntry {
     valid: bool,
     ts: u64,
     asid: u16,
@@ -6,13 +8,14 @@ struct TLBEntry {
     ppn: u64,
 }
 
+#[derive(Debug)]
 struct TLBSet<const ASSO: usize> {
     entries: [TLBEntry; ASSO],
     current_pointer: usize,
 }
 
 impl<const ASSO: usize> TLBSet<ASSO> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             entries: std::array::from_fn(|_| TLBEntry {
                 valid: false,
@@ -25,7 +28,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
         }
     }
 
-    fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
+    pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
         for entry in self.entries.iter_mut() {
             if entry.valid && entry.vpn == entry.vpn && entry.asid == asid {
                 entry.ts = ts;
@@ -35,7 +38,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
         None
     }
 
-    fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64) {
+    pub fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64) {
         if self.current_pointer < ASSO {
             self.entries[self.current_pointer].valid = true;
             self.entries[self.current_pointer].ts = ts;
@@ -81,38 +84,39 @@ impl<const ASSO: usize> TLBSet<ASSO> {
     }
 }
 
-struct TLB<const SET_COUNT: usize, const ASSO: usize> {
+#[derive(Debug)]
+pub struct TLB<const SET_COUNT: usize, const ASSO: usize> {
     entries: Vec<TLBSet<ASSO>>,
     warmed_set: usize,
 }
 
 impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             entries: (0..SET_COUNT).map(|_| TLBSet::new()).collect(),
             warmed_set: 0,
         }
     }
 
-    fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
+    pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
         let set_index = vpn % SET_COUNT as u64;
         let set = &mut self.entries[set_index as usize];
         set.lookup(vpn, asid, ts)
     }
 
-    fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64) {
+    pub fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64) {
         let set_index = vpn % SET_COUNT as u64;
         let set = &mut self.entries[set_index as usize];
         set.insert(vpn, asid, ppn, ts);
     }
 
-    fn invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
+    pub fn invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
         let set_index = vpn % SET_COUNT as u64;
         let set = &mut self.entries[set_index as usize];
         set.invalidate_by_vpn(vpn, asid);
     }
 
-    fn invalidate_by_asid(&mut self, asid: u16) {
+    pub fn invalidate_by_asid(&mut self, asid: u16) {
         for set in self.entries.iter_mut() {
             set.invalidate_by_asid(asid);
         }

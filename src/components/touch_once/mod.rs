@@ -1,5 +1,4 @@
 use std::ffi;
-use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::sync::atomic::AtomicUsize;
@@ -7,7 +6,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
 use crate::qemu_api;
-use crate::CORE_COUNT;
 
 use once_cell::sync::Lazy;
 

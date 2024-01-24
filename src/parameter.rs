@@ -6,7 +6,7 @@
  * 
  * Number of vCPUs of QEMU. 
  */
-pub const CORE_COUNT: usize = 4;
+pub const CORE_COUNT: usize = 1;
 
 /**
  * CACHE_LINE_SIZE
@@ -16,6 +16,20 @@ pub const CORE_COUNT: usize = 4;
 
 pub const CACHE_LINE_SIZE: usize = 64;
 
+/**
+ * TLB_ASSO
+ * 
+ * The associativity of the private & last-level TLB.
+ */
+pub const TLB_ASSO: usize = 16;
+
+/**
+ * TLB_SET
+ * 
+ * The number of sets of the private & last-level TLB.
+ */
+
+pub const TLB_SET: usize = 1024;
 
 /**
  * PRI_CACHE_ASSO
