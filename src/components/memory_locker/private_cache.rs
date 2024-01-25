@@ -19,6 +19,7 @@ pub struct PrivateCacheLine {
     pub is_instruction: bool,
 }
 
+#[repr(align(64))]
 pub struct PrivateCache<const SET: usize, const WAY: usize> {
     cache: [RwLock<[PrivateCacheLine; WAY]>; SET],
 }
@@ -120,3 +121,17 @@ impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
         }
     }
 }
+
+// There might be another way to design the private cache.
+// - No locks for each set. 
+// - Each set has a ring buffer for the incoming invalidation request from other cores.
+// - Before accessing each set, empty the ring buffer, which only requires pure atomic operations. 
+//   - the ring buffer is a fixed-size array, which has at most ASSO elements.
+//   - accessing ring buffer is a pure read operations, including the read pointer
+//   - pushing message to the ring buffer is an atomic add operation + a write operation.
+// - A mutex is necessary for the directory when there is a private cache miss (it is really nice if we can take away this lock)
+//   - coherence miss: Write lock, to clean others
+//   - capacity/conflict miss, depending on the condition of the directory (rlock)
+//        - The cache line is in others' private cache: write lock
+//        - The cache line is in the shared cache: write lock, to create a new entry. 
+// - The shared LLC requires a lock for each set when the LLC is large, and can be replicated when the LLC is small to avoid contention.
