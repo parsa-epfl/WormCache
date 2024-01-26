@@ -6,7 +6,7 @@ use std::env;
 use std::io::{BufReader, Write};
 use std::{fs::File, io::Read};
 use worm_cache::components::memory::{PrivateCacheParameters, TimestampMemoryHierarchy};
-use worm_cache::components::memory::mmu::NoMMU;
+use worm_cache::components::NoMMU;
 
 #[repr(C)]
 #[cfg(target_pointer_width = "64")]
