@@ -4,11 +4,11 @@ mod per_core_record;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
-pub mod mmu;
 
 use std::ffi;
 use std::fs;
 use std::io::Write;
+use super::mmu;
 
 pub use checkpoint::CacheBlockState;
 pub use checkpoint::PrivateCacheParameters;
