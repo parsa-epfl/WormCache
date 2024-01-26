@@ -90,4 +90,23 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
         // otherwise, it is a miss.
         return false;
     }
+
+    pub fn invalidate(&self, block_id: u64) -> bool {
+        let set_id = (block_id % SET as u64) as usize;
+        let mut blocks = self.blocks[set_id].lock().unwrap();
+
+        // first of all, find whether this block is a hit.
+        let hit_block = blocks.iter_mut().find(|p| {
+            return p.valid && p.tag == block_id;
+        });
+
+        // if it is a hit, we remove this block from the cache
+        if let Some(hit_block) = hit_block {
+            hit_block.valid = false;
+            return true;
+        }
+
+        // otherwise, it is a miss.
+        return false;
+    }
 }
