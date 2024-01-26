@@ -104,7 +104,7 @@ impl super::Plugin for MemoryPlugin {
     #[inline]
     fn init() {
         unsafe {
-            PLUGIN.get_mut().hierarchies(0).clear_written_back_dirty_list();
+            Lazy::force(&PLUGIN);
         }
         println!("Memory plugin initialized.");
 
