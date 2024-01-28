@@ -57,10 +57,8 @@ impl Plugin for BranchPredictorPlugin {
         });
 
         unsafe {
-            FETCH_UNIT.get_mut().private_units.iter_mut().for_each(|_|{
-                println!("Init fetch unit");
-            });
-        };
+            Lazy::force(&FETCH_UNIT);
+        }
     }
 
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {

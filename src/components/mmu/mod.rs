@@ -27,6 +27,7 @@ impl AbstractMMU for NoMMU {
 }
 
 #[derive(Debug)]
+#[repr(align(64))]
 pub struct MemoryManagementUnit<
     ARCH: arch::ISA,
     const T_ASSO: usize = 16,

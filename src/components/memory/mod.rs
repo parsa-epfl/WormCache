@@ -4,11 +4,11 @@ mod per_core_record;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
-pub mod mmu;
 
 use std::ffi;
 use std::fs;
 use std::io::Write;
+use super::mmu;
 
 pub use checkpoint::CacheBlockState;
 pub use checkpoint::PrivateCacheParameters;
@@ -104,7 +104,7 @@ impl super::Plugin for MemoryPlugin {
     #[inline]
     fn init() {
         unsafe {
-            PLUGIN.get_mut().hierarchies(0).clear_written_back_dirty_list();
+            Lazy::force(&PLUGIN);
         }
         println!("Memory plugin initialized.");
 

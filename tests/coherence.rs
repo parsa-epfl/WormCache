@@ -1,5 +1,5 @@
 use worm_cache::{self, components::memory::{PrivateCacheParameters, CacheBlockState, TimestampMemoryHierarchy}};
-use worm_cache::components::memory::mmu::NoMMU;
+use worm_cache::components::NoMMU;
 
 macro_rules! access_cache {
     ($cache:expr, $ts:expr, $core_id:expr, $addr:expr, $is_write:expr) => {
