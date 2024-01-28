@@ -36,6 +36,11 @@ pub fn find_fetch_block_from_block_id_sequence(i: Vec<usize>) -> HashMap<usize, 
     return res;
 }
 
+pub fn init_heap_array<T: Sized + std::fmt::Debug, const N: usize>(f: fn(usize) -> T) -> Box<[T; N]> {
+    let res = Vec::from_iter((0..N).map(f));
+    return res.into_boxed_slice().try_into().unwrap();
+}
+
 #[test]
 fn test_find_fetch_block_from_pa_sequence() {
     let example = vec![0, 0, 1, 1, 2, 2, 3, 3, 3];

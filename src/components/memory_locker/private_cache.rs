@@ -32,6 +32,7 @@ pub struct PrivateCacheLine {
 }
 
 // Migrate some functions to this struct, with lock permission.
+#[derive(Debug)]
 pub struct PrivateCacheSet<const WAY: usize> {
     pub lines: [PrivateCacheLine; WAY],
 }
@@ -191,13 +192,13 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
 
 #[repr(align(64))]
 pub struct PrivateCache<const SET: usize, const WAY: usize> {
-    cache: [RwLock<PrivateCacheSet<WAY>>; SET],
+    cache: Box<[RwLock<PrivateCacheSet<WAY>>; SET]>,
 }
 
 impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
     pub fn new() -> Self {
         Self {
-            cache: std::array::from_fn(|_| RwLock::new(PrivateCacheSet::new())),
+            cache: crate::util::init_heap_array(|_| RwLock::new(PrivateCacheSet::new())),
         }
     }
 

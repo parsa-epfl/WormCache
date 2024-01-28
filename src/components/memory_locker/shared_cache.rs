@@ -7,6 +7,7 @@ use std::sync::Mutex;
 //    - Read is a miss: Read lock
 // 3. It will be probably OK to use Mutex.
 
+#[derive(Debug)]
 pub struct SharedCacheBlock {
     pub valid: bool,
     pub tag: u64,
@@ -14,13 +15,13 @@ pub struct SharedCacheBlock {
 }
 
 pub struct ExclusiveSharedCache<const SET: usize, const WAY: usize> {
-    blocks: [Mutex<[SharedCacheBlock; WAY]>; SET],
+    blocks: Box<[Mutex<[SharedCacheBlock; WAY]>; SET]>,
 }
 
 impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
     pub fn new() -> Self {
         Self {
-            blocks: std::array::from_fn(|_| {
+            blocks: crate::util::init_heap_array(|_| {
                 Mutex::new(std::array::from_fn(|_| SharedCacheBlock {
                     valid: false,
                     tag: 0,
