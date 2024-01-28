@@ -98,9 +98,9 @@ unsafe extern "C" fn vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-pub struct MemoryPlugin {}
+pub struct TimeStampedMemoryPlugin {}
 
-impl super::Plugin for MemoryPlugin {
+impl super::Plugin for TimeStampedMemoryPlugin {
     #[inline]
     fn init() {
         unsafe {
