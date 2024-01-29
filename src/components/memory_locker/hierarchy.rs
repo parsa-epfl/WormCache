@@ -167,7 +167,8 @@ impl LockedMemoryHierarchy {
             for i in 0..parameter::CORE_COUNT {
                 if *directory_result.get(i).unwrap() {
                     if i == core_id as usize {
-                        panic!("Invalidating myself???")
+                        // this is normal operation. In case you want to modify something already in your cache but you don't have the permission.
+                        continue;
                     }
                     // invalidate the cache line.
                     let other_private_cache = &self.private_caches[i];
