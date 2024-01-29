@@ -114,8 +114,11 @@ impl LockedMemoryHierarchy {
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
+        // Now, we go to the directory. We release the lock of the private cache.
+        drop(private_set);
+
         // now, it is a miss. We need to check the directory.
-        let mut directory_set = self.directory.get_set(block_id).write().unwrap();
+        let mut directory_set = self.directory.get_set(block_id).write().unwrap(); // Deadlock 2
         let directory_result = directory_set.peek(block_id);
 
         // if it is miss, we need to access the last level cache as well, and add it.
@@ -124,6 +127,9 @@ impl LockedMemoryHierarchy {
             let mut incoming_sharer = SharerList::ZERO;
             incoming_sharer.set(core_id as usize, true);
             directory_set.write(block_id, ts, incoming_sharer);
+            drop(directory_set);
+
+            let mut private_set = private_cache.get_set(block_id).write().unwrap();
             let evicted = private_set.refill(
                 block_id,
                 ts,
@@ -134,8 +140,6 @@ impl LockedMemoryHierarchy {
                     PrivateCacheState::CleanExclusive
                 },
             );
-
-            drop(directory_set);
             drop(private_set);
 
             // handle eviction now.
@@ -154,6 +158,7 @@ impl LockedMemoryHierarchy {
         if is_store {
             // We need to invalid other cores' cache line.
             // First, we insert the result to our own private cache.
+            let mut private_set = private_cache.get_set(block_id).write().unwrap();
             let evicted = private_set.refill(
                 block_id,
                 ts,
@@ -173,7 +178,7 @@ impl LockedMemoryHierarchy {
                     // invalidate the cache line.
                     let other_private_cache = &self.private_caches[i];
                     let mut other_private_set =
-                        other_private_cache.get_set(block_id).write().unwrap();
+                        other_private_cache.get_set(block_id).write().unwrap(); // Deadlock 1
                     other_private_set.invalidate(block_id);
                 }
             }
@@ -194,6 +199,7 @@ impl LockedMemoryHierarchy {
             incoming_sharer.set(core_id as usize, true);
 
             // First, we refill the cache line.
+            let mut private_set = private_cache.get_set(block_id).write().unwrap();
             let evicted = private_set.refill(
                 block_id,
                 ts,
@@ -227,8 +233,10 @@ impl LockedMemoryHierarchy {
         let mut incoming_sharer = directory_result.clone();
         incoming_sharer.set(core_id as usize, true);
         directory_set.write(block_id, ts, incoming_sharer);
+        drop(directory_set);
 
         // then, we can consider how to refill the cache line.
+        let mut private_set = private_cache.get_set(block_id).write().unwrap();
         let evicted = private_set.refill(
             block_id,
             ts,
@@ -239,9 +247,8 @@ impl LockedMemoryHierarchy {
                 PrivateCacheState::CleanShared
             },
         );
-
-        drop(directory_set);
         drop(private_set);
+
 
         // handle eviction now.
         if let Some(evicted_line) = evicted {
