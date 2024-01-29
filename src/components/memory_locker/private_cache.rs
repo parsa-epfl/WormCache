@@ -58,7 +58,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         is_instruction_fetch: bool,
     ) -> bool {
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         if let Some(line) = hit_element {
@@ -101,7 +101,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     ) -> Option<PrivateCacheLine> {
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         assert!(hit_element.is_none());
@@ -142,7 +142,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     pub fn invalidate(&mut self, block_id: u64) -> Option<PrivateCacheLine> {
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         if let Some(hit_element) = hit_element {
@@ -159,7 +159,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     pub fn request_sharer(&mut self, block_id: u64, ts: u64) -> bool {
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         if let Some(hit_element) = hit_element {

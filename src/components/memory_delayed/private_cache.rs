@@ -129,7 +129,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         while let Some((block_id, ts, message_type)) = self.invalidation_fifo.pop() {
             // find from the cache set with block id.
             let hit_element = self.lines.iter_mut().find(|p| {
-                return p.tag == block_id;
+                return p.tag == block_id && p.state != PrivateCacheState::Invalid;
             });
 
             if let Some(hit_element) = hit_element {
@@ -218,7 +218,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     ) -> bool {
         self.run_handle_invalidation();
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         if let Some(line) = hit_element {
@@ -264,7 +264,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     ) -> Option<PrivateCacheLine> {
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         assert!(hit_element.is_none());
