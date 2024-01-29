@@ -1,0 +1,357 @@
+use std::cell::UnsafeCell;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageType {
+    Invalidate,
+    CreateSharer,
+}
+
+#[derive(Debug)]
+struct FIFO<const SIZE: usize> {
+    read_pointer: usize,
+    buffer: UnsafeCell<[(u64, u64, MessageType); SIZE]>,
+    write_pointer: AtomicUsize,
+}
+
+impl<const SIZE: usize> FIFO<SIZE> {
+    pub fn new() -> Self {
+        Self {
+            buffer: UnsafeCell::new([(0, 0, MessageType::Invalidate); SIZE]),
+            read_pointer: 0,
+            write_pointer: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn push(&self, value: u64, ts: u64, message_type: MessageType) {
+        let write_pointer = self.write_pointer.fetch_add(1, Ordering::Relaxed);
+        // if not full, just write it. Otherwise, try to merge with the previous one.
+        if write_pointer < self.read_pointer + SIZE {
+            unsafe {
+                (*self.buffer.get())[write_pointer % SIZE] = (value, ts, message_type);
+            }
+        } else {
+            // search and see if there are any invalidate request pending.
+            let mut found = false;
+            for i in 0..SIZE {
+                let index = (write_pointer - i) % SIZE;
+                if unsafe { (*self.buffer.get())[index].0 == value } {
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                // it is impassible to see this path.
+                unreachable!("FIFO::push: the FIFO is full and no message can be combined.");
+            }
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<(u64, u64, MessageType)> {
+        if self.read_pointer == self.write_pointer.load(Ordering::Relaxed) {
+            return None;
+        } else {
+            let res = unsafe { (*self.buffer.get())[self.read_pointer % SIZE] };
+            self.read_pointer += 1;
+            return Some(res);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.read_pointer == self.write_pointer.load(Ordering::Relaxed);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrivateCacheState {
+    Invalid,
+    CleanShared,
+    DirtyShared,
+    CleanExclusive,
+    DirtyExclusive,
+}
+
+impl PrivateCacheState {
+    pub fn is_writable(&self) -> bool {
+        match self {
+            PrivateCacheState::Invalid => false,
+            PrivateCacheState::CleanShared => false,
+            PrivateCacheState::DirtyShared => false,
+            PrivateCacheState::CleanExclusive => true,
+            PrivateCacheState::DirtyExclusive => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PrivateCacheLine {
+    pub state: PrivateCacheState,
+    pub tag: u64,
+    pub ts: u64,
+    pub is_instruction: bool,
+}
+
+// Migrate some functions to this struct, with lock permission.
+#[derive(Debug)]
+pub struct PrivateCacheSet<const WAY: usize> {
+    lines: [PrivateCacheLine; WAY],
+    invalidation_fifo: FIFO<WAY>,
+    invalidation_entries: HashMap<u64, u64>, // block id -> ts_invalid. Ts is the time when the block is invalid due to coherence.
+                                        // If one element appears in `invalid_entries`, it must be invalidated by others.
+                                        // If the current core finds an element in this list but not in its own cache, we can compare the timestamp.
+                                        // If the access is earlier than the invalidation, it must be in the cache. After all, the access must be later than the refill, which is done by the current core itself.
+}
+
+impl<const WAY: usize> PrivateCacheSet<WAY> {
+    pub fn new() -> Self {
+        Self {
+            lines: [PrivateCacheLine {
+                state: PrivateCacheState::Invalid,
+                tag: 0,
+                ts: 0,
+                is_instruction: false,
+            }; WAY],
+            invalidation_fifo: FIFO::new(),
+            invalidation_entries: HashMap::new(),
+        }
+    }
+
+    #[inline]
+    fn run_handle_invalidation(&mut self) {
+        // most of the case, this branch is not taken.
+        if self.invalidation_fifo.is_empty() {
+            return;
+        }
+
+        // if not, we have to handle it carefully.
+        while let Some((block_id, ts, message_type)) = self.invalidation_fifo.pop() {
+            // find from the cache set with block id.
+            let hit_element = self.lines.iter_mut().find(|p| {
+                return p.tag == block_id;
+            });
+
+            if let Some(hit_element) = hit_element {
+                match message_type {
+                    MessageType::Invalidate => {
+                        if hit_element.state != PrivateCacheState::Invalid {
+                            hit_element.state = PrivateCacheState::Invalid;
+                            self.add_invalidation_record(block_id, ts);
+                        }
+                    }
+                    MessageType::CreateSharer => match hit_element.state {
+                        PrivateCacheState::Invalid => {}
+                        PrivateCacheState::CleanShared => {}
+                        PrivateCacheState::DirtyShared => {}
+                        PrivateCacheState::CleanExclusive => {
+                            hit_element.state = PrivateCacheState::CleanShared;
+                        }
+                        PrivateCacheState::DirtyExclusive => {
+                            hit_element.state = PrivateCacheState::DirtyShared;
+                        }
+                    },
+                }
+            } else {
+                // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
+            }
+        }
+    }
+
+    #[inline]
+    // When there is an invalidation message due to coherence happens, we need to keep its time being invalid.
+    fn add_invalidation_record(&mut self, block_id: u64, ts: u64) {
+        // keep the one with smaller ts.
+        let evicted_ts = self.invalidation_entries.get_mut(&block_id);
+        match evicted_ts {
+            Some(previous_ts) => {
+                if *previous_ts > ts {
+                    *previous_ts = ts;
+                }
+            }
+            None => {
+                self.invalidation_entries.insert(block_id, ts);
+            }
+        }
+    }
+
+    #[inline]
+    // When there is an option to check hit / miss, we need to check whether this message is invalid by a recent access.
+    fn check_invalidation_record(&mut self, block_id: u64, ts: u64) -> bool {
+        // check the invalidation record.
+        let evicted_ts = self.invalidation_entries.get(&block_id);
+        match evicted_ts {
+            Some(previous_ts) => {
+                if *previous_ts > ts {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+            None => {
+                return true;
+            }
+        }
+    }
+
+    #[inline]
+    // When there is a refill, we need to see if we have to remove the invalidation history of this block.
+    fn remove_invalidation_record(&mut self, block_id: u64, ts: u64) {
+        let evicted_ts = self.invalidation_entries.get(&block_id);
+        match evicted_ts {
+            Some(previous_ts) => {
+                if *previous_ts <= ts {
+                    self.invalidation_entries.remove(&block_id);
+                }
+            }
+            None => {}
+        }
+    }
+
+    // This function check the cache and update the cache if it is a cache hit. Otherwise, it return false.
+    pub fn poke_and_update(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        is_store: bool,
+        is_instruction_fetch: bool,
+    ) -> bool {
+        self.run_handle_invalidation();
+        let hit_element = self.lines.iter_mut().find(|p| {
+            return p.tag == block_id;
+        });
+
+        if let Some(line) = hit_element {
+            // hit, only update the value of the ts if the incoming ts is larger.
+            if line.ts < ts {
+                line.ts = ts;
+            }
+            // update the permission.
+            match line.state {
+                PrivateCacheState::Invalid => unreachable!(),
+                PrivateCacheState::CleanShared => {
+                    if is_store {
+                        line.state = PrivateCacheState::DirtyExclusive;
+                    }
+                }
+                PrivateCacheState::DirtyShared => {
+                    if is_store {
+                        line.state = PrivateCacheState::DirtyShared;
+                    }
+                }
+                PrivateCacheState::CleanExclusive => {
+                    if is_store {
+                        line.state = PrivateCacheState::DirtyExclusive;
+                    }
+                }
+                PrivateCacheState::DirtyExclusive => {}
+            }
+            // if it is an instruction fetch, we need to update the is_instruction field.
+            line.is_instruction = is_instruction_fetch;
+            return true;
+        } else {
+            // now we have to check the eviction list. if we find it and the current access has earlier ts, it is a cache hit.
+            return self.check_invalidation_record(block_id, ts);
+        }
+    }
+
+    pub fn refill(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        is_instruction: bool,
+        state: PrivateCacheState,
+    ) -> Option<PrivateCacheLine> {
+        // find from the cache set with block id.
+        let hit_element = self.lines.iter_mut().find(|p| {
+            return p.tag == block_id;
+        });
+
+        assert!(hit_element.is_none());
+        // find the first invalid element.
+        let invalid_element = self.lines.iter_mut().find(|p| {
+            return p.state == PrivateCacheState::Invalid;
+        });
+
+        if let Some(invalid_element) = invalid_element {
+            invalid_element.ts = ts;
+            invalid_element.tag = block_id;
+            invalid_element.state = state;
+            invalid_element.is_instruction = is_instruction;
+
+            self.remove_invalidation_record(block_id, ts);
+            return None;
+        } else {
+            // find the oldest element.
+            let oldest_element = self.lines.iter_mut().min_by(|p, q| {
+                return p.ts.cmp(&q.ts);
+            });
+
+            match oldest_element {
+                Some(oldest_element) => {
+                    // Here we need to be careful. In case we have order violation, we don't know the result of this cache hit / miss.
+                    let res = oldest_element.clone();
+                    oldest_element.ts = ts;
+                    oldest_element.tag = block_id;
+                    oldest_element.state = state;
+                    oldest_element.is_instruction = is_instruction;
+                    self.remove_invalidation_record(block_id, ts);
+                    return Some(res);
+                }
+                None => {
+                    unreachable!("PrivateCache::insert: no element in the cache set.");
+                }
+            }
+        }
+        
+    }
+
+    pub fn send_message(&mut self, block_id: u64, ts: u64, message_type: MessageType) {
+        self.invalidation_fifo.push(block_id, ts, message_type);
+    }
+
+    pub fn clean_expired_eviction(&mut self) {
+        self.invalidation_entries.clear();
+    }
+}
+
+#[repr(align(64))]
+pub struct PrivateCache<const SET: usize, const WAY: usize> {
+    cache: Box<[UnsafeCell<PrivateCacheSet<WAY>>; SET]>,
+}
+
+impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
+    pub fn new() -> Self {
+        Self {
+            cache: crate::util::init_heap_array(|_| UnsafeCell::new(PrivateCacheSet::new())),
+        }
+    }
+
+    pub fn get_set(&self, block_id: u64) -> &UnsafeCell<PrivateCacheSet<WAY>> {
+        let set_id = block_id as usize % SET;
+        return &self.cache[set_id];
+    }
+
+    // This function is called in the boundary of the quantum. 
+    pub fn clean_expired_eviction(&self) {
+        for set in self.cache.iter() {
+            unsafe {
+                (*set.get()).clean_expired_eviction();
+            }
+        }
+    }
+}
+
+// There might be another way to design the private cache.
+// - No locks for each set.
+// - Each set has a ring buffer for the incoming invalidation request from other cores.
+// - Before accessing each set, empty the ring buffer, which only requires pure atomic operations.
+//   - the ring buffer is a fixed-size array, which has at most ASSO elements.
+//   - accessing ring buffer is a pure atomic operation.
+//   - pushing message to the ring buffer is an atomic add operation + a write operation.
+// - A mutex is necessary for the directory when there is a private cache miss (it is really nice if we can take away this lock)
+//   - coherence miss: Write lock, to clean others
+//   - capacity/conflict miss, depending on the condition of the directory (rlock)
+//        - The cache line is in others' private cache: write lock
+//        - The cache line is in the shared cache: write lock, to create a new entry.
+// - The shared LLC requires a lock for each set when the LLC is large, and can be replicated when the LLC is small to avoid contention.

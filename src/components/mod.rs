@@ -18,4 +18,4 @@ pub mod touch_once;
 pub mod pw_log;
 pub mod bp;
 pub mod memory_locker;
-
+pub mod memory_delayed;
