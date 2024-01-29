@@ -160,6 +160,9 @@ impl LockedMemoryHierarchy {
                 is_instruction,
                 PrivateCacheState::DirtyExclusive,
             );
+
+            drop(private_set);
+
             // Second, we go over the sharer list, and invalidate them.
             for i in 0..parameter::CORE_COUNT {
                 if *directory_result.get(i).unwrap() {
@@ -175,7 +178,6 @@ impl LockedMemoryHierarchy {
             }
 
             drop(directory_set);
-            drop(private_set);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -189,6 +191,8 @@ impl LockedMemoryHierarchy {
             // OK, only one guy has the permission. We need to send a low upgrade permission later.
             let mut incoming_sharer = directory_result.clone();
             incoming_sharer.set(core_id as usize, true);
+
+            drop(private_set);
 
             let owner = directory_result.first_one().unwrap();
             // send upgrade permission to the owner.
@@ -209,7 +213,6 @@ impl LockedMemoryHierarchy {
             );
 
             drop(directory_set);
-            drop(private_set);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {

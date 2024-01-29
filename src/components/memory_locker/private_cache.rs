@@ -62,8 +62,8 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         });
 
         if let Some(line) = hit_element {
-            // hit
-            line.ts = ts;
+            // hit, keep the larger ts.
+            line.ts = if line.ts > ts { line.ts } else { ts };
             // update the permission.
             match line.state {
                 PrivateCacheState::Invalid => unreachable!(),
