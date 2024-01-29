@@ -192,15 +192,7 @@ impl LockedMemoryHierarchy {
             let mut incoming_sharer = directory_result.clone();
             incoming_sharer.set(core_id as usize, true);
 
-            drop(private_set);
-
-            let owner = directory_result.first_one().unwrap();
-            // send upgrade permission to the owner.
-            let other_private_cache = &self.private_caches[owner];
-            let mut other_private_set = other_private_cache.get_set(block_id).write().unwrap();
-            other_private_set.request_sharer(block_id, ts);
-
-            // then, we can consider how to refill the cache line.
+            // First, we refill the cache line.
             let evicted = private_set.refill(
                 block_id,
                 ts,
@@ -211,6 +203,14 @@ impl LockedMemoryHierarchy {
                     PrivateCacheState::CleanExclusive
                 },
             );
+
+            drop(private_set);
+
+            let owner = directory_result.first_one().unwrap();
+            // Then we try to invalid other. Make sure there is only one set lock holding in parallel.
+            let other_private_cache = &self.private_caches[owner];
+            let mut other_private_set = other_private_cache.get_set(block_id).write().unwrap();
+            other_private_set.request_sharer(block_id, ts);
 
             drop(directory_set);
 
