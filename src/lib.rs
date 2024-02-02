@@ -13,6 +13,7 @@ use components::marker::MarkerPlugin;
 use components::touch_once::TouchOnePlugin;
 use components::pw_log::PageWalkLoggerPlugin;
 use components::bp::BranchPredictorPlugin;
+use components::memory_locker::LockedMemoryPlugin;
 use components::Plugin;
 
 use std::ffi;
@@ -29,6 +30,7 @@ unsafe extern "C" fn plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_v
     // TouchOnePlugin::dump_snapshot();
     // PageWalkLoggerPlugin::dump_snapshot();
     BranchPredictorPlugin::dump_snapshot();
+    // LockedMemoryPlugin::dump_snapshot();
 }
 
 #[no_mangle]
@@ -44,6 +46,7 @@ unsafe extern "C" fn vcpu_tb_trans(
     //TouchOnePlugin::on_translation(tb);
     // PageWalkLoggerPlugin::on_translation(tb);
     BranchPredictorPlugin::on_translation(tb);
+    // LockedMemoryPlugin::dump_snapshot();
 }
 
 #[no_mangle]
@@ -86,6 +89,7 @@ unsafe extern "C" fn qemu_plugin_install(
     // TouchOnePlugin::init();
     // PageWalkLoggerPlugin::init();
     BranchPredictorPlugin::init();
+    // LockedMemoryPlugin::init();
 
     return 0;
 }
