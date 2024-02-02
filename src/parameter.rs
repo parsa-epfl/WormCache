@@ -1,6 +1,8 @@
 /// This file contains the parameters for the whole plugin.
 /// All of them are compilation constants that the the compiler can propagate them during compilation.
 
+use plugin_helper::PluginHelper;
+
 /**
  * CORE_COUNT
  * 
@@ -75,3 +77,21 @@ pub const BP_GSHARE_SET: usize = 2048;
  * BP_RAS_COUNT
  */
 pub const BP_RAS_COUNT: usize = 32;
+
+/**
+ * The list of plugins.
+ */
+
+use crate::components::Plugin;
+
+#[derive(PluginHelper)]
+pub struct PluginList {
+    pb : crate::BranchPredictorPlugin,
+    ts_m : crate::TimeStampedMemoryPlugin,
+    vt : crate::VirtualTimePlugin,
+    mk : crate::MarkerPlugin,
+    to : crate::TouchOnePlugin,
+    pwl : crate::PageWalkLoggerPlugin,
+    lm : crate::LockedMemoryPlugin,
+    tr : crate::TracePlugin,
+}
