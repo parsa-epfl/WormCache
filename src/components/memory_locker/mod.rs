@@ -11,11 +11,13 @@ use crate::qemu_api;
 use std::ffi;
 
 pub mod directory;
+mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
-mod hierarchy;
+pub mod statistics;
 
-static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy> = Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
+static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy> =
+    Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -53,9 +55,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     voffset: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    let vpn = unsafe {
-        qemu_api::qemu_plugin_read_pc_vpn()
-    };
+    let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 
     PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, false);
@@ -85,7 +85,9 @@ impl super::Plugin for LockedMemoryPlugin {
 
     #[inline]
     fn dump_snapshot() {
-        
+        for i in 0..crate::parameter::CORE_COUNT {
+            println!("{}", unsafe { PLUGIN.get_statistics(i as u32) });
+        }
     }
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {

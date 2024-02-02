@@ -3,12 +3,12 @@ use crate::{
     parameter,
 };
 
-use super::{directory, private_cache, shared_cache};
+use super::{directory, private_cache, shared_cache, statistics};
 
 use crate::arch::AArch64;
 use crate::components::mmu::AbstractMMU;
 use crate::components::mmu::MemoryManagementUnit;
-use std::cell::UnsafeCell;
+use std::{cell::UnsafeCell, os::linux::raw::stat};
 
 pub struct LockedMemoryHierarchy {
     mmus: [UnsafeCell<
@@ -27,6 +27,8 @@ pub struct LockedMemoryHierarchy {
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
     >,
+
+    per_core_statistics: [UnsafeCell<statistics::PerCoreStatistics>; parameter::CORE_COUNT],
 }
 
 pub enum CacheHierarchyAccessResult {
@@ -43,6 +45,7 @@ impl LockedMemoryHierarchy {
             private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
             directory: directory::Directory::new(),
             shared_cache: shared_cache::ExclusiveSharedCache::new(),
+            per_core_statistics: std::array::from_fn(|_| UnsafeCell::new(statistics::PerCoreStatistics::new())),
         }
     }
 
@@ -103,6 +106,14 @@ impl LockedMemoryHierarchy {
         is_store: bool,
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
+
+        // STATISTICS: Total Memory Access
+        let statistics = unsafe {
+            &mut *self.per_core_statistics[core_id as usize].get()
+        };
+
+        statistics.total_instruction += 1;
+
         let private_cache = &self.private_caches[core_id as usize];
         let mut private_set = private_cache.get_set(block_id).write().unwrap();
 
@@ -113,6 +124,8 @@ impl LockedMemoryHierarchy {
             // we don't have to anything. Just return.
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
+
+        statistics.private_cache_miss += 1;
 
         // Now, we go to the directory. We release the lock of the private cache.
         drop(private_set);
@@ -146,6 +159,8 @@ impl LockedMemoryHierarchy {
             if let Some(evicted_line) = evicted {
                 self.handle_eviction(core_id, evicted_line.tag, ts);
             }
+
+            statistics.shared_cache_access += 1;
 
             if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
@@ -261,6 +276,10 @@ impl LockedMemoryHierarchy {
     pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64) {
         // before calling this function, make sure we don't have any locks of the directory or the shared cache.
 
+        let statistics = unsafe {
+            &mut *self.per_core_statistics[core_id as usize].get()
+        };
+
         // first, we need to check the directory.
         let mut directory_set = self.directory.get_set(block_id).write().unwrap();
 
@@ -278,10 +297,17 @@ impl LockedMemoryHierarchy {
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if incoming_sharer.count_ones() == 0 {
             // we need to place this block to the shared cache.
+            statistics.shared_cache_access += 1;
             self.shared_cache.allocate(block_id, ts);
             drop(directory_set);
         } else {
             drop(directory_set);
         }
+    }
+
+    pub fn get_statistics(&self, core_id: u32) -> String {
+        return unsafe {
+            self.per_core_statistics[core_id as usize].get().as_ref().unwrap().being_printed(core_id)
+        };
     }
 }
