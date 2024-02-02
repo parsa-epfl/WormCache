@@ -46,7 +46,7 @@ unsafe extern "C" fn vcpu_tb_trans(
     //TouchOnePlugin::on_translation(tb);
     // PageWalkLoggerPlugin::on_translation(tb);
     BranchPredictorPlugin::on_translation(tb);
-    // LockedMemoryPlugin::dump_snapshot();
+    LockedMemoryPlugin::on_translation(tb);
 }
 
 #[no_mangle]
