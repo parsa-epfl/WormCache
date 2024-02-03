@@ -356,7 +356,7 @@ impl TAGEPredictor {
         return self.seed;
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64) {
+    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
         // we only update the predictor when the branch is conditional, but we update the history all the time.
         let is_conditional = result == BranchResolveFlag::Taken || result == BranchResolveFlag::NotTaken;
         let taken = result == BranchResolveFlag::Taken;
@@ -466,7 +466,7 @@ impl TAGEPredictor {
 }
 
 
-use serde::ser::{Serializer, SerializeStruct};
+use serde::ser::SerializeStruct;
 
 impl Serialize for TAGEPredictor {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

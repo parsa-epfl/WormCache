@@ -8,7 +8,7 @@ use super::{directory, private_cache, shared_cache, statistics};
 use crate::arch::AArch64;
 use crate::components::mmu::AbstractMMU;
 use crate::components::mmu::MemoryManagementUnit;
-use std::{cell::UnsafeCell, os::linux::raw::stat};
+use std::cell::UnsafeCell;
 
 pub struct LockedMemoryHierarchy {
     mmus: [UnsafeCell<
@@ -47,10 +47,6 @@ impl LockedMemoryHierarchy {
             shared_cache: shared_cache::ExclusiveSharedCache::new(),
             per_core_statistics: std::array::from_fn(|_| UnsafeCell::new(statistics::PerCoreStatistics::new())),
         }
-    }
-
-    pub fn init(&self) {
-        
     }
 
     pub fn access_memory_with_va(
@@ -112,7 +108,7 @@ impl LockedMemoryHierarchy {
             &mut *self.per_core_statistics[core_id as usize].get()
         };
 
-        statistics.total_instruction += 1;
+        statistics.total_mem += 1;
 
         let private_cache = &self.private_caches[core_id as usize];
         let mut private_set = private_cache.get_set(block_id).write().unwrap();

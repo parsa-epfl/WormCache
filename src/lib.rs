@@ -14,7 +14,6 @@ use components::touch_once::TouchOnePlugin;
 use components::pw_log::PageWalkLoggerPlugin;
 use components::bp::BranchPredictorPlugin;
 use components::memory_locker::LockedMemoryPlugin;
-use components::Plugin;
 
 use parameter::PluginList;
 

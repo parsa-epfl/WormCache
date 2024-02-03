@@ -19,8 +19,8 @@ fn get_memory_ts() -> u128 {
 
 static TRACE_FILE: Lazy<Mutex<BufWriter<File>>> = Lazy::new(|| {
     // open a file to store the trace.
-    let mut file = std::fs::File::create("trace.trace").unwrap();
-    let mut b = BufWriter::with_capacity(64 * 1024 * 1024, file);
+    let file = std::fs::File::create("trace.trace").unwrap();
+    let b = BufWriter::with_capacity(64 * 1024 * 1024, file);
     return Mutex::new(b);
 });
 

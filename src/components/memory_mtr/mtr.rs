@@ -55,7 +55,7 @@ impl WriterType {
                 *self = new_line;
                 return true;
             }
-            WriterType::Evicted(core_id, ts) => {
+            WriterType::Evicted(_core_id, ts) => {
                 if *ts < timestamp {
                     *self = new_line;
                     return true;
@@ -63,7 +63,7 @@ impl WriterType {
                     return false;
                 }
             }
-            WriterType::Normal(core_id, ts) => {
+            WriterType::Normal(_core_id, ts) => {
                 if *ts < timestamp {
                     *self = new_line;
                     return true;
@@ -101,7 +101,7 @@ impl MemoryTimestampRecord {
 
     pub fn check_non_outdated_reader(&self) {
         if let Some(writer_ts) = self.writer.get_timestamp() {
-            self.readers.iter().for_each(|(core_id, ts)| {
+            self.readers.iter().for_each(|(_core_id, ts)| {
                 assert!(
                     *ts <= writer_ts,
                     "Reader with larger timestamp than the writer should be evicted."
@@ -113,7 +113,7 @@ impl MemoryTimestampRecord {
     pub fn merge_cache_block(
         &mut self,
         core_id: CoreId,
-        block_id: u64,
+        _block_id: u64,
         ts: usize,
         status: TimestampCacheLineStatus,
     ) {

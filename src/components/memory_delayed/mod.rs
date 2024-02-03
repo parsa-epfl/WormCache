@@ -63,8 +63,8 @@ unsafe extern "C" fn vcpu_insn_exec(
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
 unsafe extern "C" fn vcpu_invalidate_cache(
-    vcpu_idx: u32,
-    paddr: *mut ffi::c_void, // it is basically its physical address.
+    _vcpu_idx: u32,
+    _paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     // PLUGIN
     //     .hierarchies(vcpu_idx as u8)

@@ -6,6 +6,7 @@
 // - Shared caches, with set locks.
 
 use once_cell::sync::Lazy;
+use std::io::prelude::*;
 
 use crate::qemu_api;
 use std::ffi;
@@ -62,9 +63,9 @@ unsafe extern "C" fn vcpu_insn_exec(
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
-unsafe extern "C" fn vcpu_invalidate_cache(
-    vcpu_idx: u32,
-    paddr: *mut ffi::c_void, // it is basically its physical address.
+unsafe extern "C" fn _vcpu_invalidate_cache(
+    _vcpu_idx: u32,
+    _paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     // PLUGIN
     //     .hierarchies(vcpu_idx as u8)
@@ -85,10 +86,18 @@ impl super::Plugin for LockedMemoryPlugin {
 
     #[inline]
     fn dump_snapshot() {
+        // open a csv file and dump each cores' statistics.
+        let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
+        file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio\n")
+            .unwrap();
         for i in 0..crate::parameter::CORE_COUNT {
-            println!("{}", unsafe { PLUGIN.get_statistics(i as u32) });
+            let stats = unsafe { PLUGIN.get_statistics(i as u32) };
+            file.write(stats.as_bytes())
+                .unwrap();
+            file.write(b"\n").unwrap();
         }
     }
+    
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
         let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);

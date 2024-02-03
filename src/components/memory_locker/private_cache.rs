@@ -1,6 +1,5 @@
 use std::sync::RwLock;
 
-use super::directory::Directory;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrivateCacheState {

@@ -30,7 +30,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
 
     pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
         for entry in self.entries.iter_mut() {
-            if entry.valid && entry.vpn == entry.vpn && entry.asid == asid {
+            if entry.valid && entry.vpn == vpn && entry.asid == asid {
                 entry.ts = ts;
                 return Some(entry.ppn);
             }
@@ -65,7 +65,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
 
     fn invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
         for entry in self.entries.iter_mut() {
-            if entry.valid && entry.vpn == entry.vpn && entry.asid == asid {
+            if entry.valid && entry.vpn == vpn && entry.asid == asid {
                 entry.valid = false;
             }
         }
@@ -87,14 +87,12 @@ impl<const ASSO: usize> TLBSet<ASSO> {
 #[derive(Debug)]
 pub struct TLB<const SET_COUNT: usize, const ASSO: usize> {
     entries: Vec<TLBSet<ASSO>>,
-    warmed_set: usize,
 }
 
 impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
     pub fn new() -> Self {
         Self {
             entries: (0..SET_COUNT).map(|_| TLBSet::new()).collect(),
-            warmed_set: 0,
         }
     }
 

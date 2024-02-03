@@ -15,7 +15,7 @@ impl<const S: usize> ReturnAddressStacle<S> {
         }
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64) {
+    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
         if result != BranchResolveFlag::Call && result != BranchResolveFlag::Return {
             return;
         }

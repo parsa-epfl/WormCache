@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use bitvec::prelude::*;
 use bitvec::BitArr;
 
-type CoreId = u8;
 pub type SharerList = BitArr!(for 64, in u64, Lsb0);
 
 

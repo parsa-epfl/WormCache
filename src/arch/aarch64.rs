@@ -150,7 +150,7 @@ pub enum TLBInvalidateInfo {
 
 
 pub fn decode_tlbi(decoding: u32) -> Option<TLBInvalidateInfo> {
-    return None
+    todo!("AArch64::decode_tlbi is not implemented yet! Parameter: {:x}", decoding);
 }
 
 // DMN, it is very hard to implement TLBi without locks. It flushes all TLBs, immediately. 

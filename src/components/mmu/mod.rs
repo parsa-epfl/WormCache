@@ -21,7 +21,7 @@ impl AbstractMMU for NoMMU {
     fn new() -> Self {
         Self {}
     }
-    fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult {
+    fn translate_and_refill(&mut self, vpn: u64, _: u64) -> MMUTranslationResult {
         MMUTranslationResult::Hit(vpn)
     }
 }

@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use super::ts_cache::TimestampCache;
 use super::mmu::AbstractMMU;
-use super::mmu::MemoryManagementUnit;
-use crate::arch::AArch64;
 
 
 use crate::parameter as param;

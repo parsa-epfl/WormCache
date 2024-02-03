@@ -7,7 +7,6 @@ use crate::qemu_api;
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
 use std::io::Write;
-use std::sync::Mutex;
 
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo

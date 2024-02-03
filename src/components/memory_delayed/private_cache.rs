@@ -73,18 +73,6 @@ pub enum PrivateCacheState {
     DirtyExclusive,
 }
 
-impl PrivateCacheState {
-    pub fn is_writable(&self) -> bool {
-        match self {
-            PrivateCacheState::Invalid => false,
-            PrivateCacheState::CleanShared => false,
-            PrivateCacheState::DirtyShared => false,
-            PrivateCacheState::CleanExclusive => true,
-            PrivateCacheState::DirtyExclusive => true,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct PrivateCacheLine {
     pub state: PrivateCacheState,
