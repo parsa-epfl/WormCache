@@ -8,7 +8,7 @@ use super::{directory, private_cache, shared_cache, statistics};
 use crate::arch::AArch64;
 use crate::components::mmu::AbstractMMU;
 use crate::components::mmu::MemoryManagementUnit;
-use std::cell::UnsafeCell;
+use std::{cell::UnsafeCell, sync::atomic::Ordering};
 
 pub struct LockedMemoryHierarchy {
     mmus: [UnsafeCell<
@@ -45,7 +45,9 @@ impl LockedMemoryHierarchy {
             private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
             directory: directory::Directory::new(),
             shared_cache: shared_cache::ExclusiveSharedCache::new(),
-            per_core_statistics: std::array::from_fn(|_| UnsafeCell::new(statistics::PerCoreStatistics::new())),
+            per_core_statistics: std::array::from_fn(|_| {
+                UnsafeCell::new(statistics::PerCoreStatistics::new())
+            }),
         }
     }
 
@@ -102,16 +104,13 @@ impl LockedMemoryHierarchy {
         is_store: bool,
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
-
         // STATISTICS: Total Memory Access
-        let statistics = unsafe {
-            &mut *self.per_core_statistics[core_id as usize].get()
-        };
+        let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
 
-        statistics.total_mem += 1;
+        statistics.total_mem.fetch_add(1, Ordering::Relaxed);
 
         let private_cache = &self.private_caches[core_id as usize];
-        let mut private_set = private_cache.get_set(block_id).write().unwrap();
+        let mut private_set = private_cache.get_set(block_id).write().unwrap(); // Thread 6
 
         // first, we need to check the private cache.
         let private_hit = private_set.pook_and_update(block_id, ts, is_store, is_instruction);
@@ -121,13 +120,15 @@ impl LockedMemoryHierarchy {
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
-        statistics.private_cache_miss += 1;
+        statistics
+            .private_cache_miss
+            .fetch_add(1, Ordering::Relaxed);
 
         // Now, we go to the directory. We release the lock of the private cache.
         drop(private_set);
 
         // now, it is a miss. We need to check the directory.
-        let mut directory_set = self.directory.get_set(block_id).write().unwrap(); // Deadlock 2
+        let mut directory_set = self.directory.get_set(block_id).write().unwrap(); // Thread 7
         let directory_result = directory_set.peek(block_id);
 
         // if it is miss, we need to access the last level cache as well, and add it.
@@ -156,7 +157,9 @@ impl LockedMemoryHierarchy {
                 self.handle_eviction(core_id, evicted_line.tag, ts);
             }
 
-            statistics.shared_cache_access += 1;
+            statistics
+                .shared_cache_access
+                .fetch_add(1, Ordering::Relaxed);
 
             if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
@@ -191,6 +194,7 @@ impl LockedMemoryHierarchy {
                     let mut other_private_set =
                         other_private_cache.get_set(block_id).write().unwrap(); // Deadlock 1
                     other_private_set.invalidate(block_id);
+                    drop(other_private_set);
                 }
             }
 
@@ -227,10 +231,11 @@ impl LockedMemoryHierarchy {
             let owner = directory_result.first_one().unwrap();
             // Then we try to invalid other. Make sure there is only one set lock holding in parallel.
             let other_private_cache = &self.private_caches[owner];
-            let mut other_private_set = other_private_cache.get_set(block_id).write().unwrap();
+            let mut other_private_set = other_private_cache.get_set(block_id).write().unwrap(); // Thread 8
             other_private_set.request_sharer(block_id, ts);
 
             drop(directory_set);
+            drop(other_private_set);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -260,7 +265,6 @@ impl LockedMemoryHierarchy {
         );
         drop(private_set);
 
-
         // handle eviction now.
         if let Some(evicted_line) = evicted {
             self.handle_eviction(core_id, evicted_line.tag, ts);
@@ -272,17 +276,18 @@ impl LockedMemoryHierarchy {
     pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64) {
         // before calling this function, make sure we don't have any locks of the directory or the shared cache.
 
-        let statistics = unsafe {
-            &mut *self.per_core_statistics[core_id as usize].get()
-        };
+        let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
 
         // first, we need to check the directory.
-        let mut directory_set = self.directory.get_set(block_id).write().unwrap();
+        let mut directory_set = self.directory.get_set(block_id).write().unwrap(); // Thread 5
 
         // we cancel the element of this block in the directory.
         let sharer = directory_set.peek(block_id);
 
-        assert!(sharer.get(core_id as usize).unwrap());
+        if sharer.get(core_id as usize).unwrap() == false {
+            // Well, it is already invalid by other core.
+            return;
+        }
 
         let mut incoming_sharer = sharer.clone();
         incoming_sharer.set(core_id as usize, false);
@@ -293,7 +298,9 @@ impl LockedMemoryHierarchy {
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if incoming_sharer.count_ones() == 0 {
             // we need to place this block to the shared cache.
-            statistics.shared_cache_access += 1;
+            statistics
+                .shared_cache_access
+                .fetch_add(1, Ordering::Relaxed);
             self.shared_cache.allocate(block_id, ts);
             drop(directory_set);
         } else {
@@ -303,7 +310,11 @@ impl LockedMemoryHierarchy {
 
     pub fn get_statistics(&self, core_id: u32) -> String {
         return unsafe {
-            self.per_core_statistics[core_id as usize].get().as_ref().unwrap().being_printed(core_id)
+            self.per_core_statistics[core_id as usize]
+                .get()
+                .as_ref()
+                .unwrap()
+                .being_printed(core_id)
         };
     }
 }

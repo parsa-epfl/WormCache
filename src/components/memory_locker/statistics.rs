@@ -1,16 +1,18 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 #[repr(align(64))]
 pub struct PerCoreStatistics {
-    pub total_mem: u64,
-    pub private_cache_miss: u64,
-    pub shared_cache_access: u64
+    pub total_mem: AtomicU64,
+    pub private_cache_miss: AtomicU64,
+    pub shared_cache_access: AtomicU64
 }
 
 impl PerCoreStatistics {
     pub fn new() -> Self {
         return Self {
-            total_mem: 0,
-            private_cache_miss: 0,
-            shared_cache_access: 0
+            total_mem: AtomicU64::new(0),
+            private_cache_miss: AtomicU64::new(0),
+            shared_cache_access: AtomicU64::new(0)
         };
     }
 
@@ -19,11 +21,11 @@ impl PerCoreStatistics {
         return format!(
             "{},{},{},{},{:.2}%,{:.2}%",
             core_id,
-            self.total_mem,
-            self.private_cache_miss,
-            self.shared_cache_access,
-            (self.private_cache_miss as f64 / self.total_mem as f64) * 100.0,
-            (self.shared_cache_access as f64 / self.total_mem as f64) * 100.0
+            self.total_mem.load(Ordering::Relaxed),
+            self.private_cache_miss.load(Ordering::Relaxed),
+            self.shared_cache_access.load(Ordering::Relaxed),
+            (self.private_cache_miss.load(Ordering::Relaxed) as f64 / self.total_mem.load(Ordering::Relaxed) as f64) * 100.0,
+            (self.shared_cache_access.load(Ordering::Relaxed) as f64 / self.total_mem.load(Ordering::Relaxed) as f64) * 100.0
         );
     }
 }
