@@ -95,3 +95,9 @@ pub struct PluginList {
     lm : crate::LockedMemoryPlugin,
     tr : crate::TracePlugin,
 }
+
+/**
+ * whether to enable the statistics collection.
+ */
+
+pub const ENABLE_STATISTICS: bool = false;

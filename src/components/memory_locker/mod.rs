@@ -8,7 +8,7 @@
 use once_cell::sync::Lazy;
 use std::io::prelude::*;
 
-use crate::qemu_api;
+use crate::{parameter::ENABLE_STATISTICS, qemu_api};
 use std::ffi;
 
 pub mod directory;
@@ -86,18 +86,19 @@ impl super::Plugin for LockedMemoryPlugin {
 
     #[inline]
     fn dump_snapshot() {
-        // open a csv file and dump each cores' statistics.
-        let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
-        file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio\n")
+        if ENABLE_STATISTICS {
+            // open a csv file and dump each cores' statistics.
+            let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
+            file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio\n")
             .unwrap();
-        for i in 0..crate::parameter::CORE_COUNT {
-            let stats = unsafe { PLUGIN.get_statistics(i as u32) };
-            file.write(stats.as_bytes())
-                .unwrap();
-            file.write(b"\n").unwrap();
+            for i in 0..crate::parameter::CORE_COUNT {
+                let stats = unsafe { PLUGIN.get_statistics(i as u32) };
+                file.write(stats.as_bytes()).unwrap();
+                file.write(b"\n").unwrap();
+            }
         }
     }
-    
+
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
         let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);

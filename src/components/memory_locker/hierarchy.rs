@@ -1,6 +1,6 @@
 use crate::{
     components::memory_locker::{directory::SharerList, private_cache::PrivateCacheState},
-    parameter,
+    parameter::{self, ENABLE_STATISTICS},
 };
 
 use super::{directory, private_cache, shared_cache, statistics};
@@ -107,7 +107,9 @@ impl LockedMemoryHierarchy {
         // STATISTICS: Total Memory Access
         let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
 
-        statistics.total_mem.fetch_add(1, Ordering::Relaxed);
+        if ENABLE_STATISTICS {
+            statistics.total_mem.fetch_add(1, Ordering::Relaxed);
+        }
 
         let private_cache = &self.private_caches[core_id as usize];
         let mut private_set = private_cache.get_set(block_id).write().unwrap(); // Thread 6
@@ -120,9 +122,11 @@ impl LockedMemoryHierarchy {
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
-        statistics
-            .private_cache_miss
-            .fetch_add(1, Ordering::Relaxed);
+        if ENABLE_STATISTICS {
+            statistics
+                .private_cache_miss
+                .fetch_add(1, Ordering::Relaxed);
+        }
 
         // Now, we go to the directory. We release the lock of the private cache.
         drop(private_set);
@@ -157,9 +161,11 @@ impl LockedMemoryHierarchy {
                 self.handle_eviction(core_id, evicted_line.tag, ts);
             }
 
-            statistics
-                .shared_cache_access
-                .fetch_add(1, Ordering::Relaxed);
+            if ENABLE_STATISTICS {
+                statistics
+                    .shared_cache_access
+                    .fetch_add(1, Ordering::Relaxed);
+            }
 
             if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
@@ -298,9 +304,11 @@ impl LockedMemoryHierarchy {
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if incoming_sharer.count_ones() == 0 {
             // we need to place this block to the shared cache.
-            statistics
-                .shared_cache_access
-                .fetch_add(1, Ordering::Relaxed);
+            if ENABLE_STATISTICS {
+                statistics
+                    .shared_cache_access
+                    .fetch_add(1, Ordering::Relaxed);
+            }
             self.shared_cache.allocate(block_id, ts);
             drop(directory_set);
         } else {

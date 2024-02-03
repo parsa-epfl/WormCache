@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use super::ts_cache::TimestampCache;
 use super::mmu::AbstractMMU;
+use super::statistics::PerCoreStatistics;
 
 
-use crate::parameter as param;
+use crate::parameter::{self as param, ENABLE_STATISTICS};
 
 #[derive(Debug)]
 #[repr(align(64))]
@@ -22,6 +23,7 @@ pub struct TimestampSingleCoreMemoryHierarchy<
     pub invalid_list: HashMap<u64, usize>, // block_id -> ts
     // All evicted dirty cache line. They are used for coherence state construction.
     pub evicted_dirty_list: HashMap<u64, usize>, // block_id -> ts
+    pub statistics: PerCoreStatistics,
 }
 
 impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -34,6 +36,7 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
             local_shared_cache: TimestampCache::new(),
             invalid_list: HashMap::new(),
             evicted_dirty_list: HashMap::new(),
+            statistics: PerCoreStatistics::new(),
         };
     }
 
@@ -66,12 +69,20 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
     }
 
     pub fn access_memory_with_pa(&mut self, ts: usize, paddr: u64, is_instruction: bool, is_store: bool) {
+        if ENABLE_STATISTICS {
+            self.statistics.total_mem += 1;
+        }
+
         let block_id = paddr >> param::CACHE_LINE_SIZE.trailing_zeros();
         let res = self
             .private_cache
             .record(block_id, is_instruction, is_store, ts);
         match res {
             super::CacheReturnResult::Miss => {
+                if ENABLE_STATISTICS {
+                    self.statistics.private_cache_miss += 1;
+                    self.statistics.shared_cache_access += 1;
+                }
                 if self
                     .local_shared_cache
                     .peek(block_id, is_instruction, is_store, ts)
@@ -82,6 +93,10 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
             }
             super::CacheReturnResult::Hit => {}
             super::CacheReturnResult::MissWithEviction(blk, is_instruction) => {
+                if ENABLE_STATISTICS {
+                    self.statistics.private_cache_miss += 1;
+                    self.statistics.shared_cache_access += 1;
+                }
                 if self
                     .local_shared_cache
                     .peek(block_id, is_instruction, is_store, ts)
@@ -94,6 +109,10 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
                     .record(blk, is_instruction, false, super::get_memory_ts() as usize);
             }
             super::CacheReturnResult::MissWithWriteBack(blk) => {
+                if ENABLE_STATISTICS {
+                    self.statistics.private_cache_miss += 1;
+                    self.statistics.shared_cache_access += 1;
+                }
                 if self
                     .local_shared_cache
                     .peek(block_id, is_instruction, is_store, ts)
@@ -132,5 +151,9 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
         self.local_shared_cache.sets.iter().for_each(|set| {
             set.clean();
         });
+    }
+
+    pub fn get_statistics(&self, core_id: u32) -> String {
+        return self.statistics.being_printed(core_id);
     }
 }

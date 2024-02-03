@@ -167,7 +167,7 @@ impl MemoryTimestampRecord {
     }
 
     pub fn generate_directory_block(&self, block_id: u64) -> Option<TsDirectoryBlock> {
-        self.check_non_outdated_reader();
+        // self.check_non_outdated_reader();
         return match self.writer {
             WriterType::None => Some(TsDirectoryBlock {
                 d: DirectoryBlock {
