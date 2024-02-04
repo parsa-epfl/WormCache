@@ -51,7 +51,8 @@ unsafe extern "C" fn vcpu_mem_access(
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
         
         // Currently, this is experimental.
-        PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
+        // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
+        PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false);
     } else {
         // TODO: check the I/O event
     }
@@ -94,7 +95,7 @@ impl super::Plugin for LockedMemoryPlugin {
         if ENABLE_STATISTICS {
             // open a csv file and dump each cores' statistics.
             let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
-            file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio\n")
+            file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio,tlb_access,tlb_miss,tlb_miss_ratio\n")
             .unwrap();
             for i in 0..crate::parameter::CORE_COUNT {
                 let stats = unsafe { PLUGIN.get_statistics(i as u32) };

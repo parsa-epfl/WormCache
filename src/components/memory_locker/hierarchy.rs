@@ -69,6 +69,17 @@ impl LockedMemoryHierarchy {
                 .translate_and_refill(vpn, ts)
         };
 
+        if ENABLE_STATISTICS {
+            unsafe {
+                self.per_core_statistics[core_id as usize]
+                    .get()
+                    .as_ref()
+                    .unwrap()
+                    .tlb_access
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(ppn) => {
                 let pa = (ppn << 12) | (va & 0xfff);
@@ -87,6 +98,16 @@ impl LockedMemoryHierarchy {
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+                if ENABLE_STATISTICS {
+                    unsafe {
+                        self.per_core_statistics[core_id as usize]
+                            .get()
+                            .as_ref()
+                            .unwrap()
+                            .tlb_miss
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                }
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(ppn) => {
                 let pa = (ppn << 12) | (va & 0xfff);
@@ -96,63 +117,6 @@ impl LockedMemoryHierarchy {
         }
     }
 
-    pub fn access_memory_with_va_and_hint(
-        &self,
-        core_id: u32,
-        va: u64,
-        ts: u64,
-        is_store: bool,
-        is_instruction: bool,
-        translation_hint: [u64; 4],
-        pa: u64
-    ) {
-        let vpn = va >> 12;
-
-        let translation = unsafe {
-            self.mmus[core_id as usize]
-                .get()
-                .as_mut()
-                .unwrap()
-                .lookup(vpn, ts)
-        };
-
-        match translation {
-            Some(ppn) => {
-                let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
-
-                // Using the ppn, we can calculate the pa.
-                let pa = (ppn << 12) | (va & 0xfff);
-                // Don the comparison.
-                if pa != pa {
-                    panic!("The calculated pa is not equal to the given pa.");
-                }
-            },
-            None => {
-                // replay the trace
-                for pa in translation_hint.iter() {
-                    if *pa == u64::MAX {
-                        break;
-                    }
-                    let block_id = *pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(core_id, block_id, ts, false, false);
-                }
-
-                // access the memory
-                let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
-
-                // refill the TLB.
-                unsafe {
-                    self.mmus[core_id as usize]
-                        .get()
-                        .as_mut()
-                        .unwrap()
-                        .refill(vpn, pa >> 12, ts);
-                }
-            },
-        }
-    }
 
     pub fn access_memory_pblock_id(
         &self,
