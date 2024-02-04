@@ -278,6 +278,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             match oldest_element {
                 Some(oldest_element) => {
                     // Here we need to be careful. In case we have order violation, we don't know the result of this cache hit / miss.
+                    // TODO: If the refill timestamp is smaller, we should increase the time of order violation and not to update the cache.
                     let res = oldest_element.clone();
                     oldest_element.ts = ts;
                     oldest_element.tag = block_id;
