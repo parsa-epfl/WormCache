@@ -29,6 +29,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
     }
 
     pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
+        // TODO: This function is badly implemented. Currently its algorithm complexity is O(n).
         for entry in self.entries.iter_mut() {
             if entry.valid && entry.vpn == vpn && entry.asid == asid {
                 entry.ts = ts;

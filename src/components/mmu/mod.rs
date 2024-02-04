@@ -41,7 +41,7 @@ pub struct MemoryManagementUnit<
     const T_ASSO: usize = 16,
     const T_SETS: usize = 1024,
 > {
-    tlb: TLB<T_ASSO, T_SETS>,
+    tlb: TLB<T_SETS, T_ASSO>,
     last_ttbr: u64,
     arch: std::marker::PhantomData<ARCH>,
     // other MMU caches can be also added here as well.
