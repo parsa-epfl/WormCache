@@ -13,6 +13,10 @@ use tlb::TLB;
 pub trait AbstractMMU {
     fn new() -> Self;
     fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult;
+
+    // Currently, this interface is for debugging. It reuses QEMU's PTW result.
+    fn refill(&mut self, vpn: u64, ppn: u64, ts: u64);
+    fn lookup(&mut self, vpn: u64, ts: u64) -> Option<u64>;
 }
 
 pub struct NoMMU {}
@@ -23,6 +27,10 @@ impl AbstractMMU for NoMMU {
     }
     fn translate_and_refill(&mut self, vpn: u64, _: u64) -> MMUTranslationResult {
         MMUTranslationResult::Hit(vpn)
+    }
+    fn refill(&mut self, _:u64, _: u64, _: u64) {}
+    fn lookup(&mut self, _: u64, _: u64) -> Option<u64> {
+        None
     }
 }
 
@@ -96,5 +104,42 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU for MemoryManagementUnit<ar
         } else {
             return MMUTranslationResult::MissNotCacheable(ptw_result.paddr >> 12);
         }
+    }
+
+    fn refill(&mut self, vpn: u64, ppn: u64, ts: u64) {
+
+        let is_kernel = (vpn >> 51) == 1;
+
+        if is_kernel {
+            self.last_ttbr = u64::MAX;
+        } else if self.last_ttbr == u64::MAX {
+            self.last_ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(0) };
+        }
+
+        let asid = if is_kernel {
+            0xffff as u16
+        } else {
+            (self.last_ttbr >> 48) as u16
+        };
+
+        self.tlb.insert(vpn, asid, ppn, ts)
+    }
+
+    fn lookup(&mut self, vpn: u64, ts: u64) -> Option<u64> {
+        let is_kernel = (vpn >> 51) == 1;
+
+        if is_kernel {
+            self.last_ttbr = u64::MAX;
+        } else if self.last_ttbr == u64::MAX {
+            self.last_ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(0) };
+        }
+
+        let asid = if is_kernel {
+            0xffff as u16
+        } else {
+            (self.last_ttbr >> 48) as u16
+        };
+
+        self.tlb.lookup(vpn, asid, ts)
     }
 }
