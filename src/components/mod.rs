@@ -10,7 +10,7 @@ pub trait Plugin: Send + Sync {
 
 mod mmu; // this is only used by other components, not exposed to the crate.
 pub use mmu::NoMMU as NoMMU; // this is exposed to the crate so that executable binary can use it.
-pub mod memory_mtr;
+pub mod memory_ts;
 pub mod virtual_time;
 pub mod trace;
 pub mod marker;

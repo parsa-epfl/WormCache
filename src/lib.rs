@@ -6,7 +6,7 @@ mod qemu_api;
 mod util;
 
 // Plugin
-use components::memory_mtr::TimeStampedMemoryPlugin;
+use components::memory_ts::TimeStampedMemoryPlugin;
 use components::trace::TracePlugin;
 use components::virtual_time::VirtualTimePlugin;
 use components::marker::MarkerPlugin;
