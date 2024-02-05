@@ -86,14 +86,7 @@ use crate::components::Plugin;
 
 #[derive(PluginHelper)]
 pub struct PluginList {
-    pb : crate::BranchPredictorPlugin,
-    ts_m : crate::TimeStampedMemoryPlugin,
-    vt : crate::VirtualTimePlugin,
-    mk : crate::MarkerPlugin,
-    to : crate::TouchOnePlugin,
-    pwl : crate::PageWalkLoggerPlugin,
-    lm : crate::LockedMemoryPlugin,
-    tr : crate::TracePlugin,
+    _mtrec: crate::MTRMemoryPlugin,
 }
 
 /**
