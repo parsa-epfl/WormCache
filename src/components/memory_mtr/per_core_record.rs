@@ -42,27 +42,23 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
 
     pub fn access_memory(&mut self, ts: usize, vaddr: u64, is_instruction: bool, is_store: bool) {
         // step 1: translation the VA to the PA. 
-        let vpn = vaddr >> 12;
-        let translation = unsafe { self.mmu.translate_and_refill(vpn as u64, ts as u64) };
+        let translation =  self.mmu.translate_and_refill(vaddr, ts as u64);
         // step 2: if the translation is a miss, we need to replay the trace of accessing physical memory.
         match translation {
-            super::mmu::MMUTranslationResult::Hit(ppn) => {
-                let paddr = (ppn << 12) | (vaddr & 0xfff);
+            super::mmu::MMUTranslationResult::Hit(paddr) => {
                 self.access_memory_with_pa(ts, paddr, is_instruction, is_store);
             }
-            super::mmu::MMUTranslationResult::Miss(ppn, walk_trace) => {
+            super::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
                 // replay the trace.
-                let paddr = (ppn << 12) | (vaddr & 0xfff);
-                for pa in walk_trace {
-                    if pa == u64::MAX {
+                for trace_pa in walk_trace {
+                    if trace_pa == u64::MAX {
                         break;
                     }
-                    self.access_memory_with_pa(ts, pa, false, false);
+                    self.access_memory_with_pa(ts, trace_pa, false, false);
                 }
                 self.access_memory_with_pa(ts, paddr, is_instruction, is_store);
             }
-            super::mmu::MMUTranslationResult::MissNotCacheable(ppn) => {
-                let paddr = (ppn << 12) | (vaddr & 0xfff);
+            super::mmu::MMUTranslationResult::MissNotCacheable(paddr) => {
                 self.access_memory_with_pa(ts, paddr, is_instruction, is_store);
             }
         }

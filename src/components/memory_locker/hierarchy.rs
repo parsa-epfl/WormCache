@@ -59,14 +59,12 @@ impl LockedMemoryHierarchy {
         is_store: bool,
         is_instruction: bool,
     ) {
-        let vpn = va >> 12;
-
         let translation = unsafe {
             self.mmus[core_id as usize]
                 .get()
                 .as_mut()
                 .unwrap()
-                .translate_and_refill(vpn, ts)
+                .translate_and_refill(va, ts)
         };
 
         if ENABLE_STATISTICS {
@@ -81,14 +79,12 @@ impl LockedMemoryHierarchy {
         }
 
         match translation {
-            crate::components::mmu::MMUTranslationResult::Hit(ppn) => {
-                let pa = (ppn << 12) | (va & 0xfff);
+            crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
-            crate::components::mmu::MMUTranslationResult::Miss(ppn, walk_trace) => {
+            crate::components::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
                 // replay the trace.
-                let paddr = (ppn << 12) | (va & 0xfff);
                 for pa in walk_trace {
                     if pa == u64::MAX {
                         break;
@@ -109,8 +105,7 @@ impl LockedMemoryHierarchy {
                     }
                 }
             }
-            crate::components::mmu::MMUTranslationResult::MissNotCacheable(ppn) => {
-                let pa = (ppn << 12) | (va & 0xfff);
+            crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
