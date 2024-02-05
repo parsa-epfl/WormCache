@@ -60,7 +60,7 @@ impl Plugin for BranchPredictorPlugin {
         }
     }
 
-    unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
+    unsafe fn on_translation(_: *mut crate::qemu_api::qemu_plugin_tb) {
         // The callback is already inserted into the TB during init.
     }
 

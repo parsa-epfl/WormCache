@@ -21,7 +21,7 @@ impl<const S: usize> ReturnAddressStacle<S> {
         }
         if result == BranchResolveFlag::Call {
             self.stack.push_back(pc + 4);
-        } else {
+        } else if result == BranchResolveFlag::Return {
             self.stack.pop_back();
         }
     }
