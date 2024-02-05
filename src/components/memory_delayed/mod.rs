@@ -58,7 +58,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 
-    PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, false);
+    PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, true);
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
