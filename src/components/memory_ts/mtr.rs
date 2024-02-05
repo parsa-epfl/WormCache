@@ -17,9 +17,9 @@ enum MTRPermission {
 }
 
 impl MTRPermission {
-    pub fn is_dirty(&self) -> bool {
-        return *self == Self::DirtyData;
-    }
+    // pub fn is_dirty(&self) -> bool {
+    //     return *self == Self::DirtyData;
+    // }
     pub fn in_instruction_cache(&self) -> bool {
         return *self == Self::Instruction || *self == Self::InstructionAndCleanData;
     }
@@ -99,16 +99,16 @@ impl MemoryTimestampRecord {
         self.readers.retain(|_, &mut reader_ts| reader_ts >= ts);
     }
 
-    pub fn check_non_outdated_reader(&self) {
-        if let Some(writer_ts) = self.writer.get_timestamp() {
-            self.readers.iter().for_each(|(_core_id, ts)| {
-                assert!(
-                    *ts <= writer_ts,
-                    "Reader with larger timestamp than the writer should be evicted."
-                );
-            })
-        }
-    }
+    // pub fn check_non_outdated_reader(&self) {
+    //     if let Some(writer_ts) = self.writer.get_timestamp() {
+    //         self.readers.iter().for_each(|(_core_id, ts)| {
+    //             assert!(
+    //                 *ts <= writer_ts,
+    //                 "Reader with larger timestamp than the writer should be evicted."
+    //             );
+    //         })
+    //     }
+    // }
 
     pub fn merge_cache_block(
         &mut self,
@@ -158,12 +158,12 @@ impl MemoryTimestampRecord {
         self.filter_readers_by_ts(ts);
     }
 
-    pub fn genreate_each_holder_state_moesi(&self) -> HashMap<CoreId, CacheBlockState> {
-        todo!()
+    pub fn _genreate_each_holder_state_moesi(&self) -> HashMap<CoreId, CacheBlockState> {
+        unimplemented!()
     }
 
-    pub fn genreate_each_holder_state_mesi(&self) -> HashMap<CoreId, CacheBlockState> {
-        todo!();
+    pub fn _genreate_each_holder_state_mesi(&self) -> HashMap<CoreId, CacheBlockState> {
+        unimplemented!();
     }
 
     pub fn generate_directory_block(&self, block_id: u64) -> Option<TsDirectoryBlock> {

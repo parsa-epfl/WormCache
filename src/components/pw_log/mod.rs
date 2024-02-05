@@ -5,7 +5,7 @@ use std::ffi::{self, c_void};
 
 
 unsafe extern "C" fn vcpu_mem_access(
-    cpu_idx: u32,
+    _cpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.

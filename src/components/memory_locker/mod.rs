@@ -39,16 +39,9 @@ unsafe extern "C" fn vcpu_mem_access(
     if !is_device {
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
 
-        // PLUGIN.get_mut().hierarchies(cpu_idx as u8).access_memory(
-        //     get_memory_ts() as usize,
-        //     vaddr,
-        //     false,
-        //     is_store,
-        // )
-
-        let walk_trace = qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler);
-        let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
-        let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
+        // let walk_trace = qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler);
+        // let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
+        // let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
         
         // Currently, this is experimental.
         // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);

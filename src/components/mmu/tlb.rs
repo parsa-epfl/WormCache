@@ -64,25 +64,27 @@ impl<const ASSO: usize> TLBSet<ASSO> {
         }
     }
 
-    fn invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
-        for entry in self.entries.iter_mut() {
-            if entry.valid && entry.vpn == vpn && entry.asid == asid {
-                entry.valid = false;
-            }
-        }
-    }
+    // fn invalidate_by_vpn(&mut self, _vpn: u64, _asid: u16) {
+    //     unimplemented!();
+    //     // for entry in self.entries.iter_mut() {
+    //     //     if entry.valid && entry.vpn == vpn && entry.asid == asid {
+    //     //         entry.valid = false;
+    //     //     }
+    //     // }
+    // }
 
-    fn invalidate_by_asid(&mut self, asid: u16) {
-        for entry in self.entries.iter_mut() {
-            if entry.valid && entry.asid == asid {
-                entry.valid = false;
-            }
-        }
-    }
+    // fn invalidate_by_asid(&mut self, _asid: u16) {
+    //     unimplemented!();
+    //     // for entry in self.entries.iter_mut() {
+    //     //     if entry.valid && entry.asid == asid {
+    //     //         entry.valid = false;
+    //     //     }
+    //     // }
+    // }
 
-    fn is_warm(&self) -> bool {
-        self.current_pointer == ASSO
-    }
+    // fn is_warm(&self) -> bool {
+    //     self.current_pointer == ASSO
+    // }
 }
 
 #[derive(Debug)]
@@ -109,15 +111,15 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
         set.insert(vpn, asid, ppn, ts);
     }
 
-    pub fn invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
-        let set_index = vpn % SET_COUNT as u64;
-        let set = &mut self.entries[set_index as usize];
-        set.invalidate_by_vpn(vpn, asid);
-    }
+    // pub fn _invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
+    //     let set_index = vpn % SET_COUNT as u64;
+    //     let set = &mut self.entries[set_index as usize];
+    //     set.invalidate_by_vpn(vpn, asid);
+    // }
 
-    pub fn invalidate_by_asid(&mut self, asid: u16) {
-        for set in self.entries.iter_mut() {
-            set.invalidate_by_asid(asid);
-        }
-    }
+    // pub fn _invalidate_by_asid(&mut self, asid: u16) {
+    //     for set in self.entries.iter_mut() {
+    //         set.invalidate_by_asid(asid);
+    //     }
+    // }
 }

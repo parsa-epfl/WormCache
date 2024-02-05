@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // This file contains the basic TAGE branch predictor.
 // It is basically an one-to-one translation of the C++ implementation in QFlex.
 
@@ -487,5 +489,5 @@ impl Serialize for TAGEPredictor {
 
 #[test]
 fn test_tage_init() {
-    let mut tage = TAGEPredictor::new();
+    let mut _tage = TAGEPredictor::new();
 }
