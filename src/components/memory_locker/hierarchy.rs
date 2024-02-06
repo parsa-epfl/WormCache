@@ -342,4 +342,8 @@ impl LockedMemoryHierarchy {
                 .being_printed(core_id)
         };
     }
+
+    pub fn dump_access_counter(&self) {
+        self.shared_cache.dump_access_counter();
+    }
 }

@@ -96,6 +96,11 @@ impl super::Plugin for LockedMemoryPlugin {
                 file.write(b"\n").unwrap();
             }
         }
+
+        // dump the access counter of each set in the shared cache.
+        unsafe {
+            PLUGIN.dump_access_counter();
+        }
     }
 
     #[inline]
