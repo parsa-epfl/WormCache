@@ -1,5 +1,9 @@
-use std::sync::Mutex;
 use std::io::prelude::*;
+use std::sync::Mutex;
+
+use rand::Rng;
+
+use crate::components::memory_locker::get_memory_ts;
 
 // There are two possible operations for an exclusive shared cache
 // 1. Empty to the cache, which means a write lock is required.
@@ -142,4 +146,36 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
             writeln!(file, "{}", set.access_counter).unwrap();
         }
     }
+}
+
+#[test]
+fn benchmark_shared_cache() {
+    let c = ExclusiveSharedCache::<
+        { crate::parameter::SHARED_CACHE_SET },
+        { crate::parameter::SHARED_CACHE_ASSO },
+    >::new();
+
+    // generate 1e6 random block ids for access.
+    let mut rng = rand::thread_rng();
+    let block_ids = (0..1e6 as u64).map(|_| rng.gen::<u64>()).collect::<Vec<_>>();
+    let is_allocated = (0..1e6 as u64).map(|_| rng.gen::<bool>()).collect::<Vec<_>>();
+
+    // get the current time
+    let start = std::time::Instant::now();
+    // start the benchmark
+    for i in 0..1e6 as usize {
+        let block_id = block_ids[i];
+        let allocated = is_allocated[i];
+        if allocated {
+            c.allocate(block_id, get_memory_ts() as u64);
+        } else {
+            c.lookup(block_id);
+        }
+    }
+
+    // get the elapsed time
+    let elapsed = start.elapsed();
+
+    // print the elapsed time
+    println!("Elapsed: {:?}", elapsed);
 }
