@@ -16,6 +16,7 @@ mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
 pub mod statistics;
+mod dashmap_directory;
 
 static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy> =
     Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
