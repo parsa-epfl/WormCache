@@ -10,7 +10,7 @@ use crate::components::mmu::AbstractMMU;
 use crate::components::mmu::MemoryManagementUnit;
 use std::cell::UnsafeCell;
 
-pub struct LockedMemoryHierarchy {
+pub struct DelayedMemoryHierarchy {
     mmus: [UnsafeCell<
         MemoryManagementUnit<AArch64, { parameter::TLB_ASSO }, { parameter::TLB_SET }>,
     >; parameter::CORE_COUNT],
@@ -34,7 +34,7 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl LockedMemoryHierarchy {
+impl DelayedMemoryHierarchy {
     pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MemoryManagementUnit::new())),

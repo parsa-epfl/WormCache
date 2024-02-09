@@ -15,7 +15,7 @@ mod private_cache;
 pub mod shared_cache;
 mod hierarchy;
 
-static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy> = Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
+static mut PLUGIN: Lazy<hierarchy::DelayedMemoryHierarchy> = Lazy::new(|| hierarchy::DelayedMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -71,9 +71,9 @@ unsafe extern "C" fn vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-pub struct LockedMemoryPlugin {}
+pub struct DelayedMemoryPlugin {}
 
-impl super::Plugin for LockedMemoryPlugin {
+impl super::Plugin for DelayedMemoryPlugin {
     #[inline]
     fn init() {
         unsafe {
