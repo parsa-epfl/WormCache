@@ -1,68 +1,10 @@
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MessageType {
-    Invalidate,
-    CreateSharer,
-}
+mod mfifo;
+pub use mfifo::*;
 
-#[derive(Debug)]
-struct FIFO<const SIZE: usize> {
-    read_pointer: usize,
-    buffer: UnsafeCell<[(u64, u64, MessageType); SIZE]>,
-    write_pointer: AtomicUsize,
-}
 
-impl<const SIZE: usize> FIFO<SIZE> {
-    pub fn new() -> Self {
-        Self {
-            buffer: UnsafeCell::new([(0, 0, MessageType::Invalidate); SIZE]),
-            read_pointer: 0,
-            write_pointer: AtomicUsize::new(0),
-        }
-    }
-
-    pub fn push(&self, value: u64, ts: u64, message_type: MessageType) {
-        let write_pointer = self.write_pointer.fetch_add(1, Ordering::Relaxed);
-        // if not full, just write it. Otherwise, try to merge with the previous one.
-        if write_pointer < self.read_pointer + SIZE {
-            unsafe {
-                (*self.buffer.get())[write_pointer % SIZE] = (value, ts, message_type);
-            }
-        } else {
-            // search and see if there are any invalidate request pending.
-            let mut found = false;
-            for i in 0..SIZE {
-                let index = (write_pointer - i) % SIZE;
-                if unsafe { (*self.buffer.get())[index].0 == value } {
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found {
-                // it is impassible to see this path.
-                unreachable!("FIFO::push: the FIFO is full and no message can be combined.");
-            }
-        }
-    }
-
-    pub fn pop(&mut self) -> Option<(u64, u64, MessageType)> {
-        if self.read_pointer == self.write_pointer.load(Ordering::Relaxed) {
-            return None;
-        } else {
-            let res = unsafe { (*self.buffer.get())[self.read_pointer % SIZE] };
-            self.read_pointer += 1;
-            return Some(res);
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        return self.read_pointer == self.write_pointer.load(Ordering::Relaxed);
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrivateCacheState {
@@ -147,7 +89,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     }
 
     #[inline]
-    // When there is an invalidation message due to coherence happens, we need to keep its time being invalid.
+    // When there is an invalidation message due to coherence, we need to keep its time being invalid.
     fn add_invalidation_record(&mut self, block_id: u64, ts: u64) {
         // keep the one with smaller ts.
         let evicted_ts = self.invalidation_entries.get_mut(&block_id);

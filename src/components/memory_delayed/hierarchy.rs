@@ -19,9 +19,7 @@ pub struct LockedMemoryHierarchy {
         [private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>;
             parameter::CORE_COUNT],
 
-    directory: directory::Directory<
-        { parameter::PRI_CACHE_SET * 8 }, // over-provisioned by 8x to reduce the conflict.
-    >,
+    directory: directory::Directory,
 
     shared_cache: shared_cache::ExclusiveSharedCache<
         { parameter::SHARED_CACHE_SET },
@@ -94,183 +92,190 @@ impl LockedMemoryHierarchy {
         is_store: bool,
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
-        todo!();
-        // let private_cache = &self.private_caches[core_id as usize];
-        // let private_set = unsafe { private_cache.get_set(block_id).get().as_mut().unwrap() };
+        let private_cache = &self.private_caches[core_id as usize];
+        let private_set = unsafe { private_cache.get_set(block_id).get().as_mut().unwrap() };
 
-        // // first, we need to check the private cache.
-        // let private_hit = private_set.poke_and_update(block_id, ts, is_store, is_instruction);
+        // first, we need to check the private cache.
+        let private_hit = private_set.poke_and_update(block_id, ts, is_store, is_instruction);
 
-        // if private_hit {
-        //     // we don't have to anything. Just return.
-        //     return CacheHierarchyAccessResult::HitInSelfPrivateCache;
-        // }
+        if private_hit {
+            // we don't have to anything. Just return.
+            return CacheHierarchyAccessResult::HitInSelfPrivateCache;
+        }
 
-        // // now, it is a miss. We need to check the directory.
-        // let mut directory_set = self.directory.get_set(block_id).write().unwrap();
-        // let directory_result = directory_set.peek(block_id);
+        // now, it is a miss. We need to check the directory.
+        let mut directory_entry = self.directory.get_or_create(block_id);
+        let sharers = directory_entry.sharers;
 
-        // // if the directory reports a miss, we need to access the last level cache as well, and add it.
-        // if directory_result.count_ones() == 0 {
-        //     let shared_cache_result = self.shared_cache.lookup(block_id);
-        //     let mut incoming_sharer = SharerList::ZERO;
-        //     incoming_sharer.set(core_id as usize, true);
-        //     directory_set.write(block_id, ts, incoming_sharer);
-        //     let evicted = private_set.refill(
-        //         block_id,
-        //         ts,
-        //         is_instruction,
-        //         if is_store {
-        //             PrivateCacheState::DirtyExclusive
-        //         } else {
-        //             PrivateCacheState::CleanExclusive
-        //         },
-        //     );
+        // if the directory reports a miss, we need to access the last level cache as well, and add it.
+        if sharers.count_ones() == 0 {
+            // NOTE: currently we ignore the LLC. 
+            // let shared_cache_result = self.shared_cache.lookup(block_id);
+            let shared_cache_result = false;
+            let mut incoming_sharer = SharerList::ZERO;
+            incoming_sharer.set(core_id as usize, true);
+            directory_entry.ts = ts;
+            directory_entry.sharers = incoming_sharer;
 
-        //     drop(directory_set);
+            let evicted = private_set.refill(
+                block_id,
+                ts,
+                is_instruction,
+                if is_store {
+                    PrivateCacheState::DirtyExclusive
+                } else {
+                    PrivateCacheState::CleanExclusive
+                },
+            );
 
-        //     // handle eviction now.
-        //     if let Some(evicted_line) = evicted {
-        //         self.handle_eviction(core_id, evicted_line.tag, ts);
-        //     }
+            drop(directory_entry);
 
-        //     if shared_cache_result {
-        //         return CacheHierarchyAccessResult::HitInSharedCache;
-        //     } else {
-        //         return CacheHierarchyAccessResult::Miss;
-        //     }
-        // }
+            // handle eviction now.
+            if let Some(evicted_line) = evicted {
+                self.handle_eviction(core_id, evicted_line.tag, ts);
+            }
 
-        // // OK, now this block is provided by another core. We need to check whether we can access it.
-        // if is_store {
-        //     // We need to invalid other cores' cache line.
-        //     // First, we insert the result to our own private cache.
-        //     let evicted = private_set.refill(
-        //         block_id,
-        //         ts,
-        //         is_instruction,
-        //         PrivateCacheState::DirtyExclusive,
-        //     );
-        //     // Second, we go over the sharer list, and invalidate them.
-        //     for i in 0..parameter::CORE_COUNT {
-        //         if *directory_result.get(i).unwrap() {
-        //             // invalidate the cache line.
-        //             let other_private_cache = &self.private_caches[i];
-        //             let other_private_set = unsafe {
-        //                 other_private_cache
-        //                     .get_set(block_id)
-        //                     .get()
-        //                     .as_mut()
-        //                     .unwrap()
-        //             };
-        //             other_private_set.send_message(
-        //                 block_id,
-        //                 ts,
-        //                 private_cache::MessageType::Invalidate,
-        //             );
-        //         }
-        //     }
+            if shared_cache_result {
+                return CacheHierarchyAccessResult::HitInSharedCache;
+            } else {
+                return CacheHierarchyAccessResult::Miss;
+            }
+        }
 
-        //     drop(directory_set);
+        // OK, now this block is provided by another core. We need to check whether we can access it.
+        if is_store {
+            // We need to invalid other cores' cache line.
+            // First, we insert the result to our own private cache.
+            let evicted = private_set.refill(
+                block_id,
+                ts,
+                is_instruction,
+                PrivateCacheState::DirtyExclusive,
+            );
+            // Second, we go over the sharer list, and invalidate them.
+            for i in 0..parameter::CORE_COUNT {
+                if *sharers.get(i).unwrap() {
+                    // invalidate the cache line.
+                    let other_private_cache = &self.private_caches[i];
+                    let other_private_set = unsafe {
+                        other_private_cache
+                            .get_set(block_id)
+                            .get()
+                            .as_mut()
+                            .unwrap()
+                    };
+                    other_private_set.send_message(
+                        block_id,
+                        ts,
+                        private_cache::MessageType::Invalidate,
+                    );
+                }
+            }
 
-        //     // handle eviction now.
-        //     if let Some(evicted_line) = evicted {
-        //         self.handle_eviction(core_id, evicted_line.tag, ts);
-        //     }
+            drop(directory_entry);
 
-        //     return CacheHierarchyAccessResult::HitInOtherPrivateCache;
-        // }
+            // handle eviction now.
+            if let Some(evicted_line) = evicted {
+                self.handle_eviction(core_id, evicted_line.tag, ts);
+            }
 
-        // if directory_result.count_ones() == 1 {
-        //     // OK, only one guy has the permission. We need to send a low upgrade permission later.
-        //     let mut incoming_sharer = directory_result.clone();
-        //     incoming_sharer.set(core_id as usize, true);
+            return CacheHierarchyAccessResult::HitInOtherPrivateCache;
+        }
 
-        //     let owner = directory_result.first_one().unwrap();
-        //     // send upgrade permission to the owner.
-        //     let other_private_cache = &self.private_caches[owner];
-        //     let other_private_set = unsafe {
-        //         other_private_cache
-        //             .get_set(block_id)
-        //             .get()
-        //             .as_mut()
-        //             .unwrap()
-        //     };
-        //     other_private_set.send_message(block_id, ts, private_cache::MessageType::CreateSharer);
+        if sharers.count_ones() == 1 {
+            // OK, only one guy has the permission. We need to send a low upgrade permission later.
+            let mut incoming_sharer = sharers.clone();
+            incoming_sharer.set(core_id as usize, true);
 
-        //     // then, we can consider how to refill the cache line.
-        //     let evicted = private_set.refill(
-        //         block_id,
-        //         ts,
-        //         is_instruction,
-        //         if is_store {
-        //             PrivateCacheState::DirtyExclusive
-        //         } else {
-        //             PrivateCacheState::CleanExclusive
-        //         },
-        //     );
+            let owner = sharers.first_one().unwrap();
+            // send upgrade permission to the owner.
+            let other_private_cache = &self.private_caches[owner];
+            let other_private_set = unsafe {
+                other_private_cache
+                    .get_set(block_id)
+                    .get()
+                    .as_mut()
+                    .unwrap()
+            };
+            other_private_set.send_message(block_id, ts, private_cache::MessageType::CreateSharer);
 
-        //     drop(directory_set);
+            // then, we can consider how to refill the cache line.
+            let evicted = private_set.refill(
+                block_id,
+                ts,
+                is_instruction,
+                if is_store {
+                    PrivateCacheState::DirtyExclusive
+                } else {
+                    PrivateCacheState::CleanExclusive
+                },
+            );
 
-        //     // handle eviction now.
-        //     if let Some(evicted_line) = evicted {
-        //         self.handle_eviction(core_id, evicted_line.tag, ts);
-        //     }
+            drop(directory_entry);
 
-        //     return CacheHierarchyAccessResult::HitInOtherPrivateCache;
-        // }
+            // handle eviction now.
+            if let Some(evicted_line) = evicted {
+                self.handle_eviction(core_id, evicted_line.tag, ts);
+            }
 
-        // // Now, we just need to add ourself to the sharer list. This block must be the shared one.
-        // let mut incoming_sharer = directory_result.clone();
-        // incoming_sharer.set(core_id as usize, true);
-        // directory_set.write(block_id, ts, incoming_sharer);
+            return CacheHierarchyAccessResult::HitInOtherPrivateCache;
+        }
 
-        // // then, we can consider how to refill the cache line.
-        // let evicted = private_set.refill(
-        //     block_id,
-        //     ts,
-        //     is_instruction,
-        //     if is_store {
-        //         PrivateCacheState::DirtyShared
-        //     } else {
-        //         PrivateCacheState::CleanShared
-        //     },
-        // );
+        // Now, we just need to add ourself to the sharer list. This block must be the shared one.
+        let mut incoming_sharer = sharers.clone();
+        incoming_sharer.set(core_id as usize, true);
+        directory_entry.ts = ts;
+        directory_entry.sharers = incoming_sharer;
 
-        // drop(directory_set);
+        // then, we can consider how to refill the cache line.
+        let evicted = private_set.refill(
+            block_id,
+            ts,
+            is_instruction,
+            if is_store {
+                PrivateCacheState::DirtyShared
+            } else {
+                PrivateCacheState::CleanShared
+            },
+        );
 
-        // // handle eviction now.
-        // if let Some(evicted_line) = evicted {
-        //     self.handle_eviction(core_id, evicted_line.tag, ts);
-        // }
+        drop(directory_entry);
 
-        // return CacheHierarchyAccessResult::HitInOtherPrivateCache;
+        // handle eviction now.
+        if let Some(evicted_line) = evicted {
+            self.handle_eviction(core_id, evicted_line.tag, ts);
+        }
+
+        return CacheHierarchyAccessResult::HitInOtherPrivateCache;
     }
 
     pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64) {
-        // // before calling this function, make sure we don't have any locks of the directory or the shared cache.
+        // before calling this function, make sure we don't have any locks of the directory or the shared cache.
 
-        // // first, we need to check the directory.
-        // let mut directory_set = self.directory.get_set(block_id).write().unwrap();
+        // first, we need to check the directory.
+        let mut directory_entry = self.directory.get_or_create(block_id);
 
-        // // we cancel the element of this block in the directory.
-        // let sharer = directory_set.peek(block_id);
+        // we cancel the element of this block in the directory.
+        let sharers = directory_entry.sharers;
 
-        // assert!(sharer.get(core_id as usize).unwrap());
+        assert!(sharers.get(core_id as usize).unwrap());
 
-        // let mut incoming_sharer = sharer.clone();
-        // incoming_sharer.set(core_id as usize, false);
+        let mut incoming_sharer = sharers.clone();
+        incoming_sharer.set(core_id as usize, false);
 
-        // // we put the element back to the directory.
-        // directory_set.write(block_id, ts, incoming_sharer);
+        // we put the element back to the directory.
+        directory_entry.ts = ts;
+        directory_entry.sharers = incoming_sharer;
 
-        // // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
-        // if incoming_sharer.count_ones() == 0 {
-        //     // we need to place this block to the shared cache.
-        //     self.shared_cache.allocate(block_id, ts);
-        //     drop(directory_set);
-        // } else {
-        //     drop(directory_set);
-        // }
+        // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
+        if incoming_sharer.count_ones() == 0 {
+            // we need to place this block to the shared cache.
+            // NOTE: currently, we ignore the LLC.
+            // self.shared_cache.allocate(block_id, ts);
+            drop(directory_entry);
+            self.directory.mark_as_useless(block_id);
+        } else {
+            drop(directory_entry);
+        }
     }
 }
