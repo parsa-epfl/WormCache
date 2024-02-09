@@ -15,6 +15,7 @@ use components::pw_log::PageWalkLoggerPlugin;
 use components::bp::BranchPredictorPlugin;
 use components::memory_locker::LockedMemoryPlugin;
 use components::memory_mtr_recording::MTRMemoryPlugin;
+use components::memory_delayed::DelayedMemoryPlugin;
 
 use parameter::PluginList;
 
