@@ -86,7 +86,7 @@ use crate::components::Plugin;
 
 #[derive(PluginHelper)]
 pub struct PluginList {
-    _mtrec: crate::MTRMemoryPlugin,
+    // _dm : crate::DelayedMemoryPlugin,
 }
 
 /**
