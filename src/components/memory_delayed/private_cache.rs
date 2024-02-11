@@ -113,13 +113,16 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         match evicted_ts {
             Some(previous_ts) => {
                 if *previous_ts > ts {
+                    // the eviction happens earlier than the access.
                     return false;
                 } else {
+                    // the eviction happens later than the access. We treat it as hit.
                     return true;
                 }
             }
             None => {
-                return true;
+                // no record. So it is definitely a cache miss.
+                return false;
             }
         }
     }
