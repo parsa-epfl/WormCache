@@ -1,8 +1,9 @@
-use crate::parameter;
+use crate::parameter::{self, ENABLE_STATISTICS};
 
 use super::directory::SharerList;
 
 use super::private_cache::PrivateCacheState;
+use super::statistics;
 use super::{directory, private_cache, shared_cache};
 
 use crate::arch::AArch64;
@@ -25,6 +26,8 @@ pub struct DelayedMemoryHierarchy {
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
     >,
+
+    per_core_statistics: [UnsafeCell<statistics::PerCoreStatistics>; parameter::CORE_COUNT],
 }
 
 pub enum CacheHierarchyAccessResult {
@@ -41,6 +44,9 @@ impl DelayedMemoryHierarchy {
             private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
             directory: directory::Directory::new(),
             shared_cache: shared_cache::ExclusiveSharedCache::new(),
+            per_core_statistics: std::array::from_fn(|_| {
+                UnsafeCell::new(statistics::PerCoreStatistics::new())
+            }),
         }
     }
 
@@ -92,6 +98,16 @@ impl DelayedMemoryHierarchy {
         is_store: bool,
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
+        if ENABLE_STATISTICS {
+            unsafe {
+                self.per_core_statistics[core_id as usize]
+                    .get()
+                    .as_mut()
+                    .unwrap()
+                    .total_mem += 1;
+            }
+        }
+
         let private_cache = &self.private_caches[core_id as usize];
         let private_set = unsafe { private_cache.get_set(block_id).get().as_mut().unwrap() };
 
@@ -103,13 +119,23 @@ impl DelayedMemoryHierarchy {
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
+        if ENABLE_STATISTICS {
+            unsafe {
+                self.per_core_statistics[core_id as usize]
+                    .get()
+                    .as_mut()
+                    .unwrap()
+                    .private_cache_miss += 1;
+            }
+        }
+
         // now, it is a miss. We need to check the directory.
         let mut directory_entry = self.directory.get_or_create(block_id);
         let sharers = directory_entry.sharers;
 
         // if the directory reports a miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
-            // NOTE: currently we ignore the LLC. 
+            // NOTE: currently we ignore the LLC.
             // let shared_cache_result = self.shared_cache.lookup(block_id);
             let shared_cache_result = false;
             let mut incoming_sharer = SharerList::ZERO;
@@ -277,5 +303,15 @@ impl DelayedMemoryHierarchy {
         } else {
             drop(directory_entry);
         }
+    }
+
+    pub fn get_statistics(&self, core_id: u32) -> String {
+        return unsafe {
+            self.per_core_statistics[core_id as usize]
+                .get()
+                .as_ref()
+                .unwrap()
+                .being_printed(core_id)
+        };
     }
 }

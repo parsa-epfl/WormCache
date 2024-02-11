@@ -7,15 +7,17 @@
 
 use once_cell::sync::Lazy;
 
-use crate::qemu_api;
-use std::ffi;
+use crate::{parameter::ENABLE_STATISTICS, qemu_api};
+use std::{ffi, io::Write};
 
 pub mod directory;
+mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
-mod hierarchy;
+pub mod statistics;
 
-static mut PLUGIN: Lazy<hierarchy::DelayedMemoryHierarchy> = Lazy::new(|| hierarchy::DelayedMemoryHierarchy::new());
+static mut PLUGIN: Lazy<hierarchy::DelayedMemoryHierarchy> =
+    Lazy::new(|| hierarchy::DelayedMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -53,9 +55,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     voffset: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    let vpn = unsafe {
-        qemu_api::qemu_plugin_read_pc_vpn()
-    };
+    let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 
     PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, true);
@@ -85,7 +85,17 @@ impl super::Plugin for DelayedMemoryPlugin {
 
     #[inline]
     fn dump_snapshot() {
-        
+        if ENABLE_STATISTICS {
+            // open a csv file and dump each cores' statistics.
+            let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
+            file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio,tlb_access,tlb_miss,tlb_miss_ratio\n")
+            .unwrap();
+            for i in 0..crate::parameter::CORE_COUNT {
+                let stats = unsafe { PLUGIN.get_statistics(i as u32) };
+                file.write(stats.as_bytes()).unwrap();
+                file.write(b"\n").unwrap();
+            }
+        }
     }
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
