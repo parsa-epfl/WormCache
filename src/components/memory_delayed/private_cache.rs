@@ -1,4 +1,3 @@
-use std::cell::UnsafeCell;
 use std::collections::HashMap;
 
 mod mfifo;
@@ -28,9 +27,9 @@ pub struct PrivateCacheSet<const WAY: usize> {
     lines: [PrivateCacheLine; WAY],
     invalidation_fifo: FIFO<WAY>,
     invalidation_entries: HashMap<u64, u64>, // block id -> ts_invalid. Ts is the time when the block is invalid due to coherence.
-                                        // If one element appears in `invalid_entries`, it must be invalidated by others.
-                                        // If the current core finds an element in this list but not in its own cache, we can compare the timestamp.
-                                        // If the access is earlier than the invalidation, it must be in the cache. After all, the access must be later than the refill, which is done by the current core itself.
+                                             // If one element appears in `invalid_entries`, it must be invalidated by others.
+                                             // If the current core finds an element in this list but not in its own cache, we can compare the timestamp.
+                                             // If the access is earlier than the invalidation, it must be in the cache. After all, the access must be later than the refill, which is done by the current core itself.
 }
 
 impl<const WAY: usize> PrivateCacheSet<WAY> {
@@ -57,9 +56,10 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         // if not, we have to handle it carefully.
         while let Some((block_id, ts, message_type)) = self.invalidation_fifo.pop() {
             // find from the cache set with block id.
-            let hit_element = self.lines.iter_mut().find(|p| {
-                return p.tag == block_id && p.state != PrivateCacheState::Invalid;
-            });
+            let hit_element = self
+                .lines
+                .iter_mut()
+                .find(|p| p.tag == block_id && p.state != PrivateCacheState::Invalid);
 
             if let Some(hit_element) = hit_element {
                 match message_type {
@@ -158,29 +158,29 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             if line.ts < ts {
                 line.ts = ts;
             }
+            // if it is an instruction fetch, we need to update the is_instruction field.
+            line.is_instruction = is_instruction_fetch;
+
             // update the permission.
-            match line.state {
+            return match line.state {
                 PrivateCacheState::Invalid => unreachable!(),
                 PrivateCacheState::CleanShared => {
                     if is_store {
-                        line.state = PrivateCacheState::DirtyExclusive;
+                        false
+                    } else {
+                        true
                     }
                 }
                 PrivateCacheState::DirtyShared => {
                     if is_store {
-                        line.state = PrivateCacheState::DirtyShared;
+                        false
+                    } else {
+                        true
                     }
                 }
-                PrivateCacheState::CleanExclusive => {
-                    if is_store {
-                        line.state = PrivateCacheState::DirtyExclusive;
-                    }
-                }
-                PrivateCacheState::DirtyExclusive => {}
-            }
-            // if it is an instruction fetch, we need to update the is_instruction field.
-            line.is_instruction = is_instruction_fetch;
-            return true;
+                PrivateCacheState::CleanExclusive => true,
+                PrivateCacheState::DirtyExclusive => true,
+            };
         } else {
             // now we have to check the eviction list. if we find it and the current access has earlier ts, it is a cache hit.
             return self.check_invalidation_record(block_id, ts);
@@ -189,6 +189,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
 
     pub fn refill(
         &mut self,
+        _core_id: u32,
         block_id: u64,
         ts: u64,
         is_instruction: bool,
@@ -199,7 +200,17 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
-        assert!(hit_element.is_none());
+        // Note that it is possible to see a hit element. This is mainly from coherence message.
+        if let Some(hit_cache_line) = hit_element {
+            hit_cache_line.ts = ts;
+            // It must be a coherence miss, so the incoming state must be with write permission.
+            assert!(state == PrivateCacheState::DirtyExclusive);
+            hit_cache_line.state = state;
+            hit_cache_line.is_instruction = is_instruction;
+
+            self.remove_invalidation_record(block_id, ts);
+            return None;
+        }
         // find the first invalid element.
         let invalid_element = self.lines.iter_mut().find(|p| {
             return p.state == PrivateCacheState::Invalid;
@@ -228,7 +239,13 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                     oldest_element.tag = block_id;
                     oldest_element.state = state;
                     oldest_element.is_instruction = is_instruction;
+
                     self.remove_invalidation_record(block_id, ts);
+
+                    // If the one being invalidated is already in the invalidation list, we don't have to do anything.
+                    if self.check_invalidation_record(block_id, ts) {
+                        return None;
+                    }
                     return Some(res);
                 }
                 None => {
@@ -236,7 +253,6 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                 }
             }
         }
-        
     }
 
     pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
