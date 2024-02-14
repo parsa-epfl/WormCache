@@ -3,10 +3,9 @@ use std::collections::HashMap;
 
 mod mfifo;
 pub use mfifo::*;
+use serde::Serialize;
 
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum PrivateCacheState {
     Invalid,
     CleanShared,
@@ -15,7 +14,7 @@ pub enum PrivateCacheState {
     DirtyExclusive,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct PrivateCacheLine {
     pub state: PrivateCacheState,
     pub tag: u64,
@@ -240,7 +239,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         
     }
 
-    pub fn send_message(&mut self, block_id: u64, ts: u64, message_type: MessageType) {
+    pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
         self.invalidation_fifo.push(block_id, ts, message_type);
     }
 
@@ -249,30 +248,52 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     }
 }
 
+use serde::ser::SerializeStruct;
+
+impl<const WAY: usize> Serialize for PrivateCacheSet<WAY> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("PrivateCacheSet", 2)?;
+        state.serialize_field("lines", &self.lines.as_slice())?;
+        state.serialize_field("invalidation_fifo", &self.invalidation_entries)?;
+        state.end()
+    }
+}
+
 #[repr(align(64))]
 pub struct PrivateCache<const SET: usize, const WAY: usize> {
-    cache: Box<[UnsafeCell<PrivateCacheSet<WAY>>; SET]>,
+    cache: Box<[PrivateCacheSet<WAY>; SET]>,
 }
 
 impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
     pub fn new() -> Self {
         Self {
-            cache: crate::util::init_heap_array(|_| UnsafeCell::new(PrivateCacheSet::new())),
+            cache: crate::util::init_heap_array(|_| PrivateCacheSet::new()),
         }
     }
 
-    pub fn get_set(&self, block_id: u64) -> &UnsafeCell<PrivateCacheSet<WAY>> {
+    pub fn get_set(&mut self, block_id: u64) -> &mut PrivateCacheSet<WAY> {
         let set_id = block_id as usize % SET;
-        return &self.cache[set_id];
+        return &mut self.cache[set_id];
     }
 
-    // This function is called in the boundary of the quantum. 
-    pub fn clean_expired_eviction(&self) {
-        for set in self.cache.iter() {
-            unsafe {
-                (*set.get()).clean_expired_eviction();
-            }
+    // This function is called in the boundary of the quantum.
+    pub fn clean_expired_eviction(&mut self) {
+        for set in self.cache.iter_mut() {
+            set.clean_expired_eviction();
         }
+    }
+
+    pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
+        let set_id = block_id as usize % SET;
+        self.cache[set_id].send_message(block_id, ts, message_type);
+    }
+}
+
+impl<const SET: usize, const WAY: usize> Serialize for PrivateCache<SET, WAY> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("PrivateCacheSet", 1)?;
+        state.serialize_field("cache", &self.cache.as_slice())?;
+        state.end()
     }
 }
 
