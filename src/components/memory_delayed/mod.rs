@@ -80,7 +80,7 @@ impl super::Plugin for DelayedMemoryPlugin {
             Lazy::force(&PLUGIN);
         }
 
-        println!("Memory[Locked] plugin initialized.");
+        println!("Memory[Delayed] plugin initialized.");
     }
 
     #[inline]
