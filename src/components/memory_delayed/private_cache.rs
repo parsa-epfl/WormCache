@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crossbeam_queue::SegQueue;
 
 mod mfifo;
 pub use mfifo::*;
@@ -25,7 +26,7 @@ pub struct PrivateCacheLine {
 #[derive(Debug)]
 pub struct PrivateCacheSet<const WAY: usize> {
     lines: [PrivateCacheLine; WAY],
-    invalidation_fifo: FIFO<WAY>,
+    invalidation_fifo: SegQueue<(u64, u64, MessageType)>,
     invalidation_entries: HashMap<u64, u64>, // block id -> ts_invalid. Ts is the time when the block is invalid due to coherence.
                                              // If one element appears in `invalid_entries`, it must be invalidated by others.
                                              // If the current core finds an element in this list but not in its own cache, we can compare the timestamp.
@@ -41,7 +42,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                 ts: 0,
                 is_instruction: false,
             }; WAY],
-            invalidation_fifo: FIFO::new(),
+            invalidation_fifo: SegQueue::new(),
             invalidation_entries: HashMap::new(),
         }
     }
@@ -256,7 +257,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     }
 
     pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
-        self.invalidation_fifo.push(block_id, ts, message_type);
+        self.invalidation_fifo.push((block_id, ts, message_type));
     }
 
     pub fn clean_expired_eviction(&mut self) {
