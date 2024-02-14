@@ -45,7 +45,7 @@ pub struct DirectoryEntry {
 pub struct Directory<const SETS: usize> {
     // entries: [Mutex<DirectorySet>; SETS], // map :: block_id -> DirectoryEntry
     //                                       // entries: DashMap<u64, DirectoryEntry>,
-    entries: DashMap<u64, DirectoryEntry>
+    entries: DashMap<u64, DirectoryEntry>,
 }
 
 impl<const SETS: usize> Directory<SETS> {
@@ -63,11 +63,13 @@ impl<const SETS: usize> Directory<SETS> {
     // }
 
     pub fn get_or_create(&self, block_id: u64) -> RefMut<'_, u64, DirectoryEntry> {
-        self.entries.entry(block_id).or_insert_with(|| DirectoryEntry {
-            ts: 0,
-            sharers: SharerList::ZERO,
-            // history: Vec::new(),
-        })
+        self.entries
+            .entry(block_id)
+            .or_insert_with(|| DirectoryEntry {
+                ts: 0,
+                sharers: SharerList::ZERO,
+                // history: Vec::new(),
+            })
     }
 
     pub fn mark_as_useless(&self, block_id: u64) {

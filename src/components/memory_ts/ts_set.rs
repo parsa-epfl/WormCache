@@ -6,16 +6,15 @@ pub enum CacheReturnResult {
     Miss,
     Hit,
     MissWithEviction(u64, bool), // (block_id, is_instruction)
-    MissWithWriteBack(u64), // (block_id)
+    MissWithWriteBack(u64),      // (block_id)
 }
 
 #[derive(PartialEq)]
 pub enum CacheFlushResult {
     Miss,
     Hit(bool), // (is_instruction)
-    HitWithWriteBack
+    HitWithWriteBack,
 }
-
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TimestampCacheLineStatus {
@@ -32,11 +31,14 @@ impl TimestampCacheLineStatus {
     }
 
     pub fn is_data(&self) -> bool {
-        return *self == TimestampCacheLineStatus::CleanData || *self == TimestampCacheLineStatus::CleanInstructionAndData || *self == TimestampCacheLineStatus::DirtyData;
+        return *self == TimestampCacheLineStatus::CleanData
+            || *self == TimestampCacheLineStatus::CleanInstructionAndData
+            || *self == TimestampCacheLineStatus::DirtyData;
     }
 
     pub fn is_instruction(&self) -> bool {
-        return *self == TimestampCacheLineStatus::Instruction || *self == TimestampCacheLineStatus::CleanInstructionAndData;
+        return *self == TimestampCacheLineStatus::Instruction
+            || *self == TimestampCacheLineStatus::CleanInstructionAndData;
     }
 }
 
@@ -59,7 +61,7 @@ impl<const A: usize> SetAccessResult<A> {
     pub fn is_miss(&self) -> bool {
         return self.0 == A;
     }
-    
+
     pub fn index(&self) -> usize {
         return self.0;
     }
@@ -156,13 +158,7 @@ impl<const A: usize> TimestampCacheSet<A> {
         }
     }
 
-    pub fn peek(
-        &mut self,
-        block_id: u64,
-        ts: usize,
-        is_instruction: bool,
-        is_write: bool,
-    ) -> bool {
+    pub fn peek(&mut self, block_id: u64, ts: usize, is_instruction: bool, is_write: bool) -> bool {
         // return whether this peek is hit. If it is, update its timestamp.
         let look_index = self.lookup(block_id);
         if look_index.is_miss() {
@@ -235,9 +231,7 @@ impl<const A: usize> TimestampCacheSet<A> {
             TimestampCacheLineStatus::Invalid => unreachable!(),
             TimestampCacheLineStatus::Instruction => CacheFlushResult::Hit(true),
             TimestampCacheLineStatus::CleanData => CacheFlushResult::Hit(false),
-            TimestampCacheLineStatus::CleanInstructionAndData => {
-                CacheFlushResult::Hit(true)
-            }
+            TimestampCacheLineStatus::CleanInstructionAndData => CacheFlushResult::Hit(true),
             TimestampCacheLineStatus::DirtyData => CacheFlushResult::HitWithWriteBack,
         };
     }
@@ -257,11 +251,12 @@ impl<const A: usize> TimestampCacheSet<A> {
 
 pub struct TimestampCacheSetIterator<'a, const A: usize> {
     base: &'a TimestampCacheSet<A>,
-    current_idx: usize
+    current_idx: usize,
 }
 
 impl<'a, const A: usize> Iterator for TimestampCacheSetIterator<'a, A> {
-    type Item = (u64, usize, TimestampCacheLineStatus); /// (block_id, ts, status)
+    type Item = (u64, usize, TimestampCacheLineStatus);
+    /// (block_id, ts, status)
 
     /// Return value: (block_id, ts, status)
     fn next(&mut self) -> Option<Self::Item> {
@@ -275,9 +270,13 @@ impl<'a, const A: usize> Iterator for TimestampCacheSetIterator<'a, A> {
 
         for it in self.current_idx..A {
             if self.base.status[it] != TimestampCacheLineStatus::Invalid {
-                // find it! 
+                // find it!
                 self.current_idx = it + 1;
-                return Some((self.base.block_ids[it], self.base.ts[it], self.base.status[it]));
+                return Some((
+                    self.base.block_ids[it],
+                    self.base.ts[it],
+                    self.base.status[it],
+                ));
             }
         }
         return None;
@@ -286,19 +285,21 @@ impl<'a, const A: usize> Iterator for TimestampCacheSetIterator<'a, A> {
 
 impl<const A: usize> TimestampCacheSet<A> {
     pub fn iter<'a>(&'a self) -> TimestampCacheSetIterator<'a, A> {
-        return TimestampCacheSetIterator { base: self, current_idx: 0 };
+        return TimestampCacheSetIterator {
+            base: self,
+            current_idx: 0,
+        };
     }
 }
 
 mod test {
     #[test]
-    fn test_iterator(){
+    fn test_iterator() {
         let mut s = super::TimestampCacheSet::<4>::new();
         s.access(1024, 0, false, false);
         s.access(100, 1, false, false);
         s.access(23, 2, false, false);
         s.access(7, 7, false, false);
         s.access(73, 10, false, false);
-
     }
 }

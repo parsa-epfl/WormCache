@@ -63,7 +63,6 @@ impl<const SIZE: usize> FIFO<SIZE> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

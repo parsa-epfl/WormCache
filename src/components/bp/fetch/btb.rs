@@ -10,7 +10,7 @@ struct BTBEntry {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct BTB <const S: usize> {
+pub struct BTB<const S: usize> {
     array: Vec<BTBEntry>,
 }
 
@@ -35,4 +35,3 @@ impl<const S: usize> BTB<S> {
         self.array[index].valid = true;
     }
 }
-

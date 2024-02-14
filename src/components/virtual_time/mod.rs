@@ -5,8 +5,8 @@ use core::ffi;
 use once_cell::sync::Lazy;
 use std::{io::Write, sync::Mutex};
 
-use crate::qemu_api;
 use crate::parameter as param;
+use crate::qemu_api;
 
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));

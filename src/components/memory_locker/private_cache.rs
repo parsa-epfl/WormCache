@@ -1,6 +1,5 @@
 use std::sync::RwLock;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrivateCacheState {
     Invalid,
@@ -149,7 +148,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             hit_element.state = PrivateCacheState::Invalid;
             return Some(res);
         } else {
-            // it is possible to see this path. One case is that the cache line is evicted before updating the directory. 
+            // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
             return None;
         }
     }
@@ -183,7 +182,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                 }
             }
         } else {
-            // it is possible to see this path. One case is that the cache line is evicted before updating the directory. 
+            // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
             return false;
         }
     }

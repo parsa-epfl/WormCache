@@ -110,7 +110,6 @@ impl LockedMemoryHierarchy {
         }
     }
 
-
     pub fn access_memory_pblock_id(
         &self,
         core_id: u32,
@@ -341,7 +340,7 @@ impl LockedMemoryHierarchy {
             // self.shared_cache.allocate(block_id, ts);
             self.directory.mark_as_useless(block_id);
             drop(directory_set);
-            // We should also mark this one as deleted. 
+            // We should also mark this one as deleted.
         } else {
             drop(directory_set);
         }

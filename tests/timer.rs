@@ -79,29 +79,30 @@ fn the_cost_of_timer() {
     const TOTAL_TEST_COUNT: usize = 100_000_000;
     const THREAD_COUNT: usize = 16;
 
-    let handlers: Vec<_> = (0..THREAD_COUNT).map(|_| {
-        let handler = std::thread::spawn(|| {
-            let mut fake_number: u64 = 0;
-            let start = Instant::now();
-            for _ in 0..TOTAL_TEST_COUNT {
-                fake_number |= normal_time_function();
-            }
-            let end = start.elapsed();
-            if fake_number == 0 {
-                println!("This is a fake number: {}", fake_number);
-            }
+    let handlers: Vec<_> = (0..THREAD_COUNT)
+        .map(|_| {
+            let handler = std::thread::spawn(|| {
+                let mut fake_number: u64 = 0;
+                let start = Instant::now();
+                for _ in 0..TOTAL_TEST_COUNT {
+                    fake_number |= normal_time_function();
+                }
+                let end = start.elapsed();
+                if fake_number == 0 {
+                    println!("This is a fake number: {}", fake_number);
+                }
 
-            return end;
-        });
-        return handler;
-    }).collect();
+                return end;
+            });
+            return handler;
+        })
+        .collect();
 
     // sum all durations from each thread
     let acc = handlers.into_iter().fold(0, |acc, handler| {
         let end = handler.join().unwrap();
         return acc + end.as_nanos();
     });
-
 
     println!(
         "Average time: {} ns",

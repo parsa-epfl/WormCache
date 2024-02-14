@@ -43,12 +43,14 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
         let tlb_miss_exception = (tcr >> 23) & 0b1 != 0;
         assert!(
             !tlb_miss_exception,
-            "We do not support TLB miss exception in kernel mode!")
+            "We do not support TLB miss exception in kernel mode!"
+        )
     } else {
         let tlb_miss_exception = (tcr >> 7) & 0b1 != 0;
         assert!(
             !tlb_miss_exception,
-            "We do not support TLB miss exception in kernel mode!")
+            "We do not support TLB miss exception in kernel mode!"
+        )
     }
 
     // 2. check the physical address space. The physical address space should be 48bit. Otherwise, we panic
@@ -83,7 +85,6 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
         cacheable: cacheable,
     };
 
-
     // Now, we start the real page walk. First, we get the page table base address.
     let ttbr = ttbr & 0x0000FFFFFFFFF000;
 
@@ -95,20 +96,23 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     // println!("L0 PTE: {:x} -> {:x}", l0pte_addr, l0pte);
 
     // if l0pte & 0b11 != 0b11 {
-    //     // Well, we are done. This is a 1GB page. 
+    //     // Well, we are done. This is a 1GB page.
     //     return result;
     // }
 
-    assert!(l0pte & 0b11 == 0b11, "It is impossible to see a 512GB page in AArch64 now!");
+    assert!(
+        l0pte & 0b11 == 0b11,
+        "It is impossible to see a 512GB page in AArch64 now!"
+    );
 
-    // Now, the second level. 
+    // Now, the second level.
     let l1pte_addr = (l0pte & 0x0000FFFFFFFFF000) + ((va >> 30) & 0b111111111) * 8;
     result.traces[1] = l1pte_addr;
     let l1pte = paddr_reader_q(l1pte_addr);
     // println!("L1 PTE: {:x} -> {:x}", l1pte_addr, l1pte);
 
     if l1pte & 0b11 != 0b11 {
-        // Well, we are done. This is a 1GB page. 
+        // Well, we are done. This is a 1GB page.
         result.paddr = (l1pte & 0x0000_FFFF_C000_0000) + (va & 0x0000_0000_3FFF_FFFF);
         result.page_size = PageSize::_1GB;
         return result;
@@ -121,7 +125,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     // println!("L2 PTE: {:x} -> {:x}", l2pte_addr, l2pte);
 
     if l2pte & 0b11 != 0b11 {
-        // Well, we are done. This is a 2MB page. 
+        // Well, we are done. This is a 2MB page.
         result.paddr = (l2pte & 0x0000_FFFF_FFE0_0000) + (va & 0x0000_0000_001F_FFFF);
         result.page_size = PageSize::_2MB;
         return result;
@@ -140,7 +144,6 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     return result;
 }
 
-
 pub enum TLBInvalidateInfo {
     ASID,
     VA,
@@ -148,10 +151,12 @@ pub enum TLBInvalidateInfo {
     ALL,
 }
 
-
 pub fn decode_tlbi(decoding: u32) -> Option<TLBInvalidateInfo> {
-    todo!("AArch64::decode_tlbi is not implemented yet! Parameter: {:x}", decoding);
+    todo!(
+        "AArch64::decode_tlbi is not implemented yet! Parameter: {:x}",
+        decoding
+    );
 }
 
-// DMN, it is very hard to implement TLBi without locks. It flushes all TLBs, immediately. 
-// So, the solution might be something like the quantum: periodic pooling others' request. 
+// DMN, it is very hard to implement TLBi without locks. It flushes all TLBs, immediately.
+// So, the solution might be something like the quantum: periodic pooling others' request.

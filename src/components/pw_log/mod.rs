@@ -1,8 +1,7 @@
 use super::Plugin;
-use crate::qemu_api;
 use crate::arch::aarch64;
+use crate::qemu_api;
 use std::ffi::{self, c_void};
-
 
 unsafe extern "C" fn vcpu_mem_access(
     _cpu_idx: u32,
@@ -17,7 +16,10 @@ unsafe extern "C" fn vcpu_mem_access(
         // let is_store = qemu_api::qemu_plugin_mem_is_store(info);
         let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
 
-        let traces = std::slice::from_raw_parts(qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler), 4);
+        let traces = std::slice::from_raw_parts(
+            qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler),
+            4,
+        );
 
         // println!("Walk trace for {:x}: ", paddr);
 
@@ -25,7 +27,7 @@ unsafe extern "C" fn vcpu_mem_access(
             if *t == u64::MAX {
                 break;
             }
-            let mut buf : u64 = 0;
+            let mut buf: u64 = 0;
             qemu_api::qemu_plugin_read_physical_memory(*t, 8, &mut buf as *mut u64 as *mut c_void);
             // println!("- {:x} -> {:x}", *t, buf);
         }
@@ -41,9 +43,13 @@ unsafe extern "C" fn vcpu_mem_access(
 
         let res = aarch64::ptw(ttbr, tcr, va, paddr_reader);
 
-        assert!(res.paddr == paddr as u64, "The physical address is not matched! {:x} vs {:x}", res.paddr, paddr);
+        assert!(
+            res.paddr == paddr as u64,
+            "The physical address is not matched! {:x} vs {:x}",
+            res.paddr,
+            paddr
+        );
         assert!(res.traces == traces, "The traces are not matched!");
-
     } else {
         // TODO: check the I/O event
     }
@@ -124,7 +130,5 @@ impl Plugin for PageWalkLoggerPlugin {
         }
     }
 
-    fn dump_snapshot() {
-        
-    }
+    fn dump_snapshot() {}
 }

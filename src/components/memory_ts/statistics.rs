@@ -3,7 +3,7 @@
 pub struct PerCoreStatistics {
     pub total_mem: u64,
     pub private_cache_miss: u64,
-    pub shared_cache_access: u64
+    pub shared_cache_access: u64,
 }
 
 impl PerCoreStatistics {
@@ -11,7 +11,7 @@ impl PerCoreStatistics {
         return Self {
             total_mem: 0,
             private_cache_miss: 0,
-            shared_cache_access: 0
+            shared_cache_access: 0,
         };
     }
 

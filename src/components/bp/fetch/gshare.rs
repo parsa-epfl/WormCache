@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-
 use crate::components::bp::BranchResolveFlag;
 
 use serde::{Deserialize, Serialize};

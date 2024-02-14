@@ -36,7 +36,6 @@ type Address = u64;
 
 type History = [bool; MAXHIST];
 
-
 #[derive(Debug, Serialize, Deserialize)]
 struct FoldedHistory {
     comp: u32,
@@ -360,7 +359,8 @@ impl TAGEPredictor {
 
     pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
         // we only update the predictor when the branch is conditional, but we update the history all the time.
-        let is_conditional = result == BranchResolveFlag::Taken || result == BranchResolveFlag::NotTaken;
+        let is_conditional =
+            result == BranchResolveFlag::Taken || result == BranchResolveFlag::NotTaken;
         let taken = result == BranchResolveFlag::Taken;
         if is_conditional {
             let pc = pc >> 2;
@@ -466,7 +466,6 @@ impl TAGEPredictor {
         self.update_history(pc, taken)
     }
 }
-
 
 use serde::ser::SerializeStruct;
 

@@ -36,7 +36,9 @@ pub fn find_fetch_block_from_block_id_sequence(i: Vec<usize>) -> HashMap<usize, 
     return res;
 }
 
-pub fn init_heap_array<T: Sized + std::fmt::Debug, const N: usize>(f: fn(usize) -> T) -> Box<[T; N]> {
+pub fn init_heap_array<T: Sized + std::fmt::Debug, const N: usize>(
+    f: fn(usize) -> T,
+) -> Box<[T; N]> {
     let res = Vec::from_iter((0..N).map(f));
     return res.into_boxed_slice().try_into().unwrap();
 }
@@ -61,7 +63,7 @@ fn test_find_fetch_block_from_pa_sequence() {
     assert_eq!(res.len(), 1);
     assert_eq!(res.get(&0), Some(&1));
 
-    let example = vec![1,2,2,10,10];
+    let example = vec![1, 2, 2, 10, 10];
     let res = find_fetch_block_from_block_id_sequence(example);
     assert_eq!(res.len(), 3);
     assert_eq!(res.get(&0), Some(&1));

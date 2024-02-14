@@ -10,11 +10,10 @@ pub trait TimestampedBlock {
     fn export(self) -> Self::ExportedType;
 }
 
-
 #[derive(PartialEq, Eq, Clone)]
 pub struct TsCacheBlock {
     pub d: CacheBlock,
-    pub ts: usize
+    pub ts: usize,
 }
 
 impl TimestampedBlock for TsCacheBlock {
@@ -28,7 +27,6 @@ impl TimestampedBlock for TsCacheBlock {
         return self.d;
     }
 }
-
 
 /// TODO: Replace the following code with a macro.
 impl Ord for TsCacheBlock {
@@ -47,7 +45,7 @@ impl PartialOrd for TsCacheBlock {
 
 pub struct TsDirectoryBlock {
     pub d: DirectoryBlock,
-    pub ts: usize
+    pub ts: usize,
 }
 
 impl TimestampedBlock for TsDirectoryBlock {
@@ -109,6 +107,3 @@ impl LRUPrioritizing for BinaryHeap<TsCacheBlock> {
         return res;
     }
 }
-
-
-

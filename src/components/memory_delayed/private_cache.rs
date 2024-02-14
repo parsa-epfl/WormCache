@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crossbeam_queue::SegQueue;
+use std::collections::HashMap;
 
 mod mfifo;
 pub use mfifo::*;

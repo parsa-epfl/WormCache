@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use super::ts_cache::TimestampCache;
 use super::mmu::AbstractMMU;
 use super::statistics::PerCoreStatistics;
-
+use super::ts_cache::TimestampCache;
 
 use crate::parameter::{self as param, ENABLE_STATISTICS};
 
@@ -41,8 +40,8 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
     }
 
     pub fn access_memory(&mut self, ts: usize, vaddr: u64, is_instruction: bool, is_store: bool) {
-        // step 1: translation the VA to the PA. 
-        let translation =  self.mmu.translate_and_refill(vaddr, ts as u64);
+        // step 1: translation the VA to the PA.
+        let translation = self.mmu.translate_and_refill(vaddr, ts as u64);
         // step 2: if the translation is a miss, we need to replay the trace of accessing physical memory.
         match translation {
             super::mmu::MMUTranslationResult::Hit(paddr) => {
@@ -64,7 +63,13 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
         }
     }
 
-    pub fn access_memory_with_pa(&mut self, ts: usize, paddr: u64, is_instruction: bool, is_store: bool) {
+    pub fn access_memory_with_pa(
+        &mut self,
+        ts: usize,
+        paddr: u64,
+        is_instruction: bool,
+        is_store: bool,
+    ) {
         if ENABLE_STATISTICS {
             self.statistics.total_mem += 1;
         }
@@ -101,8 +106,12 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
                     self.local_shared_cache.invalid(block_id);
                 }
 
-                self.local_shared_cache
-                    .record(blk, is_instruction, false, super::get_memory_ts() as usize);
+                self.local_shared_cache.record(
+                    blk,
+                    is_instruction,
+                    false,
+                    super::get_memory_ts() as usize,
+                );
             }
             super::CacheReturnResult::MissWithWriteBack(blk) => {
                 if ENABLE_STATISTICS {
@@ -117,7 +126,8 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
                     self.local_shared_cache.invalid(block_id);
                 }
 
-                self.local_shared_cache.record(blk, false, true, super::get_memory_ts() as usize);
+                self.local_shared_cache
+                    .record(blk, false, true, super::get_memory_ts() as usize);
                 self.evicted_dirty_list.insert(block_id, ts);
             }
         }
