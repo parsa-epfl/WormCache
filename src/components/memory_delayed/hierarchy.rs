@@ -149,7 +149,8 @@ impl DelayedMemoryHierarchy {
         }
 
         // now, it is a miss. We need to check the directory.
-        let mut directory_entry_guard = self.directory.get_or_create(block_id);
+        let mut directory_set_guard = self.directory.get_set(block_id);
+        let directory_entry_guard = directory_set_guard.get_or_create(block_id);
         // directory_entry_guard
         //     .history
         //     .push((core_id, is_store, ts, true));
@@ -177,7 +178,7 @@ impl DelayedMemoryHierarchy {
                 },
             );
 
-            drop(directory_entry_guard);
+            drop(directory_set_guard);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -220,7 +221,7 @@ impl DelayedMemoryHierarchy {
             exclusive_sharer.set(core_id as usize, true);
             directory_entry_guard.sharers = exclusive_sharer;
 
-            drop(directory_entry_guard);
+            drop(directory_set_guard);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -253,7 +254,7 @@ impl DelayedMemoryHierarchy {
                 private_cache::MessageType::CreateSharer,
             );
 
-            drop(directory_entry_guard);
+            drop(directory_set_guard);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -282,7 +283,7 @@ impl DelayedMemoryHierarchy {
             },
         );
 
-        drop(directory_entry_guard);
+        drop(directory_set_guard);
 
         // handle eviction now.
         if let Some(evicted_line) = evicted {
@@ -294,8 +295,8 @@ impl DelayedMemoryHierarchy {
 
     pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64) {
         // first, we need to check the directory.
-        let mut directory_entry_guard = self.directory.get_or_create(block_id);
-        // let directory_entry = directory_set_guard.get_or_create(block_id);
+        let mut directory_set_guard = self.directory.get_set(block_id);
+        let directory_entry_guard = directory_set_guard.get_or_create(block_id);
 
         // we cancel the element of this block in the directory.
         let sharers = directory_entry_guard.sharers;
@@ -331,11 +332,11 @@ impl DelayedMemoryHierarchy {
             // we need to place this block to the shared cache.
             // NOTE: currently, we ignore the LLC.
             // self.shared_cache.allocate(block_id, ts);
-            self.directory.mark_as_useless(block_id);
+            directory_set_guard.remove(&block_id);
         } else {
         }
 
-        drop(directory_entry_guard);
+        drop(directory_set_guard);
     }
 
     pub fn get_statistics(&self, core_id: u32) -> String {
