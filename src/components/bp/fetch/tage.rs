@@ -472,7 +472,7 @@ use serde::ser::SerializeStruct;
 
 impl Serialize for TAGEPredictor {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("TAGEPredictor", 1)?;
+        let mut state = serializer.serialize_struct("TAGEPredictor", 9)?;
         state.serialize_field("seed", &self.seed)?;
         state.serialize_field("tick", &self.tick)?;
         state.serialize_field("phist", &self.phist)?;
