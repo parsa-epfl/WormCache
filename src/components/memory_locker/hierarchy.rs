@@ -222,6 +222,12 @@ impl LockedMemoryHierarchy {
                 }
             }
 
+            // set the sharer list to be only me.
+            let mut incoming_sharer = SharerList::ZERO;
+            incoming_sharer.set(core_id as usize, true);
+            directory_entry.ts = ts;
+            directory_entry.sharers = incoming_sharer;
+
             drop(directory_entry);
 
             // handle eviction now.
@@ -236,6 +242,8 @@ impl LockedMemoryHierarchy {
             // OK, only one guy has the permission. We need to send a low upgrade permission later.
             let mut incoming_sharer = sharers.clone();
             incoming_sharer.set(core_id as usize, true);
+            directory_entry.ts = ts;
+            directory_entry.sharers = incoming_sharer;
 
             // First, we refill the cache line.
             let mut private_set = private_cache.get_set(block_id).write().unwrap();
@@ -258,8 +266,8 @@ impl LockedMemoryHierarchy {
             let mut other_private_set = other_private_cache.get_set(block_id).write().unwrap(); // Thread 8
             other_private_set.request_sharer(block_id, ts);
 
-            drop(directory_entry);
             drop(other_private_set);
+            drop(directory_entry);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -331,8 +339,8 @@ impl LockedMemoryHierarchy {
             }
             // NOTE: currently shared cache access is disabled.
             // self.shared_cache.allocate(block_id, ts);
-            drop(directory_set);
             self.directory.mark_as_useless(block_id);
+            drop(directory_set);
             // We should also mark this one as deleted. 
         } else {
             drop(directory_set);

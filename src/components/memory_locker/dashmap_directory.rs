@@ -49,7 +49,7 @@ impl Directory {
     }
 
     pub fn mark_as_useless(&self, block_id: u64) {
-        self.entries.remove(&block_id);
+        // self.entries.remove(&block_id);
     }
 
     pub fn peek(&self, block_id: u64) -> SharerList {
