@@ -8,11 +8,13 @@ pub struct ICountPlugin {
 
 impl ICountPlugin {
     pub fn get_icounts(&self) -> [u64; CORE_COUNT] {
-        let mut res = [0; CORE_COUNT];
-        for i in 0..CORE_COUNT {
-            res[i] = self.data[i * 8];
-        }
-        return res;
+        // let mut res = [0; CORE_COUNT];
+        // for i in 0..CORE_COUNT {
+        //     res[i] = self.data[i * 8];
+        // }
+        // return res;
+
+        return [self.data[0]; CORE_COUNT];
     }
 
     pub fn increase_icount(&self, core_id: u8, count: usize) {

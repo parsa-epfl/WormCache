@@ -15,13 +15,13 @@ impl<const S: usize> ReturnAddressStacle<S> {
         }
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64) {
+    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
         if result != BranchResolveFlag::Call && result != BranchResolveFlag::Return {
             return;
         }
         if result == BranchResolveFlag::Call {
-            self.stack.push_back(pc + 4);
-        } else {
+            self.push_and_evict(pc + 4);
+        } else if result == BranchResolveFlag::Return {
             self.stack.pop_back();
         }
     }

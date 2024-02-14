@@ -7,12 +7,17 @@ use crate::arch;
 use crate::arch::aarch64::ptw;
 use crate::qemu_api;
 
+use std::collections::HashMap;
 use std::ffi::c_void;
 use tlb::TLB;
 
 pub trait AbstractMMU {
     fn new() -> Self;
-    fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult;
+    fn translate_and_refill(&mut self, va: u64, ts: u64) -> MMUTranslationResult;
+
+    // Currently, this interface is for debugging. It reuses QEMU's PTW result.
+    fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64);
+    fn lookup(&mut self, vpn: u64, ts: u64) -> Option<u64>;
 }
 
 pub struct NoMMU {}
@@ -21,8 +26,12 @@ impl AbstractMMU for NoMMU {
     fn new() -> Self {
         Self {}
     }
-    fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult {
-        MMUTranslationResult::Hit(vpn)
+    fn translate_and_refill(&mut self, va: u64, _: u64) -> MMUTranslationResult {
+        MMUTranslationResult::Hit(va)
+    }
+    fn refill_4k_tlb(&mut self, _: u64, _: u64, _: u64) {}
+    fn lookup(&mut self, _: u64, _: u64) -> Option<u64> {
+        None
     }
 }
 
@@ -33,7 +42,9 @@ pub struct MemoryManagementUnit<
     const T_ASSO: usize = 16,
     const T_SETS: usize = 1024,
 > {
-    tlb: TLB<T_ASSO, T_SETS>,
+    tlb: TLB<T_SETS, T_ASSO>,
+    htbl_2mb: HashMap<(u16, u64), u64>, // Currently, we just use a simple hashmap to store the 2MB page table.
+    htlb_1gb: HashMap<(u16, u64), u64>, // Same to the 2MB page table.
     last_ttbr: u64,
     arch: std::marker::PhantomData<ARCH>,
     // other MMU caches can be also added here as well.
@@ -55,16 +66,85 @@ fn paddr_reader(addr: u64) -> u64 {
     return buf;
 }
 
-impl<const T_A: usize, const T_S: usize> AbstractMMU for MemoryManagementUnit<arch::AArch64, T_A, T_S> {
+impl<const T_A: usize, const T_S: usize> AbstractMMU
+    for MemoryManagementUnit<arch::AArch64, T_A, T_S>
+{
     fn new() -> Self {
         Self {
             tlb: TLB::new(),
+            htbl_2mb: HashMap::new(),
+            htlb_1gb: HashMap::new(),
             last_ttbr: u64::MAX, // This is special for kernel instruction space.
             arch: std::marker::PhantomData,
         }
     }
 
-    fn translate_and_refill(&mut self, vpn: u64, ts: u64) -> MMUTranslationResult {
+    fn translate_and_refill(&mut self, va: u64, ts: u64) -> MMUTranslationResult {
+        let is_kernel = (va >> 63) != 0;
+
+        if is_kernel {
+            self.last_ttbr = u64::MAX;
+        } else if self.last_ttbr == u64::MAX {
+            self.last_ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(0) };
+        }
+
+        let asid = if is_kernel {
+            0xffff as u16
+        } else {
+            (self.last_ttbr >> 48) as u16
+        };
+
+        // First, we try 4KB page.
+        let vpn = va >> 12;
+
+        if let Some(ppn) = self.tlb.lookup(vpn, asid, ts) {
+            let pa = ppn << 12 | (va & 0xfff);
+            return MMUTranslationResult::Hit(pa);
+        }
+
+        // Then, we try 2MB page.
+        let vpn_2mb = vpn >> 9;
+        if let Some(ppn) = self.htbl_2mb.get(&(asid, vpn_2mb)) {
+            let pa = ppn << 21 | (va & 0x1fffff);
+            self.htbl_2mb.insert((asid, vpn_2mb), *ppn);
+            return MMUTranslationResult::Hit(pa);
+        }
+
+        // Then, we try 1GB page.
+        let vpn_1gb = vpn >> 18;
+        if let Some(ppn) = self.htlb_1gb.get(&(asid, vpn_1gb)) {
+            let pa = ppn << 30 | (va & 0x3fffffff);
+            self.htlb_1gb.insert((asid, vpn_1gb), *ppn);
+            return MMUTranslationResult::Hit(pa);
+        }
+
+        let ptw_result = unsafe {
+            let tcr = qemu_api::qemu_plugin_read_tcr_el1();
+            let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
+            ptw(ttbr, tcr, vpn << 12, paddr_reader)
+        };
+
+        // based on the ptw_result, we refill each TLB correspondingly.
+        match ptw_result.page_size {
+            arch::aarch64::PageSize::_4KB => self.tlb.insert(vpn, asid, ptw_result.paddr >> 12, ts),
+            arch::aarch64::PageSize::_2MB => {
+                self.htbl_2mb
+                    .insert((asid, vpn_2mb), ptw_result.paddr >> 21);
+            }
+            arch::aarch64::PageSize::_1GB => {
+                self.htlb_1gb
+                    .insert((asid, vpn_1gb), ptw_result.paddr >> 30);
+            }
+        }
+
+        if ptw_result.cacheable {
+            return MMUTranslationResult::Miss(ptw_result.paddr, ptw_result.traces);
+        } else {
+            return MMUTranslationResult::MissNotCacheable(ptw_result.paddr);
+        }
+    }
+
+    fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64) {
         let is_kernel = (vpn >> 51) == 1;
 
         if is_kernel {
@@ -79,22 +159,24 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU for MemoryManagementUnit<ar
             (self.last_ttbr >> 48) as u16
         };
 
-        if let Some(ppn) = self.tlb.lookup(vpn, asid, ts) {
-            return MMUTranslationResult::Hit(ppn);
+        self.tlb.insert(vpn, asid, ppn, ts)
+    }
+
+    fn lookup(&mut self, vpn: u64, ts: u64) -> Option<u64> {
+        let is_kernel = (vpn >> 51) == 1;
+
+        if is_kernel {
+            self.last_ttbr = u64::MAX;
+        } else if self.last_ttbr == u64::MAX {
+            self.last_ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(0) };
         }
 
-        let ptw_result = unsafe {
-            let tcr = qemu_api::qemu_plugin_read_tcr_el1();
-            let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
-            ptw(ttbr, tcr, vpn << 12, paddr_reader)
+        let asid = if is_kernel {
+            0xffff as u16
+        } else {
+            (self.last_ttbr >> 48) as u16
         };
 
-        self.tlb.insert(vpn, asid, ptw_result.paddr >> 12, ts);
-
-        if ptw_result.cacheable {
-            return MMUTranslationResult::Miss(ptw_result.paddr >> 12, ptw_result.traces);
-        } else {
-            return MMUTranslationResult::MissNotCacheable(ptw_result.paddr >> 12);
-        }
+        self.tlb.lookup(vpn, asid, ts)
     }
 }

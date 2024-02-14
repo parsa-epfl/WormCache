@@ -1,6 +1,5 @@
 use std::sync::RwLock;
 
-use super::directory::Directory;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrivateCacheState {
@@ -11,17 +10,17 @@ pub enum PrivateCacheState {
     DirtyExclusive,
 }
 
-impl PrivateCacheState {
-    pub fn is_writable(&self) -> bool {
-        match self {
-            PrivateCacheState::Invalid => false,
-            PrivateCacheState::CleanShared => false,
-            PrivateCacheState::DirtyShared => false,
-            PrivateCacheState::CleanExclusive => true,
-            PrivateCacheState::DirtyExclusive => true,
-        }
-    }
-}
+// impl PrivateCacheState {
+//     pub fn is_writable(&self) -> bool {
+//         match self {
+//             PrivateCacheState::Invalid => false,
+//             PrivateCacheState::CleanShared => false,
+//             PrivateCacheState::DirtyShared => false,
+//             PrivateCacheState::CleanExclusive => true,
+//             PrivateCacheState::DirtyExclusive => true,
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, Copy)]
 pub struct PrivateCacheLine {
@@ -58,12 +57,12 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         is_instruction_fetch: bool,
     ) -> bool {
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         if let Some(line) = hit_element {
-            // hit
-            line.ts = ts;
+            // hit, keep the larger ts.
+            line.ts = if line.ts > ts { line.ts } else { ts };
             // update the permission.
             match line.state {
                 PrivateCacheState::Invalid => unreachable!(),
@@ -101,7 +100,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     ) -> Option<PrivateCacheLine> {
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         assert!(hit_element.is_none());
@@ -142,7 +141,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     pub fn invalidate(&mut self, block_id: u64) -> Option<PrivateCacheLine> {
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         if let Some(hit_element) = hit_element {
@@ -159,7 +158,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     pub fn request_sharer(&mut self, block_id: u64, ts: u64) -> bool {
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id;
+            return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
 
         if let Some(hit_element) = hit_element {

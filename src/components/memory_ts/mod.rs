@@ -1,14 +1,15 @@
 mod checkpoint;
 mod mtr;
 mod per_core_record;
+mod statistics;
 mod ts_cache;
 mod ts_model;
 mod ts_set;
 
+use super::mmu;
 use std::ffi;
 use std::fs;
 use std::io::Write;
-use super::mmu;
 
 pub use checkpoint::CacheBlockState;
 pub use checkpoint::PrivateCacheParameters;
@@ -21,9 +22,10 @@ pub use ts_set::CacheReturnResult;
 pub use ts_set::TimestampCacheLineStatus;
 pub use ts_set::TimestampCacheSet;
 
-use crate::qemu_api;
-use crate::parameter as param;
 use crate::arch;
+use crate::parameter as param;
+use crate::parameter::ENABLE_STATISTICS;
+use crate::qemu_api;
 
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
@@ -76,9 +78,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     voffset: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    let vpn = unsafe {
-        qemu_api::qemu_plugin_read_pc_vpn()
-    };
+    let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
     PLUGIN.get_mut().hierarchies(vcpu_idx as u8).access_memory(
         get_memory_ts() as usize,
@@ -89,25 +89,25 @@ unsafe extern "C" fn vcpu_insn_exec(
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
-unsafe extern "C" fn vcpu_invalidate_cache(
-    vcpu_idx: u32,
-    paddr: *mut ffi::c_void, // it is basically its physical address.
+unsafe extern "C" fn _vcpu_invalidate_cache(
+    _vcpu_idx: u32,
+    _paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     // PLUGIN
     //     .hierarchies(vcpu_idx as u8)
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
+    unimplemented!()
 }
 
-pub struct MemoryPlugin {}
+pub struct TimeStampedMemoryPlugin {}
 
-impl super::Plugin for MemoryPlugin {
+impl super::Plugin for TimeStampedMemoryPlugin {
     #[inline]
     fn init() {
         unsafe {
             Lazy::force(&PLUGIN);
         }
         println!("Memory plugin initialized.");
-
 
         // I need to start a function to reason about the completion rate of LLC.
         "The following code is for querying LLC warming time.";
@@ -188,11 +188,29 @@ impl super::Plugin for MemoryPlugin {
         unsafe {
             let mtr = PLUGIN.get_mut().render_mtr::<{ param::PRI_CACHE_SET }>();
             let mtr = mtr.prune_by_associativity(private_param.directory_associativity);
-            let caches = PLUGIN.get_mut().render_cache_hierarchy(&mtr, &private_param);
+            let caches = PLUGIN
+                .get_mut()
+                .render_cache_hierarchy(&mtr, &private_param);
             let exported_json = serde_json::to_string_pretty(&caches).unwrap();
             let mut output = fs::File::create("./dumped.json").unwrap();
             output.write_all(exported_json.as_bytes()).unwrap();
             output.flush().unwrap();
+        }
+
+        if ENABLE_STATISTICS {
+            // dump the statistics.
+            let mut file = std::fs::File::create("memory_mtr_missrate.csv").unwrap();
+            file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio\n")
+            .unwrap();
+            for i in 0..crate::parameter::CORE_COUNT {
+                let stats = unsafe {
+                    (&mut *PLUGIN.get())
+                        .hierarchies(i as u8)
+                        .get_statistics(i as u32)
+                };
+                file.write(stats.as_bytes()).unwrap();
+                file.write(b"\n").unwrap();
+            }
         }
     }
     #[inline]

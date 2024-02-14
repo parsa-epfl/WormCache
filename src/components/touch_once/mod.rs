@@ -42,7 +42,7 @@ fn get_memory_ts() -> u128 {
 }
 
 unsafe extern "C" fn vcpu_mem_access(
-    cpu_idx: u32,
+    _cpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
@@ -51,7 +51,7 @@ unsafe extern "C" fn vcpu_mem_access(
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
     if !is_device {
-        let is_store = qemu_api::qemu_plugin_mem_is_store(info);
+        let _is_store = qemu_api::qemu_plugin_mem_is_store(info);
         let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
 
         PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
@@ -74,7 +74,7 @@ unsafe extern "C" fn vcpu_mem_access(
 }
 
 unsafe extern "C" fn vcpu_insn_exec(
-    vcpu_idx: u32,
+    _vcpu_idx: u32,
     paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
@@ -93,7 +93,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     });
 }
 
-unsafe extern "C" fn icount_calcuclation(vcpu_idx: u32, icount: *mut ffi::c_void) {
+unsafe extern "C" fn icount_calcuclation(_vcpu_idx: u32, icount: *mut ffi::c_void) {
     ICOUNT.fetch_add(icount as usize, Ordering::Relaxed);
 }
 

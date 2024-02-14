@@ -5,7 +5,7 @@ use std::ffi::{self, c_void};
 
 
 unsafe extern "C" fn vcpu_mem_access(
-    cpu_idx: u32,
+    _cpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
@@ -14,7 +14,7 @@ unsafe extern "C" fn vcpu_mem_access(
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
     if !is_device {
-        let is_store = qemu_api::qemu_plugin_mem_is_store(info);
+        // let is_store = qemu_api::qemu_plugin_mem_is_store(info);
         let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
 
         let traces = std::slice::from_raw_parts(qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler), 4);
@@ -32,8 +32,8 @@ unsafe extern "C" fn vcpu_mem_access(
 
         let va = vaddr as u64;
         let is_kernel = (va & 0xFFFF000000000000) != 0;
-        let ttbr0 = qemu_api::qemu_plugin_read_ttbr_el1(0);
-        let ttbr1 = qemu_api::qemu_plugin_read_ttbr_el1(1);
+        let _ttbr0 = qemu_api::qemu_plugin_read_ttbr_el1(0);
+        let _ttbr1 = qemu_api::qemu_plugin_read_ttbr_el1(1);
         let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
         let tcr = qemu_api::qemu_plugin_read_tcr_el1();
 
@@ -61,7 +61,7 @@ fn paddr_reader(addr: u64) -> u64 {
 
 unsafe extern "C" fn vcpu_insn_exec(
     _: u32,
-    va: *mut ffi::c_void, // it is basically its physical address.
+    _va: *mut ffi::c_void, // it is basically its physical address.
 ) {
     // let va = va as u64;
     // let is_kernel = (va & 0xFFFF000000000000) != 0;

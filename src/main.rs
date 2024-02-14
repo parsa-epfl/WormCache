@@ -5,7 +5,7 @@
 use std::env;
 use std::io::{BufReader, Write};
 use std::{fs::File, io::Read};
-use worm_cache::components::memory::{PrivateCacheParameters, TimestampMemoryHierarchy};
+use worm_cache::components::memory_ts::{PrivateCacheParameters, TimestampMemoryHierarchy};
 use worm_cache::components::NoMMU;
 
 #[repr(C)]

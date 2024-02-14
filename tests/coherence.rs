@@ -1,4 +1,4 @@
-use worm_cache::{self, components::memory::{PrivateCacheParameters, CacheBlockState, TimestampMemoryHierarchy}};
+use worm_cache::{self, components::memory_ts::{PrivateCacheParameters, CacheBlockState, TimestampMemoryHierarchy}};
 use worm_cache::components::NoMMU;
 
 macro_rules! access_cache {

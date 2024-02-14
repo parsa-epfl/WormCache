@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+
+
 use crate::components::bp::BranchResolveFlag;
 
 use serde::{Deserialize, Serialize};
@@ -17,7 +20,7 @@ impl<const S: usize> GShare<S> {
         }
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64) {
+    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
         if result != BranchResolveFlag::Taken && result != BranchResolveFlag::NotTaken {
             self.history = (self.history << 1) | 1;
             return;

@@ -52,9 +52,9 @@ impl<const A: usize> SetAccessResult<A> {
         return Self(A);
     }
 
-    pub fn is_hit(&self) -> bool {
-        return self.0 != A;
-    }
+    // pub fn is_hit(&self) -> bool {
+    //     return self.0 != A;
+    // }
 
     pub fn is_miss(&self) -> bool {
         return self.0 == A;
@@ -299,9 +299,6 @@ mod test {
         s.access(23, 2, false, false);
         s.access(7, 7, false, false);
         s.access(73, 10, false, false);
-
-        for x in s.iter() {
-        }
 
     }
 }

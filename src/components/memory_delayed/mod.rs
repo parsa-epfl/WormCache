@@ -6,20 +6,18 @@
 // - Shared caches, with set locks.
 
 use once_cell::sync::Lazy;
-use std::io::prelude::*;
 
 use crate::{parameter::ENABLE_STATISTICS, qemu_api};
-use std::ffi;
+use std::{ffi, io::Write};
 
 pub mod directory;
 mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
 pub mod statistics;
-mod dashmap_directory;
 
-static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy> =
-    Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
+static mut PLUGIN: Lazy<hierarchy::DelayedMemoryHierarchy> =
+    Lazy::new(|| hierarchy::DelayedMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -40,12 +38,13 @@ unsafe extern "C" fn vcpu_mem_access(
     if !is_device {
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
 
-        // let walk_trace = qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler);
-        // let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
-        // let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
-        
-        // Currently, this is experimental.
-        // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
+        // PLUGIN.get_mut().hierarchies(cpu_idx as u8).access_memory(
+        //     get_memory_ts() as usize,
+        //     vaddr,
+        //     false,
+        //     is_store,
+        // )
+
         PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false);
     } else {
         // TODO: check the I/O event
@@ -63,7 +62,7 @@ unsafe extern "C" fn vcpu_insn_exec(
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
-unsafe extern "C" fn _vcpu_invalidate_cache(
+unsafe extern "C" fn vcpu_invalidate_cache(
     _vcpu_idx: u32,
     _paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
@@ -72,16 +71,16 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-pub struct LockedMemoryPlugin {}
+pub struct DelayedMemoryPlugin {}
 
-impl super::Plugin for LockedMemoryPlugin {
+impl super::Plugin for DelayedMemoryPlugin {
     #[inline]
     fn init() {
         unsafe {
             Lazy::force(&PLUGIN);
         }
 
-        println!("Memory[Locked] plugin initialized.");
+        println!("Memory[Delayed] plugin initialized.");
     }
 
     #[inline]
@@ -97,13 +96,7 @@ impl super::Plugin for LockedMemoryPlugin {
                 file.write(b"\n").unwrap();
             }
         }
-
-        // dump the access counter of each set in the shared cache.
-        unsafe {
-            PLUGIN.dump_access_counter();
-        }
     }
-
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
         let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);

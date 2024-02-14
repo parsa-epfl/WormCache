@@ -28,10 +28,6 @@ impl TouchedCacheSet {
         }
         return false;
     }
-
-    pub fn is_fully_touched(&self) -> bool {
-        self.fully_touched
-    }
 }
 
 pub struct TouchedCache {

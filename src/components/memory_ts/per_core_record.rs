@@ -2,11 +2,10 @@ use std::collections::HashMap;
 
 use super::ts_cache::TimestampCache;
 use super::mmu::AbstractMMU;
-use super::mmu::MemoryManagementUnit;
-use crate::arch::AArch64;
+use super::statistics::PerCoreStatistics;
 
 
-use crate::parameter as param;
+use crate::parameter::{self as param, ENABLE_STATISTICS};
 
 #[derive(Debug)]
 #[repr(align(64))]
@@ -24,6 +23,7 @@ pub struct TimestampSingleCoreMemoryHierarchy<
     pub invalid_list: HashMap<u64, usize>, // block_id -> ts
     // All evicted dirty cache line. They are used for coherence state construction.
     pub evicted_dirty_list: HashMap<u64, usize>, // block_id -> ts
+    pub statistics: PerCoreStatistics,
 }
 
 impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, const S_S: usize>
@@ -36,44 +36,49 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
             local_shared_cache: TimestampCache::new(),
             invalid_list: HashMap::new(),
             evicted_dirty_list: HashMap::new(),
+            statistics: PerCoreStatistics::new(),
         };
     }
 
     pub fn access_memory(&mut self, ts: usize, vaddr: u64, is_instruction: bool, is_store: bool) {
         // step 1: translation the VA to the PA. 
-        let vpn = vaddr >> 12;
-        let translation = unsafe { self.mmu.translate_and_refill(vpn as u64, ts as u64) };
+        let translation =  self.mmu.translate_and_refill(vaddr, ts as u64);
         // step 2: if the translation is a miss, we need to replay the trace of accessing physical memory.
         match translation {
-            super::mmu::MMUTranslationResult::Hit(ppn) => {
-                let paddr = (ppn << 12) | (vaddr & 0xfff);
+            super::mmu::MMUTranslationResult::Hit(paddr) => {
                 self.access_memory_with_pa(ts, paddr, is_instruction, is_store);
             }
-            super::mmu::MMUTranslationResult::Miss(ppn, walk_trace) => {
+            super::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
                 // replay the trace.
-                let paddr = (ppn << 12) | (vaddr & 0xfff);
-                for pa in walk_trace {
-                    if pa == u64::MAX {
+                for trace_pa in walk_trace {
+                    if trace_pa == u64::MAX {
                         break;
                     }
-                    self.access_memory_with_pa(ts, pa, false, false);
+                    self.access_memory_with_pa(ts, trace_pa, false, false);
                 }
                 self.access_memory_with_pa(ts, paddr, is_instruction, is_store);
             }
-            super::mmu::MMUTranslationResult::MissNotCacheable(ppn) => {
-                let paddr = (ppn << 12) | (vaddr & 0xfff);
+            super::mmu::MMUTranslationResult::MissNotCacheable(paddr) => {
                 self.access_memory_with_pa(ts, paddr, is_instruction, is_store);
             }
         }
     }
 
     pub fn access_memory_with_pa(&mut self, ts: usize, paddr: u64, is_instruction: bool, is_store: bool) {
+        if ENABLE_STATISTICS {
+            self.statistics.total_mem += 1;
+        }
+
         let block_id = paddr >> param::CACHE_LINE_SIZE.trailing_zeros();
         let res = self
             .private_cache
             .record(block_id, is_instruction, is_store, ts);
         match res {
             super::CacheReturnResult::Miss => {
+                if ENABLE_STATISTICS {
+                    self.statistics.private_cache_miss += 1;
+                    self.statistics.shared_cache_access += 1;
+                }
                 if self
                     .local_shared_cache
                     .peek(block_id, is_instruction, is_store, ts)
@@ -84,6 +89,10 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
             }
             super::CacheReturnResult::Hit => {}
             super::CacheReturnResult::MissWithEviction(blk, is_instruction) => {
+                if ENABLE_STATISTICS {
+                    self.statistics.private_cache_miss += 1;
+                    self.statistics.shared_cache_access += 1;
+                }
                 if self
                     .local_shared_cache
                     .peek(block_id, is_instruction, is_store, ts)
@@ -96,6 +105,10 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
                     .record(blk, is_instruction, false, super::get_memory_ts() as usize);
             }
             super::CacheReturnResult::MissWithWriteBack(blk) => {
+                if ENABLE_STATISTICS {
+                    self.statistics.private_cache_miss += 1;
+                    self.statistics.shared_cache_access += 1;
+                }
                 if self
                     .local_shared_cache
                     .peek(block_id, is_instruction, is_store, ts)
@@ -134,5 +147,9 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
         self.local_shared_cache.sets.iter().for_each(|set| {
             set.clean();
         });
+    }
+
+    pub fn get_statistics(&self, core_id: u32) -> String {
+        return self.statistics.being_printed(core_id);
     }
 }

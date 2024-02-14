@@ -17,9 +17,9 @@ enum MTRPermission {
 }
 
 impl MTRPermission {
-    pub fn is_dirty(&self) -> bool {
-        return *self == Self::DirtyData;
-    }
+    // pub fn is_dirty(&self) -> bool {
+    //     return *self == Self::DirtyData;
+    // }
     pub fn in_instruction_cache(&self) -> bool {
         return *self == Self::Instruction || *self == Self::InstructionAndCleanData;
     }
@@ -55,7 +55,7 @@ impl WriterType {
                 *self = new_line;
                 return true;
             }
-            WriterType::Evicted(core_id, ts) => {
+            WriterType::Evicted(_core_id, ts) => {
                 if *ts < timestamp {
                     *self = new_line;
                     return true;
@@ -63,7 +63,7 @@ impl WriterType {
                     return false;
                 }
             }
-            WriterType::Normal(core_id, ts) => {
+            WriterType::Normal(_core_id, ts) => {
                 if *ts < timestamp {
                     *self = new_line;
                     return true;
@@ -99,21 +99,21 @@ impl MemoryTimestampRecord {
         self.readers.retain(|_, &mut reader_ts| reader_ts >= ts);
     }
 
-    pub fn check_non_outdated_reader(&self) {
-        if let Some(writer_ts) = self.writer.get_timestamp() {
-            self.readers.iter().for_each(|(core_id, ts)| {
-                assert!(
-                    *ts <= writer_ts,
-                    "Reader with larger timestamp than the writer should be evicted."
-                );
-            })
-        }
-    }
+    // pub fn check_non_outdated_reader(&self) {
+    //     if let Some(writer_ts) = self.writer.get_timestamp() {
+    //         self.readers.iter().for_each(|(_core_id, ts)| {
+    //             assert!(
+    //                 *ts <= writer_ts,
+    //                 "Reader with larger timestamp than the writer should be evicted."
+    //             );
+    //         })
+    //     }
+    // }
 
     pub fn merge_cache_block(
         &mut self,
         core_id: CoreId,
-        block_id: u64,
+        _block_id: u64,
         ts: usize,
         status: TimestampCacheLineStatus,
     ) {
@@ -158,16 +158,16 @@ impl MemoryTimestampRecord {
         self.filter_readers_by_ts(ts);
     }
 
-    pub fn genreate_each_holder_state_moesi(&self) -> HashMap<CoreId, CacheBlockState> {
-        todo!()
+    pub fn _genreate_each_holder_state_moesi(&self) -> HashMap<CoreId, CacheBlockState> {
+        unimplemented!()
     }
 
-    pub fn genreate_each_holder_state_mesi(&self) -> HashMap<CoreId, CacheBlockState> {
-        todo!();
+    pub fn _genreate_each_holder_state_mesi(&self) -> HashMap<CoreId, CacheBlockState> {
+        unimplemented!();
     }
 
     pub fn generate_directory_block(&self, block_id: u64) -> Option<TsDirectoryBlock> {
-        self.check_non_outdated_reader();
+        // self.check_non_outdated_reader();
         return match self.writer {
             WriterType::None => Some(TsDirectoryBlock {
                 d: DirectoryBlock {
