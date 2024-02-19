@@ -11,6 +11,7 @@ use crate::{parameter::ENABLE_STATISTICS, qemu_api};
 use std::{ffi, io::Write};
 
 pub mod dashmap_directory;
+pub mod replica_directory;
 // pub mod directory;
 mod hierarchy;
 mod private_cache;

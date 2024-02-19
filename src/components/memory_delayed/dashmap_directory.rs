@@ -56,12 +56,6 @@ impl<const SETS: usize> Directory<SETS> {
         }
     }
 
-    // pub fn get_set(&self, block_id: u64) -> MutexGuard<'_, DirectorySet> {
-    //     let index = (block_id as usize) % 8192;
-    //     let guard = self.entries[index].lock().unwrap();
-    //     guard
-    // }
-
     pub fn get_or_create(&self, block_id: u64) -> RefMut<'_, u64, DirectoryEntry> {
         self.entries
             .entry(block_id)
@@ -77,5 +71,30 @@ impl<const SETS: usize> Directory<SETS> {
         // let index = (block_id as usize) % 2048;
         // let mut guard = self.entries[index].lock().unwrap();
         // guard.remove(&block_id);
+    }
+
+    pub fn print_statistics(&self) {
+        // print the number of entries which only has one sharer.
+        let mut count = 0;
+        for entry in self.entries.iter() {
+            if entry.value().sharers.count_ones() == 1 {
+                count += 1;
+            }
+        }
+
+        println!("Number of entries which only has one sharer: {}", count);
+
+        // Print the number of entries which is empty.
+        let mut count = 0;
+        for entry in self.entries.iter() {
+            if entry.value().sharers.count_ones() == 0 {
+                count += 1;
+            }
+        }
+
+        println!("Number of entries which is empty: {}", count);
+
+        // Print the total number of entries.
+        println!("Total number of entries: {}", self.entries.len());
     }
 }

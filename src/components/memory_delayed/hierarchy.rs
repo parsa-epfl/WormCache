@@ -1,6 +1,7 @@
 use crate::parameter::{self, ENABLE_STATISTICS};
 
-use super::dashmap_directory::{SharerList, Directory};
+// use super::dashmap_directory::{SharerList, Directory};
+use super::replica_directory::{ReplicaDirectory, SharerList};
 
 use super::private_cache::PrivateCacheState;
 use super::statistics;
@@ -18,7 +19,10 @@ pub struct DelayedMemoryHierarchy {
         [private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>;
             parameter::CORE_COUNT],
 
-    directory: Directory<{ parameter::PRI_CACHE_SET * 4 }>,
+    directory: ReplicaDirectory<
+        { parameter::PRI_CACHE_SET },
+        { parameter::PRI_CACHE_ASSO * parameter::CORE_COUNT },
+    >,
 
     shared_cache: shared_cache::ExclusiveSharedCache<
         { parameter::SHARED_CACHE_SET },
@@ -40,7 +44,7 @@ impl DelayedMemoryHierarchy {
         Self {
             mmus: std::array::from_fn(|_| MemoryManagementUnit::new()),
             private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
-            directory: Directory::new(),
+            directory: ReplicaDirectory::new(),
             shared_cache: shared_cache::ExclusiveSharedCache::new(),
             per_core_statistics: std::array::from_fn(|_| statistics::PerCoreStatistics::new()),
         }
@@ -110,7 +114,9 @@ impl DelayedMemoryHierarchy {
         }
 
         // now, it is a miss. We need to check the directory.
-        let mut directory_entry_guard = self.directory.get_or_create(block_id);
+        // let mut directory_entry_guard = self.directory.get_or_create(block_id);
+        let mut directory_set_guard = self.directory.get_set(block_id);
+        let directory_entry_guard = directory_set_guard.get_or_create(block_id);
         let sharers = directory_entry_guard.sharers;
 
         // if the directory reports a miss, we need to access the last level cache as well, and add it.
@@ -135,7 +141,7 @@ impl DelayedMemoryHierarchy {
                 },
             );
 
-            drop(directory_entry_guard);
+            drop(directory_set_guard);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -178,7 +184,7 @@ impl DelayedMemoryHierarchy {
             exclusive_sharer.set(core_id as usize, true);
             directory_entry_guard.sharers = exclusive_sharer;
 
-            drop(directory_entry_guard);
+            drop(directory_set_guard);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -211,7 +217,7 @@ impl DelayedMemoryHierarchy {
                 private_cache::MessageType::CreateSharer,
             );
 
-            drop(directory_entry_guard);
+            drop(directory_set_guard);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -240,7 +246,7 @@ impl DelayedMemoryHierarchy {
             },
         );
 
-        drop(directory_entry_guard);
+        drop(directory_set_guard);
 
         // handle eviction now.
         if let Some(evicted_line) = evicted {
@@ -252,7 +258,9 @@ impl DelayedMemoryHierarchy {
 
     pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64) {
         // first, we need to check the directory.
-        let mut directory_entry_guard = self.directory.get_or_create(block_id);
+        // let mut directory_entry_guard = self.directory.get_or_create(block_id);
+        let mut directory_set_guard = self.directory.get_set(block_id);
+        let directory_entry_guard = directory_set_guard.get_or_create(block_id);
 
         // we cancel the element of this block in the directory.
         let sharers = directory_entry_guard.sharers;
@@ -269,10 +277,11 @@ impl DelayedMemoryHierarchy {
             // we need to place this block to the shared cache.
             // NOTE: currently, we ignore the LLC.
             // self.shared_cache.allocate(block_id, ts);
+            directory_set_guard.invalidate(block_id);
         } else {
         }
 
-        drop(directory_entry_guard);
+        drop(directory_set_guard);
     }
 
     pub fn get_statistics(&self, core_id: u32) -> String {
