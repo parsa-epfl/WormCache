@@ -24,6 +24,7 @@ impl DirectoryEntry {
 }
 
 #[derive(Debug)]
+#[repr(align(64))]
 pub struct DirectorySet<const WAYS: usize> {
     tags: Box<[u64; WAYS]>,
     entries: Box<[DirectoryEntry; WAYS]>,
