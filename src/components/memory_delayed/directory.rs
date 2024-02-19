@@ -54,7 +54,7 @@ impl<const SETS: usize> Directory<SETS> {
     }
 
     pub fn get_set(&self, block_id: u64) -> MutexGuard<'_, DirectorySet> {
-        let index = (block_id as usize) % 8192;
+        let index = (block_id as usize) % SETS;
         let guard = self.entries[index].lock().unwrap();
         guard
     }
