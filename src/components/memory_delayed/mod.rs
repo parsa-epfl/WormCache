@@ -78,7 +78,7 @@ impl super::Plugin for DelayedMemoryPlugin {
     #[inline]
     fn init() {
         unsafe {
-            Lazy::force(&PLUGIN);
+            Lazy::force_mut(&mut PLUGIN);
         }
 
         println!("Memory[Delayed] plugin initialized.");

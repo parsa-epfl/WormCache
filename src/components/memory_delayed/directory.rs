@@ -37,7 +37,7 @@ impl DirectorySet {
     }
 
     pub fn remove(&mut self, block_id: &u64) {
-        self.entries.remove(block_id);
+        // self.entries.remove(block_id);
     }
 }
 
