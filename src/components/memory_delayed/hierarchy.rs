@@ -1,7 +1,9 @@
+use std::sync::MutexGuard;
+
 use crate::parameter::{self, ENABLE_STATISTICS};
 
 // use super::dashmap_directory::{SharerList, Directory};
-use super::replica_directory::{ReplicaDirectory, SharerList};
+use super::replica_directory::{DirectorySet, ReplicaDirectory, SharerList};
 
 use super::private_cache::PrivateCacheState;
 use super::statistics;
@@ -116,18 +118,13 @@ impl DelayedMemoryHierarchy {
         // now, it is a miss. We need to check the directory.
         // let mut directory_entry_guard = self.directory.get_or_create(block_id);
         let mut directory_set_guard = self.directory.get_set(block_id);
-        let directory_entry_guard = directory_set_guard.get_or_create(block_id);
-        let sharers = directory_entry_guard.sharers;
+        // let directory_entry_guard = directory_set_guard.get_or_create(block_id);
+        // let sharers = directory_entry_guard.sharers;
 
         // if the directory reports a miss, we need to access the last level cache as well, and add it.
-        if sharers.count_ones() == 0 {
+        if !directory_set_guard.exists(block_id) {
             // NOTE: currently we ignore the LLC.
             // let shared_cache_result = self.shared_cache.lookup(block_id);
-            let shared_cache_result = false;
-            let mut incoming_sharer = SharerList::ZERO;
-            incoming_sharer.set(core_id as usize, true);
-            directory_entry_guard.ts = ts;
-            directory_entry_guard.sharers = incoming_sharer;
 
             let evicted = private_set.refill(
                 core_id,
@@ -141,12 +138,19 @@ impl DelayedMemoryHierarchy {
                 },
             );
 
-            drop(directory_set_guard);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
-                self.handle_eviction(core_id, evicted_line.tag, ts);
+                self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
             }
+
+            let directory_entry_guard = directory_set_guard.create(block_id);
+
+            let shared_cache_result = false;
+            let mut incoming_sharer = SharerList::ZERO;
+            incoming_sharer.set(core_id as usize, true);
+            directory_entry_guard.ts = ts;
+            directory_entry_guard.sharers = incoming_sharer;
 
             if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
@@ -154,6 +158,9 @@ impl DelayedMemoryHierarchy {
                 return CacheHierarchyAccessResult::Miss;
             }
         }
+
+        let directory_entry_guard = directory_set_guard.get_mut(block_id);
+        let sharers = directory_entry_guard.sharers;
 
         // OK, now this block is provided by another core. We need to check whether we can access it.
         if is_store {
@@ -184,11 +191,9 @@ impl DelayedMemoryHierarchy {
             exclusive_sharer.set(core_id as usize, true);
             directory_entry_guard.sharers = exclusive_sharer;
 
-            drop(directory_set_guard);
-
             // handle eviction now.
             if let Some(evicted_line) = evicted {
-                self.handle_eviction(core_id, evicted_line.tag, ts);
+                self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
             }
 
             return CacheHierarchyAccessResult::HitInOtherPrivateCache;
@@ -217,11 +222,9 @@ impl DelayedMemoryHierarchy {
                 private_cache::MessageType::CreateSharer,
             );
 
-            drop(directory_set_guard);
-
             // handle eviction now.
             if let Some(evicted_line) = evicted {
-                self.handle_eviction(core_id, evicted_line.tag, ts);
+                self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
             }
 
             return CacheHierarchyAccessResult::HitInOtherPrivateCache;
@@ -246,21 +249,27 @@ impl DelayedMemoryHierarchy {
             },
         );
 
-        drop(directory_set_guard);
-
         // handle eviction now.
         if let Some(evicted_line) = evicted {
-            self.handle_eviction(core_id, evicted_line.tag, ts);
+            self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
         }
 
         return CacheHierarchyAccessResult::HitInOtherPrivateCache;
     }
 
-    pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64) {
+    pub fn handle_eviction(
+        &self,
+        directory_guard: &mut MutexGuard<
+            '_,
+            DirectorySet<{ parameter::PRI_CACHE_ASSO * parameter::CORE_COUNT }>,
+        >,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+    ) {
         // first, we need to check the directory.
         // let mut directory_entry_guard = self.directory.get_or_create(block_id);
-        let mut directory_set_guard = self.directory.get_set(block_id);
-        let directory_entry_guard = directory_set_guard.get_or_create(block_id);
+        let directory_entry_guard = directory_guard.get_mut(block_id);
 
         // we cancel the element of this block in the directory.
         let sharers = directory_entry_guard.sharers;
@@ -277,11 +286,8 @@ impl DelayedMemoryHierarchy {
             // we need to place this block to the shared cache.
             // NOTE: currently, we ignore the LLC.
             // self.shared_cache.allocate(block_id, ts);
-            directory_set_guard.invalidate(block_id);
-        } else {
+            directory_guard.invalidate(block_id);
         }
-
-        drop(directory_set_guard);
     }
 
     pub fn get_statistics(&self, core_id: u32) -> String {

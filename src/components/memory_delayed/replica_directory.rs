@@ -38,26 +38,37 @@ impl<const WAYS: usize> DirectorySet<WAYS> {
         }
     }
 
-    pub fn get_or_create(&mut self, block_id: u64) -> &mut DirectoryEntry {
+    pub fn exists(&self, block_id: u64) -> bool {
+        let internal_tag = block_id << 1 | 1;
+        self.tags
+            .iter()
+            .any(|entry| (*entry) == internal_tag)
+    }
+
+    pub fn get_mut(&mut self, block_id: u64) -> &mut DirectoryEntry {
+        let internal_tag = block_id << 1 | 1;
+
         let hit = self
             .tags
             .iter()
             .enumerate()
-            .find(|entry| (*entry.1) == (block_id << 1 | 1));
+            .find(|entry| (*entry.1) == internal_tag);
 
         if let Some((index, _)) = hit {
             &mut self.entries[index]
         } else {
-            // We need to find an invalid entry.
-            let invalid = self.tags.iter().enumerate().find(|entry| (*entry.1) == 0);
+            panic!("No such entry found.")
+        }
+    }
 
-            if let Some((index, _)) = invalid {
-                self.tags[index] = block_id << 1 | 1;
-                &mut self.entries[index]
-            } else {
-                // in theory, there is no need to evict an entry.
-                panic!("No invalid entry found.");
-            }
+    pub fn create(&mut self, block_id: u64) -> &mut DirectoryEntry {
+        let invalid = self.tags.iter().enumerate().find(|entry| (*entry.1) == 0);
+
+        if let Some((index, _)) = invalid {
+            self.tags[index] = block_id << 1 | 1;
+            &mut self.entries[index]
+        } else {
+            panic!("No invalid entry found.")
         }
     }
 
