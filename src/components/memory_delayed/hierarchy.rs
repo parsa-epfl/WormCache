@@ -138,7 +138,6 @@ impl DelayedMemoryHierarchy {
                 },
             );
 
-
             // handle eviction now.
             if let Some(evicted_line) = evicted {
                 self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
