@@ -86,6 +86,44 @@ impl DelayedMemoryHierarchy {
         }
     }
 
+    pub fn access_memory_with_va_and_pa(
+        &mut self,
+        core_id: u32,
+        va: u64,
+        reference_pa: u64,
+        ts: u64,
+        is_store: bool,
+        is_instruction: bool,
+    ) {
+        let translation = self.mmus[core_id as usize].translate_and_refill(va, ts);
+
+        match translation {
+            crate::components::mmu::MMUTranslationResult::Hit(pa) => {
+                assert!(pa == reference_pa); 
+                let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+            }
+            crate::components::mmu::MMUTranslationResult::Miss(pa, walk_trace) => {
+                // replay the trace.
+                for trace_pa in walk_trace {
+                    if trace_pa == u64::MAX {
+                        break;
+                    }
+                    let block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                    self.access_memory_pblock_id(core_id, block_id, ts, false, false);
+                }
+                assert!(pa == reference_pa as u64);
+                let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+            }
+            crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
+                assert!(pa == reference_pa as u64);
+                let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+            }
+        }
+    }
+
     pub fn access_memory_pblock_id(
         &mut self,
         core_id: u32,

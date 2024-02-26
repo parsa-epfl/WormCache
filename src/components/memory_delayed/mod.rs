@@ -39,6 +39,7 @@ unsafe extern "C" fn vcpu_mem_access(
 
     if !is_device {
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
+        let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
         // PLUGIN.get_mut().hierarchies(cpu_idx as u8).access_memory(
         //     get_memory_ts() as usize,
@@ -47,7 +48,14 @@ unsafe extern "C" fn vcpu_mem_access(
         //     is_store,
         // )
 
-        PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false);
+        PLUGIN.access_memory_with_va_and_pa(
+            vcpu_idx,
+            vaddr,
+            paddr,
+            get_memory_ts() as u64,
+            is_store,
+            false,
+        );
     } else {
         // TODO: check the I/O event
     }
