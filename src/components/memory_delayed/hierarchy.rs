@@ -169,7 +169,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         // if the directory reports a miss, we need to access the last level cache as well, and add it.
         if !directory_set_guard.exists(block_id) {
             // NOTE: currently we ignore the LLC.
-            // let shared_cache_result = self.shared_cache.lookup(block_id);
+            let shared_cache_result = self.shared_cache.lookup(block_id);
 
             let evicted = private_set.refill(
                 core_id,
@@ -329,7 +329,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         if incoming_sharer.count_ones() == 0 {
             // we need to place this block to the shared cache.
             // NOTE: currently, we ignore the LLC.
-            // self.shared_cache.allocate(block_id, ts);
+            self.shared_cache.allocate(block_id, ts);
             directory_guard.invalidate(block_id);
         }
     }
