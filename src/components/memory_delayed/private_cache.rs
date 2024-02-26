@@ -236,6 +236,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                     // Here we need to be careful. In case we have order violation, we don't know the result of this cache hit / miss.
                     // TODO: If the refill timestamp is smaller, we should increase the time of order violation and not to update the cache.
                     let res = oldest_element.clone();
+                    assert!(res.ts <= ts);
                     oldest_element.ts = ts;
                     oldest_element.tag = block_id;
                     oldest_element.state = state;
@@ -303,6 +304,35 @@ impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
     pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
         let set_id = block_id as usize % SET;
         self.cache[set_id].send_message(block_id, ts, message_type);
+    }
+
+    // This function is only for testing. 
+    pub fn contains_block(&mut self, block_id: u64) -> bool {
+        let set_id = block_id as usize % SET;
+        let set = &mut self.cache[set_id];
+        // It has to handle the invalidation message.
+        set.handle_message();
+        return set
+            .lines
+            .iter()
+            .any(|p| p.tag == block_id && p.state != PrivateCacheState::Invalid);
+    }
+
+    // This function is only for testing.
+    pub fn get_block_state(&mut self, block_id: u64) -> PrivateCacheState {
+        let set_id = block_id as usize % SET;
+        let set = &mut self.cache[set_id];
+        // It has to handle the invalidation message.
+        set.handle_message();
+        let hit_element = set
+            .lines
+            .iter()
+            .find(|p| p.tag == block_id && p.state != PrivateCacheState::Invalid);
+        if let Some(hit_element) = hit_element {
+            return hit_element.state;
+        } else {
+            return PrivateCacheState::Invalid;
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 use std::sync::MutexGuard;
 
+use crate::components::NoMMU;
 use crate::parameter::{self, ENABLE_STATISTICS};
 
 // use super::dashmap_directory::{SharerList, Directory};
@@ -13,9 +14,8 @@ use crate::arch::AArch64;
 use crate::components::mmu::AbstractMMU;
 use crate::components::mmu::MemoryManagementUnit;
 
-pub struct DelayedMemoryHierarchy {
-    mmus: [MemoryManagementUnit<AArch64, { parameter::TLB_ASSO }, { parameter::TLB_SET }>;
-        parameter::CORE_COUNT],
+pub struct DelayedMemoryHierarchy<MMU: AbstractMMU> {
+    mmus: [MMU; parameter::CORE_COUNT],
 
     private_caches:
         [private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>;
@@ -34,6 +34,13 @@ pub struct DelayedMemoryHierarchy {
     per_core_statistics: [statistics::PerCoreStatistics; parameter::CORE_COUNT],
 }
 
+pub type PluginDelayedMemoryHierarchy = DelayedMemoryHierarchy<
+    MemoryManagementUnit<AArch64, { parameter::TLB_ASSO }, { parameter::TLB_SET }>,
+>;
+
+pub type TestingDelayedMemoryHierarchy = DelayedMemoryHierarchy<NoMMU>;
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
     HitInOtherPrivateCache,
@@ -41,10 +48,10 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl DelayedMemoryHierarchy {
+impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
     pub fn new() -> Self {
         Self {
-            mmus: std::array::from_fn(|_| MemoryManagementUnit::new()),
+            mmus: std::array::from_fn(|_| MMU::new()),
             private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
             directory: ReplicaDirectory::new(),
             shared_cache: shared_cache::ExclusiveSharedCache::new(),
@@ -99,7 +106,7 @@ impl DelayedMemoryHierarchy {
 
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
-                assert!(pa == reference_pa); 
+                assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
@@ -331,3 +338,6 @@ impl DelayedMemoryHierarchy {
         return self.per_core_statistics[core_id as usize].being_printed(core_id);
     }
 }
+
+#[cfg(test)]
+mod tests;

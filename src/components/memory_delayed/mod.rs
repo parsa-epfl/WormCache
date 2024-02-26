@@ -18,8 +18,8 @@ mod private_cache;
 pub mod shared_cache;
 pub mod statistics;
 
-static mut PLUGIN: Lazy<hierarchy::DelayedMemoryHierarchy> =
-    Lazy::new(|| hierarchy::DelayedMemoryHierarchy::new());
+static mut PLUGIN: Lazy<hierarchy::PluginDelayedMemoryHierarchy> =
+    Lazy::new(|| hierarchy::PluginDelayedMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
