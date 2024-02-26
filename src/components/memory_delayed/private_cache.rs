@@ -48,7 +48,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     }
 
     #[inline]
-    fn run_handle_invalidation(&mut self) {
+    fn handle_message(&mut self) {
         // most of the case, this branch is not taken.
         if self.invalidation_fifo.is_empty() {
             return;
@@ -149,7 +149,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         is_store: bool,
         is_instruction_fetch: bool,
     ) -> bool {
-        self.run_handle_invalidation();
+        self.handle_message();
         let hit_element = self.lines.iter_mut().find(|p| {
             return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
