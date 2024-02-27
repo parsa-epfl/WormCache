@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
@@ -5,22 +6,144 @@ use std::collections::btree_map::BTreeMap;
 
 use crate::util;
 
-use bitvec::prelude::*;
-use bitvec::BitArr;
-
-pub type SharerList = BitArr!(for crate::parameter::CORE_COUNT, in u64, Lsb0);
-
 #[derive(Debug)]
-pub struct DirectoryEntry {
-    pub ts: u64,
-    pub sharers: SharerList,
+// pub struct DirectoryEntry {
+//     pub last_writer: Option<(bool, u32, u64)>, // still_available?, core_id, ts
+//     pub readers: HashMap<u32, u64>,      // core_id, ts
+// }
+
+pub enum DirectoryEntry {
+    Exclusive(u32, u64),       // core_id, ts
+    Shared(HashMap<u32, u64>), // core_id, ts
+    Evicted(u64),              // ts, the last writer's timestamp.
+    Invalid,                   // Just created. Maybe it can be combined with `Evicted(0)`.
+}
+
+pub enum GetModifyResult {
+    Successful(Vec<u32>),            // evicted sharers.
+    SuccessfulWithSharers(Vec<u32>), // evicted sharers.
+    Rejected,                        // not successful.
+}
+
+pub enum GetReadResult {
+    Exclusive,
+    Successful,
+    SuccessfulWithMessage(u32), // Need to send a message to the owner to create replica.
+    Rejected,
 }
 
 impl DirectoryEntry {
-    pub fn new() -> Self {
-        Self {
-            ts: 0,
-            sharers: SharerList::ZERO,
+    pub fn get_modify(&mut self, core_id: u32, ts: u64) -> GetModifyResult {
+        return match self {
+            DirectoryEntry::Exclusive(owner, owner_ts) => {
+                if *owner != core_id && *owner_ts < ts {
+                    // owner replacement.
+                    let previous_owner = *owner;
+                    *self = DirectoryEntry::Exclusive(core_id, ts);
+                    GetModifyResult::Successful(vec![previous_owner])
+                } else {
+                    GetModifyResult::Rejected
+                }
+            }
+
+            DirectoryEntry::Shared(sharers) => {
+                let mut result = vec![];
+                for (reader, reader_ts) in sharers.iter() {
+                    if *reader_ts < ts && *reader != core_id {
+                        result.push(*reader);
+                    }
+                }
+
+                // remove other sharers.
+                for invalid_sharers in result.iter() {
+                    sharers.remove(invalid_sharers);
+                }
+
+                // if there is no sharer left or the only sharer is the core_id, then we can get exclusive.
+                if sharers.is_empty() || (sharers.len() == 1 && sharers.contains_key(&core_id)) {
+                    *self = DirectoryEntry::Exclusive(core_id, ts);
+                    return GetModifyResult::Successful(result);
+                } else {
+                    sharers.insert(core_id, ts);
+                    return GetModifyResult::SuccessfulWithSharers(result);
+                }
+            }
+
+            DirectoryEntry::Evicted(_) => {
+                *self = DirectoryEntry::Exclusive(core_id, ts);
+                GetModifyResult::Successful(vec![])
+            }
+
+            DirectoryEntry::Invalid => {
+                *self = DirectoryEntry::Exclusive(core_id, ts);
+                GetModifyResult::Successful(vec![])
+            }
+        };
+    }
+
+    // Return whether a replica is generated.
+    pub fn get_read(&mut self, core_id: u32, ts: u64) -> GetReadResult {
+        return match self {
+            DirectoryEntry::Exclusive(owner, owner_ts) => {
+                if *owner != core_id && *owner_ts < ts {
+                    let original_owner = *owner;
+                    let mut sharers = HashMap::new();
+                    sharers.insert(*owner, *owner_ts);
+                    sharers.insert(core_id, ts);
+                    *self = DirectoryEntry::Shared(sharers);
+                    GetReadResult::SuccessfulWithMessage(original_owner)
+                } else if *owner == core_id {
+                    return GetReadResult::Exclusive;
+                } else {
+                    GetReadResult::Rejected
+                }
+            }
+
+            DirectoryEntry::Shared(sharers) => {
+                sharers.insert(core_id, ts);
+                GetReadResult::Successful
+            }
+
+            DirectoryEntry::Evicted(previous_owner_ts) => {
+                if *previous_owner_ts > ts {
+                    GetReadResult::Rejected
+                } else {
+                    // This is the speculation of the coherence protocol.
+                    *self = DirectoryEntry::Exclusive(core_id, ts);
+                    GetReadResult::Exclusive
+                }
+            }
+
+            DirectoryEntry::Invalid => {
+                *self = DirectoryEntry::Exclusive(core_id, ts);
+                GetReadResult::Exclusive
+            }
+        };
+    }
+
+    // Return whether there are still sharers left.
+    pub fn drop(&mut self, core_id: u32) -> bool {
+        match self {
+            DirectoryEntry::Exclusive(owner, owner_ts) => {
+                if *owner == core_id {
+                    *self = DirectoryEntry::Evicted(*owner_ts);
+                    return false;
+                }
+                return true;
+            }
+
+            DirectoryEntry::Shared(sharers) => {
+                sharers.remove(&core_id);
+                return !sharers.is_empty();
+            }
+
+            DirectoryEntry::Evicted(_) => {
+                return false;
+            }
+
+            DirectoryEntry::Invalid => {
+                return false;
+            }
         }
     }
 }
@@ -66,7 +189,7 @@ impl<const WAYS: usize> DirectorySet<WAYS> {
         // let invalid = self.tags.iter().enumerate().find(|entry| (*entry.1) == 0);
 
         let internal_tag = block_id << 1 | 1;
-        self.entries.insert(internal_tag, DirectoryEntry::new());
+        self.entries.insert(internal_tag, DirectoryEntry::Invalid);
         self.entries.get_mut(&internal_tag).unwrap()
 
         // if let Some((index, _)) = invalid {

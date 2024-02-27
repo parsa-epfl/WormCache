@@ -114,10 +114,10 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             Some(previous_ts) => {
                 if *previous_ts > ts {
                     // the eviction happens earlier than the access.
-                    return false;
+                    return true;
                 } else {
                     // the eviction happens later than the access. We treat it as hit.
-                    return true;
+                    return false;
                 }
             }
             None => {
@@ -234,7 +234,6 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             match oldest_element {
                 Some(oldest_element) => {
                     // Here we need to be careful. In case we have order violation, we don't know the result of this cache hit / miss.
-                    // TODO: If the refill timestamp is smaller, we should increase the time of order violation and not to update the cache.
                     let res = oldest_element.clone();
                     assert!(res.ts <= ts);
                     oldest_element.ts = ts;
@@ -306,7 +305,7 @@ impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
         self.cache[set_id].send_message(block_id, ts, message_type);
     }
 
-    // This function is only for testing. 
+    // This function is only for testing.
     pub fn contains_block(&mut self, block_id: u64) -> bool {
         let set_id = block_id as usize % SET;
         let set = &mut self.cache[set_id];

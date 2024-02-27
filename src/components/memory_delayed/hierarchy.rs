@@ -1,10 +1,11 @@
+use std::cell::UnsafeCell;
 use std::sync::MutexGuard;
 
 use crate::components::NoMMU;
 use crate::parameter::{self, ENABLE_STATISTICS};
 
 // use super::dashmap_directory::{SharerList, Directory};
-use super::replica_directory::{DirectorySet, ReplicaDirectory, SharerList};
+use super::replica_directory::{DirectorySet, ReplicaDirectory};
 
 use super::private_cache::PrivateCacheState;
 use super::statistics;
@@ -17,9 +18,9 @@ use crate::components::mmu::MemoryManagementUnit;
 pub struct DelayedMemoryHierarchy<MMU: AbstractMMU> {
     mmus: [MMU; parameter::CORE_COUNT],
 
-    private_caches:
-        [private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>;
-            parameter::CORE_COUNT],
+    private_caches: [UnsafeCell<
+        private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>,
+    >; parameter::CORE_COUNT],
 
     directory: ReplicaDirectory<
         { parameter::PRI_CACHE_SET },
@@ -52,7 +53,9 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
     pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| MMU::new()),
-            private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
+            private_caches: std::array::from_fn(|_| {
+                UnsafeCell::new(private_cache::PrivateCache::new())
+            }),
             directory: ReplicaDirectory::new(),
             shared_cache: shared_cache::ExclusiveSharedCache::new(),
             per_core_statistics: std::array::from_fn(|_| statistics::PerCoreStatistics::new()),
@@ -145,8 +148,8 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 
         let private_caches = &mut self.private_caches;
 
-        let private_cache = &mut private_caches[core_id as usize];
-        let private_set = private_cache.get_set(block_id);
+        let private_cache = &private_caches[core_id as usize];
+        let private_set = unsafe { (*private_cache.get()).get_set(block_id) };
 
         // first, we need to check the private cache.
         let private_hit = private_set.poke_and_update(block_id, ts, is_store, is_instruction);
@@ -190,11 +193,11 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 
             let directory_entry_guard = directory_set_guard.create(block_id);
 
-            let shared_cache_result = false;
-            let mut incoming_sharer = SharerList::ZERO;
-            incoming_sharer.set(core_id as usize, true);
-            directory_entry_guard.ts = ts;
-            directory_entry_guard.sharers = incoming_sharer;
+            if is_store {
+                directory_entry_guard.get_modify(core_id, ts);
+            } else {
+                directory_entry_guard.get_read(core_id, ts);
+            }
 
             if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
@@ -204,67 +207,56 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         }
 
         let directory_entry_guard = directory_set_guard.get_mut(block_id);
-        let sharers = directory_entry_guard.sharers;
 
         // OK, now this block is provided by another core. We need to check whether we can access it.
         if is_store {
             // We need to invalid other cores' cache line.
-            // First, we insert the result to our own private cache.
-            let evicted = private_set.refill(
-                core_id,
-                block_id,
-                ts,
-                is_instruction,
-                PrivateCacheState::DirtyExclusive,
-            );
-            // Second, we go over the sharer list, and invalidate them.
-            for i in 0..parameter::CORE_COUNT {
-                if *sharers.get(i).unwrap() && i != core_id as usize {
-                    // invalidate the cache line.
-                    let other_private_cache = &mut self.private_caches[i];
-                    let other_private_set = other_private_cache.get_set(block_id);
-                    other_private_set.send_message(
+
+            let get_m_result = directory_entry_guard.get_modify(core_id, ts);
+
+            let evicted = match get_m_result {
+                super::replica_directory::GetModifyResult::Successful(to_invalid) => {
+                    for invalid_core in to_invalid {
+                        unsafe {
+                            (*self.private_caches[invalid_core as usize].get()).send_message(
+                                block_id,
+                                ts,
+                                private_cache::MessageType::Invalidate,
+                            );
+                        }
+                    }
+
+                    private_set.refill(
+                        core_id,
                         block_id,
                         ts,
-                        private_cache::MessageType::Invalidate,
-                    );
-                }
-            }
+                        is_instruction,
+                        PrivateCacheState::DirtyExclusive,
+                    )
+                },
+                super::replica_directory::GetModifyResult::SuccessfulWithSharers(to_invalid) => {
+                    for invalid_core in to_invalid {
+                        unsafe {
+                            (*self.private_caches[invalid_core as usize].get()).send_message(
+                                block_id,
+                                ts,
+                                private_cache::MessageType::Invalidate,
+                            );
+                        }
+                    }
 
-            let mut exclusive_sharer = SharerList::ZERO;
-            exclusive_sharer.set(core_id as usize, true);
-            directory_entry_guard.sharers = exclusive_sharer;
-
-            // handle eviction now.
-            if let Some(evicted_line) = evicted {
-                self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
-            }
-
-            return CacheHierarchyAccessResult::HitInOtherPrivateCache;
-        }
-
-        if sharers.count_ones() == 1 {
-            // First, we insert the result to our own private cache.
-            let evicted = private_set.refill(
-                core_id,
-                block_id,
-                ts,
-                is_instruction,
-                PrivateCacheState::CleanShared,
-            );
-
-            // Then, we handle the coherence message.
-            let mut incoming_sharer = sharers.clone();
-            incoming_sharer.set(core_id as usize, true);
-            directory_entry_guard.sharers = incoming_sharer;
-
-            let owner = sharers.first_one().unwrap();
-            // send upgrade permission to the owner.
-            self.private_caches[owner].send_message(
-                block_id,
-                ts,
-                private_cache::MessageType::CreateSharer,
-            );
+                    private_set.refill(
+                        core_id,
+                        block_id,
+                        ts,
+                        is_instruction,
+                        PrivateCacheState::DirtyShared,
+                    )
+                },
+                super::replica_directory::GetModifyResult::Rejected => {
+                    None
+                },
+            };
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
@@ -272,33 +264,54 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
             }
 
             return CacheHierarchyAccessResult::HitInOtherPrivateCache;
+        } else {
+            let get_r_result = directory_entry_guard.get_read(core_id, ts);
+            let evicted = match get_r_result {
+                super::replica_directory::GetReadResult::Exclusive => {
+                    private_set.refill(
+                        core_id,
+                        block_id,
+                        ts,
+                        is_instruction,
+                        PrivateCacheState::CleanExclusive,
+                    )
+                },
+                super::replica_directory::GetReadResult::Successful => {
+                    private_set.refill(
+                        core_id,
+                        block_id,
+                        ts,
+                        is_instruction,
+                        PrivateCacheState::CleanShared,
+                    )
+                },
+                super::replica_directory::GetReadResult::SuccessfulWithMessage(owner) => {
+                    unsafe {
+                        (*self.private_caches[owner as usize].get()).send_message(
+                            block_id,
+                            ts,
+                            private_cache::MessageType::CreateSharer,
+                        );
+                    }
+                    private_set.refill(
+                        core_id,
+                        block_id,
+                        ts,
+                        is_instruction,
+                        PrivateCacheState::CleanShared,
+                    )
+                },
+                super::replica_directory::GetReadResult::Rejected => {
+                    None
+                },
+            };
+
+            if let Some(evicted_line) = evicted {
+                self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
+            }
+
+            return CacheHierarchyAccessResult::HitInOtherPrivateCache;
         }
-
-        // Now, we just need to add ourself to the sharer list. This block must be the shared one.
-        let mut incoming_sharer = sharers.clone();
-        incoming_sharer.set(core_id as usize, true);
-        directory_entry_guard.ts = ts;
-        directory_entry_guard.sharers = incoming_sharer;
-
-        // then, we can consider how to refill the cache line.
-        let evicted = private_set.refill(
-            core_id,
-            block_id,
-            ts,
-            is_instruction,
-            if is_store {
-                PrivateCacheState::DirtyShared
-            } else {
-                PrivateCacheState::CleanShared
-            },
-        );
-
-        // handle eviction now.
-        if let Some(evicted_line) = evicted {
-            self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
-        }
-
-        return CacheHierarchyAccessResult::HitInOtherPrivateCache;
     }
 
     pub fn handle_eviction(
@@ -316,19 +329,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         let directory_entry_guard = directory_guard.get_mut(block_id);
 
         // we cancel the element of this block in the directory.
-        let sharers = directory_entry_guard.sharers;
-
-        let mut incoming_sharer = sharers.clone();
-        incoming_sharer.set(core_id as usize, false);
-
-        // we put the element back to the directory.
-        directory_entry_guard.ts = ts;
-        directory_entry_guard.sharers = incoming_sharer;
-
-        // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
-        if incoming_sharer.count_ones() == 0 {
-            // we need to place this block to the shared cache.
-            // NOTE: currently, we ignore the LLC.
+        if !directory_entry_guard.drop(core_id) {
             self.shared_cache.allocate(block_id, ts);
             directory_guard.invalidate(block_id);
         }

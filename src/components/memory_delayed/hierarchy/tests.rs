@@ -15,11 +15,11 @@ impl TestingDelayedMemoryHierarchy {
     fn where_is_the_block(&mut self, block_id: u64) -> BlockPosition {
         let mut private_owner = vec![];
         for i in 0..parameter::CORE_COUNT {
-            if self.private_caches[i].contains_block(block_id) {
+            if self.private_caches[i].get_mut().contains_block(block_id) {
                 private_owner.push(i as u32);
             }
         }
-        
+
         if !private_owner.is_empty() {
             return BlockPosition::InPrivateCache(private_owner);
         }
@@ -33,8 +33,11 @@ impl TestingDelayedMemoryHierarchy {
     fn get_all_private_replicas(&mut self, block_id: u64) -> HashMap<u32, PrivateCacheState> {
         let mut result = HashMap::new();
         for i in 0..parameter::CORE_COUNT {
-            if self.private_caches[i].contains_block(block_id) {
-                result.insert(i as u32, self.private_caches[i].get_block_state(block_id));
+            if self.private_caches[i].get_mut().contains_block(block_id) {
+                result.insert(
+                    i as u32,
+                    self.private_caches[i].get_mut().get_block_state(block_id),
+                );
             }
         }
         result
@@ -43,7 +46,7 @@ impl TestingDelayedMemoryHierarchy {
 
 #[test]
 #[should_panic(expected = "assertion failed: res.ts <= ts")]
-fn accesses_with_reversed_timestamp() {
+fn reversed_timestamp_from_the_same_core() {
     let mut mh = MH::new();
     let mut ts = 100;
     // Fill one cache set with some data.
@@ -73,23 +76,35 @@ fn accesses_with_reversed_timestamp() {
 }
 
 #[test]
-fn coherence_invalidation() {
+fn write_invalidation_coherence() {
     let mut mh = MH::new();
 
     let block_id = 1024;
     // Core 0 gets a read permission at 0.
-    assert_eq!(mh.access_memory_pblock_id(0, block_id, 0, false, false), CacheHierarchyAccessResult::Miss);
-    // Core 1 get a read permission at 10. 
-    assert_eq!(mh.access_memory_pblock_id(1, block_id, 10, false, false), CacheHierarchyAccessResult::HitInOtherPrivateCache);
-    // Core 2 get a write permission at 5.
-    assert_eq!(mh.access_memory_pblock_id(2, block_id, 50, true, false), CacheHierarchyAccessResult::HitInOtherPrivateCache);
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 0, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+    // Core 1 get a read permission at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 10, false, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+    // Core 2 get a write permission at 50.
+    assert_eq!(
+        mh.access_memory_pblock_id(2, block_id, 50, true, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
     // Now, core 0 and core 1 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
     assert_eq!(sharers[&2], PrivateCacheState::DirtyExclusive);
 
     // Now core 0 gets a read permission at 100.
-    assert_eq!(mh.access_memory_pblock_id(0, block_id, 100, false, false), CacheHierarchyAccessResult::HitInOtherPrivateCache);
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 100, false, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 2);
     assert_eq!(sharers[&2], PrivateCacheState::DirtyShared);
@@ -97,24 +112,86 @@ fn coherence_invalidation() {
 }
 
 #[test]
-fn coherence_invalidation_with_reversed_timestamp() {
+fn c0r0_c1w10_c2r5() {
     let mut mh = MH::new();
 
     let block_id = 1024;
     // Core 0 gets a read permission at 0.
-    assert_eq!(mh.access_memory_pblock_id(0, block_id, 0, false, false), CacheHierarchyAccessResult::Miss);
-    // Core 1 get a read permission at 10. 
-    assert_eq!(mh.access_memory_pblock_id(1, block_id, 10, false, false), CacheHierarchyAccessResult::HitInOtherPrivateCache);
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 0, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+    // Core 1 get a read permission at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 10, false, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
     // Core 2 get a write permission at 5.
-    assert_eq!(mh.access_memory_pblock_id(2, block_id, 5, true, false), CacheHierarchyAccessResult::HitInOtherPrivateCache);
-    // Now, core 0 and core 1 should have invalid the cache.
+    assert_eq!(
+        mh.access_memory_pblock_id(2, block_id, 5, true, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+    // Now, core 0 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 2);
     assert_eq!(sharers[&2], PrivateCacheState::DirtyShared);
     assert_eq!(sharers[&1], PrivateCacheState::CleanShared);
-}   
+}
 
 #[test]
-fn coherence_get_sharer_with_reversed_timestamp() {
-    
+fn c0w10_c1w5() {
+    let mut mh = MH::new();
+    let block_id = 1024;
+    // Core 0 gets a write permission at timestamp 10
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 10, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 1 gets a write permission at timestamp 5. 
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 5, true, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+
+    // Now, the only owner of the data should be core 0.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 1);
+    assert_eq!(sharers[&0], PrivateCacheState::DirtyExclusive);
 }
+
+#[test]
+fn c0w10_c0i100_c1r5() {
+    let mut mh = MH::new();
+    let block_id = 1024;
+    // Core 0 writes to this block at timestamp 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 10, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // This block is evicted due to contention. 
+    for i in 0..parameter::PRI_CACHE_ASSO {
+        let block_id: u64 = (10* i * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        mh.access_memory_pblock_id(0, block_id, (100 + i) as u64, false, false);
+    }
+
+    // Now, the line is not in the memory hierarchy anymore. 
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 0);
+
+    // Then, there is a reader replica which is created before core 0 writes to the position.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 5, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Still, there should be no reader replica.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 0);
+
+}
+
+// TODO
+#[test]
+fn coherence_get_sharer_with_reversed_timestamp() {}
