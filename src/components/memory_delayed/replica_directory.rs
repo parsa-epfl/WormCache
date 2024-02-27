@@ -32,6 +32,12 @@ pub enum GetReadResult {
     Rejected,
 }
 
+pub enum DropResult {
+    NoSharer,
+    NewExclusive(u32),
+    MoreSharers,
+}
+
 impl DirectoryEntry {
     pub fn get_modify(&mut self, core_id: u32, ts: u64) -> GetModifyResult {
         return match self {
@@ -122,29 +128,41 @@ impl DirectoryEntry {
     }
 
     // Return whether there are still sharers left.
-    pub fn drop(&mut self, core_id: u32) -> bool {
-        match self {
+    pub fn drop(&mut self, core_id: u32) -> DropResult {
+        return match self {
             DirectoryEntry::Exclusive(owner, owner_ts) => {
                 if *owner == core_id {
                     *self = DirectoryEntry::Evicted(*owner_ts);
-                    return false;
+                    DropResult::NoSharer
+                } else {
+                    panic!("It is impossible to issue evict a block that is not in the directory.");
                 }
-                return true;
             }
 
             DirectoryEntry::Shared(sharers) => {
                 sharers.remove(&core_id);
-                return !sharers.is_empty();
+
+                let sharer_number = sharers.len();
+
+                if sharer_number == 1 {
+                    let owner = *sharers.keys().next().unwrap();
+                    let ts = *sharers.values().next().unwrap();
+
+                    *self = DirectoryEntry::Exclusive(owner, ts);
+
+                    DropResult::NewExclusive(owner)
+                } else if sharer_number == 0 {
+                    *self = DirectoryEntry::Evicted(0);
+                    DropResult::NoSharer
+                } else {
+                    DropResult::MoreSharers
+                }
             }
 
-            DirectoryEntry::Evicted(_) => {
-                return false;
-            }
+            DirectoryEntry::Evicted(_) => DropResult::NoSharer,
 
-            DirectoryEntry::Invalid => {
-                return false;
-            }
-        }
+            DirectoryEntry::Invalid => DropResult::NoSharer,
+        };
     }
 }
 

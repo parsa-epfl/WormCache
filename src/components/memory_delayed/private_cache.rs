@@ -81,6 +81,17 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                             hit_element.state = PrivateCacheState::DirtyShared;
                         }
                     },
+                    MessageType::MakeExclusive => match hit_element.state {
+                        PrivateCacheState::Invalid => {}
+                        PrivateCacheState::CleanShared => {
+                            hit_element.state = PrivateCacheState::CleanExclusive;
+                        }
+                        PrivateCacheState::DirtyShared => {
+                            hit_element.state = PrivateCacheState::DirtyExclusive;
+                        }
+                        PrivateCacheState::CleanExclusive => {}
+                        PrivateCacheState::DirtyExclusive => {}
+                    },
                 }
             } else {
                 // it is possible to see this path. One case is that the cache line is evicted before updating the directory.

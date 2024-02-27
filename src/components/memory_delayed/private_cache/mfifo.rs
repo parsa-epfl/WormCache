@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub enum MessageType {
     Invalidate,
     CreateSharer,
+    MakeExclusive,
 }
 
 #[derive(Debug)]

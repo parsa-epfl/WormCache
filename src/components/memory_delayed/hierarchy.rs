@@ -233,7 +233,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         is_instruction,
                         PrivateCacheState::DirtyExclusive,
                     )
-                },
+                }
                 super::replica_directory::GetModifyResult::SuccessfulWithSharers(to_invalid) => {
                     for invalid_core in to_invalid {
                         unsafe {
@@ -252,10 +252,8 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         is_instruction,
                         PrivateCacheState::DirtyShared,
                     )
-                },
-                super::replica_directory::GetModifyResult::Rejected => {
-                    None
-                },
+                }
+                super::replica_directory::GetModifyResult::Rejected => None,
             };
 
             // handle eviction now.
@@ -267,24 +265,20 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         } else {
             let get_r_result = directory_entry_guard.get_read(core_id, ts);
             let evicted = match get_r_result {
-                super::replica_directory::GetReadResult::Exclusive => {
-                    private_set.refill(
-                        core_id,
-                        block_id,
-                        ts,
-                        is_instruction,
-                        PrivateCacheState::CleanExclusive,
-                    )
-                },
-                super::replica_directory::GetReadResult::Successful => {
-                    private_set.refill(
-                        core_id,
-                        block_id,
-                        ts,
-                        is_instruction,
-                        PrivateCacheState::CleanShared,
-                    )
-                },
+                super::replica_directory::GetReadResult::Exclusive => private_set.refill(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_instruction,
+                    PrivateCacheState::CleanExclusive,
+                ),
+                super::replica_directory::GetReadResult::Successful => private_set.refill(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_instruction,
+                    PrivateCacheState::CleanShared,
+                ),
                 super::replica_directory::GetReadResult::SuccessfulWithMessage(owner) => {
                     unsafe {
                         (*self.private_caches[owner as usize].get()).send_message(
@@ -300,10 +294,8 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         is_instruction,
                         PrivateCacheState::CleanShared,
                     )
-                },
-                super::replica_directory::GetReadResult::Rejected => {
-                    None
-                },
+                }
+                super::replica_directory::GetReadResult::Rejected => None,
             };
 
             if let Some(evicted_line) = evicted {
@@ -325,13 +317,25 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         ts: u64,
     ) {
         // first, we need to check the directory.
-        // let mut directory_entry_guard = self.directory.get_or_create(block_id);
         let directory_entry_guard = directory_guard.get_mut(block_id);
 
         // we cancel the element of this block in the directory.
-        if !directory_entry_guard.drop(core_id) {
-            self.shared_cache.allocate(block_id, ts);
-            directory_guard.invalidate(block_id);
+        match directory_entry_guard.drop(core_id) {
+            super::replica_directory::DropResult::NoSharer => {
+                self.shared_cache.allocate(block_id, ts);
+                directory_guard.invalidate(block_id);
+            }
+            super::replica_directory::DropResult::NewExclusive(owner) => {
+                // send a message to the owner to make it exclusive.
+                unsafe {
+                    (*self.private_caches[owner as usize].get()).send_message(
+                        block_id,
+                        ts,
+                        private_cache::MessageType::MakeExclusive,
+                    );
+                }
+            }
+            super::replica_directory::DropResult::MoreSharers => {}
         }
     }
 
