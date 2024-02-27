@@ -112,7 +112,7 @@ fn write_invalidation_coherence() {
 }
 
 #[test]
-fn c0r0_c1w10_c2r5() {
+fn raw_and_war() {
     let mut mh = MH::new();
 
     let block_id = 1024;
@@ -139,7 +139,7 @@ fn c0r0_c1w10_c2r5() {
 }
 
 #[test]
-fn c0w10_c1w5() {
+fn waw() {
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
@@ -148,7 +148,7 @@ fn c0w10_c1w5() {
         CacheHierarchyAccessResult::Miss
     );
 
-    // Core 1 gets a write permission at timestamp 5. 
+    // Core 1 gets a write permission at timestamp 5.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 5, true, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
@@ -161,7 +161,7 @@ fn c0w10_c1w5() {
 }
 
 #[test]
-fn c0w10_c0i100_c1r5() {
+fn rae() {
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 writes to this block at timestamp 10.
@@ -170,13 +170,13 @@ fn c0w10_c0i100_c1r5() {
         CacheHierarchyAccessResult::Miss
     );
 
-    // This block is evicted due to contention. 
+    // This block is evicted due to contention.
     for i in 0..parameter::PRI_CACHE_ASSO {
-        let block_id: u64 = (10* i * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        let block_id: u64 = (10 * i * parameter::PRI_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (100 + i) as u64, false, false);
     }
 
-    // Now, the line is not in the memory hierarchy anymore. 
+    // Now, the line is not in the memory hierarchy anymore.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 0);
 
@@ -189,9 +189,160 @@ fn c0w10_c0i100_c1r5() {
     // Still, there should be no reader replica.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 0);
-
 }
 
-// TODO
 #[test]
-fn coherence_get_sharer_with_reversed_timestamp() {}
+fn eae() {
+    let mut mh = MH::new();
+    // Core 0 accesses the core at 200 and evicts the block at 216 with the dirty permission.
+    let block_id = 1024;
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 200, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    for i in 0..parameter::PRI_CACHE_ASSO {
+        let block_id: u64 = (100 * (i + 1) * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false);
+    }
+
+    // That block should be evicted from the memory hierarchy.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 0);
+
+    // Core 1 accesses the core at 10 and evict the block
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    for i in 0..parameter::PRI_CACHE_ASSO {
+        let block_id: u64 = (255 * (i + 1) * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
+    }
+
+    // Now there should be nothing in the private cache.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 0);
+
+    // Now, the block should be in the last-level cache.
+    assert_eq!(
+        mh.where_is_the_block(block_id),
+        BlockPosition::InSharedCache
+    );
+}
+
+#[test]
+fn wae() {
+    let mut mh = MH::new();
+    let block_id = 1024;
+    // Core 0 writes the block at 200 and evicts from the 217.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 200, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    for i in 0..parameter::PRI_CACHE_ASSO {
+        let block_id: u64 = (100 * (i + 1) * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false);
+    }
+
+    // That block should be evicted from the memory hierarchy.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 0);
+
+    // Core 1 writes to the block at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Now there should be nothing in the private cache.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 0);
+
+    // And it is in the last-level cache.
+    assert_eq!(
+        mh.where_is_the_block(block_id),
+        BlockPosition::InSharedCache
+    );
+}
+
+#[test]
+fn eaw() {
+    let mut mh = MH::new();
+    let block_id = 1024;
+
+    // Core 0 writes to the block at 200.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 200, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 1 evicts the block at 100 with the dirty permission. the write happens at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    for i in 0..parameter::PRI_CACHE_ASSO {
+        let block_id: u64 = (100 * (i + 1) * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
+    }
+
+    // Now there should be only a copy from core 0 in private caches.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 1);
+}
+
+#[test]
+fn ear() {
+    let mut mh = MH::new();
+    let block_id = 1024;
+
+    // Core 0 reads the block at 100.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 100, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Then, core 1 evicts the block before 50. It creates a write access at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    for i in 0..parameter::PRI_CACHE_ASSO {
+        let block_id: u64 = (100 * (i + 1) * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
+    }
+
+    // Now, only core 0 has the block. And it has the exclusive permission.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 1);
+    assert_eq!(sharers[&0], PrivateCacheState::CleanExclusive);
+}
+
+#[test]
+fn rar() {
+    let mut mh = MH::new();
+    let block_id = 1024;
+
+    // Core 0 reads the block at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 10, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 1 reads the block at 5.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 5, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Now there should be two replicas of core 0 and core 1 in the private cache.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 2);
+    assert_eq!(sharers[&0], PrivateCacheState::CleanShared);
+    assert_eq!(sharers[&1], PrivateCacheState::CleanShared);
+}
