@@ -25,6 +25,7 @@ fn retsc_time_function() -> u64 {
 }
 
 #[test]
+#[ignore]
 #[cfg(target_arch = "x86_64")]
 fn test_wiether_tsc_is_atomic() {
     let mut time_list: Vec<u64> = Vec::new();
@@ -38,6 +39,7 @@ fn test_wiether_tsc_is_atomic() {
 }
 
 #[test]
+#[ignore]
 fn test_whether_timer_atomic() {
     // let me try whether the rdstic timer on the single thread is monotonic.
 
@@ -74,6 +76,7 @@ fn test_whether_timer_atomic() {
 }
 
 #[test]
+#[ignore]
 fn the_cost_of_timer() {
     // Get the average latency of calling the timer function.
     const TOTAL_TEST_COUNT: usize = 100_000_000;

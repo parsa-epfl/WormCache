@@ -13,10 +13,11 @@ use crate::util;
 // }
 
 pub enum DirectoryEntry {
-    Exclusive(u32, u64),       // core_id, ts
+    DirtyExclusive(u32, u64), // core_id, ts. This point is different from Exclusive.
+    CleanExclusive(u32, u64), // core_id, ts
     Shared(HashMap<u32, u64>), // core_id, ts
-    Evicted(u64),              // ts, the last writer's timestamp.
-    Invalid,                   // Just created. Maybe it can be combined with `Evicted(0)`.
+    Evicted(u64),             // ts, the last writer's timestamp.
+    Invalid,                  // Just created. Maybe it can be combined with `Evicted(0)`.
 }
 
 pub enum GetModifyResult {
@@ -39,15 +40,36 @@ pub enum DropResult {
 }
 
 impl DirectoryEntry {
-    pub fn get_modify(&mut self, core_id: u32, ts: u64) -> GetModifyResult {
-        return match self {
-            DirectoryEntry::Exclusive(owner, owner_ts) => {
+    pub fn get_modify(&mut self, core_id: u32, ts: u64, is_writing: bool) -> GetModifyResult {
+        match self {
+            DirectoryEntry::DirtyExclusive(owner, owner_ts) => {
                 if *owner != core_id && *owner_ts < ts {
                     // owner replacement.
                     let previous_owner = *owner;
-                    *self = DirectoryEntry::Exclusive(core_id, ts);
+                    *self = if is_writing {
+                        DirectoryEntry::DirtyExclusive(core_id, ts)
+                    } else {
+                        DirectoryEntry::CleanExclusive(core_id, ts)
+                    };
                     GetModifyResult::Successful(vec![previous_owner])
                 } else {
+                    assert!(*owner != core_id);
+                    GetModifyResult::Rejected
+                }
+            }
+
+            DirectoryEntry::CleanExclusive(owner, owner_ts) => {
+                if *owner != core_id && *owner_ts < ts {
+                    // owner replacement.
+                    let previous_owner = *owner;
+                    *self = if is_writing {
+                        DirectoryEntry::DirtyExclusive(core_id, ts)
+                    } else {
+                        DirectoryEntry::CleanExclusive(core_id, ts)
+                    };
+                    GetModifyResult::Successful(vec![previous_owner])
+                } else {
+                    assert!(*owner != core_id);
                     GetModifyResult::Rejected
                 }
             }
@@ -67,7 +89,11 @@ impl DirectoryEntry {
 
                 // if there is no sharer left or the only sharer is the core_id, then we can get exclusive.
                 if sharers.is_empty() || (sharers.len() == 1 && sharers.contains_key(&core_id)) {
-                    *self = DirectoryEntry::Exclusive(core_id, ts);
+                    *self = if is_writing {
+                        DirectoryEntry::DirtyExclusive(core_id, ts)
+                    } else {
+                        DirectoryEntry::CleanExclusive(core_id, ts)
+                    };
                     return GetModifyResult::Successful(result);
                 } else {
                     sharers.insert(core_id, ts);
@@ -75,22 +101,34 @@ impl DirectoryEntry {
                 }
             }
 
-            DirectoryEntry::Evicted(_) => {
-                *self = DirectoryEntry::Exclusive(core_id, ts);
-                GetModifyResult::Successful(vec![])
+            DirectoryEntry::Evicted(evicted_ts) => {
+                if *evicted_ts > ts {
+                    GetModifyResult::Rejected
+                } else {
+                    *self = if is_writing {
+                        DirectoryEntry::DirtyExclusive(core_id, ts)
+                    } else {
+                        DirectoryEntry::CleanExclusive(core_id, ts)
+                    };
+                    GetModifyResult::Successful(vec![])
+                }
             }
 
             DirectoryEntry::Invalid => {
-                *self = DirectoryEntry::Exclusive(core_id, ts);
+                *self = if is_writing {
+                    DirectoryEntry::DirtyExclusive(core_id, ts)
+                } else {
+                    DirectoryEntry::CleanExclusive(core_id, ts)
+                };
                 GetModifyResult::Successful(vec![])
             }
-        };
+        }
     }
 
     // Return whether a replica is generated.
     pub fn get_read(&mut self, core_id: u32, ts: u64) -> GetReadResult {
         return match self {
-            DirectoryEntry::Exclusive(owner, owner_ts) => {
+            DirectoryEntry::DirtyExclusive(owner, owner_ts) => {
                 if *owner != core_id && *owner_ts < ts {
                     let original_owner = *owner;
                     let mut sharers = HashMap::new();
@@ -98,11 +136,20 @@ impl DirectoryEntry {
                     sharers.insert(core_id, ts);
                     *self = DirectoryEntry::Shared(sharers);
                     GetReadResult::SuccessfulWithMessage(original_owner)
-                } else if *owner == core_id {
-                    return GetReadResult::Exclusive;
                 } else {
+                    assert!(core_id != *owner);
                     GetReadResult::Rejected
                 }
+            }
+
+            DirectoryEntry::CleanExclusive(owner, owner_ts) => {
+                assert!(core_id != *owner);
+                let original_owner = *owner;
+                let mut sharers = HashMap::new();
+                sharers.insert(*owner, *owner_ts);
+                sharers.insert(core_id, ts);
+                *self = DirectoryEntry::Shared(sharers);
+                GetReadResult::SuccessfulWithMessage(original_owner)
             }
 
             DirectoryEntry::Shared(sharers) => {
@@ -115,13 +162,13 @@ impl DirectoryEntry {
                     GetReadResult::Rejected
                 } else {
                     // This is the speculation of the coherence protocol.
-                    *self = DirectoryEntry::Exclusive(core_id, ts);
+                    *self = DirectoryEntry::CleanExclusive(core_id, ts);
                     GetReadResult::Exclusive
                 }
             }
 
             DirectoryEntry::Invalid => {
-                *self = DirectoryEntry::Exclusive(core_id, ts);
+                *self = DirectoryEntry::CleanExclusive(core_id, ts);
                 GetReadResult::Exclusive
             }
         };
@@ -130,7 +177,16 @@ impl DirectoryEntry {
     // Return whether there are still sharers left.
     pub fn drop(&mut self, core_id: u32) -> DropResult {
         return match self {
-            DirectoryEntry::Exclusive(owner, owner_ts) => {
+            DirectoryEntry::DirtyExclusive(owner, owner_ts) => {
+                if *owner == core_id {
+                    *self = DirectoryEntry::Evicted(*owner_ts);
+                    DropResult::NoSharer
+                } else {
+                    panic!("It is impossible to issue evict a block that is not in the directory.");
+                }
+            }
+
+            DirectoryEntry::CleanExclusive(owner, owner_ts) => {
                 if *owner == core_id {
                     *self = DirectoryEntry::Evicted(*owner_ts);
                     DropResult::NoSharer
@@ -148,7 +204,7 @@ impl DirectoryEntry {
                     let owner = *sharers.keys().next().unwrap();
                     let ts = *sharers.values().next().unwrap();
 
-                    *self = DirectoryEntry::Exclusive(owner, ts);
+                    *self = DirectoryEntry::CleanExclusive(owner, ts);
 
                     DropResult::NewExclusive(owner)
                 } else if sharer_number == 0 {

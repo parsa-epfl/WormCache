@@ -45,6 +45,7 @@ pub type TestingDelayedMemoryHierarchy = DelayedMemoryHierarchy<NoMMU>;
 pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
     HitInOtherPrivateCache,
+    MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
     HitInSharedCache,
     Miss,
 }
@@ -194,7 +195,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
             let directory_entry_guard = directory_set_guard.create(block_id);
 
             if is_store {
-                directory_entry_guard.get_modify(core_id, ts);
+                directory_entry_guard.get_modify(core_id, ts, true);
             } else {
                 directory_entry_guard.get_read(core_id, ts);
             }
@@ -212,7 +213,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         if is_store {
             // We need to invalid other cores' cache line.
 
-            let get_m_result = directory_entry_guard.get_modify(core_id, ts);
+            let get_m_result = directory_entry_guard.get_modify(core_id, ts, true);
 
             let evicted = match get_m_result {
                 super::replica_directory::GetModifyResult::Successful(to_invalid) => {
@@ -253,7 +254,9 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         PrivateCacheState::DirtyShared,
                     )
                 }
-                super::replica_directory::GetModifyResult::Rejected => None,
+                super::replica_directory::GetModifyResult::Rejected => {
+                    return CacheHierarchyAccessResult::MissInPrivateCache;
+                }
             };
 
             // handle eviction now.
@@ -295,7 +298,9 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         PrivateCacheState::CleanShared,
                     )
                 }
-                super::replica_directory::GetReadResult::Rejected => None,
+                super::replica_directory::GetReadResult::Rejected => {
+                    return CacheHierarchyAccessResult::MissInPrivateCache;
+                }
             };
 
             if let Some(evicted_line) = evicted {
@@ -323,7 +328,6 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         match directory_entry_guard.drop(core_id) {
             super::replica_directory::DropResult::NoSharer => {
                 self.shared_cache.allocate(block_id, ts);
-                directory_guard.invalidate(block_id);
             }
             super::replica_directory::DropResult::NewExclusive(owner) => {
                 // send a message to the owner to make it exclusive.

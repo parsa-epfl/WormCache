@@ -87,6 +87,7 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
 
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = hit_block {
+            // So, this is a late access. For exclusive cache, I should move this to the private cache.
             hit_block.valid = false;
             return true;
         }

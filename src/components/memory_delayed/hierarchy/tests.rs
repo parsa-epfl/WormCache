@@ -151,7 +151,7 @@ fn waw() {
     // Core 1 gets a write permission at timestamp 5.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 5, true, false),
-        CacheHierarchyAccessResult::HitInOtherPrivateCache
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     // Now, the only owner of the data should be core 0.
@@ -172,7 +172,7 @@ fn rae() {
 
     // This block is evicted due to contention.
     for i in 0..parameter::PRI_CACHE_ASSO {
-        let block_id: u64 = (10 * i * parameter::PRI_CACHE_SET + block_id as usize) as u64;
+        let block_id: u64 = (10 * (i + 1) * parameter::PRI_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (100 + i) as u64, false, false);
     }
 
@@ -183,7 +183,7 @@ fn rae() {
     // Then, there is a reader replica which is created before core 0 writes to the position.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 5, false, false),
-        CacheHierarchyAccessResult::Miss
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     // Still, there should be no reader replica.
@@ -213,7 +213,7 @@ fn eae() {
     // Core 1 accesses the core at 10 and evict the block
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, true, false),
-        CacheHierarchyAccessResult::Miss
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::PRI_CACHE_ASSO {
@@ -254,7 +254,7 @@ fn wae() {
     // Core 1 writes to the block at 10.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, true, false),
-        CacheHierarchyAccessResult::Miss
+        CacheHierarchyAccessResult::MissInPrivateCache // it is a miss in the private cache, but not sure about the shared cache.
     );
 
     // Now there should be nothing in the private cache.
@@ -282,7 +282,7 @@ fn eaw() {
     // Core 1 evicts the block at 100 with the dirty permission. the write happens at 10.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, true, false),
-        CacheHierarchyAccessResult::Miss
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::PRI_CACHE_ASSO {
@@ -309,7 +309,7 @@ fn ear() {
     // Then, core 1 evicts the block before 50. It creates a write access at 10.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, true, false),
-        CacheHierarchyAccessResult::Miss
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::PRI_CACHE_ASSO {
@@ -337,7 +337,7 @@ fn rar() {
     // Core 1 reads the block at 5.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 5, false, false),
-        CacheHierarchyAccessResult::Miss
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
     // Now there should be two replicas of core 0 and core 1 in the private cache.
