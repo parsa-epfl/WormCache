@@ -38,10 +38,7 @@ pub struct PluginFetchBlockContext {
 static FETCH_BLOCK_CONTEXT_MAP: Lazy<Mutex<HashMap<usize, Box<PluginFetchBlockContext>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-unsafe extern "C" fn vcpu_insn_exec(
-    vcpu_idx: u32,
-    size: *mut ffi::c_void,
-) {
+unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, size: *mut ffi::c_void) {
     let context = &*(size as *mut PluginFetchBlockContext);
 
     let mut buffer = [0u8; 18];

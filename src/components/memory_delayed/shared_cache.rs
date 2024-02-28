@@ -57,11 +57,14 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
         }
 
         // otherwise, we need to find the oldest block.
-        let oldest_block = blocks.iter_mut().min_by_key(|p| {
-            return p.ts;
-        }).unwrap();
+        let oldest_block = blocks
+            .iter_mut()
+            .min_by_key(|p| {
+                return p.ts;
+            })
+            .unwrap();
 
-        // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing. 
+        // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {
             println!("Warning: the incoming block has smaller timestamp than the oldest block in the shared cache.");
             return;
@@ -84,6 +87,7 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
 
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = hit_block {
+            // So, this is a late access. For exclusive cache, I should move this to the private cache.
             hit_block.valid = false;
             return true;
         }

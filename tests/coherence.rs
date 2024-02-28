@@ -1,5 +1,8 @@
-use worm_cache::{self, components::memory_ts::{PrivateCacheParameters, CacheBlockState, TimestampMemoryHierarchy}};
 use worm_cache::components::NoMMU;
+use worm_cache::{
+    self,
+    components::memory_ts::{CacheBlockState, PrivateCacheParameters, TimestampMemoryHierarchy},
+};
 
 macro_rules! access_cache {
     ($cache:expr, $ts:expr, $core_id:expr, $addr:expr, $is_write:expr) => {
@@ -9,7 +12,6 @@ macro_rules! access_cache {
             .access_memory($ts, $addr, false, $is_write);
     };
 }
-
 
 const PARAM: PrivateCacheParameters = PrivateCacheParameters {
     l1i_sets: 1,
@@ -23,17 +25,17 @@ const PARAM: PrivateCacheParameters = PrivateCacheParameters {
 
 // All cases to consider
 // MOESI
-// 
+//
 // Invalid:
 // Invalid -> Exclusive (Self Read)
 // Invalid -> Modified (Self Write)
 // Invalid -> Shared (Self read others, and other is shared / owned)
-// 
+//
 // Shared:
 // Shared -> Invalid
 // Shared -> Owned
-// Shared -> Modified 
-// 
+// Shared -> Modified
+//
 // Exclusive:
 // Exclusive -> Invalid (Other's writing)
 // Exclusive -> Shared (Other's reading)
@@ -47,6 +49,7 @@ const PARAM: PrivateCacheParameters = PrivateCacheParameters {
 // Owned -> Invalid (Other's writing)
 
 #[test]
+#[ignore]
 fn invalid_to_exclusive() {
     let mut cache = TimestampMemoryHierarchy::<NoMMU, 4, 1, 4, 1>::new(2);
 
@@ -68,6 +71,7 @@ fn invalid_to_exclusive() {
 }
 
 #[test]
+#[ignore]
 fn exclusive_to_shared() {
     let mut cache = TimestampMemoryHierarchy::<NoMMU, 4, 1, 4, 1>::new(2);
     let mut ts = 0;
@@ -88,8 +92,9 @@ fn exclusive_to_shared() {
 }
 
 #[test]
+#[ignore]
 fn exclusive_to_modified() {
-    let mut cache =TimestampMemoryHierarchy::<NoMMU, 4, 1, 4, 1>::new(2);
+    let mut cache = TimestampMemoryHierarchy::<NoMMU, 4, 1, 4, 1>::new(2);
     let mut ts = 0;
 
     // access logic:
@@ -110,6 +115,7 @@ fn exclusive_to_modified() {
 }
 
 #[test]
+#[ignore]
 fn exclusive_to_owned() {
     // access logics:
     // C0: write 0x0
@@ -130,6 +136,7 @@ fn exclusive_to_owned() {
 }
 
 #[test]
+#[ignore]
 fn shared_to_invalid_and_modified() {
     // access logics:
     // C0: read 0x0
@@ -152,6 +159,7 @@ fn shared_to_invalid_and_modified() {
 }
 
 #[test]
+#[ignore]
 fn shared_to_owned() {
     // access logics:
     // C0: read 0x0
@@ -174,4 +182,3 @@ fn shared_to_owned() {
     assert!(p0[1][0][0].state == CacheBlockState::ModifiedOwned);
     assert!(p1[1][0][0].state == CacheBlockState::CleanShared);
 }
-

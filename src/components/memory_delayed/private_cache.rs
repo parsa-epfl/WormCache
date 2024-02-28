@@ -1,3 +1,4 @@
+use crossbeam_queue::SegQueue;
 use std::collections::HashMap;
 
 mod mfifo;
@@ -25,7 +26,7 @@ pub struct PrivateCacheLine {
 #[derive(Debug)]
 pub struct PrivateCacheSet<const WAY: usize> {
     lines: [PrivateCacheLine; WAY],
-    invalidation_fifo: FIFO<WAY>,
+    invalidation_fifo: SegQueue<(u64, u64, MessageType)>,
     invalidation_entries: HashMap<u64, u64>, // block id -> ts_invalid. Ts is the time when the block is invalid due to coherence.
                                              // If one element appears in `invalid_entries`, it must be invalidated by others.
                                              // If the current core finds an element in this list but not in its own cache, we can compare the timestamp.
@@ -41,13 +42,13 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                 ts: 0,
                 is_instruction: false,
             }; WAY],
-            invalidation_fifo: FIFO::new(),
+            invalidation_fifo: SegQueue::new(),
             invalidation_entries: HashMap::new(),
         }
     }
 
     #[inline]
-    fn run_handle_invalidation(&mut self) {
+    fn handle_message(&mut self) {
         // most of the case, this branch is not taken.
         if self.invalidation_fifo.is_empty() {
             return;
@@ -79,6 +80,17 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
                         PrivateCacheState::DirtyExclusive => {
                             hit_element.state = PrivateCacheState::DirtyShared;
                         }
+                    },
+                    MessageType::MakeExclusive => match hit_element.state {
+                        PrivateCacheState::Invalid => {}
+                        PrivateCacheState::CleanShared => {
+                            hit_element.state = PrivateCacheState::CleanExclusive;
+                        }
+                        PrivateCacheState::DirtyShared => {
+                            hit_element.state = PrivateCacheState::DirtyExclusive;
+                        }
+                        PrivateCacheState::CleanExclusive => {}
+                        PrivateCacheState::DirtyExclusive => {}
                     },
                 }
             } else {
@@ -113,10 +125,10 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             Some(previous_ts) => {
                 if *previous_ts > ts {
                     // the eviction happens earlier than the access.
-                    return false;
+                    return true;
                 } else {
                     // the eviction happens later than the access. We treat it as hit.
-                    return true;
+                    return false;
                 }
             }
             None => {
@@ -148,7 +160,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         is_store: bool,
         is_instruction_fetch: bool,
     ) -> bool {
-        self.run_handle_invalidation();
+        self.handle_message();
         let hit_element = self.lines.iter_mut().find(|p| {
             return p.tag == block_id && p.state != PrivateCacheState::Invalid;
         });
@@ -233,8 +245,8 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
             match oldest_element {
                 Some(oldest_element) => {
                     // Here we need to be careful. In case we have order violation, we don't know the result of this cache hit / miss.
-                    // TODO: If the refill timestamp is smaller, we should increase the time of order violation and not to update the cache.
                     let res = oldest_element.clone();
+                    assert!(res.ts <= ts);
                     oldest_element.ts = ts;
                     oldest_element.tag = block_id;
                     oldest_element.state = state;
@@ -256,7 +268,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     }
 
     pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
-        self.invalidation_fifo.push(block_id, ts, message_type);
+        self.invalidation_fifo.push((block_id, ts, message_type));
     }
 
     pub fn clean_expired_eviction(&mut self) {
@@ -302,6 +314,35 @@ impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
     pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
         let set_id = block_id as usize % SET;
         self.cache[set_id].send_message(block_id, ts, message_type);
+    }
+
+    // This function is only for testing.
+    pub fn contains_block(&mut self, block_id: u64) -> bool {
+        let set_id = block_id as usize % SET;
+        let set = &mut self.cache[set_id];
+        // It has to handle the invalidation message.
+        set.handle_message();
+        return set
+            .lines
+            .iter()
+            .any(|p| p.tag == block_id && p.state != PrivateCacheState::Invalid);
+    }
+
+    // This function is only for testing.
+    pub fn get_block_state(&mut self, block_id: u64) -> PrivateCacheState {
+        let set_id = block_id as usize % SET;
+        let set = &mut self.cache[set_id];
+        // It has to handle the invalidation message.
+        set.handle_message();
+        let hit_element = set
+            .lines
+            .iter()
+            .find(|p| p.tag == block_id && p.state != PrivateCacheState::Invalid);
+        if let Some(hit_element) = hit_element {
+            return hit_element.state;
+        } else {
+            return PrivateCacheState::Invalid;
+        }
     }
 }
 

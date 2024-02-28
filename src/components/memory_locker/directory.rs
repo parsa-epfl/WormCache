@@ -1,11 +1,10 @@
-use std::sync::RwLock;
 use std::collections::HashMap;
+use std::sync::RwLock;
 
 use bitvec::prelude::*;
 use bitvec::BitArr;
 
 pub type SharerList = BitArr!(for crate::parameter::CORE_COUNT, in u64, Lsb0);
-
 
 // pub struct DirectoryEntry {
 //     owner: Option<CoreId>,
@@ -20,7 +19,6 @@ pub struct DirectoryEntry {
 pub struct DirectorySet {
     entries: HashMap<u64, DirectoryEntry>,
 }
-
 
 impl DirectorySet {
     pub fn new() -> Self {
@@ -53,25 +51,24 @@ impl DirectorySet {
             if incoming_sharer.count_ones() == 0 {
                 return SharerList::ZERO;
             }
-            self.entries.insert(block_id, DirectoryEntry {
-                ts,
-                sharers: incoming_sharer,
-            });
+            self.entries.insert(
+                block_id,
+                DirectoryEntry {
+                    ts,
+                    sharers: incoming_sharer,
+                },
+            );
             return SharerList::ZERO;
         }
     }
 }
 
 // Probably the Directory should be infinitely sized.
-pub struct Directory <
-    const SET: usize,
-> {
+pub struct Directory<const SET: usize> {
     entries: [RwLock<DirectorySet>; SET], // map :: block_id -> DirectoryEntry
 }
 
-impl <
-    const SET: usize,
-> Directory <SET> {
+impl<const SET: usize> Directory<SET> {
     pub fn new() -> Self {
         Self {
             entries: std::array::from_fn(|_| RwLock::new(DirectorySet::new())),

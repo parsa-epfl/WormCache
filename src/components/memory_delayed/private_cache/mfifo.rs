@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub enum MessageType {
     Invalidate,
     CreateSharer,
+    MakeExclusive,
 }
 
 #[derive(Debug)]
@@ -62,7 +63,6 @@ impl<const SIZE: usize> FIFO<SIZE> {
         return self.read_pointer == self.write_pointer.load(Ordering::Relaxed);
     }
 }
-
 
 #[cfg(test)]
 mod tests {

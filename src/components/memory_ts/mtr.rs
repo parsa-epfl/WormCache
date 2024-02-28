@@ -307,11 +307,7 @@ impl<const S: usize> MemoryTimestampRecordCollection<S> {
         }
     }
 
-    pub fn absorb_invalid_history(
-        &mut self,
-        core_id: CoreId,
-        invalid_list: &HashMap<u64, usize>,
-    ) {
+    pub fn absorb_invalid_history(&mut self, core_id: CoreId, invalid_list: &HashMap<u64, usize>) {
         // This function will absorb the invalid list from the private cache.
         for (block_id, ts) in invalid_list.iter() {
             let set_number = (*block_id as usize) % S;

@@ -1,11 +1,11 @@
 use std::collections::{BinaryHeap, HashMap};
 
-use super::mtr::MemoryTimestampRecordCollection;
-use super::TimestampSingleCoreMemoryHierarchy;
 use super::checkpoint::ts_checkpoint::{LRUPrioritizing, TsCacheBlock};
 use super::checkpoint::{
     CacheBlock, CacheBlockState, MemoryHierarchyCheckPoint, PrivateCacheParameters, SerializedCache,
 };
+use super::mtr::MemoryTimestampRecordCollection;
+use super::TimestampSingleCoreMemoryHierarchy;
 
 use super::mmu::AbstractMMU;
 
@@ -33,7 +33,7 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
             // hierarchies: Box::new([TimestampSingleCoreMemoryHierarchy::new(); crate::CORE_COUNT]),
             hierarchies: Vec::from_iter(
                 (0..core_count).map(|_| TimestampSingleCoreMemoryHierarchy::new()),
-            )
+            ),
         };
     }
 
@@ -85,8 +85,12 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
                                     d: CacheBlock {
                                         block_id,
                                         state: match status {
-                                            super::TimestampCacheLineStatus::Invalid => unreachable!(),
-                                            super::TimestampCacheLineStatus::DirtyData => CacheBlockState::ModifiedExclusive,
+                                            super::TimestampCacheLineStatus::Invalid => {
+                                                unreachable!()
+                                            }
+                                            super::TimestampCacheLineStatus::DirtyData => {
+                                                CacheBlockState::ModifiedExclusive
+                                            }
                                             _ => CacheBlockState::CleanExclusive,
                                         },
                                         in_instruction_cache: status.is_instruction(),
@@ -113,7 +117,10 @@ impl<MMU: AbstractMMU, const P_A: usize, const P_S: usize, const S_A: usize, con
             })
             .collect();
 
-        return merging_sets.into_iter().map(|x| x.get_top_k(crate::parameter::SHARED_CACHE_ASSO).export()).collect();
+        return merging_sets
+            .into_iter()
+            .map(|x| x.get_top_k(crate::parameter::SHARED_CACHE_ASSO).export())
+            .collect();
     }
 
     pub fn render_cache_hierarchy<const S: usize>(

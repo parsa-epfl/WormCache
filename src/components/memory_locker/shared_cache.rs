@@ -157,8 +157,12 @@ fn benchmark_shared_cache() {
 
     // generate 1e6 random block ids for access.
     let mut rng = rand::thread_rng();
-    let block_ids = (0..1e6 as u64).map(|_| rng.gen::<u64>()).collect::<Vec<_>>();
-    let is_allocated = (0..1e6 as u64).map(|_| rng.gen::<bool>()).collect::<Vec<_>>();
+    let block_ids = (0..1e6 as u64)
+        .map(|_| rng.gen::<u64>())
+        .collect::<Vec<_>>();
+    let is_allocated = (0..1e6 as u64)
+        .map(|_| rng.gen::<bool>())
+        .collect::<Vec<_>>();
 
     // get the current time
     let start = std::time::Instant::now();

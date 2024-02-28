@@ -28,11 +28,17 @@ impl PerCoreStatistics {
             self.total_mem.load(Ordering::Relaxed),
             self.private_cache_miss.load(Ordering::Relaxed),
             self.shared_cache_access.load(Ordering::Relaxed),
-            (self.private_cache_miss.load(Ordering::Relaxed) as f64 / self.total_mem.load(Ordering::Relaxed) as f64) * 100.0,
-            (self.shared_cache_access.load(Ordering::Relaxed) as f64 / self.total_mem.load(Ordering::Relaxed) as f64) * 100.0,
+            (self.private_cache_miss.load(Ordering::Relaxed) as f64
+                / self.total_mem.load(Ordering::Relaxed) as f64)
+                * 100.0,
+            (self.shared_cache_access.load(Ordering::Relaxed) as f64
+                / self.total_mem.load(Ordering::Relaxed) as f64)
+                * 100.0,
             self.tlb_access.load(Ordering::Relaxed),
             self.tlb_miss.load(Ordering::Relaxed),
-            (self.tlb_miss.load(Ordering::Relaxed) as f64 / self.tlb_access.load(Ordering::Relaxed) as f64) * 100.0,
+            (self.tlb_miss.load(Ordering::Relaxed) as f64
+                / self.tlb_access.load(Ordering::Relaxed) as f64)
+                * 100.0,
         );
     }
 }

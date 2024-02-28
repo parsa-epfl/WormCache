@@ -49,7 +49,5 @@ impl super::Plugin for MarkerPlugin {
         }
     }
 
-    fn dump_snapshot() {
-        
-    }
+    fn dump_snapshot() {}
 }

@@ -2,7 +2,6 @@
  * This module defines the private LLC used for per-core LLC warmup.
  * It contains two information for each block: the timestamp, and the dirty bits
  */
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone)]
@@ -69,22 +68,12 @@ impl<const A: usize, const S: usize> TimestampCache<A, S> {
         return res;
     }
 
-    pub fn peek(
-        &mut self,
-        block_id: u64,
-        is_instruction: bool,
-        is_write: bool,
-        ts: usize,
-    ) -> bool {
+    pub fn peek(&mut self, block_id: u64, is_instruction: bool, is_write: bool, ts: usize) -> bool {
         let set_number = block_id as usize & (S - 1);
         return self.sets[set_number].peek(block_id, ts, is_instruction, is_write);
     }
 
-
-    pub fn invalid(
-        &mut self,
-        block_id: u64
-    ) -> super::CacheFlushResult {
+    pub fn invalid(&mut self, block_id: u64) -> super::CacheFlushResult {
         let set_number = block_id as usize & (S - 1);
         return self.sets[set_number].invalid(block_id);
     }

@@ -1,5 +1,5 @@
-use dashmap::DashMap;
 use dashmap::mapref::one::RefMut;
+use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -44,7 +44,7 @@ impl Directory {
                     },
                 );
                 self.entries.get_mut(&block_id).unwrap()
-            },
+            }
         }
     }
 

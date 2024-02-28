@@ -69,7 +69,8 @@ fn main() {
 
     let core_count: usize = args[1].parse().unwrap();
 
-    let mut mh = TimestampMemoryHierarchy::<NoMMU, { P_A }, { P_S }, { S_A }, { S_S }>::new(core_count);
+    let mut mh =
+        TimestampMemoryHierarchy::<NoMMU, { P_A }, { P_S }, { S_A }, { S_S }>::new(core_count);
 
     // read the trace file.
     let file = File::open(&args[2]).unwrap();

@@ -1,21 +1,21 @@
-pub mod parameter;
 pub mod arch;
+pub mod parameter;
 
 pub mod components;
 mod qemu_api;
 mod util;
 
 // Plugin
-use components::memory_ts::TimeStampedMemoryPlugin;
-use components::trace::TracePlugin;
-use components::virtual_time::VirtualTimePlugin;
-use components::marker::MarkerPlugin;
-use components::touch_once::TouchOnePlugin;
-use components::pw_log::PageWalkLoggerPlugin;
 use components::bp::BranchPredictorPlugin;
+use components::marker::MarkerPlugin;
+use components::memory_delayed::DelayedMemoryPlugin;
 use components::memory_locker::LockedMemoryPlugin;
 use components::memory_mtr_recording::MTRMemoryPlugin;
-use components::memory_delayed::DelayedMemoryPlugin;
+use components::memory_ts::TimeStampedMemoryPlugin;
+use components::pw_log::PageWalkLoggerPlugin;
+use components::touch_once::TouchOnePlugin;
+use components::trace::TracePlugin;
+use components::virtual_time::VirtualTimePlugin;
 
 use parameter::PluginList;
 
