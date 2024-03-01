@@ -7,17 +7,11 @@ use std::collections::btree_map::BTreeMap;
 use crate::util;
 
 #[derive(Debug)]
-// pub struct DirectoryEntry {
-//     pub last_writer: Option<(bool, u32, u64)>, // still_available?, core_id, ts
-//     pub readers: HashMap<u32, u64>,      // core_id, ts
-// }
-
 pub enum DirectoryEntry {
     DirtyExclusive(u32, u64), // core_id, ts. This point is different from Exclusive.
     CleanExclusive(u32, u64), // core_id, ts
     Shared(HashMap<u32, u64>), // core_id, ts
     Evicted(u64),             // ts, the last writer's timestamp.
-    Invalid,                  // Just created. Maybe it can be combined with `Evicted(0)`.
 }
 
 pub enum GetModifyResult {
@@ -40,6 +34,14 @@ pub enum DropResult {
 }
 
 impl DirectoryEntry {
+    pub fn new(is_store: bool, core_id: u32, ts: u64) -> Self {
+        if is_store {
+            DirectoryEntry::DirtyExclusive(core_id, ts)
+        } else {
+            DirectoryEntry::CleanExclusive(core_id, ts)
+        }
+    }
+
     pub fn get_modify(&mut self, core_id: u32, ts: u64, is_writing: bool) -> GetModifyResult {
         match self {
             DirectoryEntry::DirtyExclusive(owner, owner_ts) => {
@@ -113,15 +115,6 @@ impl DirectoryEntry {
                     GetModifyResult::Successful(vec![])
                 }
             }
-
-            DirectoryEntry::Invalid => {
-                *self = if is_writing {
-                    DirectoryEntry::DirtyExclusive(core_id, ts)
-                } else {
-                    DirectoryEntry::CleanExclusive(core_id, ts)
-                };
-                GetModifyResult::Successful(vec![])
-            }
         }
     }
 
@@ -165,11 +158,6 @@ impl DirectoryEntry {
                     *self = DirectoryEntry::CleanExclusive(core_id, ts);
                     GetReadResult::Exclusive
                 }
-            }
-
-            DirectoryEntry::Invalid => {
-                *self = DirectoryEntry::CleanExclusive(core_id, ts);
-                GetReadResult::Exclusive
             }
         };
     }
@@ -216,8 +204,15 @@ impl DirectoryEntry {
             }
 
             DirectoryEntry::Evicted(_) => DropResult::NoSharer,
+        };
+    }
 
-            DirectoryEntry::Invalid => DropResult::NoSharer,
+    pub fn is_active(&self) -> bool {
+        return match self {
+            DirectoryEntry::DirtyExclusive(_, _) => true,
+            DirectoryEntry::CleanExclusive(_, _) => true,
+            DirectoryEntry::Shared(_) => true,
+            DirectoryEntry::Evicted(_) => false,
         };
     }
 }
@@ -239,12 +234,63 @@ impl<const WAYS: usize> DirectorySet<WAYS> {
         }
     }
 
+    // pub fn valid(&self, block_id: u64) -> bool {
+    //     let internal_tag = block_id << 1 | 1;
+    //     return match self.entries.get(&internal_tag) {
+    //         Some(entry) => match entry {
+    //             DirectoryEntry::Evicted(_) => false,
+    //             _ => true,
+    //         },
+    //         None => false,
+    //     };
+    // }
+
     pub fn exists(&self, block_id: u64) -> bool {
         let internal_tag = block_id << 1 | 1;
-        // self.tags
-        //     .iter()
-        //     .any(|entry| (*entry) == internal_tag)
-        self.entries.contains_key(&internal_tag)
+        return self.entries.contains_key(&internal_tag);
+    }
+
+    pub fn evicted(&self, block_id: u64) -> bool {
+        let internal_tag = block_id << 1 | 1;
+        return match self.entries.get(&internal_tag) {
+            Some(entry) => match entry {
+                DirectoryEntry::Evicted(_) => true,
+                _ => false,
+            },
+            None => false,
+        };
+    }
+
+    pub fn create(
+        &mut self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_store: bool,
+    ) -> &mut DirectoryEntry {
+        let internal_tag = block_id << 1 | 1;
+
+        // return match self.entries.get_mut(&internal_tag) {
+        //     None => {
+        //         let entry = self.entries.entry(internal_tag).or_insert(DirectoryEntry::new(is_store, core_id, ts));
+        //         entry
+        //     },
+
+        //     Some(entry) => {
+        //         assert!(!entry.is_active());
+        //         *entry = DirectoryEntry::new(is_store, core_id, ts);
+        //         entry
+        //     },
+        // };
+
+        let entry = self
+            .entries
+            .insert(internal_tag, DirectoryEntry::new(is_store, core_id, ts));
+        if let Some(old_entry) = entry {
+            assert!(!old_entry.is_active());
+        }
+
+        return self.entries.get_mut(&internal_tag).unwrap();
     }
 
     pub fn get_mut(&mut self, block_id: u64) -> &mut DirectoryEntry {
@@ -257,21 +303,6 @@ impl<const WAYS: usize> DirectorySet<WAYS> {
         } else {
             panic!("No such entry found.")
         }
-    }
-
-    pub fn create(&mut self, block_id: u64) -> &mut DirectoryEntry {
-        // let invalid = self.tags.iter().enumerate().find(|entry| (*entry.1) == 0);
-
-        let internal_tag = block_id << 1 | 1;
-        self.entries.insert(internal_tag, DirectoryEntry::Invalid);
-        self.entries.get_mut(&internal_tag).unwrap()
-
-        // if let Some((index, _)) = invalid {
-        //     self.tags[index] = block_id << 1 | 1;
-        //     &mut self.entries[index]
-        // } else {
-        //     panic!("No invalid entry found.")
-        // }
     }
 
     pub fn invalidate(&mut self, block_id: u64) {

@@ -213,7 +213,7 @@ fn eae() {
     // Core 1 accesses the core at 10 and evict the block
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, true, false),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::MissInPrivateCache 
     );
 
     for i in 0..parameter::PRI_CACHE_ASSO {
@@ -254,7 +254,7 @@ fn wae() {
     // Core 1 writes to the block at 10.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, true, false),
-        CacheHierarchyAccessResult::MissInPrivateCache // it is a miss in the private cache, but not sure about the shared cache.
+        CacheHierarchyAccessResult::MissInPrivateCache 
     );
 
     // Now there should be nothing in the private cache.

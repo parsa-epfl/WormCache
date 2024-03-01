@@ -149,7 +149,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 
         let private_caches = &mut self.private_caches;
 
-        let private_cache = &private_caches[core_id as usize];
+        let private_cache = &self.private_caches[core_id as usize];
         let private_set = unsafe { (*private_cache.get()).get_set(block_id) };
 
         // first, we need to check the private cache.
@@ -171,7 +171,36 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         // let sharers = directory_entry_guard.sharers;
 
         // if the directory reports a miss, we need to access the last level cache as well, and add it.
-        if !directory_set_guard.exists(block_id) {
+        let not_exist = !directory_set_guard.exists(block_id);
+        let evicted = directory_set_guard.evicted(block_id);
+        if not_exist || evicted {
+            if evicted {
+                // Well, here we have to be serious.
+                let directory_entry_guard = directory_set_guard.get_mut(block_id);
+                if is_store {
+                    match directory_entry_guard.get_modify(core_id, ts, true) {
+                        super::replica_directory::GetModifyResult::Rejected => {
+                            // No need to continue.
+                            return CacheHierarchyAccessResult::MissInPrivateCache;
+                        }
+                        _ => {}
+                    }
+                } else {
+                    match directory_entry_guard.get_read(core_id, ts) {
+                        super::replica_directory::GetReadResult::Rejected => {
+                            // No need to continue as well.
+                            return CacheHierarchyAccessResult::MissInPrivateCache;
+                        }
+                        _ => {}
+                    }
+                };
+            } else {
+                // We just add a new entry.
+                directory_set_guard.create(core_id, block_id, ts, is_store);
+            }
+
+            // Now, we can get it from LLC.
+
             // NOTE: currently we ignore the LLC.
             let shared_cache_result = self.shared_cache.lookup(block_id);
 
@@ -190,14 +219,6 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
             // handle eviction now.
             if let Some(evicted_line) = evicted {
                 self.handle_eviction(&mut directory_set_guard, core_id, evicted_line.tag, ts);
-            }
-
-            let directory_entry_guard = directory_set_guard.create(block_id);
-
-            if is_store {
-                directory_entry_guard.get_modify(core_id, ts, true);
-            } else {
-                directory_entry_guard.get_read(core_id, ts);
             }
 
             if shared_cache_result {
@@ -349,4 +370,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 }
 
 #[cfg(test)]
-mod tests;
+mod reverse_order_tests;
+
+#[cfg(test)]
+mod debug_tests;
