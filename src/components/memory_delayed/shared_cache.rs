@@ -1,5 +1,7 @@
 use std::sync::Mutex;
 
+use crate::components::memory_delayed::cache_line_history::CacheLineCoherenceHistory;
+
 // There are two possible operations for an exclusive shared cache
 // 1. Empty to the cache, which means a write lock is required.
 // 2. Read from the cache, depending on the result:
@@ -41,7 +43,10 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
         });
 
         // it is definitely not be a hit, so we need to assert.
-        assert!(hit_block.is_none());
+        if !hit_block.is_none() {
+            CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap().print_history();
+            assert!(hit_block.is_none());
+        }
 
         // then, find the first invalid block.
         let invalid_block = blocks.iter_mut().find(|p| {

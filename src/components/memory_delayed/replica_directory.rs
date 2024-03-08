@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
+use super::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 use std::collections::btree_map::BTreeMap;
 
 use crate::util;
@@ -119,7 +120,7 @@ impl DirectoryEntry {
     }
 
     // Return whether a replica is generated.
-    pub fn get_read(&mut self, core_id: u32, ts: u64) -> GetReadResult {
+    pub fn get_read(&mut self, core_id: u32, ts: u64, block_id: u64) -> GetReadResult {
         return match self {
             DirectoryEntry::DirtyExclusive(owner, owner_ts) => {
                 if *owner != core_id && *owner_ts < ts {
@@ -130,7 +131,12 @@ impl DirectoryEntry {
                     *self = DirectoryEntry::Shared(sharers);
                     GetReadResult::SuccessfulWithMessage(original_owner)
                 } else {
-                    assert!(core_id != *owner);
+                    if core_id == *owner {
+                        CacheLineCoherenceHistory::global_get_block_history(block_id)
+                            .unwrap()
+                            .print_history();
+                        assert!(core_id != *owner);
+                    }
                     GetReadResult::Rejected
                 }
             }

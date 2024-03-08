@@ -33,3 +33,21 @@ fn read_evict_and_other_core_read_back() {
         CacheHierarchyAccessResult::HitInSharedCache
     );
 }
+
+#[test]
+fn one_core_write_first_then_read() {
+    let mut mh = MH::new();
+    let block_id = 1043;
+
+    // core 0 reads a data at timestamp 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Then, core 0 writes the data at timestamp 20.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+}
