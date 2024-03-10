@@ -61,6 +61,15 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
 pub const SHARED_CACHE_SET: usize = 1024 * 1024; // 1GB shared cache.
 
 /**
+ * SHARED_CACHE_EXCLUSIVE
+ * 
+ * Whether the shared cache is exclusive.
+ * True if it is exclusive, false if it is non-inclusive. 
+ * Currently, we don't support inclusive shared cache.
+ */
+pub const SHARED_CACHE_EXCLUSIVE: bool = true;
+
+/**
  * BP_GSHARE_SET
  *
  * The number of sets of the gshare branch predictor.

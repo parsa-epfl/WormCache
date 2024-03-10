@@ -28,9 +28,10 @@ pub struct DelayedMemoryHierarchy<MMU: AbstractMMU> {
         { parameter::PRI_CACHE_ASSO * parameter::CORE_COUNT },
     >,
 
-    shared_cache: shared_cache::ExclusiveSharedCache<
+    shared_cache: shared_cache::SharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE }
     >,
 
     per_core_statistics: [statistics::PerCoreStatistics; parameter::CORE_COUNT],
@@ -59,7 +60,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                 UnsafeCell::new(private_cache::PrivateCache::new())
             }),
             directory: ReplicaDirectory::new(),
-            shared_cache: shared_cache::ExclusiveSharedCache::new(),
+            shared_cache: shared_cache::SharedCache::new(),
             per_core_statistics: std::array::from_fn(|_| statistics::PerCoreStatistics::new()),
         }
     }
