@@ -44,7 +44,9 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
 
         // it is definitely not be a hit, so we need to assert.
         if !hit_block.is_none() {
-            CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap().print_history();
+            CacheLineCoherenceHistory::global_get_block_history(block_id)
+                .unwrap()
+                .print_history();
             assert!(hit_block.is_none());
         }
 

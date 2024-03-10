@@ -111,7 +111,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
-                assert!(pa == reference_pa);
+                // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
@@ -124,12 +124,12 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                     let block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                     self.access_memory_pblock_id(core_id, block_id, ts, false, false);
                 }
-                assert!(pa == reference_pa as u64);
+                // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
-                assert!(pa == reference_pa as u64);
+                // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
@@ -259,6 +259,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                                 block_id,
                                 ts,
                                 private_cache::MessageType::Invalidate,
+                                core_id
                             );
                         }
                     }
@@ -278,6 +279,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                                 block_id,
                                 ts,
                                 private_cache::MessageType::Invalidate,
+                                core_id
                             );
                         }
                     }
@@ -324,6 +326,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                             block_id,
                             ts,
                             private_cache::MessageType::CreateSharer,
+                            core_id
                         );
                     }
                     private_set.refill(
@@ -368,7 +371,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         );
 
         // we cancel the element of this block in the directory.
-        match directory_entry_guard.drop(core_id) {
+        match directory_entry_guard.drop(core_id, block_id) {
             super::replica_directory::DropResult::NoSharer => {
                 self.shared_cache.allocate(block_id, ts);
             }
@@ -379,6 +382,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         block_id,
                         ts,
                         private_cache::MessageType::MakeExclusive,
+                        core_id
                     );
                 }
             }

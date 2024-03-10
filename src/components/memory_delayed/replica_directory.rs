@@ -169,7 +169,7 @@ impl DirectoryEntry {
     }
 
     // Return whether there are still sharers left.
-    pub fn drop(&mut self, core_id: u32) -> DropResult {
+    pub fn drop(&mut self, core_id: u32, block_id: u64) -> DropResult {
         return match self {
             DirectoryEntry::DirtyExclusive(owner, owner_ts) => {
                 if *owner == core_id {
@@ -185,6 +185,9 @@ impl DirectoryEntry {
                     *self = DirectoryEntry::Evicted(*owner_ts);
                     DropResult::NoSharer
                 } else {
+                    CacheLineCoherenceHistory::global_get_block_history(block_id)
+                        .unwrap()
+                        .print_history();
                     panic!("It is impossible to issue evict a block that is not in the directory.");
                 }
             }

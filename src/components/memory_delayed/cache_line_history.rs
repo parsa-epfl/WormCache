@@ -55,7 +55,6 @@ impl SingleCacheLineCoherenceHistory {
                 );
             }
         }
-
     }
 }
 

@@ -97,10 +97,9 @@ pub struct PluginList {
 
 pub const ENABLE_STATISTICS: bool = false;
 
-
 /**
  * Whether to enable the cache line history.
- * 
+ *
  * This is used to record the cache line coherence history so that you can debug the cache coherence protocol.
  */
 pub const ENABLE_CACHE_LINE_HISTORY: bool = true;
