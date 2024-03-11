@@ -138,6 +138,36 @@ fn raw_and_war() {
     assert_eq!(sharers[&1], PrivateCacheState::CleanShared);
 }
 
+// FIXME: I found a bug here. When a core first gets exclusive permission, and then write it, it does not trigger miss and update the directory.
+#[test]
+fn rarw() {
+    let mut mh = MH::new();
+
+    let block_id = 1024;
+    // Core 0 gets a read permission at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 10, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+    // Core 0 get a write permission at 20.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 20, false, false),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+
+    // Core 1 get a read permission at 0.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 0, false, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+
+    // Now, core 1 should have invalid the cache.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 1);
+    assert_eq!(sharers[&1], PrivateCacheState::DirtyExclusive);
+
+}
+
 #[test]
 fn waw() {
     let mut mh = MH::new();
