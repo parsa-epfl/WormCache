@@ -33,7 +33,48 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET,
         }
     }
 
-    pub fn allocate(&self, block_id: u64, ts: u64) {
+    pub fn invalidate(&self, block_id: u64) -> bool {
+        let set_id = (block_id % SET as u64) as usize;
+        let mut blocks = self.blocks[set_id].lock().unwrap();
+
+        // first of all, find whether this block is a hit.
+        let hit_block = blocks.iter_mut().find(|p| {
+            return p.valid && p.tag == block_id;
+        });
+
+        // if it is a hit, we remove this block from the cache
+        if let Some(hit_block) = hit_block {
+            hit_block.valid = false;
+            return true;
+        }
+
+        // otherwise, it is a miss.
+        return false;
+    }
+}
+
+// The lookup function for exclusive shared cache.
+impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, true> {
+    pub fn lookup(&self, block_id: u64) -> bool {
+        let set_id = (block_id % SET as u64) as usize;
+        let mut blocks = self.blocks[set_id].lock().unwrap();
+
+        // first of all, find whether this block is a hit.
+        let hit_block = blocks.iter_mut().find(|p| {
+            return p.valid && p.tag == block_id;
+        });
+
+        // if it is a hit, we remove this block from the cache
+        if let Some(hit_block) = hit_block {
+            hit_block.valid = false;
+            return true;
+        }
+
+        // otherwise, it is a miss.
+        return false;
+    }
+
+    pub fn write_back(&self, block_id: u64, ts: u64) {
         let set_id = (block_id % SET as u64) as usize;
         let mut blocks = self.blocks[set_id].lock().unwrap();
 
@@ -82,47 +123,6 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET,
         oldest_block.tag = block_id;
         oldest_block.ts = ts;
     }
-
-    pub fn invalidate(&self, block_id: u64) -> bool {
-        let set_id = (block_id % SET as u64) as usize;
-        let mut blocks = self.blocks[set_id].lock().unwrap();
-
-        // first of all, find whether this block is a hit.
-        let hit_block = blocks.iter_mut().find(|p| {
-            return p.valid && p.tag == block_id;
-        });
-
-        // if it is a hit, we remove this block from the cache
-        if let Some(hit_block) = hit_block {
-            hit_block.valid = false;
-            return true;
-        }
-
-        // otherwise, it is a miss.
-        return false;
-    }
-}
-
-// The lookup function for exclusive shared cache.
-impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, true> {
-    pub fn lookup(&self, block_id: u64) -> bool {
-        let set_id = (block_id % SET as u64) as usize;
-        let mut blocks = self.blocks[set_id].lock().unwrap();
-
-        // first of all, find whether this block is a hit.
-        let hit_block = blocks.iter_mut().find(|p| {
-            return p.valid && p.tag == block_id;
-        });
-
-        // if it is a hit, we remove this block from the cache
-        if let Some(hit_block) = hit_block {
-            hit_block.valid = false;
-            return true;
-        }
-
-        // otherwise, it is a miss.
-        return false;
-    }
 }
 
 // The lookup function for non-inclusive shared cache.
@@ -138,5 +138,53 @@ impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, false> {
 
         // if it is a hit, we remove this block from the cache
         return hit_block.is_some();
+    }
+
+    pub fn write_back(&self, block_id: u64, ts: u64) {
+        let set_id = (block_id % SET as u64) as usize;
+        let mut blocks = self.blocks[set_id].lock().unwrap();
+
+        // first of all, find whether this block is a hit.
+        let hit_block = blocks.iter_mut().find(|p| {
+            return p.valid && p.tag == block_id;
+        });
+
+        // If there is a hit, we need to update the block.
+        if let Some(hit_block) = hit_block {
+            hit_block.ts = ts;
+            return;
+        }
+
+        // then, find the first invalid block.
+        let invalid_block = blocks.iter_mut().find(|p| {
+            return !p.valid;
+        });
+
+        // if there is an invalid block, we replace that block.
+        if let Some(invalid_block) = invalid_block {
+            invalid_block.valid = true;
+            invalid_block.tag = block_id;
+            invalid_block.ts = ts;
+            return;
+        }
+
+        // otherwise, we need to find the oldest block.
+        let oldest_block = blocks
+            .iter_mut()
+            .min_by_key(|p| {
+                return p.ts;
+            })
+            .unwrap();
+
+        // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
+        if oldest_block.ts > ts {
+            println!("Warning: the incoming block has smaller timestamp than the oldest block in the shared cache.");
+            return;
+        }
+
+        // otherwise, we replace the oldest block.
+        oldest_block.valid = true;
+        oldest_block.tag = block_id;
+        oldest_block.ts = ts;
     }
 }

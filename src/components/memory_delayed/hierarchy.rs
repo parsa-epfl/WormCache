@@ -374,7 +374,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         // we cancel the element of this block in the directory.
         match directory_entry_guard.drop(core_id, block_id) {
             super::replica_directory::DropResult::NoSharer => {
-                self.shared_cache.allocate(block_id, ts);
+                self.shared_cache.write_back(block_id, ts);
             }
             super::replica_directory::DropResult::NewExclusive(owner) => {
                 // send a message to the owner to make it exclusive.
