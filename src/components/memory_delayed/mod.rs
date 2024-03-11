@@ -18,7 +18,6 @@ mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
 pub mod statistics;
-mod coherence_protocol;
 
 static mut PLUGIN: Lazy<hierarchy::PluginDelayedMemoryHierarchy> =
     Lazy::new(|| hierarchy::PluginDelayedMemoryHierarchy::new());
