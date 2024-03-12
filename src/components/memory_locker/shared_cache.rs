@@ -1,9 +1,6 @@
-use std::io::prelude::*;
 use std::sync::Mutex;
 
-use rand::Rng;
-
-use crate::components::memory_locker::get_memory_ts;
+use crate::components::memory_delayed::cache_line_history::CacheLineCoherenceHistory;
 
 // There are two possible operations for an exclusive shared cache
 // 1. Empty to the cache, which means a write lock is required.
@@ -19,53 +16,83 @@ pub struct SharedCacheBlock {
     pub ts: u64,
 }
 
-#[derive(Debug)]
-#[repr(align(64))]
-pub struct SharedCacheSet<const WAY: usize> {
-    pub blocks: [SharedCacheBlock; WAY],
-    pub access_counter: u64,
+pub struct SharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
+    blocks: Box<[Mutex<[SharedCacheBlock; WAY]>; SET]>,
 }
 
-impl<const WAY: usize> SharedCacheSet<WAY> {
+impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET, WAY, EXCLUSIVE> {
     pub fn new() -> Self {
         Self {
-            blocks: std::array::from_fn(|_| SharedCacheBlock {
-                valid: false,
-                tag: 0,
-                ts: 0,
+            blocks: crate::util::init_heap_array(|_| {
+                Mutex::new(std::array::from_fn(|_| SharedCacheBlock {
+                    valid: false,
+                    tag: 0,
+                    ts: 0,
+                }))
             }),
-            access_counter: 0,
-        }
-    }
-}
-
-pub struct ExclusiveSharedCache<const SET: usize, const WAY: usize> {
-    blocks: Box<[Mutex<SharedCacheSet<WAY>>; SET]>,
-}
-
-impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
-    pub fn new() -> Self {
-        Self {
-            blocks: crate::util::init_heap_array(|_| Mutex::new(SharedCacheSet::new())),
         }
     }
 
-    pub fn allocate(&self, block_id: u64, ts: u64) {
+    pub fn invalidate(&self, block_id: u64) -> bool {
         let set_id = (block_id % SET as u64) as usize;
         let mut blocks = self.blocks[set_id].lock().unwrap();
 
-        blocks.access_counter += 1;
+        // first of all, find whether this block is a hit.
+        let hit_block = blocks.iter_mut().find(|p| {
+            return p.valid && p.tag == block_id;
+        });
+
+        // if it is a hit, we remove this block from the cache
+        if let Some(hit_block) = hit_block {
+            hit_block.valid = false;
+            return true;
+        }
+
+        // otherwise, it is a miss.
+        return false;
+    }
+}
+
+// The lookup function for exclusive shared cache.
+impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, true> {
+    pub fn lookup(&self, block_id: u64) -> bool {
+        let set_id = (block_id % SET as u64) as usize;
+        let mut blocks = self.blocks[set_id].lock().unwrap();
 
         // first of all, find whether this block is a hit.
-        let hit_block = blocks.blocks.iter_mut().find(|p| {
+        let hit_block = blocks.iter_mut().find(|p| {
+            return p.valid && p.tag == block_id;
+        });
+
+        // if it is a hit, we remove this block from the cache
+        if let Some(hit_block) = hit_block {
+            hit_block.valid = false;
+            return true;
+        }
+
+        // otherwise, it is a miss.
+        return false;
+    }
+
+    pub fn write_back(&self, block_id: u64, ts: u64) {
+        let set_id = (block_id % SET as u64) as usize;
+        let mut blocks = self.blocks[set_id].lock().unwrap();
+
+        // first of all, find whether this block is a hit.
+        let hit_block = blocks.iter_mut().find(|p| {
             return p.valid && p.tag == block_id;
         });
 
         // it is definitely not be a hit, so we need to assert.
-        assert!(hit_block.is_none());
+        if !hit_block.is_none() {
+            CacheLineCoherenceHistory::global_get_block_history(block_id)
+                .unwrap()
+                .print_history();
+            assert!(hit_block.is_none());
+        }
 
         // then, find the first invalid block.
-        let invalid_block = blocks.blocks.iter_mut().find(|p| {
+        let invalid_block = blocks.iter_mut().find(|p| {
             return !p.valid;
         });
 
@@ -79,7 +106,6 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
 
         // otherwise, we need to find the oldest block.
         let oldest_block = blocks
-            .blocks
             .iter_mut()
             .min_by_key(|p| {
                 return p.ts;
@@ -97,89 +123,68 @@ impl<const SET: usize, const WAY: usize> ExclusiveSharedCache<SET, WAY> {
         oldest_block.tag = block_id;
         oldest_block.ts = ts;
     }
+}
 
+// The lookup function for non-inclusive shared cache.
+impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, false> {
     pub fn lookup(&self, block_id: u64) -> bool {
         let set_id = (block_id % SET as u64) as usize;
         let mut blocks = self.blocks[set_id].lock().unwrap();
 
-        blocks.access_counter += 1;
-
         // first of all, find whether this block is a hit.
-        let hit_block = blocks.blocks.iter_mut().find(|p| {
+        let hit_block = blocks.iter_mut().find(|p| {
             return p.valid && p.tag == block_id;
         });
 
         // if it is a hit, we remove this block from the cache
-        if let Some(hit_block) = hit_block {
-            hit_block.valid = false;
-            return true;
-        }
-
-        // otherwise, it is a miss.
-        return false;
+        return hit_block.is_some();
     }
 
-    pub fn invalidate(&self, block_id: u64) -> bool {
+    pub fn write_back(&self, block_id: u64, ts: u64) {
         let set_id = (block_id % SET as u64) as usize;
         let mut blocks = self.blocks[set_id].lock().unwrap();
 
         // first of all, find whether this block is a hit.
-        let hit_block = blocks.blocks.iter_mut().find(|p| {
+        let hit_block = blocks.iter_mut().find(|p| {
             return p.valid && p.tag == block_id;
         });
 
-        // if it is a hit, we remove this block from the cache
+        // If there is a hit, we need to update the block.
         if let Some(hit_block) = hit_block {
-            hit_block.valid = false;
-            return true;
+            hit_block.ts = ts;
+            return;
         }
 
-        // otherwise, it is a miss.
-        return false;
-    }
+        // then, find the first invalid block.
+        let invalid_block = blocks.iter_mut().find(|p| {
+            return !p.valid;
+        });
 
-    pub fn dump_access_counter(&self) {
-        // write the access counter of each set to a file. Each set takes a line.
-        let mut file = std::fs::File::create("access_counter.txt").unwrap();
-        for set in self.blocks.iter() {
-            let set = set.lock().unwrap();
-            writeln!(file, "{}", set.access_counter).unwrap();
+        // if there is an invalid block, we replace that block.
+        if let Some(invalid_block) = invalid_block {
+            invalid_block.valid = true;
+            invalid_block.tag = block_id;
+            invalid_block.ts = ts;
+            return;
         }
-    }
-}
 
-#[test]
-fn benchmark_shared_cache() {
-    let c = ExclusiveSharedCache::<
-        { crate::parameter::SHARED_CACHE_SET },
-        { crate::parameter::SHARED_CACHE_ASSO },
-    >::new();
+        // otherwise, we need to find the oldest block.
+        let oldest_block = blocks
+            .iter_mut()
+            .min_by_key(|p| {
+                return p.ts;
+            })
+            .unwrap();
 
-    // generate 1e6 random block ids for access.
-    let mut rng = rand::thread_rng();
-    let block_ids = (0..1e6 as u64)
-        .map(|_| rng.gen::<u64>())
-        .collect::<Vec<_>>();
-    let is_allocated = (0..1e6 as u64)
-        .map(|_| rng.gen::<bool>())
-        .collect::<Vec<_>>();
-
-    // get the current time
-    let start = std::time::Instant::now();
-    // start the benchmark
-    for i in 0..1e6 as usize {
-        let block_id = block_ids[i];
-        let allocated = is_allocated[i];
-        if allocated {
-            c.allocate(block_id, get_memory_ts() as u64);
-        } else {
-            c.lookup(block_id);
+        // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
+        if oldest_block.ts > ts {
+            println!("Warning: the incoming block has smaller timestamp than the oldest block in the shared cache.");
+            return;
         }
+
+        // otherwise, we replace the oldest block.
+        oldest_block.valid = true;
+        oldest_block.tag = block_id;
+        oldest_block.ts = ts;
     }
-
-    // get the elapsed time
-    let elapsed = start.elapsed();
-
-    // print the elapsed time
-    println!("Elapsed: {:?}", elapsed);
 }
