@@ -15,6 +15,8 @@ use crate::{
 };
 use std::ffi;
 
+use super::debug::statistics::Statistics;
+
 mod dashmap_directory;
 pub mod directory;
 mod hierarchy;
@@ -99,11 +101,12 @@ impl super::Plugin for LockedMemoryPlugin {
         if ENABLE_STATISTICS {
             // open a csv file and dump each cores' statistics.
             let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
-            file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio,tlb_access,tlb_miss,tlb_miss_ratio\n")
-            .unwrap();
-            for i in 0..crate::parameter::CORE_COUNT {
-                let stats = unsafe { PLUGIN.get_statistics(i as u32) };
-                file.write(stats.as_bytes()).unwrap();
+
+            file.write_fmt(format_args!("{}\n", Statistics::get_header()))
+                .unwrap();
+
+            for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
+                file.write(stat.as_bytes()).unwrap();
                 file.write(b"\n").unwrap();
             }
         }

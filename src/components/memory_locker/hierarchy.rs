@@ -8,7 +8,7 @@ use crate::components::debug::statistics::{EventType, Statistics};
 use super::{dashmap_directory, private_cache, shared_cache, statistics};
 
 use crate::components::mmu::AbstractMMU;
-use std::{cell::UnsafeCell, sync::atomic::Ordering};
+use std::cell::UnsafeCell;
 
 mod debug_tests;
 mod reverse_order_tests;
@@ -29,8 +29,6 @@ pub struct LockedMemoryHierarchy<MMU: AbstractMMU> {
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
-
-    per_core_statistics: [UnsafeCell<statistics::PerCoreStatistics>; parameter::CORE_COUNT], // TODO: peel off this part to a global variable.
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -49,9 +47,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
             private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
             directory: dashmap_directory::Directory::new(),
             shared_cache: shared_cache::SharedCache::new(),
-            per_core_statistics: std::array::from_fn(|_| {
-                UnsafeCell::new(statistics::PerCoreStatistics::new())
-            }),
         }
     }
 
@@ -151,9 +146,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         is_store: bool,
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
-        // STATISTICS: Total Memory Access
-        let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
-
         Statistics::global_record(core_id, EventType::MemoryAccess);
 
         let private_cache = &self.private_caches[core_id as usize];
@@ -367,10 +359,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
     }
 
     pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64, modified: bool) {
-        // before calling this function, make sure we don't have any locks of the directory or the shared cache.
-
-        let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
-
         // first, we need to check the directory.
         let mut directory_set = self.directory.get_or_create(block_id); // Thread 5
 
@@ -412,16 +400,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         } else {
             drop(directory_set);
         }
-    }
-
-    pub fn get_statistics(&self, core_id: u32) -> String {
-        return unsafe {
-            self.per_core_statistics[core_id as usize]
-                .get()
-                .as_ref()
-                .unwrap()
-                .being_printed(core_id)
-        };
     }
 
     pub fn dump_access_counter(&self) {
