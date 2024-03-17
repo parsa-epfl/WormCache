@@ -196,6 +196,24 @@ impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
         let set_id = block_id as usize % SET;
         return &self.cache[set_id];
     }
+
+    // Interface for testing.
+    pub fn contains_block(&self, block_id: u64) -> bool {
+        let set_id = block_id as usize % SET;
+        let set = self.cache[set_id].read().unwrap();
+        return set.poke(block_id).is_some();
+    }
+
+    pub fn is_block_modified(&self, block_id: u64) -> bool {
+        let set_id = block_id as usize % SET;
+        let set = self.cache[set_id].read().unwrap();
+        let line = set.poke(block_id);
+        if let Some(line) = line {
+            return line.modified;
+        } else {
+            return false;
+        }
+    }
 }
 
 // There might be another way to design the private cache.

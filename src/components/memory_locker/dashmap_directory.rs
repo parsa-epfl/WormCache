@@ -16,7 +16,7 @@ pub type SharerList = BitArr!(for crate::parameter::CORE_COUNT, in u64, Lsb0);
 pub struct DirectoryEntry {
     pub ts: u64,
     pub sharers: SharerList,
-    pub modify_ts_before_eviction: Option<u64> // This field is to avoid the eviction causes the write history to be lost.
+    pub modify_ts_before_eviction: u64, // This field is to avoid the eviction causes the write history to be lost.
 }
 
 // Probably the Directory should be infinitely sized.
@@ -42,7 +42,7 @@ impl Directory {
                     DirectoryEntry {
                         ts: 0,
                         sharers: SharerList::ZERO,
-                        modify_ts_before_eviction: None,
+                        modify_ts_before_eviction: 0, // zero is a good initialize value, because all timestamp must not be 0.
                     },
                 );
                 self.entries.get_mut(&block_id).unwrap()

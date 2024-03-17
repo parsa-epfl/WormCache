@@ -31,7 +31,7 @@ pub struct DelayedMemoryHierarchy<MMU: AbstractMMU> {
     shared_cache: shared_cache::SharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE }
+        { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 
     per_core_statistics: [statistics::PerCoreStatistics; parameter::CORE_COUNT],
@@ -260,7 +260,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                                 block_id,
                                 ts,
                                 private_cache::MessageType::Invalidate,
-                                core_id
+                                core_id,
                             );
                         }
                     }
@@ -280,7 +280,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                                 block_id,
                                 ts,
                                 private_cache::MessageType::Invalidate,
-                                core_id
+                                core_id,
                             );
                         }
                     }
@@ -327,7 +327,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                             block_id,
                             ts,
                             private_cache::MessageType::CreateSharer,
-                            core_id
+                            core_id,
                         );
                     }
                     private_set.refill(
@@ -383,7 +383,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         block_id,
                         ts,
                         private_cache::MessageType::MakeExclusive,
-                        core_id
+                        core_id,
                     );
                 }
             }

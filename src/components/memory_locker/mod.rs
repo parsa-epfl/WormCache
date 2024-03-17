@@ -8,7 +8,11 @@
 use once_cell::sync::Lazy;
 use std::io::prelude::*;
 
-use crate::{parameter::ENABLE_STATISTICS, qemu_api};
+use crate::{
+    arch::AArch64,
+    parameter::{self, ENABLE_STATISTICS},
+    qemu_api,
+};
 use std::ffi;
 
 mod dashmap_directory;
@@ -18,7 +22,13 @@ mod private_cache;
 pub mod shared_cache;
 pub mod statistics;
 
-static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy> =
+type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
+    AArch64,
+    { parameter::TLB_ASSO },
+    { parameter::TLB_SET },
+>;
+
+static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy<AArch64MMU>> =
     Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {

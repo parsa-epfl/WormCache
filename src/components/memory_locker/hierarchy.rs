@@ -5,20 +5,21 @@ use crate::{
 
 use super::{dashmap_directory, private_cache, shared_cache, statistics};
 
-use crate::arch::AArch64;
 use crate::components::mmu::AbstractMMU;
-use crate::components::mmu::MemoryManagementUnit;
-use std::{cell::UnsafeCell, collections::HashMap, sync::atomic::Ordering};
+use std::{cell::UnsafeCell, sync::atomic::Ordering};
 
-pub struct LockedMemoryHierarchy {
-    mmus: [UnsafeCell<
-        MemoryManagementUnit<AArch64, { parameter::TLB_ASSO }, { parameter::TLB_SET }>,
-    >; parameter::CORE_COUNT],
+mod debug_tests;
+mod reverse_order_tests;
+
+pub struct LockedMemoryHierarchy<MMU: AbstractMMU> {
+    mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches:
         [private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>;
             parameter::CORE_COUNT],
-
+    // In case the hardware has separate L1i and L1d, and there is no private L2, we can just add two groups of caches.
+    // The logic to handle it is the same. It is equivalent that we have more cores with a single private cache.
+    // There might be a way to optimize if the permission is shared. I need to think about it.
     directory: dashmap_directory::Directory,
 
     shared_cache: shared_cache::SharedCache<
@@ -27,9 +28,10 @@ pub struct LockedMemoryHierarchy {
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 
-    per_core_statistics: [UnsafeCell<statistics::PerCoreStatistics>; parameter::CORE_COUNT],
+    per_core_statistics: [UnsafeCell<statistics::PerCoreStatistics>; parameter::CORE_COUNT], // TODO: peel off this part to a global variable.
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
     HitInOtherPrivateCache,
@@ -38,10 +40,10 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl LockedMemoryHierarchy {
+impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
     pub fn new() -> Self {
         Self {
-            mmus: std::array::from_fn(|_| UnsafeCell::new(MemoryManagementUnit::new())),
+            mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
             directory: dashmap_directory::Directory::new(),
             shared_cache: shared_cache::SharedCache::new(),
@@ -195,26 +197,23 @@ impl LockedMemoryHierarchy {
         let mut directory_entry = self.directory.get_or_create(block_id);
         let sharers = directory_entry.sharers;
 
-        if let Some(modified_before_eviction) = directory_entry.modify_ts_before_eviction {
-            if modified_before_eviction > ts {
-                // This means that the current operation is not ordered. (even later than the first writer)
-                // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
-                return CacheHierarchyAccessResult::MissInPrivateCache;
-            }
+        if directory_entry.modify_ts_before_eviction > ts {
+            // This means that the current operation is not ordered. (even later than the first writer)
+            // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
+            return CacheHierarchyAccessResult::MissInPrivateCache;
         }
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
             // NOTE: currently shared cache access is disabled.
-            // let shared_cache_result = self.shared_cache.lookup(block_id);
-            let shared_cache_result = false;
+            let shared_cache_result = self.shared_cache.lookup(block_id);
             let mut incoming_sharer = SharerList::ZERO;
             incoming_sharer.set(core_id as usize, true);
             directory_entry.ts = ts;
             directory_entry.sharers = incoming_sharer;
 
             if is_store {
-                directory_entry.modify_ts_before_eviction = Some(ts);
+                directory_entry.modify_ts_before_eviction = ts;
             }
 
             let mut private_set = private_cache.get_set(block_id).write().unwrap();
@@ -296,6 +295,10 @@ impl LockedMemoryHierarchy {
         let evicted = if is_store {
             let mut incoming_sharer = directory_entry.sharers.clone();
             let mut set_for_refill_lock = None;
+
+            // Here actually we can do something to tell the difference between CleanExclusive and CleanShared.
+            // When checking replica, we can see the number of replica. If it is 1 and its owner is the current core, then it is CleanExclusive.
+            // We can just return HitInSelfPrivateCache if the coherence protocol is MESI and the timing information is needed.
 
             for (replica_core_id, set) in acquired_sets.iter_mut() {
                 if let Some(entry) = set.poke(block_id) {
@@ -414,13 +417,12 @@ impl LockedMemoryHierarchy {
         // Also update the writer timestamp before eviction.
         if modified {
             // keep the latest write timestamp.
-            if let Some(previous_ts) = directory_set.modify_ts_before_eviction {
-                if previous_ts < ts {
-                    directory_set.modify_ts_before_eviction = Some(ts);
-                }
-            } else {
-                directory_set.modify_ts_before_eviction = Some(ts);
-            }
+            directory_set.modify_ts_before_eviction =
+                if directory_set.modify_ts_before_eviction < ts {
+                    ts
+                } else {
+                    directory_set.modify_ts_before_eviction
+                };
         }
 
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.

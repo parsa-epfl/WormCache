@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
+use crate::components::NoMMU;
+
 use super::*;
 
-type MH = TestingDelayedMemoryHierarchy;
+type MH = LockedMemoryHierarchy<NoMMU>;
 
 #[derive(Debug, PartialEq, Eq)]
 enum BlockPosition {
@@ -11,11 +13,19 @@ enum BlockPosition {
     NotInCache,
 }
 
-impl TestingDelayedMemoryHierarchy {
+#[derive(Debug, PartialEq, Eq)]
+enum BlockState {
+    Shared,
+    Modified,
+}
+
+impl MH {}
+
+impl MH {
     fn where_is_the_block(&mut self, block_id: u64) -> BlockPosition {
         let mut private_owner = vec![];
         for i in 0..parameter::CORE_COUNT {
-            if self.private_caches[i].get_mut().contains_block(block_id) {
+            if self.private_caches[i].contains_block(block_id) {
                 private_owner.push(i as u32);
             }
         }
@@ -30,13 +40,17 @@ impl TestingDelayedMemoryHierarchy {
         return BlockPosition::NotInCache;
     }
 
-    fn get_all_private_replicas(&mut self, block_id: u64) -> HashMap<u32, PrivateCacheState> {
+    fn get_all_private_replicas(&mut self, block_id: u64) -> HashMap<u32, BlockState> {
         let mut result = HashMap::new();
         for i in 0..parameter::CORE_COUNT {
-            if self.private_caches[i].get_mut().contains_block(block_id) {
+            if self.private_caches[i].contains_block(block_id) {
                 result.insert(
                     i as u32,
-                    self.private_caches[i].get_mut().get_block_state(block_id),
+                    if self.private_caches[i].is_block_modified(block_id) {
+                        BlockState::Modified
+                    } else {
+                        BlockState::Shared
+                    },
                 );
             }
         }
@@ -98,7 +112,7 @@ fn write_invalidation_coherence() {
     // Now, core 0 and core 1 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&2], PrivateCacheState::DirtyExclusive);
+    assert_eq!(sharers[&2], BlockState::Shared);
 
     // Now core 0 gets a read permission at 100.
     assert_eq!(
@@ -107,8 +121,8 @@ fn write_invalidation_coherence() {
     );
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 2);
-    assert_eq!(sharers[&2], PrivateCacheState::DirtyShared);
-    assert_eq!(sharers[&0], PrivateCacheState::CleanShared);
+    assert_eq!(sharers[&2], BlockState::Shared);
+    assert_eq!(sharers[&0], BlockState::Shared);
 }
 
 #[test]
@@ -134,8 +148,8 @@ fn raw_and_war() {
     // Now, core 0 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 2);
-    assert_eq!(sharers[&2], PrivateCacheState::DirtyShared);
-    assert_eq!(sharers[&1], PrivateCacheState::CleanShared);
+    assert_eq!(sharers[&2], BlockState::Shared);
+    assert_eq!(sharers[&1], BlockState::Shared);
 }
 
 // FIXME: I found a bug here. When a core first gets exclusive permission, and then write it, it does not trigger miss and update the directory.
@@ -164,7 +178,7 @@ fn rarw() {
     // Now, core 1 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&1], PrivateCacheState::DirtyExclusive);
+    assert_eq!(sharers[&1], BlockState::Shared);
 }
 
 #[test]
@@ -186,7 +200,7 @@ fn waw() {
     // Now, the only owner of the data should be core 0.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&0], PrivateCacheState::DirtyExclusive);
+    assert_eq!(sharers[&0], BlockState::Shared);
 }
 
 #[test]
@@ -349,7 +363,7 @@ fn ear() {
     // Now, only core 0 has the block. And it has the exclusive permission.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&0], PrivateCacheState::CleanExclusive);
+    assert_eq!(sharers[&0], BlockState::Shared);
 }
 
 #[test]
@@ -372,6 +386,6 @@ fn rar() {
     // Now there should be two replicas of core 0 and core 1 in the private cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 2);
-    assert_eq!(sharers[&0], PrivateCacheState::CleanShared);
-    assert_eq!(sharers[&1], PrivateCacheState::CleanShared);
+    assert_eq!(sharers[&0], BlockState::Shared);
+    assert_eq!(sharers[&1], BlockState::Shared);
 }
