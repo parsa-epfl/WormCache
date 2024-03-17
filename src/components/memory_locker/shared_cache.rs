@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use crate::components::memory_delayed::cache_line_history::CacheLineCoherenceHistory;
+use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
 // There are two possible operations for an exclusive shared cache
 // 1. Empty to the cache, which means a write lock is required.

@@ -94,10 +94,10 @@ pub struct PluginList {
     _mk: crate::MarkerPlugin,
     // to : crate::TouchOnePlugin,
     // pwl : crate::PageWalkLoggerPlugin,
-    // _lm : crate::LockedMemoryPlugin,
+    _lm: crate::LockedMemoryPlugin,
     // tr : crate::TracePlugin,
     // _mtrec: crate::MTRMemoryPlugin,
-    _dm: crate::DelayedMemoryPlugin,
+    // _dm: crate::DelayedMemoryPlugin,
 }
 
 /**

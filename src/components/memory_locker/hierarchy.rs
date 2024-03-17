@@ -3,6 +3,8 @@ use crate::{
     parameter::{self, ENABLE_STATISTICS},
 };
 
+use crate::components::debug::statistics::{EventType, Statistics};
+
 use super::{dashmap_directory, private_cache, shared_cache, statistics};
 
 use crate::components::mmu::AbstractMMU;
@@ -69,17 +71,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                 .translate_and_refill(va, ts)
         };
 
-        if ENABLE_STATISTICS {
-            unsafe {
-                self.per_core_statistics[core_id as usize]
-                    .get()
-                    .as_ref()
-                    .unwrap()
-                    .tlb_access
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-        }
-
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
@@ -96,16 +87,8 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
-                if ENABLE_STATISTICS {
-                    unsafe {
-                        self.per_core_statistics[core_id as usize]
-                            .get()
-                            .as_ref()
-                            .unwrap()
-                            .tlb_miss
-                            .fetch_add(1, Ordering::Relaxed);
-                    }
-                }
+
+                Statistics::global_record(core_id, EventType::TLBMiss);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
@@ -149,6 +132,8 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+
+                Statistics::global_record(core_id, EventType::TLBMiss);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 // assert!(pa == reference_pa as u64);
@@ -169,9 +154,7 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         // STATISTICS: Total Memory Access
         let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
 
-        if ENABLE_STATISTICS {
-            statistics.total_mem.fetch_add(1, Ordering::Relaxed);
-        }
+        Statistics::global_record(core_id, EventType::MemoryAccess);
 
         let private_cache = &self.private_caches[core_id as usize];
         let mut private_set = private_cache.get_set(block_id).write().unwrap(); // Thread 6
@@ -184,11 +167,7 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
-        if ENABLE_STATISTICS {
-            statistics
-                .private_cache_miss
-                .fetch_add(1, Ordering::Relaxed);
-        }
+        Statistics::global_record(core_id, EventType::PrivateCacheMiss);
 
         // Now, we go to the directory. We release the lock of the private cache.
         drop(private_set);
@@ -227,15 +206,12 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                 self.handle_eviction(core_id, evicted_line.tag, ts, evicted_line.modified);
             }
 
-            if ENABLE_STATISTICS {
-                statistics
-                    .shared_cache_access
-                    .fetch_add(1, Ordering::Relaxed);
-            }
+            Statistics::global_record(core_id, EventType::SharedCacheAccess);
 
             if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
+                Statistics::global_record(core_id, EventType::SharedCacheMiss);
                 return CacheHierarchyAccessResult::Miss;
             }
         }
@@ -428,13 +404,9 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if incoming_sharer.count_ones() == 0 {
             // we need to place this block to the shared cache.
-            if ENABLE_STATISTICS {
-                statistics
-                    .shared_cache_access
-                    .fetch_add(1, Ordering::Relaxed);
-            }
+            Statistics::global_record(core_id, EventType::SharedCacheAccess);
             // NOTE: currently shared cache access is disabled.
-            // self.shared_cache.allocate(block_id, ts);
+            self.shared_cache.write_back(block_id, ts);
             drop(directory_set);
             // We should also mark this one as deleted.
         } else {

@@ -8,10 +8,10 @@ mod util;
 // Plugin
 use components::bp::BranchPredictorPlugin;
 use components::marker::MarkerPlugin;
-use components::memory_delayed::DelayedMemoryPlugin;
+// use components::memory_delayed::DelayedMemoryPlugin;
 use components::memory_locker::LockedMemoryPlugin;
 use components::memory_mtr_recording::MTRMemoryPlugin;
-use components::memory_ts::TimeStampedMemoryPlugin;
+// use components::memory_ts::TimeStampedMemoryPlugin;
 use components::pw_log::PageWalkLoggerPlugin;
 use components::touch_once::TouchOnePlugin;
 use components::trace::TracePlugin;
