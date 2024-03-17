@@ -1,11 +1,11 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
-use crate::components::memory_delayed::get_memory_ts;
+use crate::components::{memory_locker::get_memory_ts, NoMMU};
 
 use super::*;
 
-type MH = TestingDelayedMemoryHierarchy;
+type MH = LockedMemoryHierarchy<NoMMU>;
 
 #[test]
 fn read_evict_and_other_core_read_back() {

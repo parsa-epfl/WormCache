@@ -13,6 +13,7 @@ use std::{ffi, io::Write};
 pub mod dashmap_directory;
 pub mod replica_directory;
 // pub mod directory;
+pub mod cache_line_history;
 mod hierarchy;
 mod private_cache;
 pub mod shared_cache;

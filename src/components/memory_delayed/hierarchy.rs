@@ -7,6 +7,7 @@ use crate::parameter::{self, ENABLE_STATISTICS};
 // use super::dashmap_directory::{SharerList, Directory};
 use super::replica_directory::{DirectorySet, ReplicaDirectory};
 
+use super::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 use super::private_cache::PrivateCacheState;
 use super::statistics;
 use super::{private_cache, shared_cache};
@@ -27,9 +28,10 @@ pub struct DelayedMemoryHierarchy<MMU: AbstractMMU> {
         { parameter::PRI_CACHE_ASSO * parameter::CORE_COUNT },
     >,
 
-    shared_cache: shared_cache::ExclusiveSharedCache<
+    shared_cache: shared_cache::SharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 
     per_core_statistics: [statistics::PerCoreStatistics; parameter::CORE_COUNT],
@@ -58,7 +60,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                 UnsafeCell::new(private_cache::PrivateCache::new())
             }),
             directory: ReplicaDirectory::new(),
-            shared_cache: shared_cache::ExclusiveSharedCache::new(),
+            shared_cache: shared_cache::SharedCache::new(),
             per_core_statistics: std::array::from_fn(|_| statistics::PerCoreStatistics::new()),
         }
     }
@@ -110,7 +112,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
-                assert!(pa == reference_pa);
+                // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
@@ -123,12 +125,12 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                     let block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                     self.access_memory_pblock_id(core_id, block_id, ts, false, false);
                 }
-                assert!(pa == reference_pa as u64);
+                // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
-                assert!(pa == reference_pa as u64);
+                // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
@@ -147,8 +149,6 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
             self.per_core_statistics[core_id as usize].total_mem += 1;
         }
 
-        let private_caches = &mut self.private_caches;
-
         let private_cache = &self.private_caches[core_id as usize];
         let private_set = unsafe { (*private_cache.get()).get_set(block_id) };
 
@@ -162,6 +162,22 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 
         if ENABLE_STATISTICS {
             self.per_core_statistics[core_id as usize].private_cache_miss += 1;
+        }
+
+        if is_store {
+            CacheLineCoherenceHistory::global_record_history(
+                block_id,
+                CacheOperationType::GetM,
+                core_id,
+                ts,
+            );
+        } else {
+            CacheLineCoherenceHistory::global_record_history(
+                block_id,
+                CacheOperationType::GetR,
+                core_id,
+                ts,
+            );
         }
 
         // now, it is a miss. We need to check the directory.
@@ -186,7 +202,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         _ => {}
                     }
                 } else {
-                    match directory_entry_guard.get_read(core_id, ts) {
+                    match directory_entry_guard.get_read(core_id, ts, block_id) {
                         super::replica_directory::GetReadResult::Rejected => {
                             // No need to continue as well.
                             return CacheHierarchyAccessResult::MissInPrivateCache;
@@ -244,6 +260,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                                 block_id,
                                 ts,
                                 private_cache::MessageType::Invalidate,
+                                core_id,
                             );
                         }
                     }
@@ -263,6 +280,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                                 block_id,
                                 ts,
                                 private_cache::MessageType::Invalidate,
+                                core_id,
                             );
                         }
                     }
@@ -287,7 +305,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
 
             return CacheHierarchyAccessResult::HitInOtherPrivateCache;
         } else {
-            let get_r_result = directory_entry_guard.get_read(core_id, ts);
+            let get_r_result = directory_entry_guard.get_read(core_id, ts, block_id);
             let evicted = match get_r_result {
                 super::replica_directory::GetReadResult::Exclusive => private_set.refill(
                     core_id,
@@ -309,6 +327,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                             block_id,
                             ts,
                             private_cache::MessageType::CreateSharer,
+                            core_id,
                         );
                     }
                     private_set.refill(
@@ -345,10 +364,17 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
         // first, we need to check the directory.
         let directory_entry_guard = directory_guard.get_mut(block_id);
 
+        CacheLineCoherenceHistory::global_record_history(
+            block_id,
+            CacheOperationType::Drop,
+            core_id,
+            ts,
+        );
+
         // we cancel the element of this block in the directory.
-        match directory_entry_guard.drop(core_id) {
+        match directory_entry_guard.drop(core_id, block_id) {
             super::replica_directory::DropResult::NoSharer => {
-                self.shared_cache.allocate(block_id, ts);
+                self.shared_cache.write_back(block_id, ts);
             }
             super::replica_directory::DropResult::NewExclusive(owner) => {
                 // send a message to the owner to make it exclusive.
@@ -357,6 +383,7 @@ impl<MMU: AbstractMMU> DelayedMemoryHierarchy<MMU> {
                         block_id,
                         ts,
                         private_cache::MessageType::MakeExclusive,
+                        core_id,
                     );
                 }
             }

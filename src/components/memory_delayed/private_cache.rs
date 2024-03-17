@@ -22,11 +22,18 @@ pub struct PrivateCacheLine {
     pub is_instruction: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CoherenceMessage {
+    pub block_id: u64,
+    pub ts: u64,
+    pub message_type: MessageType,
+}
+
 // Migrate some functions to this struct, with lock permission.
 #[derive(Debug)]
 pub struct PrivateCacheSet<const WAY: usize> {
     lines: [PrivateCacheLine; WAY],
-    invalidation_fifo: SegQueue<(u64, u64, MessageType)>,
+    invalidation_fifo: SegQueue<CoherenceMessage>,
     invalidation_entries: HashMap<u64, u64>, // block id -> ts_invalid. Ts is the time when the block is invalid due to coherence.
                                              // If one element appears in `invalid_entries`, it must be invalidated by others.
                                              // If the current core finds an element in this list but not in its own cache, we can compare the timestamp.
@@ -55,19 +62,31 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         }
 
         // if not, we have to handle it carefully.
-        while let Some((block_id, ts, message_type)) = self.invalidation_fifo.pop() {
+        while let Some(msg) = self.invalidation_fifo.pop() {
             // find from the cache set with block id.
             let hit_element = self
                 .lines
                 .iter_mut()
-                .find(|p| p.tag == block_id && p.state != PrivateCacheState::Invalid);
+                .find(|p| p.tag == msg.block_id && p.state != PrivateCacheState::Invalid);
 
             if let Some(hit_element) = hit_element {
-                match message_type {
+                match msg.message_type {
                     MessageType::Invalidate => {
                         if hit_element.state != PrivateCacheState::Invalid {
+                            if hit_element.ts > msg.ts {
+                                // This branch is possible.
+                                // It is due to the order violation.
+                                // The exact reason is that this block is touched locally, with its timestamp updated.
+                                // A previous invalidation message is sent to the current core, but arrives when the timestamp is updated.
+
+                                // For functional correctness, we need to invalidate the block, because its cache line is not in the directory anymore.
+                                // However, we need to record this event frequency and argue that it does not cause accuracy problem.
+
+                                // TODO: Expose this event to the statistics module.
+                            }
+
                             hit_element.state = PrivateCacheState::Invalid;
-                            self.add_invalidation_record(block_id, ts);
+                            self.add_invalidation_record(msg.block_id, msg.ts);
                         }
                     }
                     MessageType::CreateSharer => match hit_element.state {
@@ -207,6 +226,7 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         is_instruction: bool,
         state: PrivateCacheState,
     ) -> Option<PrivateCacheLine> {
+        self.handle_message();
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
             return p.tag == block_id && p.state != PrivateCacheState::Invalid;
@@ -215,8 +235,11 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         // Note that it is possible to see a hit element. This is mainly from coherence message.
         if let Some(hit_cache_line) = hit_element {
             hit_cache_line.ts = ts;
-            // It must be a coherence miss, so the incoming state must be with write permission.
-            assert!(state == PrivateCacheState::DirtyExclusive);
+            // It must be a coherence miss.
+            assert!(
+                state == PrivateCacheState::DirtyExclusive
+                    || state == PrivateCacheState::DirtyShared
+            );
             hit_cache_line.state = state;
             hit_cache_line.is_instruction = is_instruction;
 
@@ -267,8 +290,12 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
         }
     }
 
-    pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
-        self.invalidation_fifo.push((block_id, ts, message_type));
+    pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType, sender: u32) {
+        self.invalidation_fifo.push(CoherenceMessage {
+            block_id,
+            ts,
+            message_type,
+        });
     }
 
     pub fn clean_expired_eviction(&mut self) {
@@ -277,6 +304,8 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
 }
 
 use serde::ser::SerializeStruct;
+
+use crate::components::memory_delayed::cache_line_history::CacheLineCoherenceHistory;
 
 impl<const WAY: usize> Serialize for PrivateCacheSet<WAY> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -311,9 +340,9 @@ impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
         }
     }
 
-    pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType) {
+    pub fn send_message(&self, block_id: u64, ts: u64, message_type: MessageType, sender: u32) {
         let set_id = block_id as usize % SET;
-        self.cache[set_id].send_message(block_id, ts, message_type);
+        self.cache[set_id].send_message(block_id, ts, message_type, sender);
     }
 
     // This function is only for testing.

@@ -5,7 +5,7 @@
 use std::env;
 use std::io::{BufReader, Write};
 use std::{fs::File, io::Read};
-use worm_cache::components::memory_ts::{PrivateCacheParameters, TimestampMemoryHierarchy};
+// use worm_cache::components::memory_ts::{PrivateCacheParameters, TimestampMemoryHierarchy};
 use worm_cache::components::NoMMU;
 
 #[repr(C)]
@@ -69,8 +69,8 @@ fn main() {
 
     let core_count: usize = args[1].parse().unwrap();
 
-    let mut mh =
-        TimestampMemoryHierarchy::<NoMMU, { P_A }, { P_S }, { S_A }, { S_S }>::new(core_count);
+    // let mut mh =
+    //     TimestampMemoryHierarchy::<NoMMU, { P_A }, { P_S }, { S_A }, { S_S }>::new(core_count);
 
     // read the trace file.
     let file = File::open(&args[2]).unwrap();
@@ -91,28 +91,28 @@ fn main() {
         // simulate that entry.
         let is_instruction = entry.permission == 0;
         let is_write: bool = entry.permission == 2;
-        mh.hierarchies(entry.core_id).access_memory(
-            entry.timestamp as usize,
-            entry.paddr,
-            is_instruction,
-            is_write,
-        );
+        // mh.hierarchies(entry.core_id).access_memory(
+        //     entry.timestamp as usize,
+        //     entry.paddr,
+        //     is_instruction,
+        //     is_write,
+        // );
     }
 
     // dump the simulation result.
     let mut output_file = File::create(&args[3]).unwrap();
-    let mtr = mh.render_mtr::<P_S>();
-    let cache_param = PrivateCacheParameters {
-        l1i_sets: 64,
-        l1i_associativity: 16,
-        l1d_sets: 64,
-        l1d_associativity: 16,
-        l2_sets: P_S,
-        l2_associativity: P_A,
-        directory_associativity: 0, // this value is not used.
-    };
+    // let mtr = mh.render_mtr::<P_S>();
+    // let cache_param = PrivateCacheParameters {
+    //     l1i_sets: 64,
+    //     l1i_associativity: 16,
+    //     l1d_sets: 64,
+    //     l1d_associativity: 16,
+    //     l2_sets: P_S,
+    //     l2_associativity: P_A,
+    //     directory_associativity: 0, // this value is not used.
+    // };
 
-    let cache_hierarchy = mh.render_cache_hierarchy(&mtr, &cache_param);
-    let exported_json = serde_json::to_string_pretty(&cache_hierarchy).unwrap();
-    output_file.write_all(exported_json.as_bytes()).unwrap();
+    // let cache_hierarchy = mh.render_cache_hierarchy(&mtr, &cache_param);
+    // let exported_json = serde_json::to_string_pretty(&cache_hierarchy).unwrap();
+    // output_file.write_all(exported_json.as_bytes()).unwrap();
 }
