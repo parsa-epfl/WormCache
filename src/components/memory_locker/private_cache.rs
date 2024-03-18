@@ -1,4 +1,7 @@
-use std::sync::{Mutex, MutexGuard, RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Mutex, MutexGuard, RwLock},
+};
 
 mod havard;
 mod unified;
@@ -20,8 +23,8 @@ impl PrivateCacheLine {
 
 // Migrate some functions to this struct, with lock permission.
 #[derive(Debug)]
-pub struct PrivateCacheSet<const WAY: usize> {
-    pub lines: [PrivateCacheLine; WAY],
+pub struct PrivateCacheSet {
+    pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.
 }
 
 #[derive(PartialEq, Eq)]
@@ -31,16 +34,19 @@ pub enum PrivateCachePokeResult {
     PermissionViolation,
 }
 
-impl<const WAY: usize> PrivateCacheSet<WAY> {
-    pub fn new() -> Self {
+impl PrivateCacheSet {
+    pub fn new(asso: usize) -> Self {
         Self {
-            lines: [PrivateCacheLine {
-                tag: 0,
-                ts: 0,
-                write_ts: 0,
-                is_instruction: false,
-                modified: false,
-            }; WAY],
+            lines: Vec::from_iter(
+                std::iter::repeat(PrivateCacheLine {
+                    tag: 0,
+                    ts: 0,
+                    write_ts: 0,
+                    is_instruction: false,
+                    modified: false,
+                })
+                .take(asso),
+            ),
         }
     }
 
@@ -183,9 +189,12 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     }
 }
 
-pub trait PrivateCaches<const ASSO: usize> {
+pub trait PrivateCaches {
+    // This function is for creating all new private caches.
+    fn new() -> Self;
+
     // This function is for checking the whether the private cache hits or miss.
-    fn access_with_pblock_id(
+    fn poke_and_update(
         &self,
         core_id: u32,
         block_id: u64,
@@ -194,8 +203,8 @@ pub trait PrivateCaches<const ASSO: usize> {
         is_store: bool,
     ) -> PrivateCachePokeResult;
 
-    // This function is for refilling the cache line.
-    fn refill(
+    // This function is for refilling the cache line from the shared cache. Coherence refilling has its own way.
+    fn refill_from_shared_cache(
         &self,
         core_id: u32,
         block_id: u64,
@@ -210,9 +219,16 @@ pub trait PrivateCaches<const ASSO: usize> {
         &self,
         block_id: u64,
         sharers: SharerList,
-    ) -> Vec<MutexGuard<'_, PrivateCacheSet<ASSO>>>;
+    ) -> Vec<(u32, MutexGuard<'_, PrivateCacheSet>)>; // (core_id, guard)
+
+    // This function is for debugging. It gets the ids of all cores that have the cache line.
+    fn in_which_cores(&self, block_id: u64) -> Vec<u32>;
+
+    // This function is for debugging. It gets the state of the cache line in all cores.
+    fn query_replica_state(&self, block_id: u64) -> HashMap<u32, bool>; // (core_id, is_modified)
 }
 
-pub use unified::UnifiedPerCorePrivateCache;
+pub use havard::HarvardPrivateCaches;
+pub use unified::UnifiedPrivateCaches;
 
 use super::dashmap_directory::SharerList;

@@ -2,9 +2,18 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
+use self::private_cache::UnifiedPrivateCaches;
+
 use super::*;
 
-type MH = LockedMemoryHierarchy<NoMMU>;
+type MH = LockedMemoryHierarchy<
+    NoMMU,
+    UnifiedPrivateCaches<
+        { parameter::CORE_COUNT },
+        { parameter::UNIFIED_PRI_CACHE_SET },
+        { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >,
+>;
 
 #[derive(Debug, PartialEq, Eq)]
 enum BlockPosition {
@@ -23,12 +32,7 @@ impl MH {}
 
 impl MH {
     fn where_is_the_block(&mut self, block_id: u64) -> BlockPosition {
-        let mut private_owner = vec![];
-        for i in 0..parameter::CORE_COUNT {
-            if self.private_caches[i].contains_block(block_id) {
-                private_owner.push(i as u32);
-            }
-        }
+        let private_owner = self.private_caches.in_which_cores(block_id);
 
         if !private_owner.is_empty() {
             return BlockPosition::InPrivateCache(private_owner);
@@ -41,20 +45,20 @@ impl MH {
     }
 
     fn get_all_private_replicas(&mut self, block_id: u64) -> HashMap<u32, BlockState> {
-        let mut result = HashMap::new();
-        for i in 0..parameter::CORE_COUNT {
-            if self.private_caches[i].contains_block(block_id) {
-                result.insert(
-                    i as u32,
-                    if self.private_caches[i].is_block_modified(block_id) {
+        let mut result = self.private_caches.query_replica_state(block_id);
+        return result
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    if v {
                         BlockState::Modified
                     } else {
                         BlockState::Shared
                     },
-                );
-            }
-        }
-        result
+                )
+            })
+            .collect();
     }
 }
 

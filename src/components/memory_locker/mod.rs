@@ -15,6 +15,8 @@ use crate::{
 };
 use std::ffi;
 
+use self::private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches};
+
 use super::debug::statistics::Statistics;
 
 mod dashmap_directory;
@@ -22,7 +24,6 @@ pub mod directory;
 mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
-pub mod statistics;
 
 type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     AArch64,
@@ -30,8 +31,16 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
-static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy<AArch64MMU>> =
-    Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
+static mut PLUGIN: Lazy<
+    hierarchy::LockedMemoryHierarchy<
+        AArch64MMU,
+        UnifiedPrivateCaches<
+            { parameter::CORE_COUNT },
+            { parameter::UNIFIED_PRI_CACHE_SET },
+            { parameter::UNIFIED_PRI_CACHE_ASSO },
+        >,
+    >,
+> = Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()

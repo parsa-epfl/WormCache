@@ -3,9 +3,17 @@
 
 use crate::components::{memory_locker::get_memory_ts, NoMMU};
 
+use self::private_cache::UnifiedPrivateCaches;
 use super::*;
 
-type MH = LockedMemoryHierarchy<NoMMU>;
+type MH = LockedMemoryHierarchy<
+    NoMMU,
+    UnifiedPrivateCaches<
+        { parameter::CORE_COUNT },
+        { parameter::UNIFIED_PRI_CACHE_SET },
+        { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >,
+>;
 
 #[test]
 fn read_evict_and_other_core_read_back() {

@@ -1,11 +1,12 @@
-use crate::{
-    components::memory_locker::directory::SharerList,
-    parameter::{self, ENABLE_STATISTICS},
-};
+use crate::{components::memory_locker::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
-use super::{dashmap_directory, private_cache, shared_cache, statistics};
+use super::{
+    dashmap_directory,
+    private_cache::{self, PrivateCaches},
+    shared_cache,
+};
 
 use crate::components::mmu::AbstractMMU;
 use std::cell::UnsafeCell;
@@ -13,13 +14,10 @@ use std::cell::UnsafeCell;
 mod debug_tests;
 mod reverse_order_tests;
 
-pub struct LockedMemoryHierarchy<MMU: AbstractMMU> {
+pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
-    private_caches: [private_cache::UnifiedPerCorePrivateCache<
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
-    >; parameter::CORE_COUNT],
+    private_caches: PCache,
     // In case the hardware has separate L1i and L1d, and there is no private L2, we can just add two groups of caches.
     // The logic to handle it is the same. It is equivalent that we have more cores with a single private cache.
     // There might be a way to optimize if the permission is shared. I need to think about it.
@@ -41,13 +39,11 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
+impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache> {
     pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
-            private_caches: std::array::from_fn(|_| {
-                private_cache::UnifiedPerCorePrivateCache::new()
-            }),
+            private_caches: PCache::new(),
             directory: dashmap_directory::Directory::new(),
             shared_cache: shared_cache::SharedCache::new(),
         }
@@ -151,11 +147,10 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
     ) -> CacheHierarchyAccessResult {
         Statistics::global_record(core_id, EventType::MemoryAccess);
 
-        let private_cache = &self.private_caches[core_id as usize];
-        let mut private_set = private_cache.get_set(block_id).lock().unwrap(); // Thread 6
-
         // first, we need to check the private cache.
-        let private_hit = private_set.poke_and_update(block_id, ts, is_store, is_instruction);
+        let private_hit =
+            self.private_caches
+                .poke_and_update(core_id, block_id, ts, is_instruction, is_store);
 
         if private_hit == private_cache::PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
@@ -163,9 +158,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         }
 
         Statistics::global_record(core_id, EventType::PrivateCacheMiss);
-
-        // Now, we go to the directory. We release the lock of the private cache.
-        drop(private_set);
 
         // now, it is a miss. We need to check the directory.
         let mut directory_entry = self.directory.get_or_create(block_id);
@@ -190,10 +182,14 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                 directory_entry.modify_ts_before_eviction = ts;
             }
 
-            let mut private_set = private_cache.get_set(block_id).lock().unwrap();
-            let evicted = private_set.refill(block_id, ts, is_instruction, is_store);
+            let evicted = self.private_caches.refill_from_shared_cache(
+                core_id,
+                block_id,
+                ts,
+                is_instruction,
+                is_store,
+            );
 
-            drop(private_set);
             drop(directory_entry);
 
             // handle eviction now.
@@ -216,13 +212,9 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         acquire_list.set(core_id as usize, true);
 
         // Now, acquire the lock of all sets of the private cache, suggested by the directory.
-        let mut acquired_sets = Vec::with_capacity(sharers.count_ones() as usize);
-        for i in sharers.iter_ones() {
-            acquired_sets.push((
-                i as u32,
-                self.private_caches[i].get_set(block_id).lock().unwrap(),
-            ));
-        }
+        let mut acquired_sets = self
+            .private_caches
+            .get_set_guard_by_sharer_list(block_id, acquire_list);
 
         // Do we have another sharer that has a write permission with a larger timestamp?
         let mut other_has_write_permission_with_late_ts = false;
