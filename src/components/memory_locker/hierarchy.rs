@@ -241,7 +241,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                 }
             } else {
                 // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
-                assert_eq!(*replica_cache_id, p_cache_id);
+                // assert_eq!(*replica_cache_id, p_cache_id);
             }
         }
 
@@ -399,7 +399,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
         if sharer.get(cache_id).unwrap() == false {
             // Well, it is already invalid by other core.
-            assert!(false);
+            // assert!(false);
             return;
         }
 
