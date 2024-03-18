@@ -31,16 +31,27 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
-static mut PLUGIN: Lazy<
-    hierarchy::LockedMemoryHierarchy<
-        AArch64MMU,
-        UnifiedPrivateCaches<
-            { parameter::CORE_COUNT },
-            { parameter::UNIFIED_PRI_CACHE_SET },
-            { parameter::UNIFIED_PRI_CACHE_ASSO },
-        >,
+type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
+    AArch64MMU,
+    UnifiedPrivateCaches<
+        { parameter::CORE_COUNT },
+        { parameter::UNIFIED_PRI_CACHE_SET },
+        { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-> = Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
+>;
+
+type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
+    AArch64MMU,
+    HarvardPrivateCaches<
+        { parameter::CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+>;
+
+static mut PLUGIN: Lazy<PluginMemoryHierarchy> = Lazy::new(|| PluginMemoryHierarchy::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -63,11 +74,18 @@ unsafe extern "C" fn vcpu_mem_access(
 
         // let walk_trace = qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler);
         // let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
-        // let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
+        let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
         // Currently, this is experimental.
         // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
-        PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false);
+        PLUGIN.access_memory_with_va_and_pa(
+            vcpu_idx,
+            vaddr,
+            pa,
+            get_memory_ts() as u64,
+            is_store,
+            false,
+        );
     } else {
         // TODO: check the I/O event
     }
