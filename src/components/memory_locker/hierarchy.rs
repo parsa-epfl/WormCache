@@ -371,6 +371,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             let set_for_refill_lock = set_for_refill_lock.unwrap();
 
             let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false);
+
+            drop(acquired_sets);
+            drop(directory_entry);
+
             evicted
         };
 
