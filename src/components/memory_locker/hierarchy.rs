@@ -194,7 +194,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
-                self.handle_eviction(core_id, evicted_line.tag, ts, evicted_line.modified);
+                self.handle_eviction(
+                    core_id,
+                    evicted_line.block_id(),
+                    ts,
+                    evicted_line.is_modified(),
+                );
             }
 
             Statistics::global_record(core_id, EventType::SharedCacheAccess);
@@ -222,10 +227,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         let mut other_core_id = 0;
         for (replica_core_id, set) in acquired_sets.iter() {
             let line = set.poke(block_id).unwrap();
-            if line.modified && line.write_ts > ts {
+            if line.is_modified() && line.write_ts() > ts {
                 other_has_write_permission_with_late_ts = true;
-                if line.write_ts > other_write_ts {
-                    other_write_ts = line.write_ts;
+                if line.write_ts() > other_write_ts {
+                    other_write_ts = line.write_ts();
                     other_core_id = *replica_core_id as u32;
                 }
             }
@@ -265,13 +270,13 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             for (replica_core_id, set) in acquired_sets.iter_mut() {
                 if let Some(entry) = set.poke(block_id) {
-                    if entry.ts < ts {
+                    if entry.access_ts() < ts {
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_core_id as usize, false);
                         // invalid the private cache entry.
                         set.invalidate(block_id);
                     } else {
-                        assert!(entry.write_ts <= ts);
+                        assert!(entry.write_ts() <= ts);
                         assert!(*replica_core_id != core_id);
                     }
                 } else {
@@ -310,10 +315,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             for (replica_core_id, set) in acquired_sets.iter_mut() {
                 if let Some(entry) = set.poke(block_id) {
-                    if entry.modified {
+                    if entry.is_modified() {
                         assert!(already_modified == false);
 
-                        if entry.write_ts > ts {
+                        if entry.write_ts() > ts {
                             // OK, this read operation is also not ordered.
                             // There is nothing we need to do.
 
@@ -347,7 +352,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         };
 
         if let Some(evicted_line) = evicted {
-            self.handle_eviction(core_id, evicted_line.tag, ts, evicted_line.modified);
+            self.handle_eviction(
+                core_id,
+                evicted_line.block_id(),
+                ts,
+                evicted_line.is_modified(),
+            );
         }
 
         return CacheHierarchyAccessResult::HitInOtherPrivateCache;

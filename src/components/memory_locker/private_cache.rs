@@ -8,16 +8,32 @@ mod unified;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PrivateCacheLine {
-    pub tag: u64, // the last bit is the valid bit.
-    pub ts: u64,
-    pub write_ts: u64,
-    pub is_instruction: bool,
-    pub modified: bool, // This is false also means that you cannot write to this cache line. There is no need to maintain a Clean and writable state. This state can be inferred by the coherence protocol.
+    tag: u64, // the last bit is the valid bit.
+    ts: u64,
+    write_ts: u64,
+    is_instruction: bool,
+    modified: bool, // This is false also means that you cannot write to this cache line. There is no need to maintain a Clean and writable state. This state can be inferred by the coherence protocol.
 }
 
 impl PrivateCacheLine {
+    #[inline]
     pub fn block_id(&self) -> u64 {
         return self.tag >> 1;
+    }
+
+    #[inline]
+    pub fn is_modified(&self) -> bool {
+        return self.modified;
+    }
+
+    #[inline]
+    pub fn write_ts(&self) -> u64 {
+        return self.write_ts;
+    }
+
+    #[inline]
+    pub fn access_ts(&self) -> u64 {
+        return self.ts;
     }
 }
 
