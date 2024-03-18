@@ -39,7 +39,7 @@ pub const TLB_SET: usize = 1024;
  * If true, the private instruction cache and the private data cache are unified.
  * If false, the private instruction cache and the private data cache are separated, i.e., the Harvard architecture.
  */
-pub const USE_UNIFIED_CACHE: bool = true;
+pub const USE_UNIFIED_CACHE: bool = false;
 
 /**
  * PRI_CACHE_ASSO

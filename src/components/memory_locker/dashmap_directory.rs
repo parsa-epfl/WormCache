@@ -57,7 +57,7 @@ impl Directory {
                     block_id,
                     DirectoryEntry {
                         ts: 0,
-                        sharers: SharerList::ZERO,
+                        sharers: BitArray::ZERO,
                         modify_ts_before_eviction: 0, // zero is a good initialize value, because all timestamp must not be 0.
                     },
                 );

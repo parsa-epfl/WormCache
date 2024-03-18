@@ -51,7 +51,8 @@ type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
     >,
 >;
 
-static mut PLUGIN: Lazy<PluginMemoryHierarchy> = Lazy::new(|| PluginMemoryHierarchy::new());
+static mut PLUGIN: Lazy<PluginMemoryHierarchyHarvard> =
+    Lazy::new(|| PluginMemoryHierarchyHarvard::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
