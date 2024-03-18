@@ -31,7 +31,7 @@ impl<const SET: usize, const ASSO: usize> UnifiedPerCorePrivateCache<SET, ASSO> 
         let set = self.cache[set_id].lock().unwrap();
         let line = set.poke(block_id);
         if let Some(line) = line {
-            return line.modified;
+            return line.is_modified();
         } else {
             return false;
         }
@@ -88,14 +88,13 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         &self,
         block_id: u64,
         sharers: crate::components::memory_locker::dashmap_directory::SharerList,
-    ) -> Vec<(u32, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
+    ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         let mut result = Vec::new();
 
         assert_eq!(sharers.len(), usize::max(CORE_COUNT, 64));
 
-        for one_idx in sharers.iter_ones() {
-            let core_id = one_idx as u32;
-            let set = self.caches[core_id as usize].get_set(block_id);
+        for core_id in sharers.iter_ones() {
+            let set = self.caches[core_id].get_set(block_id);
             let guard = set.lock().unwrap();
             result.push((core_id, guard));
         }
@@ -130,10 +129,22 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
 
             if let Some(d_line) = is_d {
                 assert!(d_line.block_id() == block_id);
-                res.insert(core_id as u32, d_line.modified);
+                res.insert(core_id as u32, d_line.is_modified());
             }
         }
 
         res
+    }
+
+    #[inline]
+    fn find_cache_by_id(index: usize) -> (u32, bool) {
+        let core_id = index as u32;
+        let is_instruction = false;
+        return (core_id, is_instruction);
+    }
+
+    #[inline]
+    fn get_cache_id_by_cache_info(core_id: u32, _: bool) -> usize {
+        return core_id as usize;
     }
 }

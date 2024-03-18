@@ -1,5 +1,3 @@
-use crate::parameter;
-
 use super::PrivateCaches;
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
 use std::collections::HashMap;
@@ -101,24 +99,24 @@ impl<
         &self,
         block_id: u64,
         sharers: crate::components::memory_locker::dashmap_directory::SharerList,
-    ) -> Vec<(u32, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
+    ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         // Now it really depends on how to interpret the sharer list.
         assert_eq!(sharers.len(), usize::max(CORE_COUNT * 2, 64));
 
         let mut res = Vec::new();
 
-        for one_idx in sharers.iter_ones() {
-            let core_id = one_idx / 2;
-            let is_instruction = one_idx % 2 == 0;
+        for sharer_index in sharers.iter_ones() {
+            let core_id = sharer_index / 2;
+            let is_instruction = sharer_index % 2 == 0;
 
             if is_instruction {
                 let set = &self.caches[core_id as usize].i_cache[block_id as usize % I_SET];
                 let guard = set.lock().unwrap();
-                res.push((core_id as u32, guard));
+                res.push((sharer_index, guard));
             } else {
                 let set = &self.caches[core_id as usize].d_cache[block_id as usize % D_SET];
                 let guard = set.lock().unwrap();
-                res.push((core_id as u32, guard));
+                res.push((sharer_index, guard));
             }
         }
 
@@ -169,22 +167,22 @@ impl<
 
             if let Some(i_line) = is_i {
                 assert!(i_line.block_id() == block_id);
-                assert!(i_line.is_instruction);
-                assert!(i_line.modified == false);
+                assert!(i_line.is_instruction());
+                assert!(i_line.is_modified() == false);
 
                 // alright, we check the data cache and make sure there is no modified copy.
                 if let Some(d_line) = is_d {
                     assert!(d_line.block_id() == block_id);
-                    assert!(!d_line.is_instruction);
-                    assert!(!d_line.modified);
+                    assert!(!d_line.is_instruction());
+                    assert!(!d_line.is_modified());
                 }
 
                 res.insert(core_id as u32, false);
             } else {
                 if let Some(d_line) = is_d {
                     assert!(d_line.block_id() == block_id);
-                    assert!(!d_line.is_instruction);
-                    res.insert(core_id as u32, d_line.modified);
+                    assert!(!d_line.is_instruction());
+                    res.insert(core_id as u32, d_line.is_modified());
 
                     continue;
                 }
@@ -192,5 +190,15 @@ impl<
         }
 
         res
+    }
+    #[inline]
+    fn find_cache_by_id(index: usize) -> (u32, bool) {
+        let core_id = index / 2;
+        let is_instruction_cache = index % 2 == 0;
+        (core_id as u32, is_instruction_cache)
+    }
+    #[inline]
+    fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize {
+        core_id as usize * 2 + if is_instruction_cache { 0 } else { 1 }
     }
 }

@@ -8,10 +8,12 @@ use super::*;
 
 type MH = LockedMemoryHierarchy<
     NoMMU,
-    UnifiedPrivateCaches<
+    HarvardPrivateCaches<
         { parameter::CORE_COUNT },
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
 >;
 
