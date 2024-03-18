@@ -16,7 +16,7 @@ mod reverse_order_tests;
 pub struct LockedMemoryHierarchy<MMU: AbstractMMU> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
-    private_caches: [private_cache::PrivateCache<
+    private_caches: [private_cache::UnifiedPerCorePrivateCache<
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >; parameter::CORE_COUNT],
@@ -45,7 +45,9 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
     pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
-            private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
+            private_caches: std::array::from_fn(|_| {
+                private_cache::UnifiedPerCorePrivateCache::new()
+            }),
             directory: dashmap_directory::Directory::new(),
             shared_cache: shared_cache::SharedCache::new(),
         }
@@ -150,7 +152,7 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         Statistics::global_record(core_id, EventType::MemoryAccess);
 
         let private_cache = &self.private_caches[core_id as usize];
-        let mut private_set = private_cache.get_set(block_id).write().unwrap(); // Thread 6
+        let mut private_set = private_cache.get_set(block_id).lock().unwrap(); // Thread 6
 
         // first, we need to check the private cache.
         let private_hit = private_set.poke_and_update(block_id, ts, is_store, is_instruction);
@@ -188,7 +190,7 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                 directory_entry.modify_ts_before_eviction = ts;
             }
 
-            let mut private_set = private_cache.get_set(block_id).write().unwrap();
+            let mut private_set = private_cache.get_set(block_id).lock().unwrap();
             let evicted = private_set.refill(block_id, ts, is_instruction, is_store);
 
             drop(private_set);
@@ -218,7 +220,7 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         for i in sharers.iter_ones() {
             acquired_sets.push((
                 i as u32,
-                self.private_caches[i].get_set(block_id).write().unwrap(),
+                self.private_caches[i].get_set(block_id).lock().unwrap(),
             ));
         }
 

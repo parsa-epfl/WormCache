@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::sync::{Mutex, MutexGuard, RwLock};
 
 mod havard;
 mod unified;
@@ -183,38 +183,36 @@ impl<const WAY: usize> PrivateCacheSet<WAY> {
     }
 }
 
-#[repr(align(64))]
-pub struct PrivateCache<const SET: usize, const WAY: usize> {
-    cache: Box<[RwLock<PrivateCacheSet<WAY>>; SET]>,
+pub trait PrivateCaches<const ASSO: usize> {
+    // This function is for checking the whether the private cache hits or miss.
+    fn access_with_pblock_id(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_instruction: bool,
+        is_store: bool,
+    ) -> PrivateCachePokeResult;
+
+    // This function is for refilling the cache line.
+    fn refill(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_instruction: bool,
+        modified: bool,
+    ) -> Option<PrivateCacheLine>;
+
+    // This function is for coherence messages and refill.
+    // The rest of the function of coherence logic is handled outside.
+    fn get_set_guard_by_sharer_list(
+        &self,
+        block_id: u64,
+        sharers: SharerList,
+    ) -> Vec<MutexGuard<'_, PrivateCacheSet<ASSO>>>;
 }
 
-impl<const SET: usize, const WAY: usize> PrivateCache<SET, WAY> {
-    pub fn new() -> Self {
-        Self {
-            cache: crate::util::init_heap_array(|_| RwLock::new(PrivateCacheSet::new())),
-        }
-    }
+pub use unified::UnifiedPerCorePrivateCache;
 
-    pub fn get_set(&self, block_id: u64) -> &RwLock<PrivateCacheSet<WAY>> {
-        let set_id = block_id as usize % SET;
-        return &self.cache[set_id];
-    }
-
-    // Interface for testing.
-    pub fn contains_block(&self, block_id: u64) -> bool {
-        let set_id = block_id as usize % SET;
-        let set = self.cache[set_id].read().unwrap();
-        return set.poke(block_id).is_some();
-    }
-
-    pub fn is_block_modified(&self, block_id: u64) -> bool {
-        let set_id = block_id as usize % SET;
-        let set = self.cache[set_id].read().unwrap();
-        let line = set.poke(block_id);
-        if let Some(line) = line {
-            return line.modified;
-        } else {
-            return false;
-        }
-    }
-}
+use super::dashmap_directory::SharerList;
