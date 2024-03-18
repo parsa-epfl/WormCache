@@ -1,3 +1,5 @@
+use crate::parameter;
+
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use std::{collections::HashMap, sync::Mutex};
 
@@ -90,8 +92,6 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         sharers: crate::components::memory_locker::dashmap_directory::SharerList,
     ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         let mut result = Vec::new();
-
-        assert_eq!(sharers.len(), usize::max(CORE_COUNT, 64));
 
         for core_id in sharers.iter_ones() {
             let set = self.caches[core_id].get_set(block_id);

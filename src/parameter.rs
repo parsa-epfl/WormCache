@@ -7,7 +7,7 @@ use plugin_helper::PluginHelper;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 4;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_LINE_SIZE
@@ -109,7 +109,7 @@ pub const SHARED_CACHE_SET: usize = 1024 * 1024; // 1GB shared cache.
  * True if it is exclusive, false if it is non-inclusive.
  * Currently, we don't support inclusive shared cache.
  */
-pub const SHARED_CACHE_EXCLUSIVE: bool = true;
+pub const SHARED_CACHE_EXCLUSIVE: bool = false;
 
 /**
  * BP_GSHARE_SET

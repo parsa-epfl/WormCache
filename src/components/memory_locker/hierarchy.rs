@@ -1,4 +1,4 @@
-use crate::{components::memory_locker::directory::SharerList, parameter};
+use crate::{components::memory_locker::dashmap_directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
