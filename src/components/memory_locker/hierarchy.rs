@@ -33,6 +33,7 @@ pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches> {
 #[derive(PartialEq, Eq, Debug)]
 pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
+    MissDueToPermission,
     HitInOtherPrivateCache,
     MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
     HitInSharedCache,
@@ -226,13 +227,17 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         let mut other_write_ts = 0;
         let mut other_core_id = 0;
         for (replica_core_id, set) in acquired_sets.iter() {
-            let line = set.poke(block_id).unwrap();
-            if line.is_modified() && line.write_ts() > ts {
-                other_has_write_permission_with_late_ts = true;
-                if line.write_ts() > other_write_ts {
-                    other_write_ts = line.write_ts();
-                    other_core_id = *replica_core_id as u32;
+            if let Some(line) = set.poke(block_id) {
+                if line.is_modified() && line.write_ts() > ts {
+                    other_has_write_permission_with_late_ts = true;
+                    if line.write_ts() > other_write_ts {
+                        other_write_ts = line.write_ts();
+                        other_core_id = *replica_core_id as u32;
+                    }
                 }
+            } else {
+                // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
+                assert_eq!(replica_core_id, &core_id);
             }
         }
 
@@ -260,6 +265,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             return CacheHierarchyAccessResult::MissInPrivateCache;
         }
 
+        let mut res = if private_hit != private_cache::PrivateCachePokeResult::PermissionViolation {
+            CacheHierarchyAccessResult::HitInOtherPrivateCache
+        } else {
+            CacheHierarchyAccessResult::MissDueToPermission
+        };
+
         let evicted = if is_store {
             let mut incoming_sharer = directory_entry.sharers.clone();
             let mut set_for_refill_lock = None;
@@ -278,6 +289,11 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                     } else {
                         assert!(entry.write_ts() <= ts);
                         assert!(*replica_core_id != core_id);
+
+                        // This means you will only get the read permission, because there is a core with read permission and large timestamp.
+
+                        // The result must be inaccurate because the access arrives OoO.
+                        res = CacheHierarchyAccessResult::MissInPrivateCache;
                     }
                 } else {
                     // This is the only case that we can see a the private cache does not have this block.
@@ -299,6 +315,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                 // There are sharers. So unfortunately, you can only get shared permission.
                 set_for_refill_lock.refill(block_id, ts, is_instruction, false)
             };
+
+            // add self to the incoming sharer list.
+            incoming_sharer.set(core_id as usize, true);
 
             // update the directory.
             directory_entry.ts = ts;
@@ -360,7 +379,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             );
         }
 
-        return CacheHierarchyAccessResult::HitInOtherPrivateCache;
+        return res;
     }
 
     pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64, modified: bool) {

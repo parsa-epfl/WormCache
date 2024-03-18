@@ -103,7 +103,7 @@ impl<
         sharers: crate::components::memory_locker::dashmap_directory::SharerList,
     ) -> Vec<(u32, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         // Now it really depends on how to interpret the sharer list.
-        assert!(sharers.len() == parameter::CORE_COUNT * 2);
+        assert_eq!(sharers.len(), usize::max(CORE_COUNT * 2, 64));
 
         let mut res = Vec::new();
 

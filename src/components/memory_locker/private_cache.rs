@@ -153,6 +153,8 @@ impl PrivateCacheSet {
                 Some(oldest_element) => {
                     // Here we need to be careful. In case we have order violation, we don't know the result of this cache hit / miss.
                     let res = oldest_element.clone();
+                    // This should be not possible. You can never refill a cache line using the old timestamp from the same core.
+                    assert!(res.ts <= ts);
                     oldest_element.ts = ts;
                     oldest_element.tag = block_id_to_find;
                     oldest_element.is_instruction = is_instruction;

@@ -116,7 +116,7 @@ fn write_invalidation_coherence() {
     // Now, core 0 and core 1 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&2], BlockState::Shared);
+    assert_eq!(sharers[&2], BlockState::Modified);
 
     // Now core 0 gets a read permission at 100.
     assert_eq!(
@@ -147,7 +147,7 @@ fn raw_and_war() {
     // Core 2 get a write permission at 5.
     assert_eq!(
         mh.access_memory_pblock_id(2, block_id, 5, true, false),
-        CacheHierarchyAccessResult::HitInOtherPrivateCache
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
     // Now, core 0 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
@@ -156,7 +156,6 @@ fn raw_and_war() {
     assert_eq!(sharers[&1], BlockState::Shared);
 }
 
-// FIXME: I found a bug here. When a core first gets exclusive permission, and then write it, it does not trigger miss and update the directory.
 #[test]
 fn rarw() {
     let mut mh = MH::new();
@@ -169,20 +168,20 @@ fn rarw() {
     );
     // Core 0 get a write permission at 20.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 20, false, false),
-        CacheHierarchyAccessResult::HitInSelfPrivateCache
+        mh.access_memory_pblock_id(0, block_id, 20, true, false),
+        CacheHierarchyAccessResult::MissDueToPermission
     );
 
     // Core 1 get a read permission at 0.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 0, false, false),
-        CacheHierarchyAccessResult::HitInOtherPrivateCache
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     // Now, core 1 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&1], BlockState::Shared);
+    assert_eq!(sharers[&0], BlockState::Modified);
 }
 
 #[test]
@@ -204,7 +203,35 @@ fn waw() {
     // Now, the only owner of the data should be core 0.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&0], BlockState::Shared);
+    assert_eq!(sharers[&0], BlockState::Modified);
+}
+
+#[test]
+fn wwaw() {
+    let mut mh = MH::new();
+    let block_id = 1024;
+    // Core 0 gets a write permission at timestamp 10
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 10, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 0 gets a write permission at timestamp 20. It should be a bit and no broadcast to the directory.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 20, true, false),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+
+    // Core 1 gets a write permission at timestamp 15.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 15, true, false),
+        CacheHierarchyAccessResult::MissInPrivateCache
+    );
+
+    // Now, the only owner of the data should be core 0.
+    let sharers = mh.get_all_private_replicas(block_id);
+    assert_eq!(sharers.len(), 1);
+    assert_eq!(sharers[&0], BlockState::Modified);
 }
 
 #[test]

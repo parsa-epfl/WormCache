@@ -91,7 +91,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     ) -> Vec<(u32, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         let mut result = Vec::new();
 
-        assert!(sharers.len() == CORE_COUNT);
+        assert_eq!(sharers.len(), usize::max(CORE_COUNT, 64));
 
         for one_idx in sharers.iter_ones() {
             let core_id = one_idx as u32;
