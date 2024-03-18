@@ -16,9 +16,10 @@ mod reverse_order_tests;
 pub struct LockedMemoryHierarchy<MMU: AbstractMMU> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
-    private_caches:
-        [private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>;
-            parameter::CORE_COUNT],
+    private_caches: [private_cache::PrivateCache<
+        { parameter::UNIFIED_PRI_CACHE_SET },
+        { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >; parameter::CORE_COUNT],
     // In case the hardware has separate L1i and L1d, and there is no private L2, we can just add two groups of caches.
     // The logic to handle it is the same. It is equivalent that we have more cores with a single private cache.
     // There might be a way to optimize if the permission is shared. I need to think about it.

@@ -33,18 +33,60 @@ pub const TLB_ASSO: usize = 16;
 pub const TLB_SET: usize = 1024;
 
 /**
+ * USE_UNIFIED_CACHE
+ *
+ * Whether to use the unified private cache.
+ * If true, the private instruction cache and the private data cache are unified.
+ * If false, the private instruction cache and the private data cache are separated, i.e., the Harvard architecture.
+ */
+pub const USE_UNIFIED_CACHE: bool = true;
+
+/**
  * PRI_CACHE_ASSO
  *
- * The associativity of the private cache for traffic recording.
+ * The associativity of the private cache.
+ * This parameter is only used when the unified private cache is enabled.
  */
-pub const PRI_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1KB.
-
+pub const UNIFIED_PRI_CACHE_ASSO: usize = 16;
 /**
  * PRI_CACHE_SET
  *
- * The number of sets of the private cache for traffic recording.
+ * The number of sets of the private cache.
+ * This parameter is only used when the unified private cache is enabled.
  */
-pub const PRI_CACHE_SET: usize = 2048;
+pub const UNIFIED_PRI_CACHE_SET: usize = 2048;
+
+/**
+ * HARVARD_PRI_I_CACHE_ASSO
+ *
+ * The associativity of the private instruction cache.
+ * This parameter is only used when the unified private cache is disabled.
+ */
+pub const HARVARD_PRI_I_CACHE_ASSO: usize = 16;
+
+/**
+ * HARVARD_PRI_I_CACHE_SET
+ *
+ * The number of sets of the private instruction cache.
+ * This parameter is only used when the unified private cache is disabled.
+ */
+pub const HARVARD_PRI_I_CACHE_SET: usize = 2048;
+
+/**
+ * HARVARD_PRI_D_CACHE_ASSO
+ *
+ * The associativity of the private data cache.
+ * This parameter is only used when the unified private cache is disabled.
+ */
+pub const HARVARD_PRI_D_CACHE_ASSO: usize = 16;
+
+/**
+ * HARVARD_PRI_D_CACHE_SET
+ *
+ * The number of sets of the private data cache.
+ * This parameter is only used when the unified private cache is disabled.
+ */
+pub const HARVARD_PRI_D_CACHE_SET: usize = 2048;
 
 /**
  * SHARED_CACHE_ASSO
