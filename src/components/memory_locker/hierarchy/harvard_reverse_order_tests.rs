@@ -8,10 +8,12 @@ use super::*;
 
 type MH = LockedMemoryHierarchy<
     NoMMU,
-    UnifiedPrivateCaches<
+    HarvardPrivateCaches<
         { parameter::CORE_COUNT },
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
 >;
 
@@ -27,8 +29,6 @@ enum BlockState {
     Shared,
     Modified,
 }
-
-impl MH {}
 
 impl MH {
     fn where_is_the_block(&mut self, block_id: u64) -> BlockPosition {
@@ -68,16 +68,16 @@ fn reversed_timestamp_from_the_same_core() {
     let mut mh = MH::new();
     let mut ts = 100;
     // Fill one cache set with some data.
-    for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        let block_id: u64 = (l * parameter::UNIFIED_PRI_CACHE_SET) as u64;
+    for l in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
+        let block_id: u64 = (l * parameter::HARVARD_PRI_D_CACHE_SET) as u64;
         mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false);
     }
 
     ts += 100;
 
     // If I access any touched block, it should be hit.
-    for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        let block_id: u64 = (l * parameter::UNIFIED_PRI_CACHE_SET) as u64;
+    for l in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
+        let block_id: u64 = (l * parameter::HARVARD_PRI_D_CACHE_SET) as u64;
         assert_eq!(
             mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false),
             CacheHierarchyAccessResult::HitInSelfPrivateCache
@@ -85,7 +85,7 @@ fn reversed_timestamp_from_the_same_core() {
     }
 
     // OK, now there is an access with a reversed timestamp.
-    let eval_block_id = (128 * parameter::UNIFIED_PRI_CACHE_SET) as u64;
+    let eval_block_id = (128 * parameter::HARVARD_PRI_D_CACHE_SET) as u64;
     // The following line should trigger an assertion failure.
     assert_eq!(
         mh.access_memory_pblock_id(0, eval_block_id, 0, false, false),
@@ -245,9 +245,9 @@ fn rae() {
     );
 
     // This block is evicted due to contention.
-    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+    for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 =
-            (10 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
+            (10 * (i + 1) * parameter::HARVARD_PRI_D_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (100 + i) as u64, false, false);
     }
 
@@ -276,9 +276,9 @@ fn eae() {
         CacheHierarchyAccessResult::Miss
     );
 
-    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+    for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 =
-            (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
+            (100 * (i + 1) * parameter::HARVARD_PRI_D_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false);
     }
 
@@ -292,9 +292,9 @@ fn eae() {
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
-    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+    for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 =
-            (255 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
+            (255 * (i + 1) * parameter::HARVARD_PRI_D_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
     }
 
@@ -319,9 +319,9 @@ fn wae() {
         CacheHierarchyAccessResult::Miss
     );
 
-    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+    for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 =
-            (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
+            (100 * (i + 1) * parameter::HARVARD_PRI_D_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false);
     }
 
@@ -363,9 +363,9 @@ fn eaw() {
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
-    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+    for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 =
-            (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
+            (100 * (i + 1) * parameter::HARVARD_PRI_D_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
     }
 
@@ -391,9 +391,9 @@ fn ear() {
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
-    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+    for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 =
-            (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
+            (100 * (i + 1) * parameter::HARVARD_PRI_D_CACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
     }
 

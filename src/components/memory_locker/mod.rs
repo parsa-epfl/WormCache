@@ -15,12 +15,15 @@ use crate::{
 };
 use std::ffi;
 
+use self::private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches};
+
+use super::debug::statistics::Statistics;
+
 mod dashmap_directory;
 pub mod directory;
 mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
-pub mod statistics;
 
 type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     AArch64,
@@ -28,8 +31,28 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
-static mut PLUGIN: Lazy<hierarchy::LockedMemoryHierarchy<AArch64MMU>> =
-    Lazy::new(|| hierarchy::LockedMemoryHierarchy::new());
+type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
+    AArch64MMU,
+    UnifiedPrivateCaches<
+        { parameter::CORE_COUNT },
+        { parameter::UNIFIED_PRI_CACHE_SET },
+        { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >,
+>;
+
+type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
+    AArch64MMU,
+    HarvardPrivateCaches<
+        { parameter::CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+>;
+
+static mut PLUGIN: Lazy<PluginMemoryHierarchyHarvard> =
+    Lazy::new(|| PluginMemoryHierarchyHarvard::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -52,11 +75,18 @@ unsafe extern "C" fn vcpu_mem_access(
 
         // let walk_trace = qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler);
         // let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
-        // let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
+        let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
         // Currently, this is experimental.
         // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
-        PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false);
+        PLUGIN.access_memory_with_va_and_pa(
+            vcpu_idx,
+            vaddr,
+            pa,
+            get_memory_ts() as u64,
+            is_store,
+            false,
+        );
     } else {
         // TODO: check the I/O event
     }
@@ -99,11 +129,12 @@ impl super::Plugin for LockedMemoryPlugin {
         if ENABLE_STATISTICS {
             // open a csv file and dump each cores' statistics.
             let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
-            file.write(b"core_id,total_mem,private_cache_miss,shared_cache_access,private_cache_miss_ratio,shared_cache_access_ratio,tlb_access,tlb_miss,tlb_miss_ratio\n")
-            .unwrap();
-            for i in 0..crate::parameter::CORE_COUNT {
-                let stats = unsafe { PLUGIN.get_statistics(i as u32) };
-                file.write(stats.as_bytes()).unwrap();
+
+            file.write_fmt(format_args!("{}\n", Statistics::get_header()))
+                .unwrap();
+
+            for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
+                file.write(stat.as_bytes()).unwrap();
                 file.write(b"\n").unwrap();
             }
         }

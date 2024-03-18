@@ -1,12 +1,28 @@
 use dashmap::mapref::one::RefMut;
 use dashmap::DashMap;
-use std::collections::HashMap;
-use std::sync::Mutex;
 
 use bitvec::prelude::*;
 use bitvec::BitArr;
 
-pub type SharerList = BitArr!(for crate::parameter::CORE_COUNT, in u64, Lsb0);
+use crate::parameter;
+
+const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
+    parameter::CORE_COUNT
+} else {
+    parameter::CORE_COUNT * 2
+};
+
+const SHARED_COUNT: usize = if parameter::USE_UNIFIED_CACHE {
+    parameter::UNIFIED_PRI_CACHE_SET
+} else {
+    if parameter::HARVARD_PRI_I_CACHE_ASSO > parameter::HARVARD_PRI_D_CACHE_ASSO {
+        parameter::HARVARD_PRI_I_CACHE_SET
+    } else {
+        parameter::HARVARD_PRI_D_CACHE_SET
+    }
+};
+
+pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 
 // pub struct DirectoryEntry {
 //     owner: Option<CoreId>,
@@ -29,7 +45,7 @@ impl Directory {
     pub fn new() -> Self {
         Self {
             // entries: std::array::from_fn(|_| RwLock::new(DirectorySet::new())),
-            entries: DashMap::with_shard_amount(crate::parameter::PRI_CACHE_SET),
+            entries: DashMap::with_shard_amount(SHARED_COUNT),
         }
     }
 
@@ -41,7 +57,7 @@ impl Directory {
                     block_id,
                     DirectoryEntry {
                         ts: 0,
-                        sharers: SharerList::ZERO,
+                        sharers: BitArray::ZERO,
                         modify_ts_before_eviction: 0, // zero is a good initialize value, because all timestamp must not be 0.
                     },
                 );

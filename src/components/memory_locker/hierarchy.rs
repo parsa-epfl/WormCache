@@ -1,24 +1,25 @@
-use crate::{
-    components::memory_locker::directory::SharerList,
-    parameter::{self, ENABLE_STATISTICS},
-};
+use crate::{components::memory_locker::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
-use super::{dashmap_directory, private_cache, shared_cache, statistics};
+use super::{
+    dashmap_directory,
+    private_cache::{self, PrivateCaches},
+    shared_cache,
+};
 
 use crate::components::mmu::AbstractMMU;
-use std::{cell::UnsafeCell, sync::atomic::Ordering};
+use std::cell::UnsafeCell;
 
 mod debug_tests;
+mod harvard_reverse_order_tests;
+mod harvard_tests;
 mod reverse_order_tests;
 
-pub struct LockedMemoryHierarchy<MMU: AbstractMMU> {
+pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
-    private_caches:
-        [private_cache::PrivateCache<{ parameter::PRI_CACHE_SET }, { parameter::PRI_CACHE_ASSO }>;
-            parameter::CORE_COUNT],
+    private_caches: PCache,
     // In case the hardware has separate L1i and L1d, and there is no private L2, we can just add two groups of caches.
     // The logic to handle it is the same. It is equivalent that we have more cores with a single private cache.
     // There might be a way to optimize if the permission is shared. I need to think about it.
@@ -29,29 +30,25 @@ pub struct LockedMemoryHierarchy<MMU: AbstractMMU> {
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
-
-    per_core_statistics: [UnsafeCell<statistics::PerCoreStatistics>; parameter::CORE_COUNT], // TODO: peel off this part to a global variable.
 }
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
+    MissDueToPermission,
     HitInOtherPrivateCache,
     MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
     HitInSharedCache,
     Miss,
 }
 
-impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
+impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache> {
     pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
-            private_caches: std::array::from_fn(|_| private_cache::PrivateCache::new()),
+            private_caches: PCache::new(),
             directory: dashmap_directory::Directory::new(),
             shared_cache: shared_cache::SharedCache::new(),
-            per_core_statistics: std::array::from_fn(|_| {
-                UnsafeCell::new(statistics::PerCoreStatistics::new())
-            }),
         }
     }
 
@@ -151,16 +148,12 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         is_store: bool,
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
-        // STATISTICS: Total Memory Access
-        let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
-
         Statistics::global_record(core_id, EventType::MemoryAccess);
 
-        let private_cache = &self.private_caches[core_id as usize];
-        let mut private_set = private_cache.get_set(block_id).write().unwrap(); // Thread 6
-
         // first, we need to check the private cache.
-        let private_hit = private_set.poke_and_update(block_id, ts, is_store, is_instruction);
+        let private_hit =
+            self.private_caches
+                .poke_and_update(core_id, block_id, ts, is_instruction, is_store);
 
         if private_hit == private_cache::PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
@@ -168,9 +161,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         }
 
         Statistics::global_record(core_id, EventType::PrivateCacheMiss);
-
-        // Now, we go to the directory. We release the lock of the private cache.
-        drop(private_set);
 
         // now, it is a miss. We need to check the directory.
         let mut directory_entry = self.directory.get_or_create(block_id);
@@ -182,28 +172,39 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
             return CacheHierarchyAccessResult::MissInPrivateCache;
         }
 
+        // Now, we communicate with the directory. Current miss is mapped to the following position in the directory entry share list.
+        let p_cache_id = PCache::get_cache_id_by_cache_info(core_id, is_instruction);
+
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
             // NOTE: currently shared cache access is disabled.
             let shared_cache_result = self.shared_cache.lookup(block_id);
-            let mut incoming_sharer = SharerList::ZERO;
-            incoming_sharer.set(core_id as usize, true);
+
             directory_entry.ts = ts;
-            directory_entry.sharers = incoming_sharer;
+            directory_entry.sharers.set(p_cache_id as usize, true);
 
             if is_store {
                 directory_entry.modify_ts_before_eviction = ts;
             }
 
-            let mut private_set = private_cache.get_set(block_id).write().unwrap();
-            let evicted = private_set.refill(block_id, ts, is_instruction, is_store);
+            let evicted = self.private_caches.refill_from_shared_cache(
+                core_id,
+                block_id,
+                ts,
+                is_instruction,
+                is_store,
+            );
 
-            drop(private_set);
             drop(directory_entry);
 
             // handle eviction now.
             if let Some(evicted_line) = evicted {
-                self.handle_eviction(core_id, evicted_line.tag, ts, evicted_line.modified);
+                self.handle_eviction(
+                    p_cache_id,
+                    evicted_line.block_id(),
+                    ts,
+                    evicted_line.is_modified(),
+                );
             }
 
             Statistics::global_record(core_id, EventType::SharedCacheAccess);
@@ -218,29 +219,29 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
 
         let mut acquire_list = sharers.clone();
         // the core itself should be also part of the acquire_list.
-        acquire_list.set(core_id as usize, true);
+        acquire_list.set(p_cache_id as usize, true);
 
         // Now, acquire the lock of all sets of the private cache, suggested by the directory.
-        let mut acquired_sets = Vec::with_capacity(sharers.count_ones() as usize);
-        for i in sharers.iter_ones() {
-            acquired_sets.push((
-                i as u32,
-                self.private_caches[i].get_set(block_id).write().unwrap(),
-            ));
-        }
+        let mut acquired_sets = self
+            .private_caches
+            .get_set_guard_by_sharer_list(block_id, acquire_list);
 
         // Do we have another sharer that has a write permission with a larger timestamp?
         let mut other_has_write_permission_with_late_ts = false;
         let mut other_write_ts = 0;
-        let mut other_core_id = 0;
-        for (replica_core_id, set) in acquired_sets.iter() {
-            let line = set.poke(block_id).unwrap();
-            if line.modified && line.write_ts > ts {
-                other_has_write_permission_with_late_ts = true;
-                if line.write_ts > other_write_ts {
-                    other_write_ts = line.write_ts;
-                    other_core_id = *replica_core_id as u32;
+        let mut other_sharer_id = 0;
+        for (replica_cache_id, set) in acquired_sets.iter() {
+            if let Some(line) = set.poke(block_id) {
+                if line.is_modified() && line.write_ts() > ts {
+                    other_has_write_permission_with_late_ts = true;
+                    if line.write_ts() > other_write_ts {
+                        other_write_ts = line.write_ts();
+                        other_sharer_id = *replica_cache_id;
+                    }
                 }
+            } else {
+                // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
+                assert_eq!(*replica_cache_id, p_cache_id);
             }
         }
 
@@ -250,12 +251,12 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
 
             // Update the directory.
             let mut incoming_sharer = SharerList::ZERO;
-            incoming_sharer.set(other_core_id as usize, true);
+            incoming_sharer.set(other_sharer_id as usize, true);
             directory_entry.ts = ts;
             directory_entry.sharers = incoming_sharer;
 
-            for (core_id, set) in acquired_sets.iter_mut() {
-                if *core_id != other_core_id {
+            for (replica_cache_id, set) in acquired_sets.iter_mut() {
+                if *replica_cache_id != other_sharer_id {
                     set.invalidate(block_id);
                 }
             }
@@ -268,6 +269,12 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
             return CacheHierarchyAccessResult::MissInPrivateCache;
         }
 
+        let mut res = if private_hit != private_cache::PrivateCachePokeResult::PermissionViolation {
+            CacheHierarchyAccessResult::HitInOtherPrivateCache
+        } else {
+            CacheHierarchyAccessResult::MissDueToPermission
+        };
+
         let evicted = if is_store {
             let mut incoming_sharer = directory_entry.sharers.clone();
             let mut set_for_refill_lock = None;
@@ -276,24 +283,29 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
             // When checking replica, we can see the number of replica. If it is 1 and its owner is the current core, then it is CleanExclusive.
             // We can just return HitInSelfPrivateCache if the coherence protocol is MESI and the timing information is needed.
 
-            for (replica_core_id, set) in acquired_sets.iter_mut() {
+            for (replica_cache_id, set) in acquired_sets.iter_mut() {
                 if let Some(entry) = set.poke(block_id) {
-                    if entry.ts < ts {
+                    if entry.access_ts() < ts {
                         // invalid the directory entry.
-                        incoming_sharer.set(*replica_core_id as usize, false);
+                        incoming_sharer.set(*replica_cache_id as usize, false);
                         // invalid the private cache entry.
                         set.invalidate(block_id);
                     } else {
-                        assert!(entry.write_ts <= ts);
-                        assert!(*replica_core_id != core_id);
+                        assert!(entry.write_ts() <= ts);
+                        assert!(*replica_cache_id != p_cache_id);
+
+                        // This means you will only get the read permission, because there is a core with read permission and large timestamp.
+
+                        // The result must be inaccurate because the access arrives OoO.
+                        res = CacheHierarchyAccessResult::MissInPrivateCache;
                     }
                 } else {
                     // This is the only case that we can see a the private cache does not have this block.
-                    assert!(*replica_core_id == core_id);
-                    incoming_sharer.set(*replica_core_id as usize, false);
+                    assert!(*replica_cache_id == p_cache_id);
+                    incoming_sharer.set(*replica_cache_id as usize, false);
                 }
 
-                if *replica_core_id == core_id {
+                if *replica_cache_id == p_cache_id {
                     set_for_refill_lock = Some(set);
                 }
             }
@@ -308,6 +320,9 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                 set_for_refill_lock.refill(block_id, ts, is_instruction, false)
             };
 
+            // add self to the incoming sharer list.
+            incoming_sharer.set(p_cache_id as usize, true);
+
             // update the directory.
             directory_entry.ts = ts;
             directory_entry.sharers = incoming_sharer;
@@ -321,12 +336,12 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
             let mut already_modified = false;
             let mut set_for_refill_lock = None;
 
-            for (replica_core_id, set) in acquired_sets.iter_mut() {
+            for (replica_cache_id, set) in acquired_sets.iter_mut() {
                 if let Some(entry) = set.poke(block_id) {
-                    if entry.modified {
+                    if entry.is_modified() {
                         assert!(already_modified == false);
 
-                        if entry.write_ts > ts {
+                        if entry.write_ts() > ts {
                             // OK, this read operation is also not ordered.
                             // There is nothing we need to do.
 
@@ -341,14 +356,14 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
                     }
                 }
 
-                if *replica_core_id == core_id {
+                if *replica_cache_id == p_cache_id {
                     set_for_refill_lock = Some(set);
                 }
             }
 
             // Then, we need to add self to the directory.
             let mut incoming_sharer = directory_entry.sharers.clone();
-            incoming_sharer.set(core_id as usize, true);
+            incoming_sharer.set(p_cache_id as usize, true);
             directory_entry.ts = ts;
             directory_entry.sharers = incoming_sharer;
 
@@ -360,31 +375,32 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         };
 
         if let Some(evicted_line) = evicted {
-            self.handle_eviction(core_id, evicted_line.tag, ts, evicted_line.modified);
+            self.handle_eviction(
+                p_cache_id,
+                evicted_line.block_id(),
+                ts,
+                evicted_line.is_modified(),
+            );
         }
 
-        return CacheHierarchyAccessResult::HitInOtherPrivateCache;
+        return res;
     }
 
-    pub fn handle_eviction(&self, core_id: u32, block_id: u64, ts: u64, modified: bool) {
-        // before calling this function, make sure we don't have any locks of the directory or the shared cache.
-
-        let statistics = unsafe { &mut *self.per_core_statistics[core_id as usize].get() };
-
+    pub fn handle_eviction(&self, cache_id: usize, block_id: u64, ts: u64, modified: bool) {
         // first, we need to check the directory.
         let mut directory_set = self.directory.get_or_create(block_id); // Thread 5
 
         // we cancel the element of this block in the directory.
         let sharer = directory_set.sharers;
 
-        if sharer.get(core_id as usize).unwrap() == false {
+        if sharer.get(cache_id).unwrap() == false {
             // Well, it is already invalid by other core.
             assert!(false);
             return;
         }
 
         let mut incoming_sharer = sharer.clone();
-        incoming_sharer.set(core_id as usize, false);
+        incoming_sharer.set(cache_id, false);
 
         // we put the element back to the directory.
         directory_set.ts = ts;
@@ -404,7 +420,10 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if incoming_sharer.count_ones() == 0 {
             // we need to place this block to the shared cache.
-            Statistics::global_record(core_id, EventType::SharedCacheAccess);
+            Statistics::global_record(
+                PCache::find_cache_by_id(cache_id).0,
+                EventType::SharedCacheAccess,
+            );
             // NOTE: currently shared cache access is disabled.
             self.shared_cache.write_back(block_id, ts);
             drop(directory_set);
@@ -412,16 +431,6 @@ impl<MMU: AbstractMMU> LockedMemoryHierarchy<MMU> {
         } else {
             drop(directory_set);
         }
-    }
-
-    pub fn get_statistics(&self, core_id: u32) -> String {
-        return unsafe {
-            self.per_core_statistics[core_id as usize]
-                .get()
-                .as_ref()
-                .unwrap()
-                .being_printed(core_id)
-        };
     }
 
     pub fn dump_access_counter(&self) {
