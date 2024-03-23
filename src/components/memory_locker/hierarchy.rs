@@ -2,6 +2,8 @@ use crate::{components::memory_locker::dashmap_directory::SharerList, parameter}
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
+use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
+
 use super::{
     dashmap_directory,
     private_cache::{self, PrivateCaches},
@@ -164,16 +166,27 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
         // now, it is a miss. We need to check the directory.
         let mut directory_entry = self.directory.get_or_create(block_id);
+
         let sharers = directory_entry.sharers;
+
+        // Now, we communicate with the directory. Current miss is mapped to the following position in the directory entry share list.
+        let p_cache_id = PCache::get_cache_id_by_cache_info(core_id, is_instruction);
+
+        let record_op = if is_store {
+            CacheOperationType::GetM
+        } else {
+            CacheOperationType::GetR
+        };
 
         if directory_entry.modify_ts_before_eviction > ts {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
+            CacheLineCoherenceHistory::global_record_history(
+                block_id, record_op, p_cache_id, ts, false,
+            );
+
             return CacheHierarchyAccessResult::MissInPrivateCache;
         }
-
-        // Now, we communicate with the directory. Current miss is mapped to the following position in the directory entry share list.
-        let p_cache_id = PCache::get_cache_id_by_cache_info(core_id, is_instruction);
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
@@ -209,6 +222,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             Statistics::global_record(core_id, EventType::SharedCacheAccess);
 
+            CacheLineCoherenceHistory::global_record_history(
+                block_id, record_op, p_cache_id, ts, true,
+            );
+
             if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
@@ -241,7 +258,13 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                 }
             } else {
                 // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
-                // assert_eq!(*replica_cache_id, p_cache_id);
+                if *replica_cache_id != p_cache_id {
+                    CacheLineCoherenceHistory::global_get_block_history(block_id)
+                        .unwrap()
+                        .value()
+                        .print_history();
+                    assert_eq!(*replica_cache_id, p_cache_id);
+                }
             }
         }
 
@@ -260,6 +283,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                     set.invalidate(block_id);
                 }
             }
+
+            CacheLineCoherenceHistory::global_record_history(
+                block_id, record_op, p_cache_id, ts, false,
+            );
 
             // Now, release the lock.
             drop(acquired_sets);
@@ -327,6 +354,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             directory_entry.ts = ts;
             directory_entry.sharers = incoming_sharer;
 
+            CacheLineCoherenceHistory::global_record_history(
+                block_id, record_op, p_cache_id, ts, true,
+            );
+
             drop(acquired_sets);
             drop(directory_entry);
 
@@ -344,6 +375,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                         if entry.write_ts() > ts {
                             // OK, this read operation is also not ordered.
                             // There is nothing we need to do.
+
+                            CacheLineCoherenceHistory::global_record_history(
+                                block_id, record_op, p_cache_id, ts, false,
+                            );
 
                             drop(acquired_sets);
                             drop(directory_entry);
@@ -372,6 +407,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false);
 
+            CacheLineCoherenceHistory::global_record_history(
+                block_id, record_op, p_cache_id, ts, true,
+            );
+
             drop(acquired_sets);
             drop(directory_entry);
 
@@ -392,14 +431,24 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
     pub fn handle_eviction(&self, cache_id: usize, block_id: u64, ts: u64, modified: bool) {
         // first, we need to check the directory.
-        let mut directory_set = self.directory.get_or_create(block_id); // Thread 5
+        let mut directory_set = self.directory.get_or_create(block_id);
+
+        CacheLineCoherenceHistory::global_record_history(
+            block_id,
+            CacheOperationType::Drop,
+            cache_id,
+            ts,
+            false,
+        );
 
         // we cancel the element of this block in the directory.
         let sharer = directory_set.sharers;
 
         if sharer.get(cache_id).unwrap() == false {
             // Well, it is already invalid by other core.
-            // assert!(false);
+            let his = CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap();
+            his.value().print_history();
+            assert!(false);
             return;
         }
 
