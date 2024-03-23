@@ -130,5 +130,5 @@ impl Plugin for PageWalkLoggerPlugin {
         }
     }
 
-    fn dump_snapshot() {}
+    fn dump_snapshot(_: &str) {}
 }

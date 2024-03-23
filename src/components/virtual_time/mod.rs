@@ -40,9 +40,10 @@ pub struct VirtualTimePlugin {}
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init() {
-        unsafe {
-            qemu_api::qemu_plugin_register_virtual_time_cb(Some(calculate_virtual_time));
-        }
+        assert!(unsafe {
+            qemu_api::qemu_plugin_register_virtual_time_cb(Some(calculate_virtual_time))
+        });
+
         std::thread::spawn(|| {
             // open a csv file to store the icounts.
             let mut file = std::fs::File::create("cache-icount.csv").unwrap();
@@ -76,7 +77,7 @@ impl super::Plugin for VirtualTimePlugin {
     }
 
     #[inline]
-    fn dump_snapshot() {
+    fn dump_snapshot(_: &str) {
         // clean the icount, because the baseline is changed.
         TIME_PLUGIN.lock().unwrap().reset();
         ICOUNT_PLUGIN.reset();

@@ -11,7 +11,7 @@ pub enum CacheOperationType {
 
 #[derive(Debug)]
 pub struct SingleCacheLineCoherenceHistory {
-    history: Vec<(CacheOperationType, u32, u64)>, // operation, core_id, timestamp
+    history: Vec<(CacheOperationType, usize, u64, bool)>, // operation, cache_id, timestamp
 }
 
 impl SingleCacheLineCoherenceHistory {
@@ -21,15 +21,22 @@ impl SingleCacheLineCoherenceHistory {
         }
     }
 
-    pub fn record(&mut self, operation: CacheOperationType, core_id: u32, timestamp: u64) {
-        self.history.push((operation, core_id, timestamp));
+    pub fn record(
+        &mut self,
+        operation: CacheOperationType,
+        cache_id: usize,
+        timestamp: u64,
+        refilled: bool,
+    ) {
+        self.history
+            .push((operation, cache_id, timestamp, refilled));
     }
 
     pub fn print_history(&self) {
-        for (operation, core_id, timestamp) in &self.history {
+        for (operation, core_id, timestamp, refilled) in &self.history {
             println!(
-                "Operation: {:?}, Core ID: {}, Timestamp: {}",
-                operation, core_id, timestamp
+                "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}",
+                operation, core_id, timestamp, refilled
             );
         }
     }
@@ -48,10 +55,10 @@ impl SingleCacheLineCoherenceHistory {
             let middle = self.history.len() - n;
 
             for i in middle..self.history.len() {
-                let (operation, core_id, timestamp) = &self.history[i];
+                let (operation, core_id, timestamp, refilled) = &self.history[i];
                 println!(
-                    "Operation: {:?}, Core ID: {}, Timestamp: {}",
-                    operation, core_id, timestamp
+                    "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}",
+                    operation, core_id, timestamp, refilled
                 );
             }
         }
@@ -72,26 +79,34 @@ impl CacheLineCoherenceHistory {
         }
     }
 
-    fn record(&self, block_id: u64, operation: CacheOperationType, core_id: u32, timestamp: u64) {
+    fn record(
+        &self,
+        block_id: u64,
+        operation: CacheOperationType,
+        cache_id: usize,
+        timestamp: u64,
+        refilled: bool,
+    ) {
         let mut history = self
             .history
             .entry(block_id)
             .or_insert(SingleCacheLineCoherenceHistory::new());
-        history.record(operation, core_id, timestamp);
+        history.record(operation, cache_id, timestamp, refilled);
     }
 
     pub fn global_record_history(
         block_id: u64,
         operation: CacheOperationType,
-        core_id: u32,
+        cache_id: usize,
         timestamp: u64,
+        refilled: bool,
     ) {
         if !crate::parameter::ENABLE_CACHE_LINE_HISTORY {
             // I believe the compiler will optimize this function out.
             return;
         }
         unsafe {
-            GLOBAL_HISTORY.record(block_id, operation, core_id, timestamp);
+            GLOBAL_HISTORY.record(block_id, operation, cache_id, timestamp, refilled);
         }
     }
 

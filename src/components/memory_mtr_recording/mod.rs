@@ -145,9 +145,11 @@ impl<MMU: AbstractMMU> MTRMemoryHierarchy<MMU> {
         self.hierarchies[core_id].access(vaddr, ts, is_write, is_instruction);
     }
 
-    pub fn dump(&self) {
+    pub fn dump(&self, snapshot_name: &str) {
         for (core_id, hierarchy) in self.hierarchies.iter().enumerate() {
-            let mut dump_file = std::fs::File::create(format!("mtr_core_{}.txt", core_id)).unwrap();
+            let mut dump_file =
+                std::fs::File::create(format!("{}/mtr_core_{}.txt", snapshot_name, core_id))
+                    .unwrap();
             hierarchy.dump_to_file(&mut dump_file);
         }
     }
@@ -267,9 +269,9 @@ impl Plugin for MTRMemoryPlugin {
     }
 
     #[inline]
-    fn dump_snapshot() {
+    fn dump_snapshot(name: &str) {
         unsafe {
-            (&*PLUGIN.get()).dump();
+            (&*PLUGIN.get()).dump(name);
         }
     }
 }

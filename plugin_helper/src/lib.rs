@@ -22,7 +22,7 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
                 let ty = &field.ty;
                 // Assuming the field type implements DD, generate a dd call
                 dump_state_calls.push(quote! {
-                    #ty::dump_snapshot();
+                    #ty::dump_snapshot(name);
                 });
                 on_translation_calls.push(quote! {
                     #ty::on_translation(tb);
@@ -38,7 +38,7 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         impl #name {
             #[inline]
-            pub unsafe fn dump_snapshot() {
+            pub unsafe fn dump_snapshot(name: &str) {
                 #( #dump_state_calls )*
             }
 

@@ -25,16 +25,19 @@ use std::ffi;
 pub static qemu_plugin_version: u32 = qemu_api::QEMU_PLUGIN_VERSION;
 
 #[no_mangle]
-unsafe extern "C" fn plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {
-    PluginList::dump_snapshot();
-}
-
-#[no_mangle]
 unsafe extern "C" fn vcpu_tb_trans(
     _: qemu_api::qemu_plugin_id_t,
     tb: *mut qemu_api::qemu_plugin_tb,
 ) {
     PluginList::on_translation(tb);
+}
+
+#[no_mangle]
+unsafe extern "C" fn savevm_cb(name: *const i8) {
+    let name = ffi::CStr::from_ptr(name).to_str().unwrap();
+    // create a folder for the name.
+    std::fs::create_dir_all(name).unwrap();
+    PluginList::dump_snapshot(name);
 }
 
 #[no_mangle]
@@ -68,7 +71,7 @@ unsafe extern "C" fn qemu_plugin_install(
     );
 
     qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
-    qemu_api::qemu_plugin_register_atexit_cb(id, Some(plugin_exit), std::ptr::null_mut());
+    qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
 
     PluginList::init();
 

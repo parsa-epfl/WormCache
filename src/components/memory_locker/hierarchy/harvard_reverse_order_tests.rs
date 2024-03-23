@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
-use self::private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches};
+use self::private_cache::HarvardPrivateCaches;
 
 use super::*;
 

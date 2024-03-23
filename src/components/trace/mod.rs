@@ -85,7 +85,7 @@ impl super::Plugin for TracePlugin {
     }
 
     #[inline]
-    fn dump_snapshot() {
+    fn dump_snapshot(_: &str) {
         TRACE_FILE.lock().unwrap().flush().unwrap();
     }
 

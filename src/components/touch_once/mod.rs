@@ -118,7 +118,7 @@ impl super::Plugin for TouchOnePlugin {
     }
 
     #[inline]
-    fn dump_snapshot() {}
+    fn dump_snapshot(_: &str) {}
 
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
