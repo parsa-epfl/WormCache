@@ -71,6 +71,28 @@ impl VirtualTimeContext {
         }
     }
 
+    fn calculate_virtual_time_with_10x_slowdown_from_realtime(&mut self) -> i64 {
+        let real_time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as i128;
+
+        unsafe {
+            if qemu_plugin_cpu_is_tick_enabled() {
+                let advanced_vtime = (real_time - self.last_real_time) as i64;
+                // 3.3 update the advanced vclock
+                self.advanced_vclock += advanced_vtime;
+            }
+        }
+
+        self.last_real_time = real_time;
+
+        // 5. return the calculated virtual time
+        unsafe {
+            return self.advanced_vclock + qemu_plugin_get_snapshoted_vm_clock();
+        }
+    }
+
     pub fn reset(&mut self) {
         self.last_real_time = 0;
         self.last_icounts = [0; CORE_COUNT];
