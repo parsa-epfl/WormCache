@@ -5,7 +5,7 @@ pub trait Plugin: Send + Sync {
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb);
 
-    fn dump_snapshot();
+    fn dump_snapshot(name: &str);
 }
 
 mod mmu; // this is only used by other components, not exposed to the crate.

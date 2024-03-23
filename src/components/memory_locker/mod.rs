@@ -125,10 +125,11 @@ impl super::Plugin for LockedMemoryPlugin {
     }
 
     #[inline]
-    fn dump_snapshot() {
+    fn dump_snapshot(name: &str) {
         if ENABLE_STATISTICS {
             // open a csv file and dump each cores' statistics.
-            let mut file = std::fs::File::create("memory_locked_missrate.csv").unwrap();
+            let mut file =
+                std::fs::File::create(format!("{}/memory_locked_missrate.csv", name)).unwrap();
 
             file.write_fmt(format_args!("{}\n", Statistics::get_header()))
                 .unwrap();

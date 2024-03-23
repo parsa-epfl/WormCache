@@ -1,5 +1,3 @@
-use crate::parameter;
-
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use std::{collections::HashMap, sync::Mutex};
 
@@ -21,23 +19,22 @@ impl<const SET: usize, const ASSO: usize> UnifiedPerCorePrivateCache<SET, ASSO> 
         return &self.cache[set_id];
     }
 
-    // Interface for testing.
-    pub fn contains_block(&self, block_id: u64) -> bool {
-        let set_id = block_id as usize % SET;
-        let set = self.cache[set_id].lock().unwrap();
-        return set.poke(block_id).is_some();
-    }
+    // pub fn contains_block(&self, block_id: u64) -> bool {
+    //     let set_id = block_id as usize % SET;
+    //     let set = self.cache[set_id].lock().unwrap();
+    //     return set.poke(block_id).is_some();
+    // }
 
-    pub fn is_block_modified(&self, block_id: u64) -> bool {
-        let set_id = block_id as usize % SET;
-        let set = self.cache[set_id].lock().unwrap();
-        let line = set.poke(block_id);
-        if let Some(line) = line {
-            return line.is_modified();
-        } else {
-            return false;
-        }
-    }
+    // pub fn is_block_modified(&self, block_id: u64) -> bool {
+    //     let set_id = block_id as usize % SET;
+    //     let set = self.cache[set_id].lock().unwrap();
+    //     let line = set.poke(block_id);
+    //     if let Some(line) = line {
+    //         return line.is_modified();
+    //     } else {
+    //         return false;
+    //     }
+    // }
 }
 
 pub struct UnifiedPrivateCaches<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> {

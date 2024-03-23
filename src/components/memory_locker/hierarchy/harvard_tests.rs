@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::components::{memory_locker::get_memory_ts, NoMMU};
 
 use self::private_cache::HarvardPrivateCaches;

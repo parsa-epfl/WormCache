@@ -64,12 +64,13 @@ impl Plugin for BranchPredictorPlugin {
         // The callback is already inserted into the TB during init.
     }
 
-    fn dump_snapshot() {
+    fn dump_snapshot(name: &str) {
         for (core_id, f) in unsafe { &(*FETCH_UNIT.get()).private_units }
             .iter()
             .enumerate()
         {
-            let mut file = std::fs::File::create(format!("fetch_unit_{}.json", core_id)).unwrap();
+            let mut file =
+                std::fs::File::create(format!("{}/fetch_unit_{}.json", name, core_id)).unwrap();
             let json = serde_json::to_string_pretty(f).unwrap();
             file.write_all(json.as_bytes()).unwrap();
         }
