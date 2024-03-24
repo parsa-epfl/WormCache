@@ -47,7 +47,12 @@ impl VirtualTimeContext {
 
                 // 3.2 if the maximum is zero, we use the difference of the real time.
                 let advanced_vtime = if max_icounts == 0 {
-                    (real_time - self.last_real_time) as i64
+                    if self.last_real_time == 0 {
+                        // the first time this function is called. We should ignore it.
+                        0
+                    } else {
+                        (real_time - self.last_real_time) as i64
+                    }
                 } else {
                     max_icounts as i64
                 };
@@ -79,9 +84,10 @@ impl VirtualTimeContext {
 
         unsafe {
             if qemu_plugin_cpu_is_tick_enabled() {
-                let advanced_vtime = (real_time - self.last_real_time) as i64;
-                // 3.3 update the advanced vclock
-                self.advanced_vclock += advanced_vtime;
+                if self.last_real_time != 0 {
+                    let advanced_vtime = (real_time - self.last_real_time) as i64;
+                    self.advanced_vclock += advanced_vtime;
+                }                
             }
         }
 
