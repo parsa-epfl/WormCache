@@ -86,7 +86,7 @@ impl VirtualTimeContext {
             if qemu_plugin_cpu_is_tick_enabled() {
                 if self.last_real_time != 0 {
                     let advanced_vtime = (real_time - self.last_real_time) as i64;
-                    self.advanced_vclock += advanced_vtime;
+                    self.advanced_vclock += advanced_vtime / 10;
                 }                
             }
         }
