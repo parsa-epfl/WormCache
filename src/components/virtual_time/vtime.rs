@@ -76,7 +76,7 @@ impl VirtualTimeContext {
         }
     }
 
-    fn calculate_virtual_time_with_10x_slowdown_from_realtime(&mut self) -> i64 {
+    pub fn calculate_virtual_time_with_10x_slowdown_from_realtime(&mut self) -> i64 {
         let real_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
