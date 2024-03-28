@@ -1,6 +1,6 @@
 use crate::parameter as param;
 use crate::qemu_api::qemu_plugin_cpu_is_tick_enabled;
-use crate::qemu_api::qemu_plugin_get_snapshoted_vm_clock;
+use crate::qemu_api::qemu_plugin_get_snapshot_cpu_clock;
 
 use param::CORE_COUNT;
 
@@ -23,7 +23,7 @@ impl VirtualTimeContext {
         };
     }
 
-    pub fn calculate_virtual_time(&mut self, icount: &ICountPlugin) -> i64 {
+    pub fn calculate_cpu_clock(&mut self, icount: &ICountPlugin) -> i64 {
         // 1. get real timestamp in nanosecond
         let real_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -72,11 +72,11 @@ impl VirtualTimeContext {
         // I didn't see a better solution. Maybe storing this value inside this plugin?
 
         unsafe {
-            return self.advanced_vclock + qemu_plugin_get_snapshoted_vm_clock();
+            return self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock();
         }
     }
 
-    pub fn calculate_virtual_time_with_10x_slowdown_from_realtime(&mut self) -> i64 {
+    pub fn calculate_cpu_clock_with_10x_slowdown_from_realtime(&mut self) -> i64 {
         let real_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
@@ -95,7 +95,7 @@ impl VirtualTimeContext {
 
         // 5. return the calculated virtual time
         unsafe {
-            return self.advanced_vclock + qemu_plugin_get_snapshoted_vm_clock();
+            return self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock();
         }
     }
 

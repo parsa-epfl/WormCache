@@ -1018,16 +1018,23 @@ extern "C" {
 }
 pub type qemu_plugin_cpu_clock_callback_t = ::std::option::Option<unsafe extern "C" fn() -> i64>;
 extern "C" {
-    #[doc = " qemu_plugin_register_cpu_clock_cb() - register the method for CPU to calculate the time.\n\n @callback: The callback to provide virtual time\n\n Returns true if the registration is successful. Please note that only one callback can be registered.\n\n This function overrides the internal QEMU function `cpu_get_clock_locked`, and it cannot be used together with the icount mode."]
+    #[doc = " qemu_plugin_register_cpu_clock_cb() - register the method for CPU to calculate the time.\n\n @callback: The callback to provide cpu clock.\n\n Returns true if the registration is successful. Please note that only one callback can be registered.\n\n This function overrides the internal QEMU function `cpu_get_clock_locked`, and it cannot be used together with the icount mode."]
     pub fn qemu_plugin_register_cpu_clock_cb(callback: qemu_plugin_cpu_clock_callback_t) -> bool;
 }
 extern "C" {
-    #[doc = " qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the realtime elapsing.\n\n Useful when defining the new virtual time function."]
+    #[doc = " qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the realtime elapsing.\n\n Useful when defining the new cpu clock function."]
     pub fn qemu_plugin_get_cpu_clock() -> i64;
 }
 extern "C" {
-    #[doc = " qemu_plugin_get_snapshoted_vm_clock() - return the VM clock time when the snapshot is taken.\n\n Useful when defining the new virtual time function."]
-    pub fn qemu_plugin_get_snapshoted_vm_clock() -> i64;
+    #[doc = " qemu_plugin_get_snapshot_cpu_clock() - return the CPU clock when the snapshot is taken. Otherwise, it is zero.\n\n Useful when defining the new cpu clock function."]
+    pub fn qemu_plugin_get_snapshot_cpu_clock() -> i64;
+}
+pub type qemu_plugin_snapshot_cpu_clock_update_cb = ::std::option::Option<unsafe extern "C" fn()>;
+extern "C" {
+    #[doc = " qemu_plugin_register_snapshot_cpu_clock_update_cb() - register the callback for updating the snapshot time.\n\n @callback: The callback to reset the VM clock.\n\n Returns true if the registration is successful. Please note that only one callback can be registered."]
+    pub fn qemu_plugin_register_snapshot_cpu_clock_update_cb(
+        callback: qemu_plugin_snapshot_cpu_clock_update_cb,
+    ) -> bool;
 }
 extern "C" {
     #[doc = " qemu_plugin_cpu_is_tick_enabled() - return whether the CPU tick is enabled.\n\n Useful when defining the new virtual time function."]
