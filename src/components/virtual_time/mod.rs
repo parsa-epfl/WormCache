@@ -41,7 +41,7 @@ impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init() {
         assert!(unsafe {
-            qemu_api::qemu_plugin_register_virtual_time_cb(Some(calculate_virtual_time))
+            qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_virtual_time))
         });
 
         std::thread::spawn(|| {

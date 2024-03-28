@@ -1016,12 +1016,10 @@ extern "C" {
     #[doc = " qemu_plugin_is_current_cpu_can_run() - check whether the current CPU can\n still continue to run instructions, i.e., not stopped by other threads like quitting.\n\n Returns true if the current cpu can still run.\n\n This function is a wrapper of function `cpu_can_run`."]
     pub fn qemu_plugin_is_current_cpu_can_run() -> bool;
 }
-pub type qemu_plugin_virtual_time_callback_t = ::std::option::Option<unsafe extern "C" fn() -> i64>;
+pub type qemu_plugin_cpu_clock_callback_t = ::std::option::Option<unsafe extern "C" fn() -> i64>;
 extern "C" {
-    #[doc = " qemu_plugin_register_virtual_time_cb() - register the method for CPU to calculate the time.\n\n @callback: The callback to provide virtual time\n\n Returns true if the registration is successful. Please note that only one callback can be registered."]
-    pub fn qemu_plugin_register_virtual_time_cb(
-        callback: qemu_plugin_virtual_time_callback_t,
-    ) -> bool;
+    #[doc = " qemu_plugin_register_cpu_clock_cb() - register the method for CPU to calculate the time.\n\n @callback: The callback to provide virtual time\n\n Returns true if the registration is successful. Please note that only one callback can be registered.\n\n This function overrides the internal QEMU function `cpu_get_clock_locked`, and it cannot be used together with the icount mode."]
+    pub fn qemu_plugin_register_cpu_clock_cb(callback: qemu_plugin_cpu_clock_callback_t) -> bool;
 }
 extern "C" {
     #[doc = " qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the realtime elapsing.\n\n Useful when defining the new virtual time function."]
