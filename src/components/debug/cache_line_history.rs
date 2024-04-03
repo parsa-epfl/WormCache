@@ -114,6 +114,7 @@ impl CacheLineCoherenceHistory {
         );
     }
 
+    #[inline]
     pub fn global_record_history(
         block_id: u64,
         operation: CacheOperationType,
@@ -134,6 +135,7 @@ impl CacheLineCoherenceHistory {
         }
     }
 
+    #[inline]
     pub fn global_get_block_history(
         block_id: u64,
     ) -> Option<Ref<'static, u64, SingleCacheLineCoherenceHistory>> {

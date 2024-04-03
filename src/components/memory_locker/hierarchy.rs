@@ -298,10 +298,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             } else {
                 // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
                 if *replica_cache_id != p_cache_id {
-                    CacheLineCoherenceHistory::global_get_block_history(block_id)
-                        .unwrap()
-                        .value()
-                        .print_history();
+                    if parameter::ENABLE_CACHE_LINE_HISTORY {
+                        CacheLineCoherenceHistory::global_get_block_history(block_id)
+                            .unwrap()
+                            .value()
+                            .print_history();
+                    }
                     assert_eq!(*replica_cache_id, p_cache_id);
                 }
             }
@@ -496,17 +498,19 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         modified: bool,
     ) {
         // first, we need to check the directory.
-        let mut directory_set = directory_set_guard.get_or_create(block_id);
+        let directory_set = directory_set_guard.get_or_create(block_id);
 
         // we cancel the element of this block in the directory.
         let sharer = directory_set.sharers;
 
         if sharer.get(cache_id).unwrap() == false {
             // Well, it is already invalid by other core.
-            let his = CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap();
-            his.value().print_history();
-            println!("Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}, Share List: {:?}",
-                CacheOperationType::Drop, cache_id, ts, false, sharer.iter_ones().collect::<Vec<usize>>() );
+            if parameter::ENABLE_CACHE_LINE_HISTORY {
+                let his = CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap();
+                his.value().print_history();
+                println!("Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}, Share List: {:?}",
+                    CacheOperationType::Drop, cache_id, ts, false, sharer.iter_ones().collect::<Vec<usize>>() );
+            }
             assert!(false);
             return;
         }
