@@ -2,6 +2,8 @@ use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 
+use crate::components::memory_locker::directory::SharerList;
+
 #[derive(Debug)]
 pub enum CacheOperationType {
     GetM,
@@ -11,7 +13,7 @@ pub enum CacheOperationType {
 
 #[derive(Debug)]
 pub struct SingleCacheLineCoherenceHistory {
-    history: Vec<(CacheOperationType, usize, u64, bool)>, // operation, cache_id, timestamp
+    history: Vec<(CacheOperationType, usize, u64, bool, SharerList, u32)>, // operation, cache_id, timestamp, is_refilled, sharers, line number
 }
 
 impl SingleCacheLineCoherenceHistory {
@@ -27,16 +29,24 @@ impl SingleCacheLineCoherenceHistory {
         cache_id: usize,
         timestamp: u64,
         refilled: bool,
+        sharers: SharerList,
+        line_number: u32,
     ) {
-        self.history
-            .push((operation, cache_id, timestamp, refilled));
+        self.history.push((
+            operation,
+            cache_id,
+            timestamp,
+            refilled,
+            sharers,
+            line_number,
+        ));
     }
 
     pub fn print_history(&self) {
-        for (operation, core_id, timestamp, refilled) in &self.history {
+        for (operation, core_id, timestamp, refilled, share_list, line_number) in &self.history {
             println!(
-                "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}",
-                operation, core_id, timestamp, refilled
+                "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}, Share List: {:?}, line: {}",
+                operation, core_id, timestamp, refilled, share_list.iter_ones().collect::<Vec<usize>>(), line_number
             );
         }
     }
@@ -55,10 +65,11 @@ impl SingleCacheLineCoherenceHistory {
             let middle = self.history.len() - n;
 
             for i in middle..self.history.len() {
-                let (operation, core_id, timestamp, refilled) = &self.history[i];
+                let (operation, core_id, timestamp, refilled, share_list, line_number) =
+                    &self.history[i];
                 println!(
-                    "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}",
-                    operation, core_id, timestamp, refilled
+                    "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}, Share List: {:?}, line: {}",
+                    operation, core_id, timestamp, refilled, share_list.iter_ones().collect::<Vec<usize>>(), line_number
                 );
             }
         }
@@ -86,12 +97,21 @@ impl CacheLineCoherenceHistory {
         cache_id: usize,
         timestamp: u64,
         refilled: bool,
+        sharers: SharerList,
+        line_number: u32,
     ) {
         let mut history = self
             .history
             .entry(block_id)
             .or_insert(SingleCacheLineCoherenceHistory::new());
-        history.record(operation, cache_id, timestamp, refilled);
+        history.record(
+            operation,
+            cache_id,
+            timestamp,
+            refilled,
+            sharers,
+            line_number,
+        );
     }
 
     pub fn global_record_history(
@@ -100,13 +120,17 @@ impl CacheLineCoherenceHistory {
         cache_id: usize,
         timestamp: u64,
         refilled: bool,
+        sharers: SharerList,
+        line: u32,
     ) {
         if !crate::parameter::ENABLE_CACHE_LINE_HISTORY {
             // I believe the compiler will optimize this function out.
             return;
         }
         unsafe {
-            GLOBAL_HISTORY.record(block_id, operation, cache_id, timestamp, refilled);
+            GLOBAL_HISTORY.record(
+                block_id, operation, cache_id, timestamp, refilled, sharers, line,
+            );
         }
     }
 

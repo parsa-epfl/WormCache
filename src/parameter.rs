@@ -7,7 +7,7 @@ use plugin_helper::PluginHelper;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 64;
+pub const CORE_COUNT: usize = 4;
 
 /**
  * CACHE_LINE_SIZE
@@ -62,7 +62,7 @@ pub const UNIFIED_PRI_CACHE_SET: usize = 2048;
  * The associativity of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_ASSO: usize = 16;
+pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -70,7 +70,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 16;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 2048;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 256;
 
 /**
  * HARVARD_PRI_D_CACHE_ASSO
@@ -78,7 +78,7 @@ pub const HARVARD_PRI_I_CACHE_SET: usize = 2048;
  * The associativity of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_ASSO: usize = 16;
+pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -86,7 +86,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 16;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 2048;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 256;
 
 /**
  * SHARED_CACHE_ASSO

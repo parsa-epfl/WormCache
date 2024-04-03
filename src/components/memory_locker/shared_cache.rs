@@ -74,7 +74,7 @@ impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, true> {
         return false;
     }
 
-    pub fn write_back(&self, block_id: u64, ts: u64) {
+    pub fn evict_to(&self, block_id: u64, ts: u64) {
         let set_id = (block_id % SET as u64) as usize;
         let mut blocks = self.blocks[set_id].lock().unwrap();
 
@@ -140,7 +140,7 @@ impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, false> {
         return hit_block.is_some();
     }
 
-    pub fn write_back(&self, block_id: u64, ts: u64) {
+    pub fn evict_to(&self, block_id: u64, ts: u64) {
         let set_id = (block_id % SET as u64) as usize;
         let mut blocks = self.blocks[set_id].lock().unwrap();
 

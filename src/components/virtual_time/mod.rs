@@ -13,11 +13,16 @@ static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
 
 static ICOUNT_PLUGIN: Lazy<icount::ICountPlugin> = Lazy::new(|| icount::ICountPlugin::new());
 
-unsafe extern "C" fn calculate_virtual_time() -> i64 {
+unsafe extern "C" fn calculate_cpu_clock() -> i64 {
     return TIME_PLUGIN
         .lock()
         .unwrap()
-        .calculate_virtual_time(&ICOUNT_PLUGIN);
+        .calculate_cpu_clock(&ICOUNT_PLUGIN);
+}
+
+unsafe extern "C" fn on_snapshot_cpu_clock_update() {
+    TIME_PLUGIN.lock().unwrap().reset();
+    ICOUNT_PLUGIN.reset();
 }
 
 // memory ts for print the log.
@@ -40,8 +45,12 @@ pub struct VirtualTimePlugin {}
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init() {
+        assert!(unsafe { qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock)) });
+
         assert!(unsafe {
-            qemu_api::qemu_plugin_register_virtual_time_cb(Some(calculate_virtual_time))
+            qemu_api::qemu_plugin_register_snapshot_cpu_clock_update_cb(Some(
+                on_snapshot_cpu_clock_update,
+            ))
         });
 
         std::thread::spawn(|| {
@@ -77,11 +86,7 @@ impl super::Plugin for VirtualTimePlugin {
     }
 
     #[inline]
-    fn dump_snapshot(_: &str) {
-        // clean the icount, because the baseline is changed.
-        TIME_PLUGIN.lock().unwrap().reset();
-        ICOUNT_PLUGIN.reset();
-    }
+    fn dump_snapshot(_: &str) {}
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {
         let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);

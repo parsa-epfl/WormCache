@@ -20,6 +20,9 @@ pub trait PrivateCaches {
         is_store: bool,
     ) -> PrivateCachePokeResult;
 
+    // Find the next victim in the cache set.
+    fn poke_victim(&self) -> Option<u64>;
+
     // This function is for refilling the cache line from the shared cache. Coherence refilling has its own way.
     fn refill_from_shared_cache(
         &self,
@@ -54,4 +57,4 @@ pub trait PrivateCaches {
 pub use havard::HarvardPrivateCaches;
 pub use unified::UnifiedPrivateCaches;
 
-use super::dashmap_directory::SharerList;
+use super::directory::SharerList;

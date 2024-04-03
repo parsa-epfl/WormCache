@@ -1,6 +1,6 @@
 use crate::parameter as param;
 use crate::qemu_api::qemu_plugin_cpu_is_tick_enabled;
-use crate::qemu_api::qemu_plugin_get_snapshoted_vm_clock;
+use crate::qemu_api::qemu_plugin_get_snapshot_cpu_clock;
 
 use param::CORE_COUNT;
 
@@ -23,7 +23,7 @@ impl VirtualTimeContext {
         };
     }
 
-    pub fn calculate_virtual_time(&mut self, icount: &ICountPlugin) -> i64 {
+    pub fn calculate_cpu_clock(&mut self, icount: &ICountPlugin) -> i64 {
         // 1. get real timestamp in nanosecond
         let real_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -47,7 +47,12 @@ impl VirtualTimeContext {
 
                 // 3.2 if the maximum is zero, we use the difference of the real time.
                 let advanced_vtime = if max_icounts == 0 {
-                    (real_time - self.last_real_time) as i64
+                    if self.last_real_time == 0 {
+                        // the first time this function is called. We should ignore it.
+                        0
+                    } else {
+                        (real_time - self.last_real_time) as i64
+                    }
                 } else {
                     max_icounts as i64
                 };
@@ -67,7 +72,30 @@ impl VirtualTimeContext {
         // I didn't see a better solution. Maybe storing this value inside this plugin?
 
         unsafe {
-            return self.advanced_vclock + qemu_plugin_get_snapshoted_vm_clock();
+            return self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock();
+        }
+    }
+
+    pub fn calculate_cpu_clock_with_10x_slowdown_from_realtime(&mut self) -> i64 {
+        let real_time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as i128;
+
+        unsafe {
+            if qemu_plugin_cpu_is_tick_enabled() {
+                if self.last_real_time != 0 {
+                    let advanced_vtime = (real_time - self.last_real_time) as i64;
+                    self.advanced_vclock += advanced_vtime / 10;
+                }
+            }
+        }
+
+        self.last_real_time = real_time;
+
+        // 5. return the calculated virtual time
+        unsafe {
+            return self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock();
         }
     }
 

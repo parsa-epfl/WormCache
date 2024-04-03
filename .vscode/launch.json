@@ -24,6 +24,8 @@
                 "-net", "user",
                 "-nographic",
                 "-no-reboot",
+                "-quantum", 
+                "size=1024",
                 "-plugin", "/home/xusine/paraflex/WormCache/target/debug/libworm_cache.so",
                 "-loadvm", "base",
             ],
@@ -53,10 +55,11 @@
                 "-nographic",
                 "-no-reboot",
                 "-loadvm", "base",
-                "-plugin", "/home/xusine/paraflex/WormCache/target/release/libworm_cache.so",
+                "-plugin", "/home/xusine/paraflex/WormCache/target/debug/libworm_cache.so",
             ],
             "cwd": "/home/xusine/paraflex/debug/htop-singlecore",
             "relativePathBase": "/home/xusine/paraflex/debug/htop-singlecore",
+            "sourceLanguages": ["rust", "c"],
 
         }
     ]
