@@ -19,7 +19,6 @@ use self::private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches};
 
 use super::debug::statistics::Statistics;
 
-mod dashmap_directory;
 pub mod directory;
 mod hierarchy;
 mod private_cache;
@@ -61,6 +60,7 @@ pub fn get_memory_ts() -> u128 {
         .as_nanos() as u128;
 }
 
+// TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
     vcpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,

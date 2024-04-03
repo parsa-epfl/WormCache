@@ -17,6 +17,7 @@ bitvec = "1.0.1"
 plugin_helper = { path = "./plugin_helper" }
 dashmap = "5.5.3"
 crossbeam-queue = "0.3.11"
+gcd = "2.3.0"
 
 [lib]
 crate-type=["rlib", "cdylib"]

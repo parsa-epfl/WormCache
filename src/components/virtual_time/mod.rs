@@ -45,12 +45,12 @@ pub struct VirtualTimePlugin {}
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init() {
-        assert!(unsafe {
-            qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock))
-        });
+        assert!(unsafe { qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock)) });
 
         assert!(unsafe {
-            qemu_api::qemu_plugin_register_snapshot_cpu_clock_update_cb(Some(on_snapshot_cpu_clock_update))
+            qemu_api::qemu_plugin_register_snapshot_cpu_clock_update_cb(Some(
+                on_snapshot_cpu_clock_update,
+            ))
         });
 
         std::thread::spawn(|| {
@@ -86,8 +86,7 @@ impl super::Plugin for VirtualTimePlugin {
     }
 
     #[inline]
-    fn dump_snapshot(_: &str) {
-    }
+    fn dump_snapshot(_: &str) {}
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {
         let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);

@@ -67,6 +67,11 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     }
 
     #[inline]
+    fn poke_victim(&self) -> Option<u64> {
+        None
+    }
+
+    #[inline]
     fn refill_from_shared_cache(
         &self,
         core_id: u32,
@@ -86,7 +91,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     fn get_set_guard_by_sharer_list(
         &self,
         block_id: u64,
-        sharers: crate::components::memory_locker::dashmap_directory::SharerList,
+        sharers: crate::components::memory_locker::directory::SharerList,
     ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         let mut result = Vec::new();
 
