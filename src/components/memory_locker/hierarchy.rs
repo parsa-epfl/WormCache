@@ -292,7 +292,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             let mut other_sharer_id = 0;
             for (replica_cache_id, set) in acquired_sets.iter() {
                 if let Some(line) = set.poke(block_id) {
-                    if line.is_modified() && line.write_ts() > ts {
+                    if  line.write_ts() > ts {
                         other_has_write_permission_with_late_ts = true;
                         if line.write_ts() > other_write_ts {
                             other_write_ts = line.write_ts();
