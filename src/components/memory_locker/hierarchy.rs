@@ -1,3 +1,4 @@
+use crate::parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION;
 use crate::{components::memory_locker::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
@@ -195,7 +196,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             CacheOperationType::GetR
         };
 
-        if directory_entry.modify_ts_before_eviction > ts {
+        if !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
+            && directory_entry.modify_ts_before_eviction > ts
+        {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
             CacheLineCoherenceHistory::global_record_history(
@@ -282,64 +285,66 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             .private_caches
             .get_set_guard_by_sharer_list(block_id, acquire_list);
 
-        // Do we have another sharer that has a write permission with a larger timestamp?
-        let mut other_has_write_permission_with_late_ts = false;
-        let mut other_write_ts = 0;
-        let mut other_sharer_id = 0;
-        for (replica_cache_id, set) in acquired_sets.iter() {
-            if let Some(line) = set.poke(block_id) {
-                if line.is_modified() && line.write_ts() > ts {
-                    other_has_write_permission_with_late_ts = true;
-                    if line.write_ts() > other_write_ts {
-                        other_write_ts = line.write_ts();
-                        other_sharer_id = *replica_cache_id;
+        if !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+            // Do we have another sharer that has a write permission with a larger timestamp?
+            let mut other_has_write_permission_with_late_ts = false;
+            let mut other_write_ts = 0;
+            let mut other_sharer_id = 0;
+            for (replica_cache_id, set) in acquired_sets.iter() {
+                if let Some(line) = set.poke(block_id) {
+                    if  line.write_ts() > ts {
+                        other_has_write_permission_with_late_ts = true;
+                        if line.write_ts() > other_write_ts {
+                            other_write_ts = line.write_ts();
+                            other_sharer_id = *replica_cache_id;
+                        }
                     }
-                }
-            } else {
-                // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
-                if *replica_cache_id != p_cache_id {
-                    if parameter::ENABLE_CACHE_LINE_HISTORY {
-                        CacheLineCoherenceHistory::global_get_block_history(block_id)
-                            .unwrap()
-                            .value()
-                            .print_history();
+                } else {
+                    // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
+                    if *replica_cache_id != p_cache_id {
+                        if parameter::ENABLE_CACHE_LINE_HISTORY {
+                            CacheLineCoherenceHistory::global_get_block_history(block_id)
+                                .unwrap()
+                                .value()
+                                .print_history();
+                        }
+                        assert_eq!(*replica_cache_id, p_cache_id);
                     }
-                    assert_eq!(*replica_cache_id, p_cache_id);
-                }
-            }
-        }
-
-        if other_has_write_permission_with_late_ts {
-            // Well, this cache line is already touched by another core with a later timestamp.
-            // Only that core should be kept.
-
-            // Update the directory.
-            let mut incoming_sharer = SharerList::ZERO;
-            incoming_sharer.set(other_sharer_id as usize, true);
-            directory_entry.ts = ts;
-            directory_entry.sharers = incoming_sharer;
-
-            for (replica_cache_id, set) in acquired_sets.iter_mut() {
-                if *replica_cache_id != other_sharer_id {
-                    set.invalidate(block_id);
                 }
             }
 
-            CacheLineCoherenceHistory::global_record_history(
-                block_id,
-                record_op,
-                p_cache_id,
-                ts,
-                false,
-                directory_entry.sharers,
-                line!(),
-            );
+            if other_has_write_permission_with_late_ts {
+                // Well, this cache line is already touched by another core with a later timestamp.
+                // Only that core should be kept.
 
-            // Now, release the lock of the private cache.
-            drop(acquired_sets);
+                // Update the directory.
+                let mut incoming_sharer = SharerList::ZERO;
+                incoming_sharer.set(other_sharer_id as usize, true);
+                directory_entry.ts = ts;
+                directory_entry.sharers = incoming_sharer;
 
-            // We don't know whether this cache line should trigger a hit or miss. It definitely misses in the private cache.
-            return CacheHierarchyAccessResult::MissInPrivateCache;
+                for (replica_cache_id, set) in acquired_sets.iter_mut() {
+                    if *replica_cache_id != other_sharer_id {
+                        set.invalidate(block_id);
+                    }
+                }
+
+                CacheLineCoherenceHistory::global_record_history(
+                    block_id,
+                    record_op,
+                    p_cache_id,
+                    ts,
+                    false,
+                    directory_entry.sharers,
+                    line!(),
+                );
+
+                // Now, release the lock of the private cache.
+                drop(acquired_sets);
+
+                // We don't know whether this cache line should trigger a hit or miss. It definitely misses in the private cache.
+                return CacheHierarchyAccessResult::MissInPrivateCache;
+            }
         }
 
         let mut res = if private_hit != private_cache::PrivateCachePokeResult::PermissionViolation {
@@ -358,7 +363,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             for (replica_cache_id, set) in acquired_sets.iter_mut() {
                 if let Some(entry) = set.poke(block_id) {
-                    if entry.access_ts() < ts {
+                    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION || entry.access_ts() < ts {
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id as usize, false);
                         // invalid the private cache entry.
@@ -423,7 +428,8 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                     if entry.is_modified() {
                         assert!(already_modified == false);
 
-                        if entry.write_ts() > ts {
+                        if entry.write_ts() > ts && !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
+                        {
                             // OK, this read operation is also not ordered.
                             // There is nothing we need to do.
 

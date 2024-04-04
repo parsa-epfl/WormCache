@@ -59,3 +59,40 @@ fn one_core_write_first_then_read() {
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 }
+
+
+#[test]
+fn write_write_read_then_old_write() {
+    // This bug is related to the coherence state reconstruction.
+    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        return;
+    }
+
+
+    let mut mh = MH::new();
+    let block_id = 1043;
+
+    // First, there should be a write permission, by core 0, at timestamp 100.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 100, true, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Second, core 0 writes the same data at timestamp 150. This won't update the write timestamp in the directory.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 150, true, false),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+
+    // Second, core 1 reads the data at timestamp 200.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 200, false, false),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+
+    // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure. 
+    assert_eq!(
+        mh.access_memory_pblock_id(2, block_id, 125, true, false),
+        CacheHierarchyAccessResult::MissInPrivateCache
+    );
+}
