@@ -145,7 +145,6 @@ pub struct PluginList {
 /**
  * Whether to enable the statistics collection.
  */
-
 pub const ENABLE_STATISTICS: bool = false;
 
 /**
@@ -154,3 +153,10 @@ pub const ENABLE_STATISTICS: bool = false;
  * This is used to record the cache line coherence history so that you can debug the cache coherence protocol.
  */
 pub const ENABLE_CACHE_LINE_HISTORY: bool = true;
+
+/**
+ * Whether to disable precise coherence message reconstruction.
+ *
+ * This option is for testing the accuracy of the functional warming model.
+ */
+pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
