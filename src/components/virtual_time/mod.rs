@@ -11,7 +11,7 @@ use crate::qemu_api;
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
 
-static ICOUNT_PLUGIN: Lazy<icount::ICountPlugin> = Lazy::new(|| icount::ICountPlugin::new());
+static mut ICOUNT_PLUGIN: Lazy<icount::ICountPlugin> = Lazy::new(|| icount::ICountPlugin::new());
 
 unsafe extern "C" fn calculate_cpu_clock() -> i64 {
     return TIME_PLUGIN
@@ -33,11 +33,18 @@ fn get_memory_ts() -> u128 {
         .as_nanos() as u128;
 }
 
-unsafe extern "C" fn vcpu_insn_exec(
+unsafe extern "C" fn user_vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block
 ) {
-    ICOUNT_PLUGIN.increase_icount(vcpu_idx as u8, size as usize);
+    ICOUNT_PLUGIN.increase_user_icount(vcpu_idx as u8, size as u64);
+}
+
+unsafe extern "C" fn kernel_vcpu_insn_exec(
+    vcpu_idx: u32,
+    size: *mut ffi::c_void, // the size of the basic block
+) {
+    ICOUNT_PLUGIN.increase_kernel_icount(vcpu_idx as u8, size as u64);
 }
 
 pub struct VirtualTimePlugin {}
@@ -65,17 +72,23 @@ impl super::Plugin for VirtualTimePlugin {
             let mut head = vec!["ts".to_string()];
             for i in 0..param::CORE_COUNT {
                 head.push(format!("core{}", i));
+                head.push(format!("core{}:u", i));
+                head.push(format!("core{}:k", i));
             }
 
             file.write_fmt(format_args!("{}\n", head.join(",")))
                 .unwrap();
 
             loop {
-                let icounts = ICOUNT_PLUGIN.get_icounts();
+                let icounts = unsafe { ICOUNT_PLUGIN.get_icounts() };
                 let mut lines = vec![];
                 lines.push(format!("{}", get_memory_ts()));
                 for i in 0..param::CORE_COUNT {
-                    lines.push(format!("{}", icounts[i]));
+                    let (u, k) = icounts[i];
+                    let all = u + k;
+                    lines.push(format!("{}", all));
+                    lines.push(format!("{}", u));
+                    lines.push(format!("{}", k));
                 }
                 file.write_fmt(format_args!("{}\n", lines.join(",")))
                     .unwrap();
@@ -91,12 +104,23 @@ impl super::Plugin for VirtualTimePlugin {
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {
         let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);
         let size = qemu_api::qemu_plugin_tb_n_insns(tb);
-        // insert plugin on the first instruction.
-        qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
-            first_instruction,
-            Some(vcpu_insn_exec),
-            qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-            size as *mut ffi::c_void,
-        )
+        // I need to get the first instruction's PC to see if it is a user or kernel space.
+        let pc = qemu_api::qemu_plugin_insn_vaddr(first_instruction);
+        if pc & 0x8000_0000_0000_0000 == 0 {
+            // user space
+            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                first_instruction,
+                Some(user_vcpu_insn_exec),
+                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                size as *mut ffi::c_void,
+            );
+        } else {
+            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                first_instruction,
+                Some(kernel_vcpu_insn_exec),
+                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                size as *mut ffi::c_void,
+            );
+        }
     }
 }

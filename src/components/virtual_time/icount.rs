@@ -1,35 +1,76 @@
+use std::cell::UnsafeCell;
+
 use crate::parameter as param;
 use param::CORE_COUNT;
 
+#[repr(align(64))]
+#[derive(Debug, Clone, Copy)]
+pub struct PerCoreICount {
+    user_icount: u64,
+    kernel_icount: u64,
+}
+
+impl PerCoreICount {
+    pub fn new() -> PerCoreICount {
+        return PerCoreICount {
+            user_icount: 0,
+            kernel_icount: 0,
+        };
+    }
+
+    pub fn sum(&self) -> u64 {
+        return self.user_icount + self.kernel_icount;
+    }
+
+    pub fn reset(&mut self) {
+        self.user_icount = 0;
+        self.kernel_icount = 0;
+    }
+}
+
 #[derive(Debug)]
 pub struct ICountPlugin {
-    data: [u64; CORE_COUNT * 8],
+    data: [UnsafeCell<PerCoreICount>; CORE_COUNT],
 }
 
 impl ICountPlugin {
-    pub fn get_icounts(&self) -> [u64; CORE_COUNT] {
-        // let mut res = [0; CORE_COUNT];
-        // for i in 0..CORE_COUNT {
-        //     res[i] = self.data[i * 8];
-        // }
-        // return res;
-
-        return [self.data[0]; CORE_COUNT];
+    pub fn get_icounts(&self) -> [(u64, u64); CORE_COUNT] { // (user_icount, kernel_icount)
+        let mut res = [(0, 0); CORE_COUNT];
+        for i in 0..CORE_COUNT {
+            unsafe {
+                res[i] = (
+                    (*self.data[i].get()).user_icount,
+                    (*self.data[i].get()).kernel_icount,
+                );
+            }
+        }
+        return res;
     }
 
-    pub fn increase_icount(&self, core_id: u8, count: usize) {
-        // DMN, some dirty technology should be used.
-        // I guarantee that there is no contention.
+    pub fn get_total_icounts_of_core(&self, core_id: u8) -> u64 {
         unsafe {
-            let pos = &self.data[core_id as usize * 8] as *const u64 as *mut u64;
-            // volatile load and store is necessary, because the compiler will optimize the code.
-            pos.write_volatile(pos.read_volatile() + count as u64);
+            let core_id = core_id as usize;
+            return (*self.data[core_id].get()).sum();
+        }
+    }
+
+    pub fn increase_user_icount(&self, core_id: u8, icount: u64) {
+        unsafe {
+            let core_id = core_id as usize;
+            (*self.data[core_id].get()).user_icount += icount;
+        }
+    }
+
+    pub fn increase_kernel_icount(&self, core_id: u8, icount: u64) {
+        unsafe {
+            let core_id = core_id as usize;
+            (*self.data[core_id].get()).kernel_icount += icount;
         }
     }
 
     pub fn new() -> ICountPlugin {
         return ICountPlugin {
-            data: [0; CORE_COUNT * 8],
+            data: std::array::from_fn(|_| UnsafeCell::new(PerCoreICount::new())),
         };
     }
 
@@ -37,9 +78,7 @@ impl ICountPlugin {
         // Still dirty. You must make sure that when doing reset, there is no other threads.
         unsafe {
             for i in 0..CORE_COUNT {
-                let ptr = self.data.as_ptr().add((i * 8) as usize);
-                let ptr = ptr as *mut u64;
-                *ptr = 0;
+                (*self.data[i].get()).reset();
             }
         }
     }
