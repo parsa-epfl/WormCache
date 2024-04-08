@@ -35,7 +35,7 @@ impl VirtualTimeContext {
         unsafe {
             if qemu_plugin_cpu_is_tick_enabled() {
                 // 3.1 calculate the difference icounts and find the maximum.
-                let mut icount_diff = icounts - self.last_icount;
+                let icount_diff = icounts - self.last_icount;
 
                 // 3.2 if the maximum is zero, we use the difference of the real time.
                 let advanced_vtime = if icount_diff == 0 {
@@ -43,7 +43,7 @@ impl VirtualTimeContext {
                         // the first time this function is called. We should ignore it.
                         0
                     } else {
-                        (real_time - self.last_real_time) as i64
+                        ((real_time - self.last_real_time) / param::HOST_TIME_SCALE as i128) as i64
                     }
                 } else {
                     icount_diff as i64
