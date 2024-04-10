@@ -1,7 +1,7 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
-use crate::components::{memory_locker::get_memory_ts, NoMMU};
+use crate::components::{cache_hierarchy::get_memory_ts, NoMMU};
 
 use self::private_cache::UnifiedPrivateCaches;
 use super::*;
@@ -65,6 +65,7 @@ fn one_core_write_first_then_read() {
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 

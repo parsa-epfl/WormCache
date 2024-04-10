@@ -1,5 +1,5 @@
 use crate::parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION;
-use crate::{components::memory_locker::directory::SharerList, parameter};
+use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 

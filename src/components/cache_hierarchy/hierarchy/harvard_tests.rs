@@ -1,4 +1,4 @@
-use crate::components::{memory_locker::get_memory_ts, NoMMU};
+use crate::components::{cache_hierarchy::get_memory_ts, NoMMU};
 
 use self::private_cache::HarvardPrivateCaches;
 

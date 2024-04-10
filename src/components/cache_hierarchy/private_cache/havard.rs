@@ -103,7 +103,7 @@ impl<
     fn get_set_guard_by_sharer_list(
         &self,
         block_id: u64,
-        sharers: crate::components::memory_locker::directory::SharerList,
+        sharers: crate::components::cache_hierarchy::directory::SharerList,
     ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         // Now it really depends on how to interpret the sharer list.
         assert_eq!(sharers.len(), usize::max(CORE_COUNT * 2, 64));

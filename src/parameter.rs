@@ -7,7 +7,7 @@ use plugin_helper::PluginHelper;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 4;
+pub const CORE_COUNT: usize = 8;
 
 /**
  * CACHE_LINE_SIZE
@@ -100,7 +100,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 1024 * 1024; // 1GB shared cache.
+pub const SHARED_CACHE_SET: usize = 4 * 1024; // 1GB shared cache.
 
 /**
  * SHARED_CACHE_EXCLUSIVE
@@ -153,7 +153,7 @@ pub struct PluginList {
     _mk: crate::MarkerPlugin,
     // to : crate::TouchOnePlugin,
     // pwl : crate::PageWalkLoggerPlugin,
-    _lm: crate::LockedMemoryPlugin,
+    _lm: crate::ParallelCacheHierarchyPlugin,
     // tr : crate::TracePlugin,
     // _mtrec: crate::MTRMemoryPlugin,
     // _dm: crate::DelayedMemoryPlugin,

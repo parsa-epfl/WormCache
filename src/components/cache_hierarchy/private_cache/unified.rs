@@ -91,7 +91,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     fn get_set_guard_by_sharer_list(
         &self,
         block_id: u64,
-        sharers: crate::components::memory_locker::directory::SharerList,
+        sharers: crate::components::cache_hierarchy::directory::SharerList,
     ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
         let mut result = Vec::new();
 
