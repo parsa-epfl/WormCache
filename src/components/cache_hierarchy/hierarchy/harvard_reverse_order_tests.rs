@@ -132,6 +132,7 @@ fn write_invalidation_coherence() {
 #[test]
 fn raw_and_war() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -163,6 +164,7 @@ fn raw_and_war() {
 #[test]
 fn rarw() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -195,6 +197,7 @@ fn rarw() {
 #[test]
 fn waw() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -221,6 +224,7 @@ fn waw() {
 #[test]
 fn wwaw() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -253,6 +257,7 @@ fn wwaw() {
 #[test]
 fn rae() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -289,6 +294,7 @@ fn rae() {
 #[test]
 fn eae() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -336,6 +342,7 @@ fn eae() {
 #[test]
 fn wae() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -377,6 +384,7 @@ fn wae() {
 #[test]
 fn eaw() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -409,6 +417,7 @@ fn eaw() {
 #[test]
 fn ear() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
@@ -442,6 +451,7 @@ fn ear() {
 #[test]
 fn rar() {
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
     

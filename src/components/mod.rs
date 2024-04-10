@@ -13,8 +13,6 @@ pub use mmu::NoMMU; // this is exposed to the crate so that executable binary ca
 pub mod bp;
 pub mod marker;
 pub mod cache_hierarchy;
-pub mod memory_mtr_recording;
-// pub mod memory_ts;
 pub mod debug;
 pub mod pw_log;
 pub mod touch_once;

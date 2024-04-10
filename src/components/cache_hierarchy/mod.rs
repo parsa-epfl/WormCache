@@ -112,9 +112,9 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-pub struct LockedMemoryPlugin {}
+pub struct ParallelCacheHierarchyPlugin {}
 
-impl super::Plugin for LockedMemoryPlugin {
+impl super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
     fn init() {
         unsafe {

@@ -65,6 +65,7 @@ fn one_core_write_first_then_read() {
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
 
