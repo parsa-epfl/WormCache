@@ -12,8 +12,7 @@ mod mmu; // this is only used by other components, not exposed to the crate.
 pub use mmu::NoMMU; // this is exposed to the crate so that executable binary can use it.
 pub mod bp;
 pub mod marker;
-// pub mod memory_delayed;
-pub mod memory_locker;
+pub mod cache_hierarchy;
 pub mod memory_mtr_recording;
 // pub mod memory_ts;
 pub mod debug;
