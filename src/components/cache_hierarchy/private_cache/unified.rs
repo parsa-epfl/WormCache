@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use std::{collections::HashMap, sync::Mutex};
 
@@ -158,7 +160,12 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
             }).collect::<Vec<_>>();
 
             let private_cache_path = format!("{}/core_{}_private.json", snapshot_folder, core_id);
-            std::fs::write(private_cache_path, serde_json::to_string_pretty(&serialized_cache).unwrap()).unwrap();
+            std::fs::write(private_cache_path, serde_json::to_string_pretty(&json!(
+                {
+                    "associativity": ASSO,
+                    "tags": serialized_cache
+                }
+            )).unwrap()).unwrap();
         }
     }
 }

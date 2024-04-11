@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use super::PrivateCaches;
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
 use std::collections::HashMap;
@@ -220,7 +222,10 @@ impl<
 
             // dump the instruction cache
             let icache_path = format!("{}/core{}_l1i.json", snapshot_folder, core_id);
-            std::fs::write(icache_path, serde_json::to_string_pretty(&serialized_icache).unwrap()).unwrap();
+            std::fs::write(icache_path, serde_json::to_string_pretty(&json!({
+                "associativity": I_ASSO,
+                "tags": serialized_icache
+            })).unwrap()).unwrap();
             
             // serialize the data cache
 
@@ -230,7 +235,10 @@ impl<
 
             // dump the data cache
             let dcache_path = format!("{}/core{}_l1d.json", snapshot_folder, core_id);
-            std::fs::write(dcache_path, serde_json::to_string_pretty(&serialized_dcache).unwrap()).unwrap();
+            std::fs::write(dcache_path, serde_json::to_string_pretty(&json!({
+                "associativity": D_ASSO,
+                "tags": serialized_dcache
+            })).unwrap()).unwrap();
         }
     }
 }

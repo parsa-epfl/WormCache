@@ -1,6 +1,6 @@
 {
     "associativity": 4, //: u64
-    "tag": [ //: [[CacheLine { tag: u64, writable: bool, dirty: bool }]]
+    "tags": [ //: [[CacheLine { tag: u64, writable: bool, dirty: bool }]]
         [
             // We don't have to track the invalid cache frame. The empty place is inferred from the associativity.
             // The least recently used lines are placed in the beginning.

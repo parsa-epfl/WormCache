@@ -144,6 +144,11 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         unsafe {
             PLUGIN.dump_access_counter();
         }
+
+        // dump the cache state.
+        unsafe {
+            PLUGIN.dump_snapshot(name);
+        }
     }
 
     #[inline]
