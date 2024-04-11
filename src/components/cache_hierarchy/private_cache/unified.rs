@@ -149,4 +149,16 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     fn get_cache_id_by_cache_info(core_id: u32, _: bool) -> usize {
         return core_id as usize;
     }
+
+    #[inline]
+    fn dump_snapshot(&self, snapshot_folder: &str) {
+        for core_id in 0..CORE_COUNT {
+            let serialized_cache = self.caches[core_id].cache.iter().map(|set| {
+                set.lock().unwrap().serialize(SET)
+            }).collect::<Vec<_>>();
+
+            let private_cache_path = format!("{}/core_{}_private.json", snapshot_folder, core_id);
+            std::fs::write(private_cache_path, serde_json::to_string_pretty(&serialized_cache).unwrap()).unwrap();
+        }
+    }
 }

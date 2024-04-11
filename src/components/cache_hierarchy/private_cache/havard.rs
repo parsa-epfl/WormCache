@@ -206,4 +206,31 @@ impl<
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize {
         core_id as usize * 2 + if is_instruction_cache { 0 } else { 1 }
     }
+
+    #[inline]
+    fn dump_snapshot(&self, snapshot_folder: &str) {
+        for core_id in 0..CORE_COUNT {
+            // instruction cache is stored in <core_id>_l1i.json
+            // data cache is stored in <core_id>_l1d.json
+
+            // serialize the instruction cache
+            let serialized_icache = self.caches[core_id].i_cache.iter().map(|set| {
+                set.lock().unwrap().serialize(I_SET)
+            }).collect::<Vec<_>>();
+
+            // dump the instruction cache
+            let icache_path = format!("{}/core{}_l1i.json", snapshot_folder, core_id);
+            std::fs::write(icache_path, serde_json::to_string_pretty(&serialized_icache).unwrap()).unwrap();
+            
+            // serialize the data cache
+
+            let serialized_dcache = self.caches[core_id].d_cache.iter().map(|set| {
+                set.lock().unwrap().serialize(D_SET)
+            }).collect::<Vec<_>>();
+
+            // dump the data cache
+            let dcache_path = format!("{}/core{}_l1d.json", snapshot_folder, core_id);
+            std::fs::write(dcache_path, serde_json::to_string_pretty(&serialized_dcache).unwrap()).unwrap();
+        }
+    }
 }

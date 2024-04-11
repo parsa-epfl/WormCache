@@ -1,6 +1,8 @@
+use serde::Serialize;
+
 #[derive(Debug, Clone, Copy)]
 pub struct PrivateCacheLine {
-    tag: u64, // the last bit is the valid bit.
+    block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
     write_ts: u64,
     is_instruction: bool,
@@ -10,7 +12,7 @@ pub struct PrivateCacheLine {
 impl PrivateCacheLine {
     #[inline]
     pub fn block_id(&self) -> u64 {
-        return self.tag >> 1;
+        return self.block_id_with_v >> 1;
     }
 
     #[inline]
@@ -36,6 +38,7 @@ impl PrivateCacheLine {
 
 // Migrate some functions to this struct, with lock permission.
 #[derive(Debug)]
+#[repr(align(64))]
 pub struct PrivateCacheSet {
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.
 }
@@ -52,7 +55,7 @@ impl PrivateCacheSet {
         Self {
             lines: Vec::from_iter(
                 std::iter::repeat(PrivateCacheLine {
-                    tag: 0,
+                    block_id_with_v: 0,
                     ts: 0,
                     write_ts: 0,
                     is_instruction: false,
@@ -68,7 +71,7 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self.lines.iter().find(|p| {
-            return p.tag == block_id_to_find;
+            return p.block_id_with_v == block_id_to_find;
         });
 
         if let Some(hit_element) = hit_element {
@@ -90,7 +93,7 @@ impl PrivateCacheSet {
         let block_id_to_find = (block_id << 1) | 1;
 
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id_to_find;
+            return p.block_id_with_v == block_id_to_find;
         });
 
         if let Some(line) = hit_element {
@@ -122,18 +125,18 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id_to_find;
+            return p.block_id_with_v == block_id_to_find;
         });
 
         assert!(hit_element.is_none());
         // find the first invalid element.
         let invalid_element = self.lines.iter_mut().find(|p| {
-            return (p.tag & 0x1) == 0;
+            return (p.block_id_with_v & 0x1) == 0;
         });
 
         if let Some(invalid_element) = invalid_element {
             invalid_element.ts = ts;
-            invalid_element.tag = block_id_to_find;
+            invalid_element.block_id_with_v = block_id_to_find;
             invalid_element.is_instruction = is_instruction;
             invalid_element.modified = modified;
             if modified {
@@ -153,7 +156,7 @@ impl PrivateCacheSet {
                     // This should be not possible. You can never refill a cache line using the old timestamp from the same core.
                     assert!(res.ts <= ts);
                     oldest_element.ts = ts;
-                    oldest_element.tag = block_id_to_find;
+                    oldest_element.block_id_with_v = block_id_to_find;
                     oldest_element.is_instruction = is_instruction;
                     oldest_element.modified = modified;
                     if modified {
@@ -173,12 +176,12 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id_to_find;
+            return p.block_id_with_v == block_id_to_find;
         });
 
         if let Some(hit_element) = hit_element {
             let res = hit_element.clone();
-            hit_element.tag = 0;
+            hit_element.block_id_with_v = 0;
             return Some(res);
         } else {
             // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
@@ -191,7 +194,7 @@ impl PrivateCacheSet {
         let block_id_to_find = (block_id << 1) | 1;
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.tag == block_id_to_find;
+            return p.block_id_with_v == block_id_to_find;
         });
 
         if let Some(hit_element) = hit_element {
@@ -201,5 +204,35 @@ impl PrivateCacheSet {
             // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
             return false;
         }
+    }
+}
+
+// Serialization function of the cache line.
+
+#[derive(Serialize)]
+pub struct SerializedCacheLine {
+    tag: u64,
+    writable: bool,
+    dirty: bool
+}
+
+impl PrivateCacheSet {
+    pub fn serialize(&self, number_of_set: usize) -> Vec<SerializedCacheLine> {
+        // 1. sort the line by its timestamp. smaller timestamp goes first
+        // 2. filter out the invalid lines.
+        // 3. tag should be removed with the valid bit and the index bit.
+
+        let mut sorted_lines = self.lines.clone();
+        sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
+
+        let set_bits = (number_of_set as u64).trailing_zeros();
+
+        return sorted_lines.iter().filter(|line| line.block_id_with_v & 0x1 == 1).map(|line| {
+            SerializedCacheLine {
+                tag: (line.block_id_with_v >> 1) >> set_bits,
+                writable: line.modified,
+                dirty: line.modified
+            }
+        }).collect();
     }
 }

@@ -52,6 +52,9 @@ pub trait PrivateCaches {
     // For unified architecture, each core takes one bit.
     fn find_cache_by_id(id: usize) -> (u32, bool); // (core_id, is_instruction_cache)
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize;
+
+    // This function is for saving the snapshot of the private cache.
+    fn dump_snapshot(&self, snapshot_folder: &str);
 }
 
 pub use havard::HarvardPrivateCaches;
