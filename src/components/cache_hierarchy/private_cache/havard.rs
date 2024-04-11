@@ -208,7 +208,7 @@ impl<
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize {
         core_id as usize * 2 + if is_instruction_cache { 0 } else { 1 }
     }
-
+  
     #[inline]
     fn dump_snapshot(&self, snapshot_folder: &str) {
         for core_id in 0..CORE_COUNT {

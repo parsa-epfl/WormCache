@@ -563,7 +563,6 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         // self.shared_cache.dump_access_counter();
     }
 
-
     pub fn dump_snapshot(&self, snapshot_folder: &str) {
         self.private_caches.dump_snapshot(snapshot_folder);
     }
