@@ -231,7 +231,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                 block_id,
                 ts,
                 is_instruction,
-                is_store,
+                is_store || shared_cache_result.1, // if the shared cache has modified permission, then the private cache should also have modified permission.
             );
 
             // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
@@ -260,7 +260,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             Statistics::global_record(core_id, EventType::SharedCacheAccess);
 
-            if shared_cache_result {
+            if shared_cache_result.0 {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
                 Statistics::global_record(core_id, EventType::SharedCacheMiss);
@@ -554,7 +554,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                 EventType::SharedCacheAccess,
             );
             // NOTE: currently shared cache access is disabled.
-            self.shared_cache.evict_to(block_id, ts);
+            self.shared_cache.evict_to(block_id, ts, modified);
             // We should also mark this one as deleted.
         }
     }
@@ -565,5 +565,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
     pub fn dump_snapshot(&self, snapshot_folder: &str) {
         self.private_caches.dump_snapshot(snapshot_folder);
+        self.directory.dump_snapshot(snapshot_folder);
+        self.shared_cache.dump_snapshot(snapshot_folder);
     }
 }
