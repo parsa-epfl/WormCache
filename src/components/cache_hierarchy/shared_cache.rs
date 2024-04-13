@@ -1,7 +1,7 @@
-use std::sync::Mutex;
-
 use serde::Serialize;
 use serde_json::json;
+
+use spin::mutex::SpinMutex;
 
 use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
@@ -20,14 +20,14 @@ pub struct SharedCacheBlock {
 }
 
 pub struct SharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
-    blocks: Box<[Mutex<[SharedCacheBlock; WAY]>; SET]>,
+    blocks: Box<[SpinMutex<[SharedCacheBlock; WAY]>; SET]>,
 }
 
 impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET, WAY, EXCLUSIVE> {
     pub fn new() -> Self {
         Self {
             blocks: crate::util::init_heap_array(|_| {
-                Mutex::new(std::array::from_fn(|_| SharedCacheBlock {
+                SpinMutex::new(std::array::from_fn(|_| SharedCacheBlock {
                     block_id_with_v: 0,
                     ts: 0,
                     modified: false,
@@ -39,7 +39,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET,
     pub fn invalidate(&self, block_id: u64) -> bool {
         let set_id = (block_id % SET as u64) as usize;
         let internal_block_id = block_id << 1 | 1;
-        let mut blocks = self.blocks[set_id].lock().unwrap();
+        let mut blocks = self.blocks[set_id].lock();
 
         // first of all, find whether this block is a hit.
         let hit_block = blocks.iter_mut().find(|p| {
@@ -63,7 +63,7 @@ impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, true> {
         // (is_hit, is_modified)
         let set_id = (block_id % SET as u64) as usize;
         let internal_block_id = block_id << 1 | 1;
-        let mut blocks = self.blocks[set_id].lock().unwrap();
+        let mut blocks = self.blocks[set_id].lock();
 
         // first of all, find whether this block is a hit.
         let hit_block = blocks.iter_mut().find(|p| {
@@ -84,7 +84,7 @@ impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, true> {
         let set_id = (block_id % SET as u64) as usize;
         let internal_block_id = block_id << 1 | 1;
 
-        let mut blocks = self.blocks[set_id].lock().unwrap();
+        let mut blocks = self.blocks[set_id].lock();
 
         // first of all, find whether this block is a hit.
         let hit_block = blocks.iter_mut().find(|p| {
@@ -138,7 +138,7 @@ impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, false> {
     pub fn lookup(&self, block_id: u64) -> (bool, bool) {
         let set_id = (block_id % SET as u64) as usize;
         let internal_block_id = block_id << 1 | 1;
-        let mut blocks = self.blocks[set_id].lock().unwrap();
+        let mut blocks = self.blocks[set_id].lock();
 
         // first of all, find whether this block is a hit.
         let hit_block = blocks.iter_mut().find(|p| {
@@ -155,7 +155,7 @@ impl<const SET: usize, const WAY: usize> SharedCache<SET, WAY, false> {
     pub fn evict_to(&self, block_id: u64, ts: u64, is_modified: bool) {
         let set_id = (block_id % SET as u64) as usize;
         let internal_block_id = block_id << 1 | 1;
-        let mut blocks = self.blocks[set_id].lock().unwrap();
+        let mut blocks = self.blocks[set_id].lock();
 
         // first of all, find whether this block is a hit.
         let hit_block = blocks.iter_mut().find(|p| {
@@ -214,7 +214,8 @@ pub struct SerializedSharedCacheEntry {
 
 impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET, WAY, EXCLUSIVE> {
     pub fn dump_snapshot(&self, snapshot_name: &str) {
-        let mut file = std::fs::File::create(format!("{}/shared_cache.json", snapshot_name)).unwrap();
+        let mut file =
+            std::fs::File::create(format!("{}/shared_cache.json", snapshot_name)).unwrap();
 
         let log2_set = SET.trailing_zeros();
 
@@ -222,7 +223,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET,
             .blocks
             .iter()
             .map(|entry| {
-                let entry = entry.lock().unwrap();
+                let entry = entry.lock();
                 let mut sorted_lines: Vec<_> = entry.iter().collect();
                 sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
 
@@ -242,9 +243,13 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache<SET,
             })
             .collect::<Vec<_>>();
 
-        serde_json::to_writer_pretty(&mut file, &json!({
-            "associativity": WAY,
-            "tags": entries,
-        })).unwrap();
+        serde_json::to_writer_pretty(
+            &mut file,
+            &json!({
+                "associativity": WAY,
+                "tags": entries,
+            }),
+        )
+        .unwrap();
     }
 }

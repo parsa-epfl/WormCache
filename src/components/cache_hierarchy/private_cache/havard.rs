@@ -2,8 +2,9 @@ use serde_json::json;
 
 use super::PrivateCaches;
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
+use spin::mutex::SpinMutex;
+use spin::mutex::SpinMutexGuard;
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 #[repr(align(64))]
 #[derive(Debug)]
@@ -13,8 +14,8 @@ pub struct HarvardPerCorePrivateCache<
     const D_SET: usize,
     const D_ASSO: usize,
 > {
-    i_cache: Box<[Mutex<PrivateCacheSet>; I_SET]>,
-    d_cache: Box<[Mutex<PrivateCacheSet>; D_SET]>,
+    i_cache: Box<[SpinMutex<PrivateCacheSet>; I_SET]>,
+    d_cache: Box<[SpinMutex<PrivateCacheSet>; D_SET]>,
 }
 
 impl<const I_SET: usize, const I_ASSO: usize, const D_SET: usize, const D_ASSO: usize>
@@ -22,8 +23,8 @@ impl<const I_SET: usize, const I_ASSO: usize, const D_SET: usize, const D_ASSO: 
 {
     pub fn new() -> Self {
         Self {
-            i_cache: crate::util::init_heap_array(|_| Mutex::new(PrivateCacheSet::new(I_ASSO))),
-            d_cache: crate::util::init_heap_array(|_| Mutex::new(PrivateCacheSet::new(D_ASSO))),
+            i_cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(I_ASSO))),
+            d_cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(D_ASSO))),
         }
     }
 }
@@ -64,12 +65,10 @@ impl<
         if is_instruction {
             self.caches[core_id as usize].i_cache[block_id as usize % I_SET]
                 .lock()
-                .unwrap()
                 .poke_and_update(block_id, ts, is_store, is_instruction)
         } else {
             self.caches[core_id as usize].d_cache[block_id as usize % D_SET]
                 .lock()
-                .unwrap()
                 .poke_and_update(block_id, ts, is_store, is_instruction)
         }
     }
@@ -89,14 +88,10 @@ impl<
         modified: bool,
     ) -> Option<PrivateCacheLine> {
         if is_instruction {
-            let mut set = self.caches[core_id as usize].i_cache[block_id as usize % I_SET]
-                .lock()
-                .unwrap();
+            let mut set = self.caches[core_id as usize].i_cache[block_id as usize % I_SET].lock();
             set.refill(block_id, ts, true, modified)
         } else {
-            let mut set = self.caches[core_id as usize].d_cache[block_id as usize % D_SET]
-                .lock()
-                .unwrap();
+            let mut set = self.caches[core_id as usize].d_cache[block_id as usize % D_SET].lock();
             set.refill(block_id, ts, false, modified)
         }
     }
@@ -106,7 +101,7 @@ impl<
         &self,
         block_id: u64,
         sharers: crate::components::cache_hierarchy::directory::SharerList,
-    ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
+    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>)> {
         // Now it really depends on how to interpret the sharer list.
         assert_eq!(sharers.len(), usize::max(CORE_COUNT * 2, 64));
 
@@ -118,11 +113,11 @@ impl<
 
             if is_instruction {
                 let set = &self.caches[core_id as usize].i_cache[block_id as usize % I_SET];
-                let guard = set.lock().unwrap();
+                let guard = set.lock();
                 res.push((sharer_index, guard));
             } else {
                 let set = &self.caches[core_id as usize].d_cache[block_id as usize % D_SET];
-                let guard = set.lock().unwrap();
+                let guard = set.lock();
                 res.push((sharer_index, guard));
             }
         }
@@ -137,14 +132,12 @@ impl<
         for core_id in 0..CORE_COUNT {
             if self.caches[core_id].i_cache[block_id as usize % I_SET]
                 .lock()
-                .unwrap()
                 .poke(block_id)
                 .is_some()
             {
                 res.push(core_id as u32);
             } else if self.caches[core_id].d_cache[block_id as usize % D_SET]
                 .lock()
-                .unwrap()
                 .poke(block_id)
                 .is_some()
             {
@@ -164,12 +157,10 @@ impl<
         for core_id in 0..CORE_COUNT {
             let is_i = self.caches[core_id].i_cache[block_id as usize % I_SET]
                 .lock()
-                .unwrap()
                 .poke(block_id);
 
             let is_d = self.caches[core_id].d_cache[block_id as usize % D_SET]
                 .lock()
-                .unwrap()
                 .poke(block_id);
 
             if let Some(i_line) = is_i {
@@ -208,7 +199,7 @@ impl<
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize {
         core_id as usize * 2 + if is_instruction_cache { 0 } else { 1 }
     }
-  
+
     #[inline]
     fn dump_snapshot(&self, snapshot_folder: &str) {
         for core_id in 0..CORE_COUNT {
@@ -216,29 +207,43 @@ impl<
             // data cache is stored in <core_id>_l1d.json
 
             // serialize the instruction cache
-            let serialized_icache = self.caches[core_id].i_cache.iter().map(|set| {
-                set.lock().unwrap().serialize(I_SET)
-            }).collect::<Vec<_>>();
+            let serialized_icache = self.caches[core_id]
+                .i_cache
+                .iter()
+                .map(|set| set.lock().serialize(I_SET))
+                .collect::<Vec<_>>();
 
             // dump the instruction cache
             let icache_path = format!("{}/core{}_l1i.json", snapshot_folder, core_id);
-            std::fs::write(icache_path, serde_json::to_string_pretty(&json!({
-                "associativity": I_ASSO,
-                "tags": serialized_icache
-            })).unwrap()).unwrap();
-            
+            std::fs::write(
+                icache_path,
+                serde_json::to_string_pretty(&json!({
+                    "associativity": I_ASSO,
+                    "tags": serialized_icache
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+
             // serialize the data cache
 
-            let serialized_dcache = self.caches[core_id].d_cache.iter().map(|set| {
-                set.lock().unwrap().serialize(D_SET)
-            }).collect::<Vec<_>>();
+            let serialized_dcache = self.caches[core_id]
+                .d_cache
+                .iter()
+                .map(|set| set.lock().serialize(D_SET))
+                .collect::<Vec<_>>();
 
             // dump the data cache
             let dcache_path = format!("{}/core{}_l1d.json", snapshot_folder, core_id);
-            std::fs::write(dcache_path, serde_json::to_string_pretty(&json!({
-                "associativity": D_ASSO,
-                "tags": serialized_dcache
-            })).unwrap()).unwrap();
+            std::fs::write(
+                dcache_path,
+                serde_json::to_string_pretty(&json!({
+                    "associativity": D_ASSO,
+                    "tags": serialized_dcache
+                }))
+                .unwrap(),
+            )
+            .unwrap();
         }
     }
 }

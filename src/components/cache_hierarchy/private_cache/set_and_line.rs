@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy)]
@@ -214,7 +213,7 @@ impl PrivateCacheSet {
 pub struct SerializedCacheLine {
     tag: u64,
     writable: bool,
-    dirty: bool
+    dirty: bool,
 }
 
 impl PrivateCacheSet {
@@ -228,12 +227,14 @@ impl PrivateCacheSet {
 
         let set_bits = (number_of_set as u64).trailing_zeros();
 
-        return sorted_lines.iter().filter(|line| line.block_id_with_v & 0x1 == 1).map(|line| {
-            SerializedCacheLine {
+        return sorted_lines
+            .iter()
+            .filter(|line| line.block_id_with_v & 0x1 == 1)
+            .map(|line| SerializedCacheLine {
                 tag: (line.block_id_with_v >> 1) >> set_bits,
                 writable: line.modified,
-                dirty: line.modified
-            }
-        }).collect();
+                dirty: line.modified,
+            })
+            .collect();
     }
 }

@@ -1,4 +1,5 @@
-use std::{collections::HashMap, sync::MutexGuard};
+use spin::mutex::SpinMutexGuard;
+use std::collections::HashMap;
 
 mod havard;
 mod set_and_line;
@@ -39,7 +40,7 @@ pub trait PrivateCaches {
         &self,
         block_id: u64,
         sharers: SharerList,
-    ) -> Vec<(usize, MutexGuard<'_, PrivateCacheSet>)>; // (sharer_index, guard)
+    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>)>; // (sharer_index, guard)
 
     // This function is for debugging. It gets the ids of all cores that have the cache line.
     fn in_which_cores(&self, block_id: u64) -> Vec<u32>;

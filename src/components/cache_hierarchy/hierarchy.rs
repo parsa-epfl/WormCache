@@ -15,8 +15,8 @@ use super::{
 use gcd;
 
 use crate::components::mmu::AbstractMMU;
+use spin::mutex::SpinMutexGuard;
 use std::cell::UnsafeCell;
-use std::sync::MutexGuard;
 
 mod debug_tests;
 mod harvard_reverse_order_tests;
@@ -292,7 +292,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             let mut other_sharer_id = 0;
             for (replica_cache_id, set) in acquired_sets.iter() {
                 if let Some(line) = set.poke(block_id) {
-                    if  line.write_ts() > ts {
+                    if line.write_ts() > ts {
                         other_has_write_permission_with_late_ts = true;
                         if line.write_ts() > other_write_ts {
                             other_write_ts = line.write_ts();
@@ -497,7 +497,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
     pub fn handle_eviction(
         &self,
-        directory_set_guard: &mut MutexGuard<'_, DirectorySet<DIRECTORY_SET>>,
+        directory_set_guard: &mut SpinMutexGuard<'_, DirectorySet<DIRECTORY_SET>>,
         cache_id: usize,
         block_id: u64,
         ts: u64,

@@ -1,22 +1,24 @@
 use serde_json::json;
 
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
-use std::{collections::HashMap, sync::Mutex};
+use spin::mutex::SpinMutex;
+use spin::mutex::SpinMutexGuard;
+use std::collections::HashMap;
 
 #[repr(align(64))]
 #[derive(Debug)]
 pub struct UnifiedPerCorePrivateCache<const SET: usize, const ASSO: usize> {
-    cache: Box<[Mutex<PrivateCacheSet>; SET]>,
+    cache: Box<[SpinMutex<PrivateCacheSet>; SET]>,
 }
 
 impl<const SET: usize, const ASSO: usize> UnifiedPerCorePrivateCache<SET, ASSO> {
     pub fn new() -> Self {
         Self {
-            cache: crate::util::init_heap_array(|_| Mutex::new(PrivateCacheSet::new(ASSO))),
+            cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(ASSO))),
         }
     }
 
-    pub fn get_set(&self, block_id: u64) -> &Mutex<PrivateCacheSet> {
+    pub fn get_set(&self, block_id: u64) -> &SpinMutex<PrivateCacheSet> {
         let set_id = block_id as usize % SET;
         return &self.cache[set_id];
     }
@@ -64,7 +66,6 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         self.caches[core_id as usize]
             .get_set(block_id)
             .lock()
-            .unwrap()
             .poke_and_update(block_id, ts, is_store, is_instruction)
     }
 
@@ -85,7 +86,6 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         self.caches[core_id as usize]
             .get_set(block_id)
             .lock()
-            .unwrap()
             .refill(block_id, ts, is_instruction, modified)
     }
 
@@ -94,12 +94,12 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         &self,
         block_id: u64,
         sharers: crate::components::cache_hierarchy::directory::SharerList,
-    ) -> Vec<(usize, std::sync::MutexGuard<'_, PrivateCacheSet>)> {
+    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>)> {
         let mut result = Vec::new();
 
         for core_id in sharers.iter_ones() {
             let set = self.caches[core_id].get_set(block_id);
-            let guard = set.lock().unwrap();
+            let guard = set.lock();
             result.push((core_id, guard));
         }
 
@@ -111,7 +111,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         let mut result = Vec::new();
         for core_id in 0..CORE_COUNT {
             let set = self.caches[core_id].get_set(block_id);
-            let guard = set.lock().unwrap();
+            let guard = set.lock();
             if guard.poke(block_id).is_some() {
                 result.push(core_id as u32);
             }
@@ -128,7 +128,6 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         for core_id in 0..CORE_COUNT {
             let is_d = self.caches[core_id].cache[block_id as usize % SET]
                 .lock()
-                .unwrap()
                 .poke(block_id);
 
             if let Some(d_line) = is_d {
@@ -155,17 +154,24 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     #[inline]
     fn dump_snapshot(&self, snapshot_folder: &str) {
         for core_id in 0..CORE_COUNT {
-            let serialized_cache = self.caches[core_id].cache.iter().map(|set| {
-                set.lock().unwrap().serialize(SET)
-            }).collect::<Vec<_>>();
+            let serialized_cache = self.caches[core_id]
+                .cache
+                .iter()
+                .map(|set| set.lock().serialize(SET))
+                .collect::<Vec<_>>();
 
             let private_cache_path = format!("{}/core_{}_private.json", snapshot_folder, core_id);
-            std::fs::write(private_cache_path, serde_json::to_string_pretty(&json!(
-                {
-                    "associativity": ASSO,
-                    "tags": serialized_cache
-                }
-            )).unwrap()).unwrap();
+            std::fs::write(
+                private_cache_path,
+                serde_json::to_string_pretty(&json!(
+                    {
+                        "associativity": ASSO,
+                        "tags": serialized_cache
+                    }
+                ))
+                .unwrap(),
+            )
+            .unwrap();
         }
     }
 }

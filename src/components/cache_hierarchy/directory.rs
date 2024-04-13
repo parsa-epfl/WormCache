@@ -1,6 +1,6 @@
+use spin::mutex::SpinMutex;
+use spin::mutex::SpinMutexGuard;
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 
 use bitvec::prelude::*;
 use bitvec::BitArr;
@@ -101,31 +101,29 @@ impl<const SET: usize> DirectorySet<SET> {
 
 // Probably the Directory should be infinitely sized.
 pub struct Directory<const SET: usize> {
-    entries: [Mutex<DirectorySet<SET>>; SET],
+    entries: [SpinMutex<DirectorySet<SET>>; SET],
 }
 
 impl<const SET: usize> Directory<SET> {
     pub fn new() -> Self {
         Self {
-            entries: std::array::from_fn(|idx| Mutex::new(DirectorySet::new(idx))),
+            entries: std::array::from_fn(|idx| SpinMutex::new(DirectorySet::new(idx))),
         }
     }
 
-    pub fn get_set(&self, block_id: u64) -> MutexGuard<'_, DirectorySet<SET>> {
+    pub fn get_set(&self, block_id: u64) -> SpinMutexGuard<'_, DirectorySet<SET>> {
         let set_id = (block_id as usize) % SET;
-        self.entries[set_id].lock().unwrap()
+        self.entries[set_id].lock()
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 #[derive(Debug)]
 pub struct SerializedDirectoryEntry {
     pub tag: u64,
     pub sharers: SharerList,
 }
-
 
 use serde::ser::{SerializeStruct, Serializer};
 
@@ -141,22 +139,31 @@ impl Serialize for SerializedDirectoryEntry {
     }
 }
 
-impl <const SET: usize> Directory<SET> {
+impl<const SET: usize> Directory<SET> {
     pub fn dump_snapshot(&self, snapshot_folder: &str) {
         let file = std::fs::File::create(format!("{}/directory.json", snapshot_folder)).unwrap();
 
-        let entries = self.entries.iter().map(|entry| {
-            let entry = entry.lock().unwrap();
-            entry.entries.iter().filter_map(|(tag, entry)| {
-                if entry.sharers.not_any() {
-                    return None;
-                }
-                Some(SerializedDirectoryEntry {
-                    tag: *tag,
-                    sharers: entry.sharers,
-                })
-            }).collect::<Vec<_>>()
-        }).flatten().collect::<Vec<_>>();
+        let entries = self
+            .entries
+            .iter()
+            .map(|entry| {
+                let entry = entry.lock();
+                entry
+                    .entries
+                    .iter()
+                    .filter_map(|(tag, entry)| {
+                        if entry.sharers.not_any() {
+                            return None;
+                        }
+                        Some(SerializedDirectoryEntry {
+                            tag: *tag,
+                            sharers: entry.sharers,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .flatten()
+            .collect::<Vec<_>>();
 
         serde_json::to_writer_pretty(&file, &entries).unwrap();
     }
