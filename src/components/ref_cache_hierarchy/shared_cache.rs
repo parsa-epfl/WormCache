@@ -18,7 +18,9 @@ pub struct SerialSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE
     blocks: Box<[[SharedCacheBlock; WAY]; SET]>,
 }
 
-impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SerialSharedCache<SET, WAY, EXCLUSIVE> {
+impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
+    SerialSharedCache<SET, WAY, EXCLUSIVE>
+{
     pub fn new() -> Self {
         Self {
             blocks: crate::util::init_heap_array(|_| {

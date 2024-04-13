@@ -262,7 +262,7 @@ impl<MMU: AbstractMMU, PCache: SerialPrivateCaches> LockedMemoryHierarchy<MMU, P
             let mut other_sharer_id = 0;
             for (replica_cache_id, set) in acquired_sets.iter() {
                 if let Some(line) = set.poke(block_id) {
-                    if  line.write_ts() > ts {
+                    if line.write_ts() > ts {
                         other_has_write_permission_with_late_ts = true;
                         if line.write_ts() > other_write_ts {
                             other_write_ts = line.write_ts();
@@ -464,13 +464,7 @@ impl<MMU: AbstractMMU, PCache: SerialPrivateCaches> LockedMemoryHierarchy<MMU, P
         return res;
     }
 
-    pub fn handle_eviction(
-        &mut self,
-        cache_id: usize,
-        block_id: u64,
-        ts: u64,
-        modified: bool,
-    ) {
+    pub fn handle_eviction(&mut self, cache_id: usize, block_id: u64, ts: u64, modified: bool) {
         // first, we need to check the directory.
         let directory_set = self.directory.get_or_create(block_id);
 

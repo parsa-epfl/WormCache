@@ -15,6 +15,7 @@ pub mod cache_hierarchy;
 pub mod debug;
 pub mod marker;
 pub mod pw_log;
+mod ref_cache_hierarchy;
 pub mod touch_once;
 pub mod trace;
 pub mod virtual_time;

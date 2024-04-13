@@ -15,7 +15,7 @@ use crate::{
 };
 use std::ffi;
 
-use self::private_cache::{HarvardPrivateCaches};
+use self::private_cache::HarvardPrivateCaches;
 
 use super::debug::statistics::Statistics;
 
