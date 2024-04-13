@@ -1,4 +1,5 @@
-use spinlock::Spinlock;
+use spin::mutex::SpinMutex;
+use spin::Spin;
 use std::arch::asm;
 use std::sync::Arc;
 use std::time::Instant;
@@ -46,7 +47,7 @@ fn test_whether_timer_atomic() {
     const TOTAL_TEST_COUNT: usize = 1000_000;
     const TOTAL_THREAD_COUNT: usize = 16;
 
-    let time_list = Arc::new(Spinlock::new(Vec::<u64>::with_capacity(
+    let time_list = Arc::new(SpinMutex::<Vec<u64>, Spin>::new(Vec::<u64>::with_capacity(
         TOTAL_TEST_COUNT * TOTAL_THREAD_COUNT,
     )));
 
