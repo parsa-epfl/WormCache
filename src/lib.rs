@@ -7,8 +7,8 @@ mod util;
 
 // Plugin
 use components::bp::BranchPredictorPlugin;
-use components::marker::MarkerPlugin;
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
+use components::marker::MarkerPlugin;
 use components::pw_log::PageWalkLoggerPlugin;
 use components::touch_once::TouchOnePlugin;
 use components::trace::TracePlugin;

@@ -454,7 +454,7 @@ fn rar() {
         println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
-    
+
     let mut mh = MH::new();
     let block_id = 1024;
 

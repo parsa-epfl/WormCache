@@ -60,7 +60,6 @@ fn one_core_write_first_then_read() {
     );
 }
 
-
 #[test]
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
@@ -68,7 +67,6 @@ fn write_write_read_then_old_write() {
         println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
-
 
     let mut mh = MH::new();
     let block_id = 1043;
@@ -91,7 +89,7 @@ fn write_write_read_then_old_write() {
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
-    // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure. 
+    // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure.
     assert_eq!(
         mh.access_memory_pblock_id(2, block_id, 125, true, false),
         CacheHierarchyAccessResult::MissInPrivateCache

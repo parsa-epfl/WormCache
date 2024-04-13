@@ -34,7 +34,8 @@ pub struct ICountPlugin {
 }
 
 impl ICountPlugin {
-    pub fn get_icounts(&self) -> [(u64, u64); CORE_COUNT] { // (user_icount, kernel_icount)
+    pub fn get_icounts(&self) -> [(u64, u64); CORE_COUNT] {
+        // (user_icount, kernel_icount)
         let mut res = [(0, 0); CORE_COUNT];
         for i in 0..CORE_COUNT {
             unsafe {
