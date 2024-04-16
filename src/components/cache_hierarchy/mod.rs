@@ -122,6 +122,27 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         }
 
         println!("Memory[Locked] plugin initialized.");
+
+        // this thread peridocally dumps the statistics.
+        std::thread::spawn(|| {
+            if !ENABLE_STATISTICS {
+                return;
+            }
+
+            // open a csv file.
+            let mut file = std::fs::File::create("cache_misses.csv").unwrap();
+
+            file.write_fmt(format_args!("{}\n", Statistics::get_header()))
+                .unwrap();
+
+            loop {
+                for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
+                    file.write(stat.as_bytes()).unwrap();
+                    file.write(b"\n").unwrap();
+                }
+                std::thread::sleep(std::time::Duration::from_secs(10));
+            }
+        });
     }
 
     #[inline]
