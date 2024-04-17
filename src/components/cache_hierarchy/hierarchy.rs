@@ -1,3 +1,4 @@
+use crate::components::cache_hierarchy::shared_cache::SharedCache;
 use crate::parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION;
 use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
@@ -41,7 +42,7 @@ pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches> {
     // There might be a way to optimize if the permission is shared. I need to think about it.
     directory: directory::Directory<{ DIRECTORY_SET }>,
 
-    shared_cache: shared_cache::SharedCache<
+    shared_cache: shared_cache::LockedSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -64,7 +65,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
-            shared_cache: shared_cache::SharedCache::new(),
+            shared_cache: shared_cache::LockedSharedCache::new(),
         }
     }
 
@@ -217,7 +218,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
             // NOTE: currently shared cache access is disabled.
-            let shared_cache_result = self.shared_cache.lookup(block_id);
+            let shared_cache_result = self.shared_cache.lookup(core_id, block_id, ts);
 
             directory_entry.ts = ts;
             directory_entry.sharers.set(p_cache_id as usize, true);
@@ -226,12 +227,17 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
                 directory_entry.modify_ts_before_eviction = ts;
             }
 
+            let modified = match shared_cache_result {
+                Some(m) => m, // if the shared cache has modified permission, then the private cache should also have modified permission.
+                None => false,
+            } || is_store;
+
             let evicted = self.private_caches.refill_from_shared_cache(
                 core_id,
                 block_id,
                 ts,
                 is_instruction,
-                is_store || shared_cache_result.1, // if the shared cache has modified permission, then the private cache should also have modified permission.
+                modified,
             );
 
             // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
@@ -260,7 +266,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
             Statistics::global_record(core_id, EventType::SharedCacheAccess);
 
-            if shared_cache_result.0 {
+            if shared_cache_result.is_some() {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
                 Statistics::global_record(core_id, EventType::SharedCacheMiss);
@@ -550,12 +556,13 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         if directory_set.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
             Statistics::global_record(
-                PCache::find_cache_by_id(cache_id).0,
+                PCache::find_cache_info_by_cache_id(cache_id).0,
                 EventType::SharedCacheAccess,
             );
-            // NOTE: currently shared cache access is disabled.
-            self.shared_cache.evict_to(block_id, ts, modified);
-            // We should also mark this one as deleted.
+
+            let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
+
+            self.shared_cache.insert(core_id, block_id, ts, modified);
         }
     }
 

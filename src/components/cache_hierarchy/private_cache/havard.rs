@@ -190,7 +190,7 @@ impl<
         res
     }
     #[inline]
-    fn find_cache_by_id(index: usize) -> (u32, bool) {
+    fn find_cache_info_by_cache_id(index: usize) -> (u32, bool) {
         let core_id = index / 2;
         let is_instruction_cache = index % 2 == 0;
         (core_id as u32, is_instruction_cache)

@@ -140,7 +140,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     }
 
     #[inline]
-    fn find_cache_by_id(index: usize) -> (u32, bool) {
+    fn find_cache_info_by_cache_id(index: usize) -> (u32, bool) {
         let core_id = index as u32;
         let is_instruction = false;
         return (core_id, is_instruction);

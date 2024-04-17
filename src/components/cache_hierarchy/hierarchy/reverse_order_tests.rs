@@ -38,7 +38,7 @@ impl MH {
             return BlockPosition::InPrivateCache(private_owner);
         }
 
-        if self.shared_cache.lookup(block_id).0 {
+        if self.shared_cache.lookup(0, block_id, 0).is_some() {
             return BlockPosition::InSharedCache;
         }
         return BlockPosition::NotInCache;
