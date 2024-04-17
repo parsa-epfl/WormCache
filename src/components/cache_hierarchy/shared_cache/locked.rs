@@ -1,5 +1,4 @@
-use super::{SerializedSharedCacheBlock, SharedCacheBlock, SharedCacheSet};
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use super::{SerializedSharedCacheBlock, SharedCacheSet};
 use serde_json::json;
 use spin::mutex::SpinMutex;
 
@@ -16,17 +15,17 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
         }
     }
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
+    fn invalidate(&self, _core_id: u32, block_id: u64, _ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
         return self.blocks[set_idx].lock().invalidate(block_id);
     }
 
-    fn lookup(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
+    fn lookup(&self, _core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
         return self.blocks[set_idx].lock().lookup(block_id, ts);
     }
 
-    fn insert(&self, core_id: u32, block_id: u64, ts: u64, is_modified: bool) {
+    fn insert(&self, _core_id: u32, block_id: u64, ts: u64, is_modified: bool) {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx]
             .lock()

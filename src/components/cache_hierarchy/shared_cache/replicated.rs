@@ -1,7 +1,7 @@
-use super::{SerializedSharedCacheBlock, SharedCache, SharedCacheBlock, SharedCacheSet};
-use crate::{components::debug::cache_line_history::CacheLineCoherenceHistory, util};
+use super::{SerializedSharedCacheBlock, SharedCache, SharedCacheSet};
+
 use serde_json::json;
-use std::{cell::UnsafeCell, io::Write};
+use std::cell::UnsafeCell;
 
 impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
     fn fold(&self, other: &Self) -> Self {
@@ -34,7 +34,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
         }
     }
 
-    fn invalidate(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    fn invalidate(&mut self, block_id: u64, _: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
         return self.blocks[set_idx].invalidate(block_id);
     }

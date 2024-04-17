@@ -129,12 +129,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
         };
 
         match translation {
-            crate::components::mmu::MMUTranslationResult::Hit(pa) => {
+            crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
-            crate::components::mmu::MMUTranslationResult::Miss(pa, walk_trace) => {
+            crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
                 // replay the trace.
                 for trace_pa in walk_trace {
                     if trace_pa == u64::MAX {
@@ -149,7 +149,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache>
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
             }
-            crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
+            crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);

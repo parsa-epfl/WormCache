@@ -1,7 +1,5 @@
 use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
-use super::SerializedSharedCacheBlock;
-
 #[derive(Debug, Clone)]
 pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.

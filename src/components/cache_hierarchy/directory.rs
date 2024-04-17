@@ -14,16 +14,6 @@ const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
     parameter::CORE_COUNT * 2
 };
 
-const SHARED_COUNT: usize = if parameter::USE_UNIFIED_CACHE {
-    parameter::UNIFIED_PRI_CACHE_SET
-} else {
-    if parameter::HARVARD_PRI_I_CACHE_ASSO > parameter::HARVARD_PRI_D_CACHE_ASSO {
-        parameter::HARVARD_PRI_I_CACHE_SET
-    } else {
-        parameter::HARVARD_PRI_D_CACHE_SET
-    }
-};
-
 pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 
 // pub struct DirectoryEntry {
@@ -40,7 +30,7 @@ pub struct DirectoryEntry {
 #[repr(align(64))]
 pub struct DirectorySet<const SET: usize> {
     entries: HashMap<u64, DirectoryEntry>,
-    index: usize,
+    pub index: usize,
 }
 
 impl<const SET: usize> DirectorySet<SET> {
@@ -59,27 +49,6 @@ impl<const SET: usize> DirectorySet<SET> {
         // Internal id is more efficient than block_id, because it removes the same lower bits.
         self.entries.contains_key(&internal_id)
     }
-
-    // pub fn create(&mut self, block_id: u64) -> &mut DirectoryEntry {
-    //     let internal_id = block_id >> Self::LOG2_SET;
-
-    //     self.entries.insert(
-    //         internal_id,
-    //         DirectoryEntry {
-    //             ts: 0,
-    //             sharers: SharerList::ZERO,
-    //             modify_ts_before_eviction: 0,
-    //         },
-    //     );
-
-    //     self.entries.get_mut(&internal_id).unwrap()
-    // }
-
-    // pub fn get_entry(&mut self, block_id: u64) -> &mut DirectoryEntry {
-    //     let internal_id = block_id >> Self::LOG2_SET;
-
-    //     self.entries.get_mut(&internal_id).unwrap()
-    // }
 
     pub fn get_or_create(&mut self, block_id: u64) -> &mut DirectoryEntry {
         let internal_id = block_id >> Self::LOG2_SET;
@@ -146,17 +115,16 @@ impl<const SET: usize> Directory<SET> {
         let entries = self
             .entries
             .iter()
-            .map(|entry| {
-                let entry = entry.lock();
-                entry
-                    .entries
+            .map(|set| {
+                let set = set.lock();
+                set.entries
                     .iter()
                     .filter_map(|(tag, entry)| {
                         if entry.sharers.not_any() {
                             return None;
                         }
                         Some(SerializedDirectoryEntry {
-                            tag: *tag,
+                            tag: (*tag) * (SET as u64) + set.index as u64,
                             sharers: entry.sharers,
                         })
                     })
