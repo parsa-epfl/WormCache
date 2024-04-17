@@ -33,7 +33,7 @@ const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
     )
 };
 
-pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches> {
+pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
@@ -42,11 +42,7 @@ pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches> {
     // There might be a way to optimize if the permission is shared. I need to think about it.
     directory: directory::Directory<{ DIRECTORY_SET }>,
 
-    shared_cache: shared_cache::LockedSharedCache<
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
+    shared_cache: SCache,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -59,13 +55,15 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl<MMU: AbstractMMU, PCache: PrivateCaches> LockedMemoryHierarchy<MMU, PCache> {
+impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
+    LockedMemoryHierarchy<MMU, PCache, SCache>
+{
     pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
-            shared_cache: shared_cache::LockedSharedCache::new(),
+            shared_cache: SCache::new(),
         }
     }
 

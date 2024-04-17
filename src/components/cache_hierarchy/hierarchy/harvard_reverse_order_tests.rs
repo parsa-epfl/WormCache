@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
-use self::private_cache::HarvardPrivateCaches;
+use self::{private_cache::HarvardPrivateCaches, shared_cache::LockedSharedCache};
 
 use super::*;
 
@@ -14,6 +14,11 @@ type MH = LockedMemoryHierarchy<
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    LockedSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 >;
 

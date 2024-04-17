@@ -15,7 +15,10 @@ use crate::{
 };
 use std::ffi;
 
-use self::private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches};
+use self::{
+    private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches},
+    shared_cache::LockedSharedCache,
+};
 
 use super::debug::statistics::Statistics;
 
@@ -37,6 +40,11 @@ type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
+    LockedSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
 >;
 
 type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
@@ -47,6 +55,11 @@ type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    LockedSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 >;
 

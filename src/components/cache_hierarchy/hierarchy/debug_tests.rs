@@ -3,7 +3,7 @@
 
 use crate::components::{cache_hierarchy::get_memory_ts, NoMMU};
 
-use self::private_cache::UnifiedPrivateCaches;
+use self::{private_cache::UnifiedPrivateCaches, shared_cache::LockedSharedCache};
 use super::*;
 
 type MH = LockedMemoryHierarchy<
@@ -12,6 +12,11 @@ type MH = LockedMemoryHierarchy<
         { parameter::CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >,
+    LockedSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 >;
 
