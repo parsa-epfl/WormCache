@@ -27,6 +27,12 @@ mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
 
+const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+    parameter::CORE_COUNT / 2
+} else {
+    parameter::CORE_COUNT
+};
+
 type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     AArch64,
     { parameter::TLB_ASSO },
@@ -36,7 +42,7 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
 type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
     AArch64MMU,
     UnifiedPrivateCaches<
-        { parameter::CORE_COUNT },
+        { ALLOCATED_CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
@@ -50,7 +56,7 @@ type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
 type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
     AArch64MMU,
     HarvardPrivateCaches<
-        { parameter::CORE_COUNT },
+        { ALLOCATED_CORE_COUNT },
         { parameter::HARVARD_PRI_I_CACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
@@ -80,6 +86,11 @@ unsafe extern "C" fn vcpu_mem_access(
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
 ) {
+    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
+    {
+        return;
+    }
+
     let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
@@ -109,6 +120,11 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     voffset: *mut ffi::c_void, // it is basically its physical address.
 ) {
+    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
+    {
+        return;
+    }
+
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 

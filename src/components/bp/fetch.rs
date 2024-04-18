@@ -6,7 +6,7 @@ mod tage;
 
 use serde::Serialize;
 
-use crate::{parameter::BP_GSHARE_SET, parameter::BP_RAS_COUNT, parameter::CORE_COUNT};
+use crate::{parameter::BP_GSHARE_SET, parameter::BP_RAS_COUNT};
 
 use super::BranchResolveFlag;
 
@@ -34,12 +34,12 @@ impl PerCoreFetchUnit {
     }
 }
 
-pub struct FetchUnit {
+pub struct FetchUnit<const CORE_COUNT: usize> {
     pub private_units: [PerCoreFetchUnit; CORE_COUNT],
 }
 
-impl FetchUnit {
-    pub fn new() -> FetchUnit {
+impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
+    pub fn new() -> Self {
         FetchUnit {
             private_units: std::array::from_fn(|_| PerCoreFetchUnit::new()),
         }
