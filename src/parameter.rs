@@ -142,6 +142,21 @@ pub const BP_GSHARE_SET: usize = 2048;
 static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
 
 /**
+ * BTB_SET
+ *
+ * The number of sets of the BTB.
+ */
+pub const BTB_SET: usize = 4096;
+static_assertions::const_assert!(BTB_SET.is_power_of_two());
+
+/**
+ * BTB_ASSO
+ *
+ * The associativity of the BTB.
+ */
+pub const BTB_ASSO: usize = 3;
+
+/**
  * BP_RAS_COUNT
  */
 pub const BP_RAS_COUNT: usize = 32;

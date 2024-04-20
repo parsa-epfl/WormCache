@@ -6,14 +6,14 @@ mod tage;
 
 use serde::Serialize;
 
-use crate::{parameter::BP_GSHARE_SET, parameter::BP_RAS_COUNT};
+use crate::parameter::{self, BP_RAS_COUNT};
 
 use super::BranchResolveFlag;
 
 #[repr(align(64))]
 #[derive(Serialize)]
 pub struct PerCoreFetchUnit {
-    btb: btb::BTB<BP_GSHARE_SET>,
+    btb: btb::BTB<{ parameter::BTB_SET }, { parameter::BTB_ASSO }>,
     ras: ras::ReturnAddressStacle<BP_RAS_COUNT>,
     tage: tage::TAGEPredictor,
 }
