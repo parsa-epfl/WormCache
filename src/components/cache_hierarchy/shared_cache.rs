@@ -33,3 +33,4 @@ mod locked;
 mod replicated;
 
 pub use locked::LockedSharedCache;
+pub use replicated::ReplicatedSharedCache;

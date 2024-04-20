@@ -17,7 +17,7 @@ use std::ffi;
 
 use self::{
     private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches},
-    shared_cache::LockedSharedCache,
+    shared_cache::{LockedSharedCache, ReplicatedSharedCache},
 };
 
 use super::debug::statistics::Statistics;
@@ -51,6 +51,12 @@ type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    // ReplicatedSharedCache<
+    //     { parameter::CORE_COUNT },
+    //     { parameter::SHARED_CACHE_SET },
+    //     { parameter::SHARED_CACHE_ASSO },
+    //     { parameter::SHARED_CACHE_EXCLUSIVE },
+    // >,
 >;
 
 type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
@@ -67,6 +73,12 @@ type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    // ReplicatedSharedCache<
+    //     { parameter::CORE_COUNT },
+    //     { parameter::SHARED_CACHE_SET },
+    //     { parameter::SHARED_CACHE_ASSO },
+    //     { parameter::SHARED_CACHE_EXCLUSIVE },
+    // >,
 >;
 
 static mut PLUGIN: Lazy<PluginMemoryHierarchyHarvard> =
