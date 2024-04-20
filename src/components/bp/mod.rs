@@ -33,7 +33,13 @@ impl BranchResolveFlag {
     }
 }
 
-static mut FETCH_UNIT: Lazy<UnsafeCell<fetch::FetchUnit<{ parameter::CORE_COUNT / 2 }>>> =
+const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+    parameter::CORE_COUNT / 2
+} else {
+    parameter::CORE_COUNT
+};
+
+static mut FETCH_UNIT: Lazy<UnsafeCell<fetch::FetchUnit<{ ALLOCATED_CORE_COUNT }>>> =
     Lazy::new(|| {
         let fetch_unit = fetch::FetchUnit::new();
         UnsafeCell::new(fetch_unit)
