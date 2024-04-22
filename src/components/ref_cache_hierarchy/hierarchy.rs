@@ -1,4 +1,3 @@
-use crate::components::cache_hierarchy::shared_cache::SharedCache;
 use crate::parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION;
 use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
@@ -6,23 +5,17 @@ use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::directory::DirectorySet;
 use super::{
     directory,
-    private_cache::{self, PrivateCaches},
+    private_cache::{self, SerialPrivateCaches},
     shared_cache,
 };
 
 use gcd;
 
 use crate::components::mmu::AbstractMMU;
-use spin::mutex::SpinMutexGuard;
 use std::cell::UnsafeCell;
-
-mod debug_tests;
-mod harvard_reverse_order_tests;
-mod harvard_tests;
-mod reverse_order_tests;
+use std::ops::Deref;
 
 const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
     parameter::UNIFIED_PRI_CACHE_SET
@@ -33,16 +26,20 @@ const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
     )
 };
 
-pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache> {
+pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: SerialPrivateCaches> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
     // In case the hardware has separate L1i and L1d, and there is no private L2, we can just add two groups of caches.
     // The logic to handle it is the same. It is equivalent that we have more cores with a single private cache.
     // There might be a way to optimize if the permission is shared. I need to think about it.
-    directory: directory::Directory<{ DIRECTORY_SET }>,
+    directory: directory::Directory,
 
-    shared_cache: SCache,
+    shared_cache: shared_cache::SerialSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -55,20 +52,18 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
-    LockedMemoryHierarchy<MMU, PCache, SCache>
-{
+impl<MMU: AbstractMMU, PCache: SerialPrivateCaches> LockedMemoryHierarchy<MMU, PCache> {
     pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
-            shared_cache: SCache::new(),
+            shared_cache: shared_cache::SerialSharedCache::new(),
         }
     }
 
     pub fn access_memory_with_va(
-        &self,
+        &mut self,
         core_id: u32,
         va: u64,
         ts: u64,
@@ -127,12 +122,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         };
 
         match translation {
-            crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
+            crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
             }
-            crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
+            crate::components::mmu::MMUTranslationResult::Miss(pa, walk_trace) => {
                 // replay the trace.
                 for trace_pa in walk_trace {
                     if trace_pa == u64::MAX {
@@ -147,7 +142,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
             }
-            crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
+            crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
@@ -156,7 +151,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
     }
 
     pub fn access_memory_pblock_id(
-        &self,
+        &mut self,
         core_id: u32,
         block_id: u64,
         ts: u64,
@@ -181,8 +176,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         Statistics::global_record(core_id, EventType::PrivateCacheMiss);
 
         // now, it is a miss. We need to check the directory.
-        let mut directory_set_guard = self.directory.get_set(block_id);
-        let directory_entry = directory_set_guard.get_or_create(block_id);
+        let directory_entry = self.directory.get_or_create(block_id);
 
         let sharers = directory_entry.sharers;
 
@@ -195,47 +189,20 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             CacheOperationType::GetR
         };
 
-        if !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
-            && directory_entry.modify_ts_before_eviction > ts
-        {
-            // This means that the current operation is not ordered. (even later than the first writer)
-            // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
-            CacheLineCoherenceHistory::global_record_history(
-                block_id,
-                record_op,
-                p_cache_id,
-                ts,
-                false,
-                sharers,
-                line!(),
-            );
-
-            return CacheHierarchyAccessResult::MissInPrivateCache;
-        }
-
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
             // NOTE: currently shared cache access is disabled.
-            let shared_cache_result = self.shared_cache.lookup(core_id, block_id, ts);
+            let shared_cache_result = self.shared_cache.lookup(block_id);
 
             directory_entry.ts = ts;
             directory_entry.sharers.set(p_cache_id as usize, true);
-
-            if is_store {
-                directory_entry.modify_ts_before_eviction = ts;
-            }
-
-            let modified = match shared_cache_result {
-                Some(m) => m, // if the shared cache has modified permission, then the private cache should also have modified permission.
-                None => false,
-            } || is_store;
 
             let evicted = self.private_caches.refill_from_shared_cache(
                 core_id,
                 block_id,
                 ts,
                 is_instruction,
-                modified,
+                is_store,
             );
 
             // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
@@ -254,7 +221,6 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             // handle eviction now.
             if let Some(evicted_line) = evicted {
                 self.handle_eviction(
-                    &mut directory_set_guard,
                     p_cache_id,
                     evicted_line.block_id(),
                     ts,
@@ -264,7 +230,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
             Statistics::global_record(core_id, EventType::SharedCacheAccess);
 
-            if shared_cache_result.is_some() {
+            if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
                 Statistics::global_record(core_id, EventType::SharedCacheMiss);
@@ -287,7 +253,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         // Now, acquire the lock of all sets of the private cache, suggested by the directory.
         let mut acquired_sets = self
             .private_caches
-            .get_set_guard_by_sharer_list(block_id, acquire_list);
+            .get_set_ref_by_sharer_list(block_id, acquire_list);
 
         if !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
             // Do we have another sharer that has a write permission with a larger timestamp?
@@ -488,7 +454,6 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
         if let Some(evicted_line) = evicted {
             self.handle_eviction(
-                &mut directory_set_guard,
                 p_cache_id,
                 evicted_line.block_id(),
                 ts,
@@ -499,16 +464,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         return res;
     }
 
-    pub fn handle_eviction(
-        &self,
-        directory_set_guard: &mut SpinMutexGuard<'_, DirectorySet<DIRECTORY_SET>>,
-        cache_id: usize,
-        block_id: u64,
-        ts: u64,
-        modified: bool,
-    ) {
+    pub fn handle_eviction(&mut self, cache_id: usize, block_id: u64, ts: u64, modified: bool) {
         // first, we need to check the directory.
-        let directory_set = directory_set_guard.get_or_create(block_id);
+        let directory_set = self.directory.get_or_create(block_id);
 
         // we cancel the element of this block in the directory.
         let sharer = directory_set.sharers;
@@ -539,28 +497,16 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             line!(),
         );
 
-        // Also update the writer timestamp before eviction.
-        if modified {
-            // keep the latest write timestamp.
-            directory_set.modify_ts_before_eviction =
-                if directory_set.modify_ts_before_eviction < ts {
-                    ts
-                } else {
-                    directory_set.modify_ts_before_eviction
-                };
-        }
-
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if directory_set.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
             Statistics::global_record(
-                PCache::find_cache_info_by_cache_id(cache_id).0,
+                PCache::find_cache_by_id(cache_id).0,
                 EventType::SharedCacheAccess,
             );
-
-            let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
-
-            self.shared_cache.insert(core_id, block_id, ts, modified);
+            // NOTE: currently shared cache access is disabled.
+            self.shared_cache.evict_to(block_id, ts);
+            // We should also mark this one as deleted.
         }
     }
 
@@ -570,7 +516,5 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
     pub fn dump_snapshot(&self, snapshot_folder: &str) {
         self.private_caches.dump_snapshot(snapshot_folder);
-        self.directory.dump_snapshot(snapshot_folder);
-        // self.shared_cache.dump_snapshot(snapshot_folder);
     }
 }

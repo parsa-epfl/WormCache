@@ -6,14 +6,14 @@ mod tage;
 
 use serde::Serialize;
 
-use crate::{parameter::BP_GSHARE_SET, parameter::BP_RAS_COUNT, parameter::CORE_COUNT};
+use crate::parameter::{self, BP_GSHARE_SET, BP_RAS_COUNT};
 
 use super::BranchResolveFlag;
 
 #[repr(align(64))]
 #[derive(Serialize)]
 pub struct PerCoreFetchUnit {
-    btb: btb::BTB<BP_GSHARE_SET>,
+    btb: btb::BTB<{ parameter::BTB_SET }, { parameter::BTB_ASSO }>,
     ras: ras::ReturnAddressStacle<BP_RAS_COUNT>,
     tage: tage::TAGEPredictor,
 }
@@ -34,12 +34,12 @@ impl PerCoreFetchUnit {
     }
 }
 
-pub struct FetchUnit {
+pub struct FetchUnit<const CORE_COUNT: usize> {
     pub private_units: [PerCoreFetchUnit; CORE_COUNT],
 }
 
-impl FetchUnit {
-    pub fn new() -> FetchUnit {
+impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
+    pub fn new() -> Self {
         FetchUnit {
             private_units: std::array::from_fn(|_| PerCoreFetchUnit::new()),
         }

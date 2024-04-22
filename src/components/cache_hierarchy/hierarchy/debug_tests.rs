@@ -3,7 +3,7 @@
 
 use crate::components::{cache_hierarchy::get_memory_ts, NoMMU};
 
-use self::private_cache::UnifiedPrivateCaches;
+use self::{private_cache::UnifiedPrivateCaches, shared_cache::LockedSharedCache};
 use super::*;
 
 type MH = LockedMemoryHierarchy<
@@ -12,6 +12,11 @@ type MH = LockedMemoryHierarchy<
         { parameter::CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >,
+    LockedSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 >;
 
@@ -60,7 +65,6 @@ fn one_core_write_first_then_read() {
     );
 }
 
-
 #[test]
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
@@ -68,7 +72,6 @@ fn write_write_read_then_old_write() {
         println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
-
 
     let mut mh = MH::new();
     let block_id = 1043;
@@ -91,7 +94,7 @@ fn write_write_read_then_old_write() {
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
-    // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure. 
+    // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure.
     assert_eq!(
         mh.access_memory_pblock_id(2, block_id, 125, true, false),
         CacheHierarchyAccessResult::MissInPrivateCache

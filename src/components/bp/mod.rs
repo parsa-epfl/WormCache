@@ -3,7 +3,7 @@ mod fetch;
 mod aarch64;
 mod callbacks;
 use super::Plugin;
-use crate::qemu_api;
+use crate::{parameter, qemu_api};
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
 use std::io::Write;
@@ -33,12 +33,25 @@ impl BranchResolveFlag {
     }
 }
 
-static mut FETCH_UNIT: Lazy<UnsafeCell<fetch::FetchUnit>> = Lazy::new(|| {
-    let fetch_unit = fetch::FetchUnit::new();
-    UnsafeCell::new(fetch_unit)
-});
+const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+    parameter::CORE_COUNT / 2
+} else {
+    parameter::CORE_COUNT
+};
+
+static mut FETCH_UNIT: Lazy<UnsafeCell<fetch::FetchUnit<{ ALLOCATED_CORE_COUNT }>>> =
+    Lazy::new(|| {
+        let fetch_unit = fetch::FetchUnit::new();
+        UnsafeCell::new(fetch_unit)
+    });
 
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
+    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
+        && vcpu_index >= parameter::CORE_COUNT as u32 / 2
+    {
+        return;
+    }
+
     let result = BranchResolveFlag::from_u32(flags).unwrap();
     FETCH_UNIT
         .get_mut()

@@ -15,10 +15,7 @@ use crate::{
 };
 use std::ffi;
 
-use self::{
-    private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches},
-    shared_cache::{LockedSharedCache, ReplicatedSharedCache},
-};
+use self::private_cache::HarvardPrivateCaches;
 
 use super::debug::statistics::Statistics;
 
@@ -27,58 +24,21 @@ mod hierarchy;
 mod private_cache;
 pub mod shared_cache;
 
-const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
-    parameter::CORE_COUNT / 2
-} else {
-    parameter::CORE_COUNT
-};
-
 type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     AArch64,
     { parameter::TLB_ASSO },
     { parameter::TLB_SET },
 >;
 
-type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
-    AArch64MMU,
-    UnifiedPrivateCaches<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
-    >,
-    LockedSharedCache<
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    // ReplicatedSharedCache<
-    //     { parameter::CORE_COUNT },
-    //     { parameter::SHARED_CACHE_SET },
-    //     { parameter::SHARED_CACHE_ASSO },
-    //     { parameter::SHARED_CACHE_EXCLUSIVE },
-    // >,
->;
-
 type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
     AArch64MMU,
     HarvardPrivateCaches<
-        { ALLOCATED_CORE_COUNT },
+        { parameter::CORE_COUNT },
         { parameter::HARVARD_PRI_I_CACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    LockedSharedCache<
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    // ReplicatedSharedCache<
-    //     { parameter::CORE_COUNT },
-    //     { parameter::SHARED_CACHE_SET },
-    //     { parameter::SHARED_CACHE_ASSO },
-    //     { parameter::SHARED_CACHE_EXCLUSIVE },
-    // >,
 >;
 
 static mut PLUGIN: Lazy<PluginMemoryHierarchyHarvard> =
@@ -98,11 +58,6 @@ unsafe extern "C" fn vcpu_mem_access(
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
 ) {
-    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
-    {
-        return;
-    }
-
     let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
@@ -132,11 +87,6 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     voffset: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
-    {
-        return;
-    }
-
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 
@@ -163,27 +113,6 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         }
 
         println!("Memory[Locked] plugin initialized.");
-
-        // this thread peridocally dumps the statistics.
-        std::thread::spawn(|| {
-            if !ENABLE_STATISTICS {
-                return;
-            }
-
-            // open a csv file.
-            let mut file = std::fs::File::create("cache_misses.csv").unwrap();
-
-            file.write_fmt(format_args!("{}\n", Statistics::get_header()))
-                .unwrap();
-
-            loop {
-                for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
-                    file.write(stat.as_bytes()).unwrap();
-                    file.write(b"\n").unwrap();
-                }
-                std::thread::sleep(std::time::Duration::from_secs(10));
-            }
-        });
     }
 
     #[inline]

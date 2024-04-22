@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
-use self::private_cache::HarvardPrivateCaches;
+use self::{private_cache::HarvardPrivateCaches, shared_cache::LockedSharedCache};
 
 use super::*;
 
@@ -14,6 +14,11 @@ type MH = LockedMemoryHierarchy<
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    LockedSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 >;
 
@@ -38,7 +43,7 @@ impl MH {
             return BlockPosition::InPrivateCache(private_owner);
         }
 
-        if self.shared_cache.lookup(block_id) {
+        if self.shared_cache.lookup(0, block_id, 0).is_some() {
             return BlockPosition::InSharedCache;
         }
         return BlockPosition::NotInCache;
@@ -454,7 +459,7 @@ fn rar() {
         println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
         return;
     }
-    
+
     let mut mh = MH::new();
     let block_id = 1024;
 
