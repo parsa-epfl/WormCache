@@ -59,7 +59,11 @@ fn i_create_sharer_from_dirty_d() {
     // Second, generate a write request to the core 0 data cache.
     assert_eq!(
         mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, true, false),
-        CacheHierarchyAccessResult::MissDueToPermission
+        if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
+            CacheHierarchyAccessResult::HitInSelfPrivateCache
+        } else {
+            CacheHierarchyAccessResult::MissDueToPermission
+        }
     );
 
     // Third, generate a read request to the core 0 instruction cache.

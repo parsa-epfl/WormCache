@@ -184,7 +184,11 @@ fn rarw() {
     // Core 0 get a write permission at 20.
     assert_eq!(
         mh.access_memory_pblock_id(0, block_id, 20, true, false),
-        CacheHierarchyAccessResult::MissDueToPermission
+        if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
+            CacheHierarchyAccessResult::HitInSelfPrivateCache
+        } else {
+            CacheHierarchyAccessResult::MissDueToPermission
+        }
     );
 
     // Core 1 get a read permission at 0.

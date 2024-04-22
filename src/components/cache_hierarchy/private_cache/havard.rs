@@ -85,14 +85,15 @@ impl<
         block_id: u64,
         ts: u64,
         is_instruction: bool,
+        writable: bool,
         modified: bool,
     ) -> Option<PrivateCacheLine> {
         if is_instruction {
             let mut set = self.caches[core_id as usize].i_cache[block_id as usize % I_SET].lock();
-            set.refill(block_id, ts, true, modified)
+            set.refill(block_id, ts, true, writable, modified)
         } else {
             let mut set = self.caches[core_id as usize].d_cache[block_id as usize % D_SET].lock();
-            set.refill(block_id, ts, false, modified)
+            set.refill(block_id, ts, false, writable, modified)
         }
     }
 

@@ -202,6 +202,11 @@ pub struct PluginList {
  */
 pub const ENABLE_STATISTICS: bool = true;
 
+/**
+ * Whether to enable the exclusive cache state and its coherence protocol.
+ */
+pub const ENABLE_EXCLUSIVE_CACHE_STATE: bool = false;
+
 //////////////////////////////////////////////////////////////
 /// The following parameters are for debugging and testing.
 /// They are not supposed to be played for production use.

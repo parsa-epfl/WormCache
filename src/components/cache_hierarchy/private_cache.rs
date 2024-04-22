@@ -31,6 +31,7 @@ pub trait PrivateCaches {
         block_id: u64,
         ts: u64,
         is_instruction: bool,
+        writable: bool,
         modified: bool,
     ) -> Option<PrivateCacheLine>;
 

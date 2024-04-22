@@ -164,6 +164,11 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
         Statistics::global_record(core_id, EventType::MemoryAccess);
+        if is_instruction {
+            Statistics::global_record(core_id, EventType::InstructionAccess);
+        } else {
+            Statistics::global_record(core_id, EventType::DataAccess);
+        }
 
         // first, we need to check the private cache.
         let private_hit =
@@ -179,6 +184,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
 
         Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+
+        if is_instruction {
+            Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+        } else {
+            Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+        }
 
         // now, it is a miss. We need to check the directory.
         let mut directory_set_guard = self.directory.get_set(block_id);
@@ -230,11 +241,20 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
                 None => false,
             } || is_store;
 
+            let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
+                modified
+            } else if is_instruction {
+                false
+            } else {
+                true
+            };
+
             let evicted = self.private_caches.refill_from_shared_cache(
                 core_id,
                 block_id,
                 ts,
                 is_instruction,
+                writable,
                 modified,
             );
 
@@ -396,10 +416,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
             let evicted = if incoming_sharer.count_ones() == 0 {
                 // This means there is no sharer. The core will get modified permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, true)
+                set_for_refill_lock.refill(block_id, ts, is_instruction, true, true)
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, false)
+                set_for_refill_lock.refill(block_id, ts, is_instruction, false, false)
             };
 
             // add self to the incoming sharer list.
@@ -429,10 +449,13 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
             for (replica_cache_id, set) in acquired_sets.iter_mut() {
                 if let Some(entry) = set.poke(block_id) {
-                    if entry.is_modified() {
+                    if entry.has_write_permission() {
+                        // well, if you have write permission, you have to yield the write permission.
                         assert!(already_modified == false);
 
-                        if entry.write_ts() > ts && !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
+                        if entry.is_modified()
+                            && entry.write_ts() > ts
+                            && !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
                         {
                             // OK, this read operation is also not ordered.
                             // There is nothing we need to do.
@@ -469,7 +492,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             // We can insert the block to the private cache now.
             let set_for_refill_lock = set_for_refill_lock.unwrap();
 
-            let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false);
+            let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false, false);
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
