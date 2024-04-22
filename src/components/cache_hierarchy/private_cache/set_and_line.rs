@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PrivateCacheLine {
     block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
@@ -71,6 +71,17 @@ impl PrivateCacheSet {
                 .take(asso),
             ),
         }
+    }
+
+    pub fn index_of(&self, block_id: u64) -> Option<usize> {
+        let block_id_to_find = (block_id << 1) | 1;
+
+        // find from the cache set with block id.
+        let hit_element = self.lines.iter().position(|p| {
+            return p.block_id_with_v == block_id_to_find;
+        });
+
+        return hit_element;
     }
 
     pub fn poke(&self, block_id: u64) -> Option<PrivateCacheLine> {

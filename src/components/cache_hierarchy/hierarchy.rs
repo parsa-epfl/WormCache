@@ -314,8 +314,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             let mut other_has_write_permission_with_late_ts = false;
             let mut other_write_ts = 0;
             let mut other_sharer_id = 0;
-            for (replica_cache_id, set) in acquired_sets.iter() {
-                if let Some(line) = set.poke(block_id) {
+            for (replica_cache_id, set, index) in acquired_sets.iter() {
+                if let Some(index) = index {
+                    let line = &set.lines[*index];
                     if line.write_ts() > ts {
                         other_has_write_permission_with_late_ts = true;
                         if line.write_ts() > other_write_ts {
@@ -347,7 +348,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
                 directory_entry.ts = ts;
                 directory_entry.sharers = incoming_sharer;
 
-                for (replica_cache_id, set) in acquired_sets.iter_mut() {
+                for (replica_cache_id, set, _) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
                         set.invalidate(block_id);
                     }
@@ -385,8 +386,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             // When checking replica, we can see the number of replica. If it is 1 and its owner is the current core, then it is CleanExclusive.
             // We can just return HitInSelfPrivateCache if the coherence protocol is MESI and the timing information is needed.
 
-            for (replica_cache_id, set) in acquired_sets.iter_mut() {
-                if let Some(entry) = set.poke(block_id) {
+            for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
+                if let Some(index) = index {
+                    let entry = &set.lines[*index];
                     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION || entry.access_ts() < ts {
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id as usize, false);
@@ -447,8 +449,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             let mut already_modified = false;
             let mut set_for_refill_lock = None;
 
-            for (replica_cache_id, set) in acquired_sets.iter_mut() {
-                if let Some(entry) = set.poke(block_id) {
+            for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
+                if let Some(index) = index {
+                    let entry = &set.lines[*index];
                     if entry.has_write_permission() {
                         // well, if you have write permission, you have to yield the write permission.
                         assert!(already_modified == false);

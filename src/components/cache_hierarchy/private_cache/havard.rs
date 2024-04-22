@@ -47,6 +47,8 @@ impl<
         const D_ASSO: usize,
     > PrivateCaches for HarvardPrivateCaches<CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
 {
+    const DIRECTORY_SET: usize = gcd::binary_usize(I_SET, D_SET);
+
     fn new() -> Self {
         return Self {
             caches: crate::util::init_heap_array(|_| HarvardPerCorePrivateCache::new()),
@@ -102,7 +104,7 @@ impl<
         &self,
         block_id: u64,
         sharers: crate::components::cache_hierarchy::directory::SharerList,
-    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>)> {
+    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>, Option<usize>)> {
         // Now it really depends on how to interpret the sharer list.
         assert_eq!(sharers.len(), usize::max(CORE_COUNT * 2, 64));
 
@@ -115,11 +117,13 @@ impl<
             if is_instruction {
                 let set = &self.caches[core_id as usize].i_cache[block_id as usize % I_SET];
                 let guard = set.lock();
-                res.push((sharer_index, guard));
+                let index = guard.index_of(block_id);
+                res.push((sharer_index, guard, index));
             } else {
                 let set = &self.caches[core_id as usize].d_cache[block_id as usize % D_SET];
                 let guard = set.lock();
-                res.push((sharer_index, guard));
+                let index = guard.index_of(block_id);
+                res.push((sharer_index, guard, index));
             }
         }
 
