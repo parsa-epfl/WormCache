@@ -280,7 +280,8 @@ impl<
             );
 
             if FILL_SCACHE_ON_FILLING_PCACHE {
-                self.shared_cache.insert(core_id, block_id, ts, modified);
+                self.shared_cache
+                    .insert(core_id, block_id, ts, modified, true);
             }
 
             // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
@@ -627,11 +628,13 @@ impl<
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
             if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
-                self.shared_cache.insert(core_id, block_id, ts, modified);
+                self.shared_cache
+                    .insert(core_id, block_id, ts, modified, true);
             }
 
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified {
-                self.shared_cache.insert(core_id, block_id, ts, modified);
+                self.shared_cache
+                    .insert(core_id, block_id, ts, modified, true);
             }
         }
     }

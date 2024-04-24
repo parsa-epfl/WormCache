@@ -25,11 +25,18 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
         return self.blocks[set_idx].lock().lookup(block_id, ts);
     }
 
-    fn insert(&self, _core_id: u32, block_id: u64, ts: u64, is_modified: bool) {
+    fn insert(
+        &self,
+        _core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_modified: bool,
+        increase_touched_count: bool,
+    ) {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx]
             .lock()
-            .insert(block_id, ts, is_modified);
+            .insert(block_id, ts, is_modified, increase_touched_count);
     }
 
     fn dump_snapshot(&self, snapshot_name: &str) {

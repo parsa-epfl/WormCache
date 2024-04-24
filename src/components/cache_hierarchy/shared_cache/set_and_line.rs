@@ -10,6 +10,7 @@ pub struct SharedCacheBlock {
 #[derive(Debug)]
 pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
+    pub touched_count: usize,
 }
 
 impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
@@ -20,6 +21,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 ts: 0,
                 modified: false,
             }),
+            touched_count: 0,
         }
     }
 
@@ -71,7 +73,13 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
     }
 
     #[inline]
-    pub fn insert(&mut self, block_id: u64, ts: u64, is_modified: bool) {
+    pub fn insert(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        is_modified: bool,
+        increase_touched_count: bool,
+    ) {
         let internal_block_id = block_id << 1 | 1;
 
         // first of all, find whether this block is a hit.
@@ -96,6 +104,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 hit_block.modified = is_modified;
                 return;
             }
+        }
+
+        if increase_touched_count && self.touched_count < WAY {
+            self.touched_count += 1;
         }
 
         // then, find the first invalid block.
