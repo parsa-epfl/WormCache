@@ -155,4 +155,8 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
 
         f.dump_snapshot(snapshot_name)
     }
+
+    fn warmed_sets_count(&self) -> usize {
+        return 0;
+    }
 }

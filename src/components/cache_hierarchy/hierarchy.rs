@@ -648,4 +648,8 @@ impl<
         self.directory.dump_snapshot(snapshot_folder);
         // self.shared_cache.dump_snapshot(snapshot_folder);
     }
+
+    pub fn get_scache_warmed_set_count(&self) -> usize {
+        self.shared_cache.warmed_sets_count()
+    }
 }

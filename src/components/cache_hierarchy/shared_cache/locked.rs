@@ -1,9 +1,12 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use super::{SerializedSharedCacheBlock, SharedCacheSet};
 use serde_json::json;
 use spin::mutex::SpinMutex;
 
 pub struct LockedSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
     blocks: Box<[SpinMutex<SharedCacheSet<WAY, EXCLUSIVE>>; SET]>,
+    warmed_sets: AtomicUsize,
 }
 
 impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCache
@@ -12,6 +15,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
     fn new() -> Self {
         Self {
             blocks: crate::util::init_heap_array(|_| SpinMutex::new(SharedCacheSet::new())),
+            warmed_sets: AtomicUsize::new(0),
         }
     }
 
@@ -34,9 +38,17 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
         increase_touched_count: bool,
     ) {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx]
-            .lock()
-            .insert(block_id, ts, is_modified, increase_touched_count);
+        let just_warmed =
+            self.blocks[set_idx]
+                .lock()
+                .insert(block_id, ts, is_modified, increase_touched_count);
+        if just_warmed {
+            self.warmed_sets.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    fn warmed_sets_count(&self) -> usize {
+        self.warmed_sets.load(Ordering::Relaxed)
     }
 
     fn dump_snapshot(&self, snapshot_name: &str) {

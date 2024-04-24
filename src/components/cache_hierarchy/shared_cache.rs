@@ -19,6 +19,9 @@ pub trait SharedCache {
         is_modified: bool,
         increase_touched_count: bool,
     );
+
+    fn warmed_sets_count(&self) -> usize;
+
     fn dump_snapshot(&self, snapshot_name: &str);
 }
 
