@@ -443,10 +443,24 @@ impl<
 
             let evicted = if incoming_sharer.count_ones() == 0 {
                 // This means there is no sharer. The core will get modified permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, true, true)
+                set_for_refill_lock.refill(
+                    block_id,
+                    ts,
+                    is_instruction,
+                    true,
+                    true,
+                    private_hit != private_cache::PrivateCachePokeResult::PermissionViolation,
+                )
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, false, false)
+                set_for_refill_lock.refill(
+                    block_id,
+                    ts,
+                    is_instruction,
+                    false,
+                    false,
+                    private_hit != private_cache::PrivateCachePokeResult::PermissionViolation,
+                )
             };
 
             // add self to the incoming sharer list.
@@ -520,7 +534,8 @@ impl<
             // We can insert the block to the private cache now.
             let set_for_refill_lock = set_for_refill_lock.unwrap();
 
-            let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false, false);
+            let evicted =
+                set_for_refill_lock.refill(block_id, ts, is_instruction, false, false, true);
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,

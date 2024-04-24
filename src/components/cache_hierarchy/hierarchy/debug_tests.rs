@@ -103,3 +103,21 @@ fn write_write_read_then_old_write() {
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 }
+
+#[test]
+fn read_then_write() {
+    let mut mh = MH::new();
+    let block_id = 1043;
+
+    // First, there should be a write permission, by core 0, at timestamp 100.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 100, false, false),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Second, core 0 writes the same data at timestamp 150. This won't update the write timestamp in the directory.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 150, true, false),
+        CacheHierarchyAccessResult::MissDueToPermission
+    );
+}
