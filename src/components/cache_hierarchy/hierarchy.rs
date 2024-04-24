@@ -373,9 +373,9 @@ impl<
                 directory_entry.ts = ts;
                 directory_entry.sharers = incoming_sharer;
 
-                for (replica_cache_id, set, _) in acquired_sets.iter_mut() {
+                for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
-                        set.invalidate(block_id);
+                        set.invalidate(idx.unwrap());
                     }
                 }
 
@@ -418,7 +418,7 @@ impl<
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id as usize, false);
                         // invalid the private cache entry.
-                        set.invalidate(block_id);
+                        set.invalidate(*index);
                     } else {
                         assert!(entry.write_ts() <= ts);
                         assert!(*replica_cache_id != p_cache_id);
@@ -503,7 +503,7 @@ impl<
                         }
 
                         // Alright, we find the modifier of this cache line.
-                        set.request_sharer(block_id, ts);
+                        set.request_sharer(*index, ts);
                         already_modified = true;
                     }
                 }

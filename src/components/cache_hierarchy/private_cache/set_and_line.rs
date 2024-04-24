@@ -193,7 +193,21 @@ impl PrivateCacheSet {
         }
     }
 
-    pub fn invalidate(&mut self, block_id: u64) -> Option<PrivateCacheLine> {
+    #[inline]
+    pub fn invalidate(&mut self, index: usize) {
+        self.lines[index].block_id_with_v = 0;
+    }
+
+    pub fn request_sharer(&mut self, index: usize, ts: u64) -> Option<bool> {
+        let line = &mut self.lines[index];
+        line.writeable = false;
+        let res = line.modified;
+        line.modified = false;
+        return Some(res);
+    }
+
+    #[inline]
+    pub fn invalidate_by_block_id(&mut self, block_id: u64) -> Option<PrivateCacheLine> {
         let block_id_to_find = (block_id << 1) | 1;
 
         // find from the cache set with block id.
@@ -212,7 +226,8 @@ impl PrivateCacheSet {
     }
 
     // get a shared copy of the cache line. Return true if the cache line's permission is changed or it is a miss. (Strong contention)
-    pub fn request_sharer(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    #[inline]
+    pub fn request_sharer_by_block_id(&mut self, block_id: u64, ts: u64) -> Option<bool> {
         let block_id_to_find = (block_id << 1) | 1;
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
