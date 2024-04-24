@@ -376,7 +376,11 @@ impl<
 
                 for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
-                        set.invalidate(idx.unwrap());
+                        if idx.is_some() {
+                            set.invalidate(idx.unwrap());
+                        } else {
+                            assert_eq!(*replica_cache_id, p_cache_id);
+                        }
                     }
                 }
 
