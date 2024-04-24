@@ -32,7 +32,6 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         });
 
         if let Some(hit_block) = hit_block {
-            hit_block.block_id_with_v = 0;
             if ts > hit_block.ts {
                 hit_block.ts = ts;
             }
