@@ -18,6 +18,9 @@ type MH = LockedMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
 #[test]
@@ -59,7 +62,11 @@ fn i_create_sharer_from_dirty_d() {
     // Second, generate a write request to the core 0 data cache.
     assert_eq!(
         mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, true, false),
-        CacheHierarchyAccessResult::MissDueToPermission
+        if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
+            CacheHierarchyAccessResult::HitInSelfPrivateCache
+        } else {
+            CacheHierarchyAccessResult::MissDueToPermission
+        }
     );
 
     // Third, generate a read request to the core 0 instruction cache.

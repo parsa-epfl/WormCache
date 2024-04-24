@@ -20,7 +20,7 @@ pub const CORE_COUNT: usize = 8;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = true;
+pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!CACHE_HIERARCHY_FOR_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -134,6 +134,27 @@ static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 pub const SHARED_CACHE_EXCLUSIVE: bool = false;
 
 /**
+ * SHARED_CACHE_FILL_WITH_PRIVATE_CACHE
+ *
+ * Whether the shared cache is filled on a filling to the private cache.
+ */
+pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = false;
+
+/**
+ * SHARED_CACHE_FILL_ON_CLEAN_EVICTION
+ *
+ * Whether the shared cache is filled on a clean eviction from the private cache.
+ */
+pub const SHARED_CACHE_FILL_ON_CLEAN_EVICTION: bool = true;
+
+/**
+ * SHARED_CACHE_FILL_ON_DIRTY_EVICTION
+ *
+ * Whether the shared cache is filled on a dirty eviction from the private cache.
+ */
+pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = true;
+
+/**
  * BP_GSHARE_SET
  *
  * The number of sets of the gshare branch predictor.
@@ -201,6 +222,11 @@ pub struct PluginList {
  * Whether to enable the statistics collection.
  */
 pub const ENABLE_STATISTICS: bool = true;
+
+/**
+ * Whether to enable the exclusive cache state and its coherence protocol.
+ */
+pub const ENABLE_EXCLUSIVE_CACHE_STATE: bool = true;
 
 //////////////////////////////////////////////////////////////
 /// The following parameters are for debugging and testing.

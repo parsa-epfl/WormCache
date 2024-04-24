@@ -31,6 +31,7 @@ pub trait PrivateCaches {
         block_id: u64,
         ts: u64,
         is_instruction: bool,
+        writable: bool,
         modified: bool,
     ) -> Option<PrivateCacheLine>;
 
@@ -40,7 +41,7 @@ pub trait PrivateCaches {
         &self,
         block_id: u64,
         sharers: SharerList,
-    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>)>; // (sharer_index, guard)
+    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>, Option<usize>)>; // (sharer_index, guard, index)
 
     // This function is for debugging. It gets the ids of all cores that have the cache line.
     fn in_which_cores(&self, block_id: u64) -> Vec<u32>;
@@ -56,6 +57,8 @@ pub trait PrivateCaches {
 
     // This function is for saving the snapshot of the private cache.
     fn dump_snapshot(&self, snapshot_folder: &str);
+
+    const DIRECTORY_SET: usize;
 }
 
 pub use havard::HarvardPrivateCaches;

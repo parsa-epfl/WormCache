@@ -48,6 +48,8 @@ pub struct UnifiedPrivateCaches<const CORE_COUNT: usize, const SET: usize, const
 impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     for UnifiedPrivateCaches<CORE_COUNT, SET, ASSO>
 {
+    const DIRECTORY_SET: usize = SET;
+
     fn new() -> Self {
         return Self {
             caches: crate::util::init_heap_array(|_| UnifiedPerCorePrivateCache::new()),
@@ -81,12 +83,13 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         block_id: u64,
         ts: u64,
         is_instruction: bool,
+        writable: bool,
         modified: bool,
     ) -> Option<PrivateCacheLine> {
         self.caches[core_id as usize]
             .get_set(block_id)
             .lock()
-            .refill(block_id, ts, is_instruction, modified)
+            .refill(block_id, ts, is_instruction, writable, modified)
     }
 
     #[inline]
@@ -94,13 +97,14 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         &self,
         block_id: u64,
         sharers: crate::components::cache_hierarchy::directory::SharerList,
-    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>)> {
+    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>, Option<usize>)> {
         let mut result = Vec::new();
 
         for core_id in sharers.iter_ones() {
             let set = self.caches[core_id].get_set(block_id);
             let guard = set.lock();
-            result.push((core_id, guard));
+            let index = guard.index_of(block_id);
+            result.push((core_id, guard, index));
         }
 
         return result;

@@ -20,6 +20,9 @@ type MH = LockedMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -184,7 +187,11 @@ fn rarw() {
     // Core 0 get a write permission at 20.
     assert_eq!(
         mh.access_memory_pblock_id(0, block_id, 20, true, false),
-        CacheHierarchyAccessResult::MissDueToPermission
+        if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
+            CacheHierarchyAccessResult::HitInSelfPrivateCache
+        } else {
+            CacheHierarchyAccessResult::MissDueToPermission
+        }
     );
 
     // Core 1 get a read permission at 0.

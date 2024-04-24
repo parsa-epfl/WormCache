@@ -33,7 +33,14 @@ const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
     )
 };
 
-pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache> {
+pub struct LockedMemoryHierarchy<
+    MMU: AbstractMMU,
+    PCache: PrivateCaches,
+    SCache: SharedCache,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
+> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
@@ -55,8 +62,22 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
-    LockedMemoryHierarchy<MMU, PCache, SCache>
+impl<
+        MMU: AbstractMMU,
+        PCache: PrivateCaches,
+        SCache: SharedCache,
+        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    >
+    LockedMemoryHierarchy<
+        MMU,
+        PCache,
+        SCache,
+        FILL_SCACHE_ON_FILLING_PCACHE,
+        FILL_SCACLE_ON_PCACHE_EVICTION,
+        FILL_SCACHE_ON_PCACHE_WRITEBACK,
+    >
 {
     pub fn new() -> Self {
         Self {
@@ -164,6 +185,11 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         is_instruction: bool,
     ) -> CacheHierarchyAccessResult {
         Statistics::global_record(core_id, EventType::MemoryAccess);
+        if is_instruction {
+            Statistics::global_record(core_id, EventType::InstructionAccess);
+        } else {
+            Statistics::global_record(core_id, EventType::DataAccess);
+        }
 
         // first, we need to check the private cache.
         let private_hit =
@@ -179,6 +205,12 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
         // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
 
         Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+
+        if is_instruction {
+            Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+        } else {
+            Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+        }
 
         // now, it is a miss. We need to check the directory.
         let mut directory_set_guard = self.directory.get_set(block_id);
@@ -230,13 +262,26 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
                 None => false,
             } || is_store;
 
+            let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
+                modified
+            } else if is_instruction {
+                false
+            } else {
+                true
+            };
+
             let evicted = self.private_caches.refill_from_shared_cache(
                 core_id,
                 block_id,
                 ts,
                 is_instruction,
+                writable,
                 modified,
             );
+
+            if FILL_SCACHE_ON_FILLING_PCACHE {
+                self.shared_cache.insert(core_id, block_id, ts, modified);
+            }
 
             // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
             // In order to do so, we need to get the lock of evicted line.
@@ -294,8 +339,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             let mut other_has_write_permission_with_late_ts = false;
             let mut other_write_ts = 0;
             let mut other_sharer_id = 0;
-            for (replica_cache_id, set) in acquired_sets.iter() {
-                if let Some(line) = set.poke(block_id) {
+            for (replica_cache_id, set, index) in acquired_sets.iter() {
+                if let Some(index) = index {
+                    let line = &set.lines[*index];
                     if line.write_ts() > ts {
                         other_has_write_permission_with_late_ts = true;
                         if line.write_ts() > other_write_ts {
@@ -327,7 +373,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
                 directory_entry.ts = ts;
                 directory_entry.sharers = incoming_sharer;
 
-                for (replica_cache_id, set) in acquired_sets.iter_mut() {
+                for (replica_cache_id, set, _) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
                         set.invalidate(block_id);
                     }
@@ -365,8 +411,9 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             // When checking replica, we can see the number of replica. If it is 1 and its owner is the current core, then it is CleanExclusive.
             // We can just return HitInSelfPrivateCache if the coherence protocol is MESI and the timing information is needed.
 
-            for (replica_cache_id, set) in acquired_sets.iter_mut() {
-                if let Some(entry) = set.poke(block_id) {
+            for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
+                if let Some(index) = index {
+                    let entry = &set.lines[*index];
                     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION || entry.access_ts() < ts {
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id as usize, false);
@@ -396,10 +443,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
             let evicted = if incoming_sharer.count_ones() == 0 {
                 // This means there is no sharer. The core will get modified permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, true)
+                set_for_refill_lock.refill(block_id, ts, is_instruction, true, true)
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, false)
+                set_for_refill_lock.refill(block_id, ts, is_instruction, false, false)
             };
 
             // add self to the incoming sharer list.
@@ -427,12 +474,16 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             let mut already_modified = false;
             let mut set_for_refill_lock = None;
 
-            for (replica_cache_id, set) in acquired_sets.iter_mut() {
-                if let Some(entry) = set.poke(block_id) {
-                    if entry.is_modified() {
+            for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
+                if let Some(index) = index {
+                    let entry = &set.lines[*index];
+                    if entry.has_write_permission() {
+                        // well, if you have write permission, you have to yield the write permission.
                         assert!(already_modified == false);
 
-                        if entry.write_ts() > ts && !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
+                        if entry.is_modified()
+                            && entry.write_ts() > ts
+                            && !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
                         {
                             // OK, this read operation is also not ordered.
                             // There is nothing we need to do.
@@ -469,7 +520,7 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
             // We can insert the block to the private cache now.
             let set_for_refill_lock = set_for_refill_lock.unwrap();
 
-            let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false);
+            let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false, false);
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -560,7 +611,13 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
-            self.shared_cache.insert(core_id, block_id, ts, modified);
+            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
+                self.shared_cache.insert(core_id, block_id, ts, modified);
+            }
+
+            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified {
+                self.shared_cache.insert(core_id, block_id, ts, modified);
+            }
         }
     }
 

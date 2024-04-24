@@ -31,9 +31,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             return p.block_id_with_v == internal_block_id;
         });
 
-        // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = hit_block {
-            hit_block.block_id_with_v = 0;
             if ts > hit_block.ts {
                 hit_block.ts = ts;
             }

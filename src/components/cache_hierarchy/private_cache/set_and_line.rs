@@ -1,12 +1,13 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PrivateCacheLine {
     block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
     write_ts: u64,
     is_instruction: bool,
-    modified: bool, // This is false also means that you cannot write to this cache line. There is no need to maintain a Clean and writable state. This state can be inferred by the coherence protocol.
+    writeable: bool,
+    modified: bool,
 }
 
 impl PrivateCacheLine {
@@ -18,6 +19,11 @@ impl PrivateCacheLine {
     #[inline]
     pub fn is_modified(&self) -> bool {
         return self.modified;
+    }
+
+    #[inline]
+    pub fn has_write_permission(&self) -> bool {
+        return self.writeable;
     }
 
     #[inline]
@@ -59,11 +65,23 @@ impl PrivateCacheSet {
                     ts: 0,
                     write_ts: 0,
                     is_instruction: false,
+                    writeable: false,
                     modified: false,
                 })
                 .take(asso),
             ),
         }
+    }
+
+    pub fn index_of(&self, block_id: u64) -> Option<usize> {
+        let block_id_to_find = (block_id << 1) | 1;
+
+        // find from the cache set with block id.
+        let hit_element = self.lines.iter().position(|p| {
+            return p.block_id_with_v == block_id_to_find;
+        });
+
+        return hit_element;
     }
 
     pub fn poke(&self, block_id: u64) -> Option<PrivateCacheLine> {
@@ -98,9 +116,10 @@ impl PrivateCacheSet {
 
         if let Some(line) = hit_element {
             if is_store {
-                if line.modified {
+                if line.writeable {
                     line.ts = ts;
                     line.write_ts = ts;
+                    line.modified = true;
                     return PrivateCachePokeResult::Hit;
                 } else {
                     return PrivateCachePokeResult::PermissionViolation;
@@ -119,6 +138,7 @@ impl PrivateCacheSet {
         block_id: u64,
         ts: u64,
         is_instruction: bool,
+        writable: bool,
         modified: bool,
     ) -> Option<PrivateCacheLine> {
         let block_id_to_find = (block_id << 1) | 1;
@@ -138,6 +158,7 @@ impl PrivateCacheSet {
             invalid_element.ts = ts;
             invalid_element.block_id_with_v = block_id_to_find;
             invalid_element.is_instruction = is_instruction;
+            invalid_element.writeable = writable;
             invalid_element.modified = modified;
             if modified {
                 invalid_element.write_ts = ts;
@@ -158,6 +179,7 @@ impl PrivateCacheSet {
                     oldest_element.ts = ts;
                     oldest_element.block_id_with_v = block_id_to_find;
                     oldest_element.is_instruction = is_instruction;
+                    oldest_element.writeable = writable;
                     oldest_element.modified = modified;
                     if modified {
                         oldest_element.write_ts = ts;
@@ -190,7 +212,7 @@ impl PrivateCacheSet {
     }
 
     // get a shared copy of the cache line. Return true if the cache line's permission is changed or it is a miss. (Strong contention)
-    pub fn request_sharer(&mut self, block_id: u64, ts: u64) -> bool {
+    pub fn request_sharer(&mut self, block_id: u64, ts: u64) -> Option<bool> {
         let block_id_to_find = (block_id << 1) | 1;
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
@@ -198,11 +220,13 @@ impl PrivateCacheSet {
         });
 
         if let Some(hit_element) = hit_element {
-            hit_element.modified = false; // remove the write permission.
-            return true;
+            hit_element.writeable = false; // remove the write permission.
+            let res = hit_element.modified;
+            hit_element.modified = false; // this has something to do with the owned state.
+            return Some(res);
         } else {
             // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
-            return false;
+            return None;
         }
     }
 }
