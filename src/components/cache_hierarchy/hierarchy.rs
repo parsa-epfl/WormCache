@@ -33,7 +33,14 @@ const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
     )
 };
 
-pub struct LockedMemoryHierarchy<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache> {
+pub struct LockedMemoryHierarchy<
+    MMU: AbstractMMU,
+    PCache: PrivateCaches,
+    SCache: SharedCache,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
+> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
@@ -55,8 +62,22 @@ pub enum CacheHierarchyAccessResult {
     Miss,
 }
 
-impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
-    LockedMemoryHierarchy<MMU, PCache, SCache>
+impl<
+        MMU: AbstractMMU,
+        PCache: PrivateCaches,
+        SCache: SharedCache,
+        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    >
+    LockedMemoryHierarchy<
+        MMU,
+        PCache,
+        SCache,
+        FILL_SCACHE_ON_FILLING_PCACHE,
+        FILL_SCACLE_ON_PCACHE_EVICTION,
+        FILL_SCACHE_ON_PCACHE_WRITEBACK,
+    >
 {
     pub fn new() -> Self {
         Self {
@@ -257,6 +278,10 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
                 writable,
                 modified,
             );
+
+            if FILL_SCACHE_ON_FILLING_PCACHE {
+                self.shared_cache.insert(core_id, block_id, ts, modified);
+            }
 
             // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
             // In order to do so, we need to get the lock of evicted line.
@@ -586,7 +611,13 @@ impl<MMU: AbstractMMU, PCache: PrivateCaches, SCache: SharedCache>
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
-            self.shared_cache.insert(core_id, block_id, ts, modified);
+            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
+                self.shared_cache.insert(core_id, block_id, ts, modified);
+            }
+
+            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified {
+                self.shared_cache.insert(core_id, block_id, ts, modified);
+            }
         }
     }
 
