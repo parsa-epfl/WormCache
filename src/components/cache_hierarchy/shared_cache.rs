@@ -44,3 +44,6 @@ mod replicated;
 
 pub use locked::LockedSharedCache;
 pub use replicated::ReplicatedSharedCache;
+
+#[cfg(test)]
+mod warm_counter_test;
