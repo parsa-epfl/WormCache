@@ -30,7 +30,7 @@ fn read_evict_and_other_core_read_back() {
 
     // core 0 reads a data at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false),
+        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
@@ -38,14 +38,14 @@ fn read_evict_and_other_core_read_back() {
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = ((l + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64 + block_id;
         assert_eq!(
-            mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false),
+            mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false, false),
             CacheHierarchyAccessResult::Miss
         );
     }
 
     // Then core 1 reads the cache line. It should hit in the shared cache.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, get_memory_ts() as u64, false, false),
+        mh.access_memory_pblock_id(1, block_id, get_memory_ts() as u64, false, false, false),
         CacheHierarchyAccessResult::HitInSharedCache
     );
 }
@@ -57,13 +57,13 @@ fn one_core_write_first_then_read() {
 
     // core 0 reads a data at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, true, false),
+        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Then, core 0 writes the data at timestamp 20.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false),
+        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false, false),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 }
@@ -81,25 +81,25 @@ fn write_write_read_then_old_write() {
 
     // First, there should be a write permission, by core 0, at timestamp 100.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 100, true, false),
+        mh.access_memory_pblock_id(0, block_id, 100, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, core 0 writes the same data at timestamp 150. This won't update the write timestamp in the directory.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 150, true, false),
+        mh.access_memory_pblock_id(0, block_id, 150, true, false, false),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // Second, core 1 reads the data at timestamp 200.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 200, false, false),
+        mh.access_memory_pblock_id(1, block_id, 200, false, false, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
     // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure.
     assert_eq!(
-        mh.access_memory_pblock_id(2, block_id, 125, true, false),
+        mh.access_memory_pblock_id(2, block_id, 125, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 }
@@ -111,13 +111,13 @@ fn read_then_write() {
 
     // First, there should be a write permission, by core 0, at timestamp 100.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 100, false, false),
+        mh.access_memory_pblock_id(0, block_id, 100, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, core 0 writes the same data at timestamp 150. This won't update the write timestamp in the directory.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 150, true, false),
+        mh.access_memory_pblock_id(0, block_id, 150, true, false, false),
         CacheHierarchyAccessResult::MissDueToPermission
     );
 }

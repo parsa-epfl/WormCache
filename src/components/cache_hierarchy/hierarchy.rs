@@ -1,5 +1,5 @@
 use crate::components::cache_hierarchy::shared_cache::SharedCache;
-use crate::parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION;
+use crate::parameter::{ADJACENT_LINE_PREFETCHING, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION};
 use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
@@ -107,7 +107,24 @@ impl<
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_store,
+                    is_instruction,
+                    false,
+                );
+                if ADJACENT_LINE_PREFETCHING {
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        false,
+                        is_instruction,
+                        true,
+                    );
+                }
             }
             crate::components::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
                 // replay the trace.
@@ -116,16 +133,50 @@ impl<
                         break;
                     }
                     let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(core_id, block_id, ts, false, false);
+                    self.access_memory_pblock_id(core_id, block_id, ts, false, false, false);
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_store,
+                    is_instruction,
+                    false,
+                );
+                if ADJACENT_LINE_PREFETCHING {
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        false,
+                        is_instruction,
+                        true,
+                    );
+                }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_store,
+                    is_instruction,
+                    false,
+                );
+                if ADJACENT_LINE_PREFETCHING {
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        false,
+                        is_instruction,
+                        true,
+                    );
+                }
             }
         }
     }
@@ -151,7 +202,24 @@ impl<
             crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_store,
+                    is_instruction,
+                    false,
+                );
+                if ADJACENT_LINE_PREFETCHING {
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        false,
+                        is_instruction,
+                        true,
+                    );
+                }
             }
             crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
                 // replay the trace.
@@ -160,18 +228,52 @@ impl<
                         break;
                     }
                     let block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(core_id, block_id, ts, false, false);
+                    self.access_memory_pblock_id(core_id, block_id, ts, false, false, false);
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_store,
+                    is_instruction,
+                    false,
+                );
+                if ADJACENT_LINE_PREFETCHING {
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        false,
+                        is_instruction,
+                        true,
+                    );
+                }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, is_store, is_instruction);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    is_store,
+                    is_instruction,
+                    false,
+                );
+                if ADJACENT_LINE_PREFETCHING {
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        false,
+                        is_instruction,
+                        true,
+                    );
+                }
             }
         }
     }
@@ -183,12 +285,15 @@ impl<
         ts: u64,
         is_store: bool,
         is_instruction: bool,
+        is_prefetch: bool,
     ) -> CacheHierarchyAccessResult {
-        Statistics::global_record(core_id, EventType::MemoryAccess);
-        if is_instruction {
-            Statistics::global_record(core_id, EventType::InstructionAccess);
-        } else {
-            Statistics::global_record(core_id, EventType::DataAccess);
+        if !is_prefetch {
+            Statistics::global_record(core_id, EventType::MemoryAccess);
+            if is_instruction {
+                Statistics::global_record(core_id, EventType::InstructionAccess);
+            } else {
+                Statistics::global_record(core_id, EventType::DataAccess);
+            }
         }
 
         // first, we need to check the private cache.
@@ -204,12 +309,14 @@ impl<
         // Alright, we may need to get another directory entry of the eviction.
         // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
 
-        Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+        if !is_prefetch {
+            Statistics::global_record(core_id, EventType::PrivateCacheMiss);
 
-        if is_instruction {
-            Statistics::global_record(core_id, EventType::PrivateICacheMiss);
-        } else {
-            Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+            if is_instruction {
+                Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+            } else {
+                Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+            }
         }
 
         // now, it is a miss. We need to check the directory.
@@ -308,14 +415,23 @@ impl<
                 );
             }
 
-            Statistics::global_record(core_id, EventType::SharedCacheAccess);
+            if !is_prefetch {
+                Statistics::global_record(core_id, EventType::SharedCacheAccess);
+            }
 
             if shared_cache_result.is_some() {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
-                Statistics::global_record(core_id, EventType::SharedCacheMiss);
+                if !is_prefetch {
+                    Statistics::global_record(core_id, EventType::SharedCacheMiss);
+                }
                 return CacheHierarchyAccessResult::Miss;
             }
+        }
+
+        if is_prefetch {
+            // Currently, we don't prefetch from other cores.
+            return CacheHierarchyAccessResult::Miss;
         }
 
         let mut acquire_list = sharers.clone();

@@ -155,6 +155,13 @@ pub const SHARED_CACHE_FILL_ON_CLEAN_EVICTION: bool = true;
 pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = true;
 
 /**
+* ADJACENT_LINE_PREFETCHING
+*
+* Whether to enable the adjacent (in PA) line prefetching for functional warming.
+*/
+pub const ADJACENT_LINE_PREFETCHING: bool = true;
+
+/**
  * BP_GSHARE_SET
  *
  * The number of sets of the gshare branch predictor.
