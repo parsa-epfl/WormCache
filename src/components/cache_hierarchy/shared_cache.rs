@@ -11,7 +11,17 @@ pub trait SharedCache {
     fn new() -> Self;
     fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool>; // (is_modified)
     fn lookup(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool>; // (is_modified)
-    fn insert(&self, core_id: u32, block_id: u64, ts: u64, is_modified: bool);
+    fn insert(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_modified: bool,
+        increase_touched_count: bool,
+    );
+
+    fn warmed_sets_count(&self) -> usize;
+
     fn dump_snapshot(&self, snapshot_name: &str);
 }
 
@@ -34,3 +44,6 @@ mod replicated;
 
 pub use locked::LockedSharedCache;
 pub use replicated::ReplicatedSharedCache;
+
+#[cfg(test)]
+mod warm_counter_test;

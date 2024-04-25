@@ -10,6 +10,7 @@ pub struct SharedCacheBlock {
 #[derive(Debug)]
 pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
+    pub touched_count: usize,
 }
 
 impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
@@ -20,6 +21,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 ts: 0,
                 modified: false,
             }),
+            touched_count: 0,
         }
     }
 
@@ -70,8 +72,15 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         };
     }
 
+    // return whether this cache set is just warmed.
     #[inline]
-    pub fn insert(&mut self, block_id: u64, ts: u64, is_modified: bool) {
+    pub fn insert(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        is_modified: bool,
+        increase_touched_count: bool,
+    ) -> bool {
         let internal_block_id = block_id << 1 | 1;
 
         // first of all, find whether this block is a hit.
@@ -94,9 +103,16 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                     hit_block.ts = ts;
                 }
                 hit_block.modified = is_modified;
-                return;
+                return false;
             }
         }
+
+        let result = if increase_touched_count && self.touched_count < WAY {
+            self.touched_count += 1;
+            self.touched_count == WAY
+        } else {
+            false
+        };
 
         // then, find the first invalid block.
         let invalid_block = self.blocks.iter_mut().find(|p| {
@@ -108,7 +124,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             invalid_block.block_id_with_v = internal_block_id;
             invalid_block.modified = is_modified;
             invalid_block.ts = ts;
-            return;
+            return result;
         }
 
         // otherwise, we need to find the oldest block.
@@ -123,12 +139,14 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {
             println!("Warning: the incoming block has smaller timestamp than the oldest block in the shared cache.");
-            return;
+            return result;
         }
 
         // otherwise, we replace the oldest block.
         oldest_block.block_id_with_v = internal_block_id;
         oldest_block.modified = is_modified;
         oldest_block.ts = ts;
+
+        return result;
     }
 }

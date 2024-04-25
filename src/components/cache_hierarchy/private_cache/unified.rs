@@ -89,7 +89,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         self.caches[core_id as usize]
             .get_set(block_id)
             .lock()
-            .refill(block_id, ts, is_instruction, writable, modified)
+            .refill(block_id, ts, is_instruction, writable, modified, true)
     }
 
     #[inline]

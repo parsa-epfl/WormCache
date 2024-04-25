@@ -280,7 +280,8 @@ impl<
             );
 
             if FILL_SCACHE_ON_FILLING_PCACHE {
-                self.shared_cache.insert(core_id, block_id, ts, modified);
+                self.shared_cache
+                    .insert(core_id, block_id, ts, modified, true);
             }
 
             // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
@@ -373,9 +374,13 @@ impl<
                 directory_entry.ts = ts;
                 directory_entry.sharers = incoming_sharer;
 
-                for (replica_cache_id, set, _) in acquired_sets.iter_mut() {
+                for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
-                        set.invalidate(block_id);
+                        if idx.is_some() {
+                            set.invalidate(idx.unwrap());
+                        } else {
+                            assert_eq!(*replica_cache_id, p_cache_id);
+                        }
                     }
                 }
 
@@ -418,7 +423,7 @@ impl<
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id as usize, false);
                         // invalid the private cache entry.
-                        set.invalidate(block_id);
+                        set.invalidate(*index);
                     } else {
                         assert!(entry.write_ts() <= ts);
                         assert!(*replica_cache_id != p_cache_id);
@@ -443,10 +448,24 @@ impl<
 
             let evicted = if incoming_sharer.count_ones() == 0 {
                 // This means there is no sharer. The core will get modified permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, true, true)
+                set_for_refill_lock.refill(
+                    block_id,
+                    ts,
+                    is_instruction,
+                    true,
+                    true,
+                    private_hit != private_cache::PrivateCachePokeResult::PermissionViolation,
+                )
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
-                set_for_refill_lock.refill(block_id, ts, is_instruction, false, false)
+                set_for_refill_lock.refill(
+                    block_id,
+                    ts,
+                    is_instruction,
+                    false,
+                    false,
+                    private_hit != private_cache::PrivateCachePokeResult::PermissionViolation,
+                )
             };
 
             // add self to the incoming sharer list.
@@ -503,7 +522,7 @@ impl<
                         }
 
                         // Alright, we find the modifier of this cache line.
-                        set.request_sharer(block_id, ts);
+                        set.request_sharer(*index, ts);
                         already_modified = true;
                     }
                 }
@@ -520,7 +539,8 @@ impl<
             // We can insert the block to the private cache now.
             let set_for_refill_lock = set_for_refill_lock.unwrap();
 
-            let evicted = set_for_refill_lock.refill(block_id, ts, is_instruction, false, false);
+            let evicted =
+                set_for_refill_lock.refill(block_id, ts, is_instruction, false, false, true);
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -612,11 +632,13 @@ impl<
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
             if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
-                self.shared_cache.insert(core_id, block_id, ts, modified);
+                self.shared_cache
+                    .insert(core_id, block_id, ts, modified, true);
             }
 
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified {
-                self.shared_cache.insert(core_id, block_id, ts, modified);
+                self.shared_cache
+                    .insert(core_id, block_id, ts, modified, true);
             }
         }
     }
@@ -629,5 +651,9 @@ impl<
         self.private_caches.dump_snapshot(snapshot_folder);
         self.directory.dump_snapshot(snapshot_folder);
         // self.shared_cache.dump_snapshot(snapshot_folder);
+    }
+
+    pub fn get_scache_warmed_set_count(&self) -> usize {
+        self.shared_cache.warmed_sets_count()
     }
 }

@@ -17,6 +17,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         // keep the first WAY elements.
         Self {
             blocks: std::array::from_fn(|i| (*imm[i]).clone()),
+            touched_count: usize::min(self.touched_count + other.touched_count, WAY),
         }
     }
 }
@@ -44,9 +45,9 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
         return self.blocks[set_idx].lookup(block_id, ts);
     }
 
-    fn insert(&mut self, block_id: u64, ts: u64, is_modified: bool) {
+    fn insert(&mut self, block_id: u64, ts: u64, is_modified: bool, increase_touched_count: bool) {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].insert(block_id, ts, is_modified);
+        self.blocks[set_idx].insert(block_id, ts, is_modified, increase_touched_count);
     }
 
     fn dump_snapshot(&self, snapshot_name: &str) {
@@ -131,9 +132,16 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
         return pcache.lookup(block_id, ts);
     }
 
-    fn insert(&self, core_id: u32, block_id: u64, ts: u64, is_modified: bool) {
+    fn insert(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_modified: bool,
+        increase_touched_count: bool,
+    ) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        pcache.insert(block_id, ts, is_modified);
+        pcache.insert(block_id, ts, is_modified, increase_touched_count);
     }
 
     fn dump_snapshot(&self, snapshot_name: &str) {
@@ -146,5 +154,9 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
             });
 
         f.dump_snapshot(snapshot_name)
+    }
+
+    fn warmed_sets_count(&self) -> usize {
+        return 0;
     }
 }

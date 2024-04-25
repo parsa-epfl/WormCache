@@ -47,6 +47,7 @@ impl PrivateCacheLine {
 #[repr(align(64))]
 pub struct PrivateCacheSet {
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.
+    pub touched_count: usize,
 }
 
 #[derive(PartialEq, Eq)]
@@ -70,6 +71,7 @@ impl PrivateCacheSet {
                 })
                 .take(asso),
             ),
+            touched_count: 0,
         }
     }
 
@@ -140,6 +142,7 @@ impl PrivateCacheSet {
         is_instruction: bool,
         writable: bool,
         modified: bool,
+        increase_touched_count: bool,
     ) -> Option<PrivateCacheLine> {
         let block_id_to_find = (block_id << 1) | 1;
 
@@ -149,6 +152,12 @@ impl PrivateCacheSet {
         });
 
         assert!(hit_element.is_none());
+
+        // increase the touched count.
+        if increase_touched_count && self.touched_count < self.lines.len() {
+            self.touched_count += 1;
+        }
+
         // find the first invalid element.
         let invalid_element = self.lines.iter_mut().find(|p| {
             return (p.block_id_with_v & 0x1) == 0;
@@ -193,7 +202,21 @@ impl PrivateCacheSet {
         }
     }
 
-    pub fn invalidate(&mut self, block_id: u64) -> Option<PrivateCacheLine> {
+    #[inline]
+    pub fn invalidate(&mut self, index: usize) {
+        self.lines[index].block_id_with_v = 0;
+    }
+
+    pub fn request_sharer(&mut self, index: usize, ts: u64) -> Option<bool> {
+        let line = &mut self.lines[index];
+        line.writeable = false;
+        let res = line.modified;
+        line.modified = false;
+        return Some(res);
+    }
+
+    #[inline]
+    pub fn invalidate_by_block_id(&mut self, block_id: u64) -> Option<PrivateCacheLine> {
         let block_id_to_find = (block_id << 1) | 1;
 
         // find from the cache set with block id.
@@ -212,7 +235,8 @@ impl PrivateCacheSet {
     }
 
     // get a shared copy of the cache line. Return true if the cache line's permission is changed or it is a miss. (Strong contention)
-    pub fn request_sharer(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    #[inline]
+    pub fn request_sharer_by_block_id(&mut self, block_id: u64, ts: u64) -> Option<bool> {
         let block_id_to_find = (block_id << 1) | 1;
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
@@ -228,6 +252,11 @@ impl PrivateCacheSet {
             // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
             return None;
         }
+    }
+
+    #[inline]
+    pub fn is_fully_touched(&self) -> bool {
+        return self.touched_count == self.lines.len();
     }
 }
 

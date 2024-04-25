@@ -177,16 +177,30 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             }
 
             // open a csv file.
-            let mut file = std::fs::File::create("cache_misses.csv").unwrap();
+            let mut miss_file = std::fs::File::create("cache_misses.csv").unwrap();
+            let mut warmed_rate = std::fs::File::create("shared_cache_warm_count.csv").unwrap();
 
-            file.write_fmt(format_args!("{}\n", Statistics::get_header()))
+            miss_file
+                .write_fmt(format_args!("{}\n", Statistics::get_header()))
                 .unwrap();
+
+            warmed_rate.write(b"ts,warm_set_count\n").unwrap();
 
             loop {
                 for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
-                    file.write(stat.as_bytes()).unwrap();
-                    file.write(b"\n").unwrap();
+                    miss_file.write(stat.as_bytes()).unwrap();
+                    miss_file.write(b"\n").unwrap();
                 }
+
+                warmed_rate
+                    .write(
+                        format!("{},{}\n", get_memory_ts(), unsafe {
+                            PLUGIN.get_scache_warmed_set_count()
+                        })
+                        .as_bytes(),
+                    )
+                    .unwrap();
+
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
         });
