@@ -159,4 +159,8 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
     fn warmed_sets_count(&self) -> usize {
         return 0;
     }
+
+    fn warmed_slots_count(&self) -> usize {
+        return 0;
+    }
 }

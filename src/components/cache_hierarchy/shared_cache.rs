@@ -22,6 +22,8 @@ pub trait SharedCache {
 
     fn warmed_sets_count(&self) -> usize;
 
+    fn warmed_slots_count(&self) -> usize;
+
     fn dump_snapshot(&self, snapshot_name: &str);
 }
 

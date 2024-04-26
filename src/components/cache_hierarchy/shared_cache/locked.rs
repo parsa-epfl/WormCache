@@ -51,6 +51,16 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
         self.warmed_sets.load(Ordering::Relaxed)
     }
 
+    fn warmed_slots_count(&self) -> usize {
+        self.blocks
+            .iter()
+            .map(|entry| {
+                let entry = entry.lock();
+                entry.touched_count
+            })
+            .sum()
+    }
+
     fn dump_snapshot(&self, snapshot_name: &str) {
         let mut file =
             std::fs::File::create(format!("{}/shared_cache.json", snapshot_name)).unwrap();

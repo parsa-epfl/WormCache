@@ -185,7 +185,9 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 .write_fmt(format_args!("{}\n", Statistics::get_header()))
                 .unwrap();
 
-            warmed_rate.write(b"ts,warm_set_count\n").unwrap();
+            warmed_rate
+                .write(b"ts,warm_set_count,warm_slot_count\n")
+                .unwrap();
 
             loop {
                 for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
@@ -193,16 +195,25 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                     miss_file.write(b"\n").unwrap();
                 }
 
+                // get the duration of the following function.
+
+                let now = std::time::Instant::now();
+
                 warmed_rate
                     .write(
-                        format!("{},{}\n", get_memory_ts(), unsafe {
-                            PLUGIN.get_scache_warmed_set_count()
-                        })
+                        format!(
+                            "{},{},{}\n",
+                            get_memory_ts(),
+                            unsafe { PLUGIN.get_scache_warmed_set_count() },
+                            unsafe { PLUGIN.get_scache_warmed_slots_count() }
+                        )
                         .as_bytes(),
                     )
                     .unwrap();
 
-                std::thread::sleep(std::time::Duration::from_secs(10));
+                let elapsed = now.elapsed();
+
+                std::thread::sleep(std::time::Duration::from_secs(10) - elapsed);
             }
         });
     }

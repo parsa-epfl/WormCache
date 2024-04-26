@@ -791,4 +791,8 @@ impl<
     pub fn get_scache_warmed_set_count(&self) -> usize {
         self.shared_cache.warmed_sets_count()
     }
+
+    pub fn get_scache_warmed_slots_count(&self) -> usize {
+        self.shared_cache.warmed_slots_count()
+    }
 }
