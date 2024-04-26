@@ -1,5 +1,8 @@
 use crate::components::cache_hierarchy::shared_cache::SharedCache;
-use crate::parameter::{ADJACENT_LINE_PREFETCHING, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION};
+use crate::parameter::{
+    ADJACENT_LINE_PREFETCHING, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION,
+    ENABLE_CACHE_LINE_HISTORY,
+};
 use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
@@ -327,6 +330,7 @@ impl<
 
         // Now, we communicate with the directory. Current miss is mapped to the following position in the directory entry share list.
         let p_cache_id = PCache::get_cache_id_by_cache_info(core_id, is_instruction);
+        assert_eq!(p_cache_id, 0);
 
         let record_op = if is_store {
             CacheOperationType::GetM
@@ -459,6 +463,7 @@ impl<
             for (replica_cache_id, set, index) in acquired_sets.iter() {
                 if let Some(index) = index {
                     let line = &set.lines[*index];
+                    assert_eq!(line.block_id(), block_id);
                     if line.write_ts() > ts {
                         other_has_write_permission_with_late_ts = true;
                         if line.write_ts() > other_write_ts {
@@ -493,6 +498,7 @@ impl<
                 for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
                         if idx.is_some() {
+                            assert_eq!(set.lines[idx.unwrap()].block_id(), block_id);
                             set.invalidate(idx.unwrap());
                         } else {
                             assert_eq!(*replica_cache_id, p_cache_id);
@@ -535,11 +541,23 @@ impl<
             for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                 if let Some(index) = index {
                     let entry = &set.lines[*index];
+                    assert_eq!(entry.block_id(), block_id);
                     if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION || entry.access_ts() < ts {
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id as usize, false);
                         // invalid the private cache entry.
                         set.invalidate(*index);
+                        if ENABLE_CACHE_LINE_HISTORY {
+                            CacheLineCoherenceHistory::global_record_history(
+                                block_id,
+                                CacheOperationType::Invalidate(p_cache_id),
+                                *replica_cache_id,
+                                ts,
+                                false,
+                                incoming_sharer,
+                                line!(),
+                            )
+                        }
                     } else {
                         assert!(entry.write_ts() <= ts);
                         assert!(*replica_cache_id != p_cache_id);
@@ -612,6 +630,7 @@ impl<
             for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                 if let Some(index) = index {
                     let entry = &set.lines[*index];
+                    assert_eq!(entry.block_id(), block_id);
                     if entry.has_write_permission() {
                         // well, if you have write permission, you have to yield the write permission.
                         assert!(already_modified == false);

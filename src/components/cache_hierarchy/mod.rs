@@ -39,7 +39,7 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
-type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
+type PluginMemoryHierarchyUnified = hierarchy::LockedMemoryHierarchy<
     AArch64MMU,
     UnifiedPrivateCaches<
         { ALLOCATED_CORE_COUNT },
@@ -87,8 +87,9 @@ type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
-static mut PLUGIN: Lazy<PluginMemoryHierarchyHarvard> =
-    Lazy::new(|| PluginMemoryHierarchyHarvard::new());
+type HierarchyForPlugin = PluginMemoryHierarchyUnified;
+
+static mut PLUGIN: Lazy<HierarchyForPlugin> = Lazy::new(|| HierarchyForPlugin::new());
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
