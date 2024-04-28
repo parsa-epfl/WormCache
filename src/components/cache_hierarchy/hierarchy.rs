@@ -1,8 +1,5 @@
 use crate::components::cache_hierarchy::shared_cache::SharedCache;
-use crate::parameter::{
-    ADJACENT_LINE_PREFETCHING, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION,
-    ENABLE_CACHE_LINE_HISTORY,
-};
+use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
@@ -40,6 +37,7 @@ pub struct MemoryHierarchy<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
+    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
@@ -69,6 +67,7 @@ impl<
         MMU: AbstractMMU,
         PCache: PrivateCaches,
         SCache: SharedCache,
+        const PRECISE_COHERENCE_RECONSTRUCTION: bool,
         const FILL_SCACHE_ON_FILLING_PCACHE: bool,
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
@@ -77,6 +76,7 @@ impl<
         MMU,
         PCache,
         SCache,
+        PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
@@ -330,7 +330,6 @@ impl<
 
         // Now, we communicate with the directory. Current miss is mapped to the following position in the directory entry share list.
         let p_cache_id = PCache::get_cache_id_by_cache_info(core_id, is_instruction);
-        assert_eq!(p_cache_id, 0);
 
         let record_op = if is_store {
             CacheOperationType::GetM
@@ -338,9 +337,7 @@ impl<
             CacheOperationType::GetR
         };
 
-        if !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
-            && directory_entry.modify_ts_before_eviction > ts
-        {
+        if PRECISE_COHERENCE_RECONSTRUCTION && directory_entry.modify_ts_before_eviction > ts {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
             CacheLineCoherenceHistory::global_record_history(
@@ -455,7 +452,7 @@ impl<
             .private_caches
             .get_set_guard_by_sharer_list(block_id, acquire_list);
 
-        if !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
+        if PRECISE_COHERENCE_RECONSTRUCTION {
             // Do we have another sharer that has a write permission with a larger timestamp?
             let mut other_has_write_permission_with_late_ts = false;
             let mut other_write_ts = 0;
@@ -542,7 +539,7 @@ impl<
                 if let Some(index) = index {
                     let entry = &set.lines[*index];
                     assert_eq!(entry.block_id(), block_id);
-                    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION || entry.access_ts() < ts {
+                    if !PRECISE_COHERENCE_RECONSTRUCTION || entry.access_ts() < ts {
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id as usize, false);
                         // invalid the private cache entry.
@@ -637,7 +634,7 @@ impl<
 
                         if entry.is_modified()
                             && entry.write_ts() > ts
-                            && !DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
+                            && PRECISE_COHERENCE_RECONSTRUCTION
                         {
                             // OK, this read operation is also not ordered.
                             // There is nothing we need to do.
