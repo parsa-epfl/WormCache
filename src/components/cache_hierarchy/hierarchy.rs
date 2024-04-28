@@ -36,7 +36,7 @@ const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
     )
 };
 
-pub struct LockedMemoryHierarchy<
+pub struct MemoryHierarchy<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
@@ -73,7 +73,7 @@ impl<
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
     >
-    LockedMemoryHierarchy<
+    MemoryHierarchy<
         MMU,
         PCache,
         SCache,

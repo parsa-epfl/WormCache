@@ -1,5 +1,6 @@
 use spin::mutex::SpinMutexGuard;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 
 mod havard;
 mod set_and_line;
@@ -41,7 +42,11 @@ pub trait PrivateCaches {
         &self,
         block_id: u64,
         sharers: SharerList,
-    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>, Option<usize>)>; // (sharer_index, guard, index)
+    ) -> Vec<(
+        usize,
+        impl DerefMut<Target = PrivateCacheSet>,
+        Option<usize>,
+    )>; // (sharer_index, guard, index)
 
     // This function is for debugging. It gets the ids of all cores that have the cache line.
     fn in_which_cores(&self, block_id: u64) -> Vec<u32>;
@@ -62,6 +67,11 @@ pub trait PrivateCaches {
 }
 
 pub use havard::HarvardPrivateCaches;
+pub use havard::ParallelHarvardPrivateCache;
+pub use havard::SerialHarvardPrivateCache;
+
+pub use unified::ParallelUnifiedPrivateCache;
+pub use unified::SerialUnifiedPrivateCache;
 pub use unified::UnifiedPrivateCaches;
 
 use super::directory::SharerList;

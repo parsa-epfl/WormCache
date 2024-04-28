@@ -16,11 +16,16 @@ use crate::{
 use std::ffi;
 
 use self::{
-    private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches},
-    shared_cache::{LockedSharedCache, ReplicatedSharedCache},
+    private_cache::{
+        HarvardPrivateCaches, ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache,
+        SerialHarvardPrivateCache, SerialUnifiedPrivateCache, UnifiedPrivateCaches,
+    },
+    shared_cache::{ParallelSingleSharedCache, ReplicatedSharedCache, SerialSingleSharedCache},
 };
 
 use super::debug::statistics::Statistics;
+
+mod util;
 
 pub mod directory;
 mod hierarchy;
@@ -39,14 +44,14 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
-type PluginMemoryHierarchyUnified = hierarchy::LockedMemoryHierarchy<
+type PluginMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     AArch64MMU,
-    UnifiedPrivateCaches<
+    ParallelUnifiedPrivateCache<
         { ALLOCATED_CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-    LockedSharedCache<
+    ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -62,16 +67,16 @@ type PluginMemoryHierarchyUnified = hierarchy::LockedMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
-type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
+type PluginMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     AArch64MMU,
-    HarvardPrivateCaches<
+    ParallelHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },
         { parameter::HARVARD_PRI_I_CACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    LockedSharedCache<
+    ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -87,7 +92,43 @@ type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
-type HierarchyForPlugin = PluginMemoryHierarchyUnified;
+type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
+    AArch64MMU,
+    SerialUnifiedPrivateCache<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::UNIFIED_PRI_CACHE_SET },
+        { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >,
+    SerialSingleSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+>;
+
+type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
+    AArch64MMU,
+    SerialHarvardPrivateCache<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    SerialSingleSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+>;
+
+type HierarchyForPlugin = SerialMemoryHierarchyHarvard;
 
 static mut PLUGIN: Lazy<HierarchyForPlugin> = Lazy::new(|| HierarchyForPlugin::new());
 

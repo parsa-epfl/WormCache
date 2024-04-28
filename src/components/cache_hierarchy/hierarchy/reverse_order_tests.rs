@@ -2,18 +2,21 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
-use self::{private_cache::UnifiedPrivateCaches, shared_cache::LockedSharedCache};
+use self::{
+    private_cache::{ParallelUnifiedPrivateCache, UnifiedPrivateCaches},
+    shared_cache::ParallelSingleSharedCache,
+};
 
 use super::*;
 
-type MH = LockedMemoryHierarchy<
+type MH = MemoryHierarchy<
     NoMMU,
-    UnifiedPrivateCaches<
+    ParallelUnifiedPrivateCache<
         { parameter::CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-    LockedSharedCache<
+    ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },

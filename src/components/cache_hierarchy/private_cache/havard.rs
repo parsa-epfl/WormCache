@@ -1,51 +1,62 @@
 use serde_json::json;
 
+use crate::components::cache_hierarchy::util::CCell;
+
 use super::PrivateCaches;
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
 use spin::mutex::SpinMutex;
 use spin::mutex::SpinMutexGuard;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 
 #[repr(align(64))]
 #[derive(Debug)]
 pub struct HarvardPerCorePrivateCache<
+    G: CCell<PrivateCacheSet> + std::fmt::Debug,
     const I_SET: usize,
     const I_ASSO: usize,
     const D_SET: usize,
     const D_ASSO: usize,
 > {
-    i_cache: Box<[SpinMutex<PrivateCacheSet>; I_SET]>,
-    d_cache: Box<[SpinMutex<PrivateCacheSet>; D_SET]>,
+    i_cache: Box<[G; I_SET]>,
+    d_cache: Box<[G; D_SET]>,
 }
 
-impl<const I_SET: usize, const I_ASSO: usize, const D_SET: usize, const D_ASSO: usize>
-    HarvardPerCorePrivateCache<I_SET, I_ASSO, D_SET, D_ASSO>
+impl<
+        G: CCell<PrivateCacheSet> + std::fmt::Debug,
+        const I_SET: usize,
+        const I_ASSO: usize,
+        const D_SET: usize,
+        const D_ASSO: usize,
+    > HarvardPerCorePrivateCache<G, I_SET, I_ASSO, D_SET, D_ASSO>
 {
     pub fn new() -> Self {
         Self {
-            i_cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(I_ASSO))),
-            d_cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(D_ASSO))),
+            i_cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(I_ASSO))),
+            d_cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(D_ASSO))),
         }
     }
 }
 
 pub struct HarvardPrivateCaches<
+    G: CCell<PrivateCacheSet> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const I_SET: usize,
     const I_ASSO: usize,
     const D_SET: usize,
     const D_ASSO: usize,
 > {
-    caches: Box<[HarvardPerCorePrivateCache<I_SET, I_ASSO, D_SET, D_ASSO>; CORE_COUNT]>,
+    caches: Box<[HarvardPerCorePrivateCache<G, I_SET, I_ASSO, D_SET, D_ASSO>; CORE_COUNT]>,
 }
 
 impl<
+        G: CCell<PrivateCacheSet> + std::fmt::Debug,
         const CORE_COUNT: usize,
         const I_SET: usize,
         const I_ASSO: usize,
         const D_SET: usize,
         const D_ASSO: usize,
-    > PrivateCaches for HarvardPrivateCaches<CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
+    > PrivateCaches for HarvardPrivateCaches<G, CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
 {
     const DIRECTORY_SET: usize = gcd::binary_usize(I_SET, D_SET);
 
@@ -66,11 +77,11 @@ impl<
     ) -> PrivateCachePokeResult {
         if is_instruction {
             self.caches[core_id as usize].i_cache[block_id as usize % I_SET]
-                .lock()
+                .inner()
                 .poke_and_update(block_id, ts, is_store, is_instruction)
         } else {
             self.caches[core_id as usize].d_cache[block_id as usize % D_SET]
-                .lock()
+                .inner()
                 .poke_and_update(block_id, ts, is_store, is_instruction)
         }
     }
@@ -91,10 +102,10 @@ impl<
         modified: bool,
     ) -> Option<PrivateCacheLine> {
         if is_instruction {
-            let mut set = self.caches[core_id as usize].i_cache[block_id as usize % I_SET].lock();
+            let mut set = self.caches[core_id as usize].i_cache[block_id as usize % I_SET].inner();
             set.refill(block_id, ts, true, writable, modified, true)
         } else {
-            let mut set = self.caches[core_id as usize].d_cache[block_id as usize % D_SET].lock();
+            let mut set = self.caches[core_id as usize].d_cache[block_id as usize % D_SET].inner();
             set.refill(block_id, ts, false, writable, modified, true)
         }
     }
@@ -104,7 +115,11 @@ impl<
         &self,
         block_id: u64,
         sharers: crate::components::cache_hierarchy::directory::SharerList,
-    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>, Option<usize>)> {
+    ) -> Vec<(
+        usize,
+        impl DerefMut<Target = PrivateCacheSet>,
+        Option<usize>,
+    )> {
         // Now it really depends on how to interpret the sharer list.
         assert_eq!(sharers.len(), usize::max(CORE_COUNT * 2, 64));
 
@@ -116,12 +131,12 @@ impl<
 
             if is_instruction {
                 let set = &self.caches[core_id as usize].i_cache[block_id as usize % I_SET];
-                let guard = set.lock();
+                let guard = set.inner();
                 let index = guard.index_of(block_id);
                 res.push((sharer_index, guard, index));
             } else {
                 let set = &self.caches[core_id as usize].d_cache[block_id as usize % D_SET];
-                let guard = set.lock();
+                let guard = set.inner();
                 let index = guard.index_of(block_id);
                 res.push((sharer_index, guard, index));
             }
@@ -136,13 +151,13 @@ impl<
 
         for core_id in 0..CORE_COUNT {
             if self.caches[core_id].i_cache[block_id as usize % I_SET]
-                .lock()
+                .inner()
                 .poke(block_id)
                 .is_some()
             {
                 res.push(core_id as u32);
             } else if self.caches[core_id].d_cache[block_id as usize % D_SET]
-                .lock()
+                .inner()
                 .poke(block_id)
                 .is_some()
             {
@@ -161,11 +176,11 @@ impl<
 
         for core_id in 0..CORE_COUNT {
             let is_i = self.caches[core_id].i_cache[block_id as usize % I_SET]
-                .lock()
+                .inner()
                 .poke(block_id);
 
             let is_d = self.caches[core_id].d_cache[block_id as usize % D_SET]
-                .lock()
+                .inner()
                 .poke(block_id);
 
             if let Some(i_line) = is_i {
@@ -215,7 +230,7 @@ impl<
             let serialized_icache = self.caches[core_id]
                 .i_cache
                 .iter()
-                .map(|set| set.lock().serialize(I_SET))
+                .map(|set| set.inner().serialize(I_SET))
                 .collect::<Vec<_>>();
 
             // dump the instruction cache
@@ -235,7 +250,7 @@ impl<
             let serialized_dcache = self.caches[core_id]
                 .d_cache
                 .iter()
-                .map(|set| set.lock().serialize(D_SET))
+                .map(|set| set.inner().serialize(D_SET))
                 .collect::<Vec<_>>();
 
             // dump the data cache
@@ -252,3 +267,26 @@ impl<
         }
     }
 }
+
+pub type ParallelHarvardPrivateCache<
+    const CORE_COUNT: usize,
+    const I_SET: usize,
+    const I_ASSO: usize,
+    const D_SET: usize,
+    const D_ASSO: usize,
+> = HarvardPrivateCaches<SpinMutex<PrivateCacheSet>, CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>;
+
+pub type SerialHarvardPrivateCache<
+    const CORE_COUNT: usize,
+    const I_SET: usize,
+    const I_ASSO: usize,
+    const D_SET: usize,
+    const D_ASSO: usize,
+> = HarvardPrivateCaches<
+    std::cell::UnsafeCell<PrivateCacheSet>,
+    CORE_COUNT,
+    I_SET,
+    I_ASSO,
+    D_SET,
+    D_ASSO,
+>;

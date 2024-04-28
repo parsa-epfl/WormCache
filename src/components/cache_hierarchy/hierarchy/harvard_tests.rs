@@ -1,19 +1,19 @@
 use crate::components::{cache_hierarchy::get_memory_ts, NoMMU};
 
-use self::{private_cache::HarvardPrivateCaches, shared_cache::LockedSharedCache};
+use self::{private_cache::ParallelHarvardPrivateCache, shared_cache::ParallelSingleSharedCache};
 
 use super::*;
 
-type MH = LockedMemoryHierarchy<
+type MH = MemoryHierarchy<
     NoMMU,
-    HarvardPrivateCaches<
+    ParallelHarvardPrivateCache<
         { parameter::CORE_COUNT },
         { parameter::HARVARD_PRI_I_CACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    LockedSharedCache<
+    ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
