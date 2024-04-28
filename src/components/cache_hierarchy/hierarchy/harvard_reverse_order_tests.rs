@@ -9,7 +9,7 @@ use super::*;
 type MH = MemoryHierarchy<
     NoMMU,
     ParallelHarvardPrivateCache<
-        { parameter::CORE_COUNT },
+        32,
         { parameter::HARVARD_PRI_I_CACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
@@ -20,6 +20,7 @@ type MH = MemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    true,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -139,11 +140,6 @@ fn write_invalidation_coherence() {
 
 #[test]
 fn raw_and_war() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
 
     let block_id = 1024;
@@ -171,11 +167,6 @@ fn raw_and_war() {
 
 #[test]
 fn rarw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
 
     let block_id = 1024;
@@ -208,11 +199,6 @@ fn rarw() {
 
 #[test]
 fn waw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
@@ -235,11 +221,6 @@ fn waw() {
 
 #[test]
 fn wwaw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
@@ -268,11 +249,6 @@ fn wwaw() {
 
 #[test]
 fn rae() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 writes to this block at timestamp 10.
@@ -305,11 +281,6 @@ fn rae() {
 
 #[test]
 fn eae() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     // Core 0 accesses the core at 200 and evicts the block at 216 with the dirty permission.
     let block_id = 1024;
@@ -353,11 +324,6 @@ fn eae() {
 
 #[test]
 fn wae() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 writes the block at 200 and evicts from the 217.
@@ -395,11 +361,6 @@ fn wae() {
 
 #[test]
 fn eaw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
 
@@ -428,11 +389,6 @@ fn eaw() {
 
 #[test]
 fn ear() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
 
@@ -462,11 +418,6 @@ fn ear() {
 
 #[test]
 fn rar() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
 

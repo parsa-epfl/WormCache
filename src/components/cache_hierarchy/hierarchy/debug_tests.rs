@@ -12,7 +12,7 @@ use super::*;
 type MH = MemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<
-        { parameter::CORE_COUNT },
+        32,
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
@@ -21,6 +21,7 @@ type MH = MemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    true,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -74,11 +75,6 @@ fn one_core_write_first_then_read() {
 #[test]
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1043;
 
