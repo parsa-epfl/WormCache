@@ -134,7 +134,7 @@ type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
 
 type HierarchyForPlugin = SerialMemoryHierarchyHarvard;
 
-static mut PLUGIN: Lazy<HierarchyForPlugin> = Lazy::new(|| HierarchyForPlugin::new());
+static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
 pub fn get_memory_ts() -> u128 {
     return std::time::SystemTime::now()
@@ -167,7 +167,7 @@ unsafe extern "C" fn vcpu_mem_access(
 
         // Currently, this is experimental.
         // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
-        PLUGIN.access_memory_with_va_and_pa(
+        (*PLUGIN).access_memory_with_va_and_pa(
             vcpu_idx,
             vaddr,
             pa,
@@ -192,7 +192,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 
-    PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, true);
+    (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, true);
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
@@ -211,7 +211,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
     fn init() {
         unsafe {
-            Lazy::force(&PLUGIN);
+            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
         }
 
         println!("Memory[Locked] plugin initialized.");
@@ -249,8 +249,8 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                         format!(
                             "{},{},{}\n",
                             get_memory_ts(),
-                            unsafe { PLUGIN.get_scache_warmed_set_count() },
-                            unsafe { PLUGIN.get_scache_warmed_slots_count() }
+                            unsafe { (*PLUGIN).get_scache_warmed_set_count() },
+                            unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
                         )
                         .as_bytes(),
                     )
@@ -281,12 +281,12 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
 
         // dump the access counter of each set in the shared cache.
         unsafe {
-            PLUGIN.dump_access_counter();
+            (*PLUGIN).dump_access_counter();
         }
 
         // dump the cache state.
         unsafe {
-            PLUGIN.dump_snapshot(name);
+            (*PLUGIN).dump_snapshot(name);
         }
     }
 
