@@ -12,6 +12,8 @@ use once_cell::sync::Lazy;
 mod touched_cache;
 use touched_cache::TouchedCache;
 
+use crate::util::get_monotonic_ts;
+
 const CONFIGURATION: [usize; 1] = [1 * 1024 * 1024];
 
 static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
@@ -24,13 +26,6 @@ static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
 });
 
 static ICOUNT: AtomicUsize = AtomicUsize::new(0);
-
-fn get_memory_ts() -> u128 {
-    return std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u128;
-}
 
 unsafe extern "C" fn vcpu_mem_access(
     _cpu_idx: u32,
@@ -54,7 +49,7 @@ unsafe extern "C" fn vcpu_mem_access(
                 if cache.is_fully_touched() {
                     file.write_fmt(format_args!(
                         "{},{},{}\n",
-                        get_memory_ts(),
+                        get_monotonic_ts(),
                         ICOUNT.load(Ordering::Relaxed),
                         cache.get_fully_touched_set_count()
                     ))
@@ -81,7 +76,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             if cache.is_fully_touched() {
                 file.write_fmt(format_args!(
                     "{},{},{}\n",
-                    get_memory_ts(),
+                    get_monotonic_ts(),
                     ICOUNT.load(Ordering::Relaxed),
                     cache.get_fully_touched_set_count()
                 ))

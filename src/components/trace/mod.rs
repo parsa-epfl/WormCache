@@ -10,12 +10,7 @@ use once_cell::sync::Lazy;
 
 use crate::qemu_api;
 
-fn get_memory_ts() -> u128 {
-    return std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u128;
-}
+use crate::util::get_monotonic_ts;
 
 static TRACE_FILE: Lazy<Mutex<BufWriter<File>>> = Lazy::new(|| {
     // open a file to store the trace.
@@ -43,7 +38,7 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, size: *mut ffi::c_void) {
 
     let mut buffer = [0u8; 18];
     buffer[0..8].copy_from_slice(&context.pa.to_le_bytes());
-    buffer[8..16].copy_from_slice(&(get_memory_ts() as u64).to_le_bytes());
+    buffer[8..16].copy_from_slice(&(get_monotonic_ts() as u64).to_le_bytes());
     buffer[16] = 0;
     buffer[17] = vcpu_idx as u8;
     TRACE_FILE.lock().unwrap().write(&buffer).unwrap();
@@ -64,7 +59,7 @@ unsafe extern "C" fn vcpu_mem_access(
 
         let mut buffer = [0u8; 18];
         buffer[0..8].copy_from_slice(&paddr.to_le_bytes());
-        buffer[8..16].copy_from_slice(&(get_memory_ts() as u64).to_le_bytes());
+        buffer[8..16].copy_from_slice(&(get_monotonic_ts() as u64).to_le_bytes());
         buffer[16] = if is_store { 2 } else { 1 };
         buffer[17] = cpu_idx as u8;
         TRACE_FILE.lock().unwrap().write(&buffer).unwrap();

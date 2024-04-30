@@ -1,7 +1,8 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
-use crate::components::{cache_hierarchy::get_memory_ts, NoMMU};
+use crate::components::NoMMU;
+use crate::util::get_monotonic_ts;
 
 use self::{
     private_cache::{ParallelUnifiedPrivateCache, UnifiedPrivateCaches},
@@ -34,7 +35,7 @@ fn read_evict_and_other_core_read_back() {
 
     // core 0 reads a data at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false, false),
+        mh.access_memory_pblock_id(0, block_id, get_monotonic_ts(), false, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
@@ -42,14 +43,14 @@ fn read_evict_and_other_core_read_back() {
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = ((l + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64 + block_id;
         assert_eq!(
-            mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false, false),
+            mh.access_memory_pblock_id(0, block_id, get_monotonic_ts(), false, false, false),
             CacheHierarchyAccessResult::Miss
         );
     }
 
     // Then core 1 reads the cache line. It should hit in the shared cache.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, get_memory_ts() as u64, false, false, false),
+        mh.access_memory_pblock_id(1, block_id, get_monotonic_ts(), false, false, false),
         CacheHierarchyAccessResult::HitInSharedCache
     );
 }
@@ -61,13 +62,13 @@ fn one_core_write_first_then_read() {
 
     // core 0 reads a data at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, true, false, false),
+        mh.access_memory_pblock_id(0, block_id, get_monotonic_ts(), true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Then, core 0 writes the data at timestamp 20.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, get_memory_ts() as u64, false, false, false),
+        mh.access_memory_pblock_id(0, block_id, get_monotonic_ts(), false, false, false),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 }

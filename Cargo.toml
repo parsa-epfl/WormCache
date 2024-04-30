@@ -17,6 +17,7 @@ dashmap = "5.5.3"
 gcd = "2.3.0"
 spin = "0.9.8"
 static_assertions = "1.1.0"
+libc = "0.2.154"
 
 [lib]
 crate-type=["rlib", "cdylib"]

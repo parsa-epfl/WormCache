@@ -5,7 +5,7 @@
 // - Directory, with set locks.
 // - Shared caches, with set locks.
 
-use once_cell::sync::Lazy;
+use crate::util::get_monotonic_ts;
 use std::io::prelude::*;
 
 use crate::{
@@ -136,13 +136,6 @@ type HierarchyForPlugin = SerialMemoryHierarchyHarvard;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
-pub fn get_memory_ts() -> u128 {
-    return std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u128;
-}
-
 // TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
     vcpu_idx: u32,
@@ -166,12 +159,12 @@ unsafe extern "C" fn vcpu_mem_access(
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
         // Currently, this is experimental.
-        // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
+        // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_monotonic_ts(), is_store, false, walk_trace, pa);
         (*PLUGIN).access_memory_with_va_and_pa(
             vcpu_idx,
             vaddr,
             pa,
-            get_memory_ts() as u64,
+            get_monotonic_ts(),
             is_store,
             false,
         );
@@ -192,7 +185,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 
-    (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, true);
+    (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true);
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
@@ -235,7 +228,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 .unwrap();
 
             loop {
-                for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
+                for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
                     miss_file.write(stat.as_bytes()).unwrap();
                     miss_file.write(b"\n").unwrap();
                 }
@@ -248,7 +241,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                     .write(
                         format!(
                             "{},{},{}\n",
-                            get_memory_ts(),
+                            get_monotonic_ts(),
                             unsafe { (*PLUGIN).get_scache_warmed_set_count() },
                             unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
                         )
@@ -273,7 +266,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             file.write_fmt(format_args!("{}\n", Statistics::get_header()))
                 .unwrap();
 
-            for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
+            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
                 file.write(stat.as_bytes()).unwrap();
                 file.write(b"\n").unwrap();
             }
