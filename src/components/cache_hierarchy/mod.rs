@@ -28,8 +28,8 @@ use super::debug::statistics::Statistics;
 mod util;
 
 pub mod directory;
-mod hierarchy;
-mod private_cache;
+pub mod hierarchy;
+pub mod private_cache;
 pub mod shared_cache;
 
 const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
