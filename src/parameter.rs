@@ -137,22 +137,31 @@ pub const SHARED_CACHE_EXCLUSIVE: bool = false;
  * SHARED_CACHE_FILL_WITH_PRIVATE_CACHE
  *
  * Whether the shared cache is filled on a filling to the private cache.
+ *
+ * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
-pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = false;
+pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = true;
+static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_WITH_PRIVATE_CACHE));
 
 /**
  * SHARED_CACHE_FILL_ON_CLEAN_EVICTION
  *
  * Whether the shared cache is filled on a clean eviction from the private cache.
+ *
+ * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
 pub const SHARED_CACHE_FILL_ON_CLEAN_EVICTION: bool = true;
+static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_CLEAN_EVICTION));
 
 /**
  * SHARED_CACHE_FILL_ON_DIRTY_EVICTION
  *
  * Whether the shared cache is filled on a dirty eviction from the private cache.
+ *
+ * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
-pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = true;
+pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = false;
+static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_CLEAN_EVICTION));
 
 /**
 * ADJACENT_LINE_PREFETCHING
