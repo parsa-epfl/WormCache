@@ -6,7 +6,7 @@ mod tage;
 
 use serde::Serialize;
 
-use crate::parameter::{self, BP_GSHARE_SET, BP_RAS_COUNT};
+use crate::parameter::{self, BP_RAS_COUNT};
 
 use super::BranchResolveFlag;
 
