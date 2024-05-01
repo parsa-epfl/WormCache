@@ -5,7 +5,7 @@
 // - Directory, with set locks.
 // - Shared caches, with set locks.
 
-use once_cell::sync::Lazy;
+use crate::util::get_monotonic_ts;
 use std::io::prelude::*;
 
 use crate::{
@@ -16,15 +16,20 @@ use crate::{
 use std::ffi;
 
 use self::{
-    private_cache::{HarvardPrivateCaches, UnifiedPrivateCaches},
-    shared_cache::{LockedSharedCache, ReplicatedSharedCache},
+    private_cache::{
+        ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache, SerialHarvardPrivateCache,
+        SerialUnifiedPrivateCache,
+    },
+    shared_cache::{ParallelSingleSharedCache, ReplicatedSharedCache, SerialSingleSharedCache},
 };
 
 use super::debug::statistics::Statistics;
 
+mod util;
+
 pub mod directory;
-mod hierarchy;
-mod private_cache;
+pub mod hierarchy;
+pub mod private_cache;
 pub mod shared_cache;
 
 const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
@@ -39,14 +44,14 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
-type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
+type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     AArch64MMU,
-    UnifiedPrivateCaches<
+    ParallelUnifiedPrivateCache<
         { ALLOCATED_CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-    LockedSharedCache<
+    ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -57,21 +62,22 @@ type PluginMemoryHierarchy = hierarchy::LockedMemoryHierarchy<
     //     { parameter::SHARED_CACHE_ASSO },
     //     { parameter::SHARED_CACHE_EXCLUSIVE },
     // >,
+    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
-type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
+type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     AArch64MMU,
-    HarvardPrivateCaches<
+    ParallelHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },
         { parameter::HARVARD_PRI_I_CACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    LockedSharedCache<
+    ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -82,20 +88,53 @@ type PluginMemoryHierarchyHarvard = hierarchy::LockedMemoryHierarchy<
     //     { parameter::SHARED_CACHE_ASSO },
     //     { parameter::SHARED_CACHE_EXCLUSIVE },
     // >,
+    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
-static mut PLUGIN: Lazy<PluginMemoryHierarchyHarvard> =
-    Lazy::new(|| PluginMemoryHierarchyHarvard::new());
+type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
+    AArch64MMU,
+    SerialUnifiedPrivateCache<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::UNIFIED_PRI_CACHE_SET },
+        { parameter::UNIFIED_PRI_CACHE_ASSO },
+    >,
+    SerialSingleSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
+    false,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+>;
 
-pub fn get_memory_ts() -> u128 {
-    return std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u128;
-}
+type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
+    AArch64MMU,
+    SerialHarvardPrivateCache<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    SerialSingleSharedCache<
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
+    false,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+>;
+
+type HierarchyForPlugin = SerialMemoryHierarchyHarvard;
+
+static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
 // TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
@@ -120,12 +159,12 @@ unsafe extern "C" fn vcpu_mem_access(
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
         // Currently, this is experimental.
-        // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_memory_ts() as u64, is_store, false, walk_trace, pa);
-        PLUGIN.access_memory_with_va_and_pa(
+        // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_monotonic_ts(), is_store, false, walk_trace, pa);
+        (*PLUGIN).access_memory_with_va_and_pa(
             vcpu_idx,
             vaddr,
             pa,
-            get_memory_ts() as u64,
+            get_monotonic_ts(),
             is_store,
             false,
         );
@@ -146,7 +185,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
 
-    PLUGIN.access_memory_with_va(vcpu_idx, vaddr, get_memory_ts() as u64, false, true);
+    (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true);
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
@@ -165,10 +204,17 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
     fn init() {
         unsafe {
-            Lazy::force(&PLUGIN);
+            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
         }
 
-        println!("Memory[Locked] plugin initialized.");
+        if parameter::USE_UNIFIED_CACHE {
+            assert!(HierarchyForPlugin::information().contains("UnifiedPrivateCache"))
+        } else {
+            assert!(HierarchyForPlugin::information().contains("HarvardPrivateCache"))
+        }
+
+        println!("Memory plugin initialized.");
+        println!("{}", HierarchyForPlugin::information());
 
         // this thread peridocally dumps the statistics.
         std::thread::spawn(|| {
@@ -184,24 +230,35 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 .write_fmt(format_args!("{}\n", Statistics::get_header()))
                 .unwrap();
 
-            warmed_rate.write(b"ts,warm_set_count\n").unwrap();
+            warmed_rate
+                .write(b"ts,warm_set_count,warm_slot_count\n")
+                .unwrap();
 
             loop {
-                for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
+                for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
                     miss_file.write(stat.as_bytes()).unwrap();
                     miss_file.write(b"\n").unwrap();
                 }
 
+                // get the duration of the following function.
+
+                let now = std::time::Instant::now();
+
                 warmed_rate
                     .write(
-                        format!("{},{}\n", get_memory_ts(), unsafe {
-                            PLUGIN.get_scache_warmed_set_count()
-                        })
+                        format!(
+                            "{},{},{}\n",
+                            get_monotonic_ts(),
+                            unsafe { (*PLUGIN).get_scache_warmed_set_count() },
+                            unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
+                        )
                         .as_bytes(),
                     )
                     .unwrap();
 
-                std::thread::sleep(std::time::Duration::from_secs(10));
+                let elapsed = now.elapsed();
+
+                std::thread::sleep(std::time::Duration::from_secs(10) - elapsed);
             }
         });
     }
@@ -216,7 +273,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             file.write_fmt(format_args!("{}\n", Statistics::get_header()))
                 .unwrap();
 
-            for stat in Statistics::global_get_line_for_all_cores(get_memory_ts() as u64) {
+            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
                 file.write(stat.as_bytes()).unwrap();
                 file.write(b"\n").unwrap();
             }
@@ -224,12 +281,12 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
 
         // dump the access counter of each set in the shared cache.
         unsafe {
-            PLUGIN.dump_access_counter();
+            (*PLUGIN).dump_access_counter();
         }
 
         // dump the cache state.
         unsafe {
-            PLUGIN.dump_snapshot(name);
+            (*PLUGIN).dump_snapshot(name);
         }
     }
 

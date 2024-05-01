@@ -8,6 +8,8 @@ use std::{io::Write, sync::Mutex};
 use crate::parameter as param;
 use crate::qemu_api;
 
+use crate::util::get_monotonic_ts;
+
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
 
@@ -23,14 +25,6 @@ unsafe extern "C" fn calculate_cpu_clock() -> i64 {
 unsafe extern "C" fn on_snapshot_cpu_clock_update() {
     TIME_PLUGIN.lock().unwrap().reset();
     ICOUNT_PLUGIN.reset();
-}
-
-// memory ts for print the log.
-fn get_memory_ts() -> u128 {
-    return std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u128;
 }
 
 unsafe extern "C" fn user_vcpu_insn_exec(
@@ -82,7 +76,7 @@ impl super::Plugin for VirtualTimePlugin {
             loop {
                 let icounts = unsafe { ICOUNT_PLUGIN.get_icounts() };
                 let mut lines = vec![];
-                lines.push(format!("{}", get_memory_ts()));
+                lines.push(format!("{}", get_monotonic_ts()));
                 for i in 0..param::CORE_COUNT {
                     let (u, k) = icounts[i];
                     let all = u + k;

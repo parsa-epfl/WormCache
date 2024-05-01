@@ -12,16 +12,9 @@ use once_cell::sync::Lazy;
 mod touched_cache;
 use touched_cache::TouchedCache;
 
-const CONFIGURATION: [usize; 8] = [
-    8 * 1024,
-    16 * 1024,
-    32 * 1024,
-    64 * 1024,
-    128 * 1024,
-    256 * 1024,
-    512 * 1024,
-    1024 * 1024,
-];
+use crate::util::get_monotonic_ts;
+
+const CONFIGURATION: [usize; 1] = [1 * 1024 * 1024];
 
 static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
     Mutex::new(Vec::from_iter(CONFIGURATION.iter().map(|&set| {
@@ -34,19 +27,16 @@ static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
 
 static ICOUNT: AtomicUsize = AtomicUsize::new(0);
 
-fn get_memory_ts() -> u128 {
-    return std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u128;
-}
-
 unsafe extern "C" fn vcpu_mem_access(
     _cpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
 ) {
+    if _cpu_idx != 0 {
+        return;
+    }
+
     let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
@@ -59,7 +49,7 @@ unsafe extern "C" fn vcpu_mem_access(
                 if cache.is_fully_touched() {
                     file.write_fmt(format_args!(
                         "{},{},{}\n",
-                        get_memory_ts(),
+                        get_monotonic_ts(),
                         ICOUNT.load(Ordering::Relaxed),
                         cache.get_fully_touched_set_count()
                     ))
@@ -77,12 +67,16 @@ unsafe extern "C" fn vcpu_insn_exec(
     _vcpu_idx: u32,
     paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
+    if _vcpu_idx != 0 {
+        return;
+    }
+
     PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
         if cache.access(paddr as usize) {
             if cache.is_fully_touched() {
                 file.write_fmt(format_args!(
                     "{},{},{}\n",
-                    get_memory_ts(),
+                    get_monotonic_ts(),
                     ICOUNT.load(Ordering::Relaxed),
                     cache.get_fully_touched_set_count()
                 ))
@@ -94,6 +88,10 @@ unsafe extern "C" fn vcpu_insn_exec(
 }
 
 unsafe extern "C" fn icount_calcuclation(_vcpu_idx: u32, icount: *mut ffi::c_void) {
+    if _vcpu_idx != 0 {
+        return;
+    }
+
     ICOUNT.fetch_add(icount as usize, Ordering::Relaxed);
 }
 
@@ -103,12 +101,6 @@ impl super::Plugin for TouchOnePlugin {
     #[inline]
     fn init() {
         println!("Touch once plugin initialized.");
-        unsafe {
-            assert!(
-                qemu_api::qemu_plugin_n_vcpus() == 1,
-                "Currently this plugin only works for single vCPU."
-            );
-        }
 
         // all files should be initialized and write the first line.
         PLUGIN.lock().unwrap().iter_mut().for_each(|(_, file)| {

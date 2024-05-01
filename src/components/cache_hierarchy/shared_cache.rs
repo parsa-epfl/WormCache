@@ -22,7 +22,11 @@ pub trait SharedCache {
 
     fn warmed_sets_count(&self) -> usize;
 
+    fn warmed_slots_count(&self) -> usize;
+
     fn dump_snapshot(&self, snapshot_name: &str);
+
+    fn information() -> String;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,11 +43,13 @@ mod set_and_line;
 pub use set_and_line::SharedCacheBlock;
 pub use set_and_line::SharedCacheSet;
 
-mod locked;
 mod replicated;
+mod single;
 
-pub use locked::LockedSharedCache;
 pub use replicated::ReplicatedSharedCache;
+pub use single::ParallelSingleSharedCache;
+pub use single::SerialSingleSharedCache;
+pub use single::SingleSharedCache;
 
 #[cfg(test)]
 mod warm_counter_test;

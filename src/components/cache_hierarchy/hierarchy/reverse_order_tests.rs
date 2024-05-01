@@ -2,22 +2,23 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
-use self::{private_cache::UnifiedPrivateCaches, shared_cache::LockedSharedCache};
+use self::{private_cache::ParallelUnifiedPrivateCache, shared_cache::ParallelSingleSharedCache};
 
 use super::*;
 
-type MH = LockedMemoryHierarchy<
+type MH = MemoryHierarchy<
     NoMMU,
-    UnifiedPrivateCaches<
-        { parameter::CORE_COUNT },
+    ParallelUnifiedPrivateCache<
+        32,
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-    LockedSharedCache<
+    ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    true,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -78,7 +79,7 @@ fn reversed_timestamp_from_the_same_core() {
     // Fill one cache set with some data.
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (l * parameter::UNIFIED_PRI_CACHE_SET) as u64;
-        mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false);
+        mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false, false);
     }
 
     ts += 100;
@@ -87,7 +88,7 @@ fn reversed_timestamp_from_the_same_core() {
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (l * parameter::UNIFIED_PRI_CACHE_SET) as u64;
         assert_eq!(
-            mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false),
+            mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false, false),
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         );
     }
@@ -96,7 +97,7 @@ fn reversed_timestamp_from_the_same_core() {
     let eval_block_id = (128 * parameter::UNIFIED_PRI_CACHE_SET) as u64;
     // The following line should trigger an assertion failure.
     assert_eq!(
-        mh.access_memory_pblock_id(0, eval_block_id, 0, false, false),
+        mh.access_memory_pblock_id(0, eval_block_id, 0, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
 }
@@ -108,17 +109,17 @@ fn write_invalidation_coherence() {
     let block_id = 1024;
     // Core 0 gets a read permission at 0.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 0, false, false),
+        mh.access_memory_pblock_id(0, block_id, 0, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 10, false, false),
+        mh.access_memory_pblock_id(1, block_id, 10, false, false, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 50.
     assert_eq!(
-        mh.access_memory_pblock_id(2, block_id, 50, true, false),
+        mh.access_memory_pblock_id(2, block_id, 50, true, false, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Now, core 0 and core 1 should have invalid the cache.
@@ -128,7 +129,7 @@ fn write_invalidation_coherence() {
 
     // Now core 0 gets a read permission at 100.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 100, false, false),
+        mh.access_memory_pblock_id(0, block_id, 100, false, false, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     let sharers = mh.get_all_private_replicas(block_id);
@@ -139,27 +140,22 @@ fn write_invalidation_coherence() {
 
 #[test]
 fn raw_and_war() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
 
     let block_id = 1024;
     // Core 0 gets a read permission at 0.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 0, false, false),
+        mh.access_memory_pblock_id(0, block_id, 0, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 10, false, false),
+        mh.access_memory_pblock_id(1, block_id, 10, false, false, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 5.
     assert_eq!(
-        mh.access_memory_pblock_id(2, block_id, 5, true, false),
+        mh.access_memory_pblock_id(2, block_id, 5, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
     // Now, core 0 should have invalid the cache.
@@ -171,22 +167,17 @@ fn raw_and_war() {
 
 #[test]
 fn rarw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
 
     let block_id = 1024;
     // Core 0 gets a read permission at 10.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, false, false),
+        mh.access_memory_pblock_id(0, block_id, 10, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
     // Core 0 get a write permission at 20.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 20, true, false),
+        mh.access_memory_pblock_id(0, block_id, 20, true, false, false),
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         } else {
@@ -196,7 +187,7 @@ fn rarw() {
 
     // Core 1 get a read permission at 0.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 0, false, false),
+        mh.access_memory_pblock_id(1, block_id, 0, false, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
@@ -208,22 +199,17 @@ fn rarw() {
 
 #[test]
 fn waw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, true, false),
+        mh.access_memory_pblock_id(0, block_id, 10, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 1 gets a write permission at timestamp 5.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 5, true, false),
+        mh.access_memory_pblock_id(1, block_id, 5, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
@@ -235,28 +221,23 @@ fn waw() {
 
 #[test]
 fn wwaw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, true, false),
+        mh.access_memory_pblock_id(0, block_id, 10, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 0 gets a write permission at timestamp 20. It should be a bit and no broadcast to the directory.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 20, true, false),
+        mh.access_memory_pblock_id(0, block_id, 20, true, false, false),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // Core 1 gets a write permission at timestamp 15.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 15, true, false),
+        mh.access_memory_pblock_id(1, block_id, 15, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
@@ -268,16 +249,11 @@ fn wwaw() {
 
 #[test]
 fn rae() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 writes to this block at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, true, false),
+        mh.access_memory_pblock_id(0, block_id, 10, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
@@ -285,7 +261,7 @@ fn rae() {
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 =
             (10 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id(0, block_id, (100 + i) as u64, false, false);
+        mh.access_memory_pblock_id(0, block_id, (100 + i) as u64, false, false, false);
     }
 
     // Now, the line is not in the memory hierarchy anymore.
@@ -294,7 +270,7 @@ fn rae() {
 
     // Then, there is a reader replica which is created before core 0 writes to the position.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 5, false, false),
+        mh.access_memory_pblock_id(1, block_id, 5, false, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
@@ -305,23 +281,18 @@ fn rae() {
 
 #[test]
 fn eae() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     // Core 0 accesses the core at 200 and evicts the block at 216 with the dirty permission.
     let block_id = 1024;
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 200, true, false),
+        mh.access_memory_pblock_id(0, block_id, 200, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 =
             (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false);
+        mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false, false);
     }
 
     // That block should be evicted from the memory hierarchy.
@@ -330,14 +301,14 @@ fn eae() {
 
     // Core 1 accesses the core at 10 and evict the block
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        mh.access_memory_pblock_id(1, block_id, 10, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 =
             (255 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
+        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false, false);
     }
 
     // Now there should be nothing in the private cache.
@@ -353,23 +324,18 @@ fn eae() {
 
 #[test]
 fn wae() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 writes the block at 200 and evicts from the 217.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 200, true, false),
+        mh.access_memory_pblock_id(0, block_id, 200, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 =
             (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false);
+        mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false, false);
     }
 
     // That block should be evicted from the memory hierarchy.
@@ -378,7 +344,7 @@ fn wae() {
 
     // Core 1 writes to the block at 10.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        mh.access_memory_pblock_id(1, block_id, 10, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
@@ -395,30 +361,25 @@ fn wae() {
 
 #[test]
 fn eaw() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
 
     // Core 0 writes to the block at 200.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 200, true, false),
+        mh.access_memory_pblock_id(0, block_id, 200, true, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 1 evicts the block at 100 with the dirty permission. the write happens at 10.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        mh.access_memory_pblock_id(1, block_id, 10, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 =
             (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
+        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false, false);
     }
 
     // Now there should be only a copy from core 0 in private caches.
@@ -428,30 +389,25 @@ fn eaw() {
 
 #[test]
 fn ear() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
 
     // Core 0 reads the block at 100.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 100, false, false),
+        mh.access_memory_pblock_id(0, block_id, 100, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Then, core 1 evicts the block before 50. It creates a write access at 10.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 10, true, false),
+        mh.access_memory_pblock_id(1, block_id, 10, true, false, false),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 =
             (100 * (i + 1) * parameter::UNIFIED_PRI_CACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false);
+        mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false, false);
     }
 
     // Now, only core 0 has the block. And it has the exclusive permission.
@@ -462,23 +418,18 @@ fn ear() {
 
 #[test]
 fn rar() {
-    if DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION {
-        println!("This test is disabled because of the DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION flag.");
-        return;
-    }
-
     let mut mh = MH::new();
     let block_id = 1024;
 
     // Core 0 reads the block at 10.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, false, false),
+        mh.access_memory_pblock_id(0, block_id, 10, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 1 reads the block at 5.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 5, false, false),
+        mh.access_memory_pblock_id(1, block_id, 5, false, false, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 

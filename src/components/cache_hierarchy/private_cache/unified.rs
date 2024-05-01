@@ -1,52 +1,53 @@
 use serde_json::json;
 
+use crate::components::cache_hierarchy::util::CCell;
+
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use spin::mutex::SpinMutex;
-use spin::mutex::SpinMutexGuard;
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 
 #[repr(align(64))]
 #[derive(Debug)]
-pub struct UnifiedPerCorePrivateCache<const SET: usize, const ASSO: usize> {
-    cache: Box<[SpinMutex<PrivateCacheSet>; SET]>,
+pub struct UnifiedPerCorePrivateCache<
+    G: CCell<PrivateCacheSet> + std::fmt::Debug,
+    const SET: usize,
+    const ASSO: usize,
+> {
+    cache: Box<[G; SET]>,
 }
 
-impl<const SET: usize, const ASSO: usize> UnifiedPerCorePrivateCache<SET, ASSO> {
+impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: usize>
+    UnifiedPerCorePrivateCache<G, SET, ASSO>
+{
     pub fn new() -> Self {
         Self {
-            cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(ASSO))),
+            cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(ASSO))),
         }
     }
 
-    pub fn get_set(&self, block_id: u64) -> &SpinMutex<PrivateCacheSet> {
+    pub fn get_set(&self, block_id: u64) -> &G {
         let set_id = block_id as usize % SET;
         return &self.cache[set_id];
     }
-
-    // pub fn contains_block(&self, block_id: u64) -> bool {
-    //     let set_id = block_id as usize % SET;
-    //     let set = self.cache[set_id].lock().unwrap();
-    //     return set.poke(block_id).is_some();
-    // }
-
-    // pub fn is_block_modified(&self, block_id: u64) -> bool {
-    //     let set_id = block_id as usize % SET;
-    //     let set = self.cache[set_id].lock().unwrap();
-    //     let line = set.poke(block_id);
-    //     if let Some(line) = line {
-    //         return line.is_modified();
-    //     } else {
-    //         return false;
-    //     }
-    // }
 }
 
-pub struct UnifiedPrivateCaches<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> {
-    caches: Box<[UnifiedPerCorePrivateCache<SET, ASSO>; CORE_COUNT]>,
+pub struct UnifiedPrivateCaches<
+    G: CCell<PrivateCacheSet> + std::fmt::Debug,
+    const CORE_COUNT: usize,
+    const SET: usize,
+    const ASSO: usize,
+> {
+    caches: Box<[UnifiedPerCorePrivateCache<G, SET, ASSO>; CORE_COUNT]>,
 }
 
-impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
-    for UnifiedPrivateCaches<CORE_COUNT, SET, ASSO>
+impl<
+        G: CCell<PrivateCacheSet> + std::fmt::Debug,
+        const CORE_COUNT: usize,
+        const SET: usize,
+        const ASSO: usize,
+    > PrivateCaches for UnifiedPrivateCaches<G, CORE_COUNT, SET, ASSO>
 {
     const DIRECTORY_SET: usize = SET;
 
@@ -67,7 +68,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     ) -> PrivateCachePokeResult {
         self.caches[core_id as usize]
             .get_set(block_id)
-            .lock()
+            .inner()
             .poke_and_update(block_id, ts, is_store, is_instruction)
     }
 
@@ -88,7 +89,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
     ) -> Option<PrivateCacheLine> {
         self.caches[core_id as usize]
             .get_set(block_id)
-            .lock()
+            .inner()
             .refill(block_id, ts, is_instruction, writable, modified, true)
     }
 
@@ -97,12 +98,16 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         &self,
         block_id: u64,
         sharers: crate::components::cache_hierarchy::directory::SharerList,
-    ) -> Vec<(usize, SpinMutexGuard<'_, PrivateCacheSet>, Option<usize>)> {
+    ) -> Vec<(
+        usize,
+        impl DerefMut<Target = PrivateCacheSet>,
+        Option<usize>,
+    )> {
         let mut result = Vec::new();
 
         for core_id in sharers.iter_ones() {
             let set = self.caches[core_id].get_set(block_id);
-            let guard = set.lock();
+            let guard = set.inner();
             let index = guard.index_of(block_id);
             result.push((core_id, guard, index));
         }
@@ -115,7 +120,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
         let mut result = Vec::new();
         for core_id in 0..CORE_COUNT {
             let set = self.caches[core_id].get_set(block_id);
-            let guard = set.lock();
+            let guard = set.inner();
             if guard.poke(block_id).is_some() {
                 result.push(core_id as u32);
             }
@@ -131,7 +136,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
 
         for core_id in 0..CORE_COUNT {
             let is_d = self.caches[core_id].cache[block_id as usize % SET]
-                .lock()
+                .inner()
                 .poke(block_id);
 
             if let Some(d_line) = is_d {
@@ -161,7 +166,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
             let serialized_cache = self.caches[core_id]
                 .cache
                 .iter()
-                .map(|set| set.lock().serialize(SET))
+                .map(|set| set.inner().serialize(SET))
                 .collect::<Vec<_>>();
 
             let private_cache_path = format!("{}/core_{}_private.json", snapshot_folder, core_id);
@@ -178,4 +183,20 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
             .unwrap();
         }
     }
+
+    fn information() -> String {
+        format!(
+            "Type: UnifiedPrivateCache, Core Count: {}, Set: {}, Associativity: {}, Is Parallel: {}",
+            { CORE_COUNT },
+            SET,
+            ASSO,
+            G::support_parallel_access()
+        )
+    }
 }
+
+pub type ParallelUnifiedPrivateCache<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> =
+    UnifiedPrivateCaches<SpinMutex<PrivateCacheSet>, CORE_COUNT, SET, ASSO>;
+
+pub type SerialUnifiedPrivateCache<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> =
+    UnifiedPrivateCaches<UnsafeCell<PrivateCacheSet>, CORE_COUNT, SET, ASSO>;

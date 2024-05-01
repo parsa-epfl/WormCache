@@ -1,32 +1,46 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    cell::UnsafeCell,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+
+use crate::components::cache_hierarchy::util::CCell;
 
 use super::{SerializedSharedCacheBlock, SharedCacheSet};
 use serde_json::json;
 use spin::mutex::SpinMutex;
 
-pub struct LockedSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
-    blocks: Box<[SpinMutex<SharedCacheSet<WAY, EXCLUSIVE>>; SET]>,
+pub struct SingleSharedCache<
+    G: CCell<SharedCacheSet<WAY, EXCLUSIVE>> + std::fmt::Debug,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+> {
+    blocks: Box<[G; SET]>,
     warmed_sets: AtomicUsize,
 }
 
-impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCache
-    for LockedSharedCache<SET, WAY, EXCLUSIVE>
+impl<
+        G: CCell<SharedCacheSet<WAY, EXCLUSIVE>> + std::fmt::Debug,
+        const SET: usize,
+        const WAY: usize,
+        const EXCLUSIVE: bool,
+    > super::SharedCache for SingleSharedCache<G, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {
-            blocks: crate::util::init_heap_array(|_| SpinMutex::new(SharedCacheSet::new())),
+            blocks: crate::util::init_heap_array(|_| G::new(SharedCacheSet::new())),
             warmed_sets: AtomicUsize::new(0),
         }
     }
 
     fn invalidate(&self, _core_id: u32, block_id: u64, _ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
-        return self.blocks[set_idx].lock().invalidate(block_id);
+        return self.blocks[set_idx].inner().invalidate(block_id);
     }
 
     fn lookup(&self, _core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
-        return self.blocks[set_idx].lock().lookup(block_id, ts);
+        return self.blocks[set_idx].inner().lookup(block_id, ts);
     }
 
     fn insert(
@@ -40,7 +54,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
         let set_idx = (block_id % SET as u64) as usize;
         let just_warmed =
             self.blocks[set_idx]
-                .lock()
+                .inner()
                 .insert(block_id, ts, is_modified, increase_touched_count);
         if just_warmed {
             self.warmed_sets.fetch_add(1, Ordering::Relaxed);
@@ -49,6 +63,16 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
 
     fn warmed_sets_count(&self) -> usize {
         self.warmed_sets.load(Ordering::Relaxed)
+    }
+
+    fn warmed_slots_count(&self) -> usize {
+        self.blocks
+            .iter()
+            .map(|entry| {
+                let entry = entry.inner();
+                entry.touched_count
+            })
+            .sum()
     }
 
     fn dump_snapshot(&self, snapshot_name: &str) {
@@ -61,7 +85,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
             .blocks
             .iter()
             .map(|entry| {
-                let entry = entry.lock();
+                let entry = entry.inner();
                 let mut sorted_lines: Vec<_> = entry.blocks.iter().collect();
                 sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
 
@@ -90,4 +114,17 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> super::SharedCac
         )
         .unwrap();
     }
+
+    fn information() -> String {
+        format!(
+            "SingleSharedCache: SET={}, WAY={}, EXCLUSIVE={}",
+            SET, WAY, EXCLUSIVE
+        )
+    }
 }
+
+pub type ParallelSingleSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
+    SingleSharedCache<SpinMutex<SharedCacheSet<WAY, EXCLUSIVE>>, SET, WAY, EXCLUSIVE>;
+
+pub type SerialSingleSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
+    SingleSharedCache<UnsafeCell<SharedCacheSet<WAY, EXCLUSIVE>>, SET, WAY, EXCLUSIVE>;

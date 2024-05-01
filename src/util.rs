@@ -43,6 +43,19 @@ pub fn init_heap_array<T: Sized + std::fmt::Debug, const N: usize>(
     return res.into_boxed_slice().try_into().unwrap();
 }
 
+use libc::{clock_gettime, timespec, CLOCK_MONOTONIC};
+
+pub fn get_monotonic_ts() -> u64 {
+    let mut ts = timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    unsafe {
+        clock_gettime(CLOCK_MONOTONIC, &mut ts);
+    }
+    return ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64;
+}
+
 #[test]
 fn test_find_fetch_block_from_pa_sequence() {
     let example = vec![0, 0, 1, 1, 2, 2, 3, 3, 3];

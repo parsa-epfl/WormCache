@@ -9,6 +9,7 @@ pub enum CacheOperationType {
     GetM,
     GetR,
     Drop,
+    Invalidate(usize),
 }
 
 #[derive(Debug)]
