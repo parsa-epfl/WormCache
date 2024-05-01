@@ -4,10 +4,7 @@
 use crate::components::NoMMU;
 use crate::util::get_monotonic_ts;
 
-use self::{
-    private_cache::{ParallelUnifiedPrivateCache, UnifiedPrivateCaches},
-    shared_cache::ParallelSingleSharedCache,
-};
+use self::{private_cache::ParallelUnifiedPrivateCache, shared_cache::ParallelSingleSharedCache};
 use super::*;
 
 type MH = MemoryHierarchy<
