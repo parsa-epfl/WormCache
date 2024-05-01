@@ -31,6 +31,10 @@ impl<const ASSO: usize> TLBSet<ASSO> {
         // TODO: This function is badly implemented. Currently its algorithm complexity is O(n).
         for entry in self.entries.iter_mut() {
             if entry.valid && entry.vpn == vpn && entry.asid == asid {
+                assert!(
+                    entry.ts <= ts,
+                    "TLB entry is older than the current timestamp.",
+                );
                 entry.ts = ts;
                 return Some(entry.ppn);
             }
@@ -178,12 +182,12 @@ mod tests {
 
         // The first 4 entries should have been replaced in each set, so their lookups should return None
         for i in 0..4 {
-            assert_eq!(tlb.lookup(i, i as u16, 2), None);
+            assert_eq!(tlb.lookup(i, i as u16, 100 + 1), None);
         }
 
         // The last 4 entries in each set should still be in the TLB, so their lookups should return their values
         for i in 12..16 {
-            assert_eq!(tlb.lookup(i, i as u16, 2), Some(i));
+            assert_eq!(tlb.lookup(i, i as u16, 200 + i), Some(i));
         }
     }
 }

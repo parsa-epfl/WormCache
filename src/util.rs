@@ -51,9 +51,17 @@ pub fn get_monotonic_ts() -> u64 {
         tv_nsec: 0,
     };
     unsafe {
-        clock_gettime(CLOCK_MONOTONIC, &mut ts);
+        assert!(clock_gettime(CLOCK_MONOTONIC, &mut ts) == 0);
     }
     return ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64;
+}
+
+#[test]
+fn test_get_monotonic_ts() {
+    let ts = (0..100).map(|_| get_monotonic_ts()).collect::<Vec<u64>>();
+    for i in 0..ts.len() - 1 {
+        assert!(ts[i] < ts[i + 1]);
+    }
 }
 
 #[test]
