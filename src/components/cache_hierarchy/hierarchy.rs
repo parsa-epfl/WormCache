@@ -792,4 +792,16 @@ impl<
     pub fn get_scache_warmed_slots_count(&self) -> usize {
         self.shared_cache.warmed_slots_count()
     }
+
+    pub fn information() -> String {
+        format!(
+            "Private Cache: {}\nShared Cache: {}\nPrecise Coherence Reconstruction: {} \n Fill Shared Cache on Filling Private Cache: {} \n Fill Shared Cache on Private Cache Clean Eviction: {} \n Fill Shared Cache on Private Cache Dirty Eviction: {}",
+            PCache::information(),
+            SCache::information(),
+            PRECISE_COHERENCE_RECONSTRUCTION,
+            FILL_SCACHE_ON_FILLING_PCACHE,
+            FILL_SCACLE_ON_PCACHE_EVICTION,
+            FILL_SCACHE_ON_PCACHE_WRITEBACK
+        )
+    }
 }

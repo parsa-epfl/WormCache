@@ -17,8 +17,8 @@ use std::ffi;
 
 use self::{
     private_cache::{
-        HarvardPrivateCaches, ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache,
-        SerialHarvardPrivateCache, SerialUnifiedPrivateCache, UnifiedPrivateCaches,
+        ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache, SerialHarvardPrivateCache,
+        SerialUnifiedPrivateCache,
     },
     shared_cache::{ParallelSingleSharedCache, ReplicatedSharedCache, SerialSingleSharedCache},
 };
@@ -44,7 +44,7 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
-type PluginMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
+type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     AArch64MMU,
     ParallelUnifiedPrivateCache<
         { ALLOCATED_CORE_COUNT },
@@ -68,7 +68,7 @@ type PluginMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
-type PluginMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
+type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     AArch64MMU,
     ParallelHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },
@@ -207,7 +207,14 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
         }
 
-        println!("Memory[Locked] plugin initialized.");
+        if parameter::USE_UNIFIED_CACHE {
+            assert!(HierarchyForPlugin::information().contains("UnifiedPrivateCache"))
+        } else {
+            assert!(HierarchyForPlugin::information().contains("HarvardPrivateCache"))
+        }
+
+        println!("Memory plugin initialized.");
+        println!("{}", HierarchyForPlugin::information());
 
         // this thread peridocally dumps the statistics.
         std::thread::spawn(|| {

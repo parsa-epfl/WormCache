@@ -266,6 +266,21 @@ impl<
             .unwrap();
         }
     }
+
+    fn information() -> String {
+        format!(
+            "Type: HarvardPrivateCache, Core Count: {}, ICache Set: {}, ICache Associativity: {}, DCache Set: {}, DCache Associativity: {}, Is Parallel: {}", 
+            CORE_COUNT, 
+            
+            I_SET, 
+            I_ASSO, 
+            
+            D_SET, 
+            D_ASSO, 
+            
+            G::support_parallel_access()
+        )
+    }
 }
 
 pub type ParallelHarvardPrivateCache<

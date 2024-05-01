@@ -163,4 +163,11 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
     fn warmed_slots_count(&self) -> usize {
         return 0;
     }
+
+    fn information() -> String {
+        return format!(
+            "ReplicatedSharedCache: SET={}, WAY={}, EXCLUSIVE={}",
+            SET, WAY, EXCLUSIVE
+        );
+    }
 }

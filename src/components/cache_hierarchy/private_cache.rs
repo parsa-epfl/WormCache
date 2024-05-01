@@ -1,4 +1,3 @@
-use spin::mutex::SpinMutexGuard;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 
@@ -63,15 +62,15 @@ pub trait PrivateCaches {
     // This function is for saving the snapshot of the private cache.
     fn dump_snapshot(&self, snapshot_folder: &str);
 
+    fn information() -> String;
+
     const DIRECTORY_SET: usize;
 }
 
-pub use havard::HarvardPrivateCaches;
 pub use havard::ParallelHarvardPrivateCache;
 pub use havard::SerialHarvardPrivateCache;
 
 pub use unified::ParallelUnifiedPrivateCache;
 pub use unified::SerialUnifiedPrivateCache;
-pub use unified::UnifiedPrivateCaches;
 
 use super::directory::SharerList;

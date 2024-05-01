@@ -4,7 +4,6 @@ use crate::components::cache_hierarchy::util::CCell;
 
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use spin::mutex::SpinMutex;
-use spin::mutex::SpinMutexGuard;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ops::DerefMut;
@@ -183,6 +182,16 @@ impl<
             )
             .unwrap();
         }
+    }
+
+    fn information() -> String {
+        format!(
+            "Type: UnifiedPrivateCache, Core Count: {}, Set: {}, Associativity: {}, Is Parallel: {}",
+            { CORE_COUNT },
+            SET,
+            ASSO,
+            G::support_parallel_access()
+        )
     }
 }
 

@@ -114,6 +114,13 @@ impl<
         )
         .unwrap();
     }
+
+    fn information() -> String {
+        format!(
+            "SingleSharedCache: SET={}, WAY={}, EXCLUSIVE={}",
+            SET, WAY, EXCLUSIVE
+        )
+    }
 }
 
 pub type ParallelSingleSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
