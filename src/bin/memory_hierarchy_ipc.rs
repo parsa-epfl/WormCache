@@ -32,14 +32,45 @@ type MH = MemoryHierarchy<
 pub fn main() {
     let mh = MH::new();
 
-    // generate a simple array for accesses.
-    let accesses: Vec<u64> = (0..64).collect();
-    let mut ts = 0;
+    // Case 1: Accesses hits different sets and the first way.
 
+    // generate a simple array for accesses.
+    // let accesses: Vec<u64> = (0..64).collect();
+    // let mut ts = 0;
+
+    // loop {
+    //     for addr in &accesses {
+    //         mh.access_memory_pblock_id(0, *addr, ts, false, false, false);
+    //         ts += 1;
+    //     }
+    // }
+
+    // Case 2: Access hit the same set and the last way.
+
+    // Fill one specific cache set.
+
+    let set_idx = 1;
+    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+        mh.access_memory_pblock_id(
+            0,
+            (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
+            0,
+            false,
+            false,
+            false,
+        );
+    }
+
+    println!("Set filled: {}", set_idx);
+
+    // start testing. Access the same set and the last way.
+    let addr = (parameter::UNIFIED_PRI_CACHE_ASSO as u64 - 1)
+        * (parameter::UNIFIED_PRI_CACHE_SET as u64)
+        + set_idx;
+
+    let mut ts = 0;
     loop {
-        for addr in &accesses {
-            mh.access_memory_pblock_id(0, *addr, ts, false, false, false);
-            ts += 1;
-        }
+        mh.access_memory_pblock_id(0, addr, ts, false, false, false);
+        ts += 1;
     }
 }
