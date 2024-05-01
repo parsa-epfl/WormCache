@@ -168,7 +168,7 @@ static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_O
 *
 * Whether to enable the adjacent (in PA) line prefetching for functional warming.
 */
-pub const ADJACENT_LINE_PREFETCHING: bool = true;
+pub const ADJACENT_LINE_PREFETCHING: bool = false;
 
 /**
  * BP_GSHARE_SET

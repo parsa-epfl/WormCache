@@ -132,7 +132,7 @@ type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
-type HierarchyForPlugin = SerialMemoryHierarchyHarvard;
+type HierarchyForPlugin = ParallelMemoryHierarchyHarvard;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
