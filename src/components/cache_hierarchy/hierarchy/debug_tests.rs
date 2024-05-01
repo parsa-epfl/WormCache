@@ -7,13 +7,11 @@ use crate::util::get_monotonic_ts;
 use self::{private_cache::ParallelUnifiedPrivateCache, shared_cache::ParallelSingleSharedCache};
 use super::*;
 
+use super::DIRECTORY_SET;
+
 type MH = MemoryHierarchy<
     NoMMU,
-    ParallelUnifiedPrivateCache<
-        32,
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
-    >,
+    ParallelUnifiedPrivateCache<32, { DIRECTORY_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
     ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
@@ -38,7 +36,7 @@ fn read_evict_and_other_core_read_back() {
 
     // Now, evict the block from the cache.
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        let block_id: u64 = ((l + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64 + block_id;
+        let block_id: u64 = ((l + 1) * DIRECTORY_SET) as u64 + block_id;
         assert_eq!(
             mh.access_memory_pblock_id(0, block_id, get_monotonic_ts(), false, false, false),
             CacheHierarchyAccessResult::Miss
@@ -115,6 +113,10 @@ fn read_then_write() {
     // Second, core 0 writes the same data at timestamp 150. This won't update the write timestamp in the directory.
     assert_eq!(
         mh.access_memory_pblock_id(0, block_id, 150, true, false, false),
-        CacheHierarchyAccessResult::MissDueToPermission
+        if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
+            CacheHierarchyAccessResult::HitInSelfPrivateCache
+        } else {
+            CacheHierarchyAccessResult::MissDueToPermission
+        }
     );
 }
