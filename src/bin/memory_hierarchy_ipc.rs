@@ -53,6 +53,33 @@ fn test_hit_last() {
     }
 }
 
+fn testing_pcache_always_miss() {
+    let mh = MH::new();
+
+    // What I need to do is just to access the block id belonging to a specific shared cache set.
+    // The block id is calculated as follows:
+    // block_id = set_id * associativity + way_id
+
+    let mut ts: u64 = 0;
+    let mut block_id = 42;
+
+    loop {
+        for _ in 0..64 {
+            mh.access_memory_pblock_id(0, block_id, ts, false, false, false);
+            ts += 1;
+            block_id += parameter::UNIFIED_PRI_CACHE_SET as u64;
+        }
+        block_id = 42;
+
+        if ts > 1024 * 1024 * 10 {
+            break;
+        }
+    }
+
+    // print the miss rate of the data cache and shared cache from core 0. They should be 100%.
+    println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);
+}
+
 fn testing_always_miss() {
     let mh = MH::new();
 
@@ -81,5 +108,5 @@ fn testing_always_miss() {
 }
 
 pub fn main() {
-    testing_always_miss();
+    testing_pcache_always_miss();
 }
