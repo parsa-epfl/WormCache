@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
-use self::{private_cache::ParallelUnifiedPrivateCache, shared_cache::ParallelSingleSharedCache};
+use self::private_cache::ParallelUnifiedPrivateCache;
+use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 
 use super::*;
 

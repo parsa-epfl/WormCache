@@ -24,6 +24,7 @@ type MH = MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
+#[allow(dead_code)]
 fn test_hit_last() {
     let mh = MH::new();
 
@@ -53,6 +54,7 @@ fn test_hit_last() {
     }
 }
 
+#[allow(dead_code)]
 fn testing_pcache_always_miss() {
     let mh = MH::new();
 
@@ -80,6 +82,7 @@ fn testing_pcache_always_miss() {
     println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);
 }
 
+#[allow(dead_code)]
 fn testing_always_miss() {
     let mh = MH::new();
 

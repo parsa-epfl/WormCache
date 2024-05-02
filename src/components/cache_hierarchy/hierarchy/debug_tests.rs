@@ -4,8 +4,9 @@
 use crate::components::NoMMU;
 use crate::util::get_monotonic_ts;
 
-use self::{private_cache::ParallelUnifiedPrivateCache, shared_cache::ParallelSingleSharedCache};
+use self::private_cache::ParallelUnifiedPrivateCache;
 use super::*;
+use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 
 use super::DIRECTORY_SET;
 

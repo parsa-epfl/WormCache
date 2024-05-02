@@ -10,7 +10,6 @@ use super::directory::DirectorySet;
 use super::{
     directory,
     private_cache::{self, PrivateCaches},
-    shared_cache,
 };
 
 use gcd;
@@ -75,7 +74,8 @@ impl<
         const FILL_SCACHE_ON_FILLING_PCACHE: bool,
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-    > Default for MemoryHierarchy<
+    > Default
+    for MemoryHierarchy<
         MMU,
         PCache,
         SCache,
@@ -83,7 +83,8 @@ impl<
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
-    > {
+    >
+{
     fn default() -> Self {
         Self::new()
     }
@@ -395,7 +396,9 @@ impl<
 
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
-            } else { !is_instruction };
+            } else {
+                !is_instruction
+            };
 
             let evicted = self.private_caches.refill_from_shared_cache(
                 core_id,

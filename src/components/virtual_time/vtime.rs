@@ -63,11 +63,10 @@ impl VirtualTimeContext {
         // Because qb.qemu_plugin_get_snapshoted_vm_clock() is updated a checkpoint is exported.
         // I didn't see a better solution. Maybe storing this value inside this plugin?
 
-        unsafe {
-            self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock()
-        }
+        unsafe { self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock() }
     }
 
+    #[allow(dead_code)]
     pub fn calculate_cpu_clock_with_10x_slowdown_from_realtime(&mut self) -> i64 {
         let real_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -84,9 +83,7 @@ impl VirtualTimeContext {
         self.last_real_time = real_time;
 
         // 5. return the calculated virtual time
-        unsafe {
-            self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock()
-        }
+        unsafe { self.advanced_vclock + qemu_plugin_get_snapshot_cpu_clock() }
     }
 
     pub fn reset(&mut self) {
