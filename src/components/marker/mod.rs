@@ -1,7 +1,9 @@
 // This plugin capture the hint instruction in ARM and print debug information.
 
-use crate::qemu_api;
+use crate::{parameter::CORE_COUNT, qemu_api};
 use std::ffi;
+
+static mut MARKER_RECORDS: [usize; CORE_COUNT * 64] = [0; CORE_COUNT * 64];
 
 pub struct MarkerPlugin {}
 
@@ -16,11 +18,24 @@ unsafe extern "C" fn on_hint_executed(vcpu_index: u32, hint_value: *mut ffi::c_v
             .as_micros();
         println!("{}: vcpu {} executed hint #91.", ts, vcpu_index);
     }
+
+    MARKER_RECORDS[vcpu_index as usize * 64] += 1;
 }
 
 impl super::Plugin for MarkerPlugin {
     fn init() {
         println!("MarkerPlugin init. This plugin targets the hint instruction in aarch64.");
+
+        // start a thread to periodically dump the value of the marker records.
+        std::thread::spawn(|| loop {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            for core_idx in 0..CORE_COUNT {
+                unsafe {
+                    print!("{}, ", MARKER_RECORDS[core_idx * 64]);
+                }
+            }
+            println!();
+        });
     }
 
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
