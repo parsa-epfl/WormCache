@@ -33,14 +33,14 @@ pub fn find_fetch_block_from_block_id_sequence(i: Vec<usize>) -> HashMap<usize, 
         total - last_fb_first_instruction_index,
     );
 
-    return res;
+    res
 }
 
 pub fn init_heap_array<T: Sized + std::fmt::Debug, const N: usize>(
     f: impl Fn(usize) -> T,
 ) -> Box<[T; N]> {
     let res = Vec::from_iter((0..N).map(f));
-    return res.into_boxed_slice().try_into().unwrap();
+    res.into_boxed_slice().try_into().unwrap()
 }
 
 use libc::{clock_gettime, timespec, CLOCK_MONOTONIC};
@@ -53,7 +53,7 @@ pub fn get_monotonic_ts() -> u64 {
     unsafe {
         assert!(clock_gettime(CLOCK_MONOTONIC, &mut ts) == 0);
     }
-    return ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64;
+    ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
 
 #[test]

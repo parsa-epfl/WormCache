@@ -29,7 +29,7 @@ impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: 
 
     pub fn get_set(&self, block_id: u64) -> &G {
         let set_id = block_id as usize % SET;
-        return &self.cache[set_id];
+        &self.cache[set_id]
     }
 }
 
@@ -52,9 +52,9 @@ impl<
     const DIRECTORY_SET: usize = SET;
 
     fn new() -> Self {
-        return Self {
+        Self {
             caches: crate::util::init_heap_array(|_| UnifiedPerCorePrivateCache::new()),
-        };
+        }
     }
 
     #[inline]
@@ -112,7 +112,7 @@ impl<
             result.push((core_id, guard, index));
         }
 
-        return result;
+        result
     }
 
     #[inline]
@@ -125,7 +125,7 @@ impl<
                 result.push(core_id as u32);
             }
         }
-        return result;
+        result
     }
 
     #[inline]
@@ -152,12 +152,12 @@ impl<
     fn find_cache_info_by_cache_id(index: usize) -> (u32, bool) {
         let core_id = index as u32;
         let is_instruction = false;
-        return (core_id, is_instruction);
+        (core_id, is_instruction)
     }
 
     #[inline]
     fn get_cache_id_by_cache_info(core_id: u32, _: bool) -> usize {
-        return core_id as usize;
+        core_id as usize
     }
 
     #[inline]

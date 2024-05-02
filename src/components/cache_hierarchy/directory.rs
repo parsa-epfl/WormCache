@@ -53,16 +53,11 @@ impl<const SET: usize> DirectorySet<SET> {
     pub fn get_or_create(&mut self, block_id: u64) -> &mut DirectoryEntry {
         let internal_id = block_id >> Self::LOG2_SET;
 
-        if !self.entries.contains_key(&internal_id) {
-            self.entries.insert(
-                internal_id,
-                DirectoryEntry {
+        self.entries.entry(internal_id).or_insert(DirectoryEntry {
                     ts: 0,
                     sharers: SharerList::ZERO,
                     modify_ts_before_eviction: 0,
-                },
-            );
-        }
+                });
 
         self.entries.get_mut(&internal_id).unwrap()
     }
@@ -71,6 +66,12 @@ impl<const SET: usize> DirectorySet<SET> {
 // Probably the Directory should be infinitely sized.
 pub struct Directory<const SET: usize> {
     entries: [SpinMutex<DirectorySet<SET>>; SET],
+}
+
+impl<const SET: usize> Default for Directory<SET> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<const SET: usize> Directory<SET> {
@@ -115,7 +116,7 @@ impl<const SET: usize> Directory<SET> {
         let entries = self
             .entries
             .iter()
-            .map(|set| {
+            .flat_map(|set| {
                 let set = set.lock();
                 set.entries
                     .iter()
@@ -130,7 +131,6 @@ impl<const SET: usize> Directory<SET> {
                     })
                     .collect::<Vec<_>>()
             })
-            .flatten()
             .collect::<Vec<_>>();
 
         serde_json::to_writer_pretty(&file, &entries).unwrap();

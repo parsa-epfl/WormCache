@@ -20,7 +20,7 @@ use self::{
         ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache, SerialHarvardPrivateCache,
         SerialUnifiedPrivateCache,
     },
-    shared_cache::{ParallelSingleSharedCache, ReplicatedSharedCache, SerialSingleSharedCache},
+    shared_cache::{ParallelSingleSharedCache, SerialSingleSharedCache},
 };
 
 use super::debug::statistics::Statistics;
@@ -44,6 +44,7 @@ type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
     { parameter::TLB_SET },
 >;
 
+#[allow(dead_code)]
 type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     AArch64MMU,
     ParallelUnifiedPrivateCache<
@@ -68,6 +69,7 @@ type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
+#[allow(dead_code)]
 type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     AArch64MMU,
     ParallelHarvardPrivateCache<
@@ -94,6 +96,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
+#[allow(dead_code)]
 type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     AArch64MMU,
     SerialUnifiedPrivateCache<
@@ -112,6 +115,7 @@ type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
 >;
 
+#[allow(dead_code)]
 type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     AArch64MMU,
     SerialHarvardPrivateCache<
@@ -231,13 +235,13 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 .unwrap();
 
             warmed_rate
-                .write(b"ts,warm_set_count,warm_slot_count\n")
+                .write_all(b"ts,warm_set_count,warm_slot_count\n")
                 .unwrap();
 
             loop {
                 for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                    miss_file.write(stat.as_bytes()).unwrap();
-                    miss_file.write(b"\n").unwrap();
+                    miss_file.write_all(stat.as_bytes()).unwrap();
+                    miss_file.write_all(b"\n").unwrap();
                 }
 
                 // get the duration of the following function.
@@ -245,7 +249,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 let now = std::time::Instant::now();
 
                 warmed_rate
-                    .write(
+                    .write_all(
                         format!(
                             "{},{},{}\n",
                             get_monotonic_ts(),
@@ -274,8 +278,8 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 .unwrap();
 
             for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                file.write(stat.as_bytes()).unwrap();
-                file.write(b"\n").unwrap();
+                file.write_all(stat.as_bytes()).unwrap();
+                file.write_all(b"\n").unwrap();
             }
         }
 

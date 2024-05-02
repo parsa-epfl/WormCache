@@ -19,9 +19,13 @@ use crate::components::mmu::AbstractMMU;
 use spin::mutex::SpinMutexGuard;
 use std::cell::UnsafeCell;
 
+#[cfg(test)]
 mod debug_tests;
+#[cfg(test)]
 mod harvard_reverse_order_tests;
+#[cfg(test)]
 mod harvard_tests;
+#[cfg(test)]
 mod reverse_order_tests;
 
 const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
@@ -61,6 +65,28 @@ pub enum CacheHierarchyAccessResult {
     MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
     HitInSharedCache,
     Miss,
+}
+
+impl<
+        MMU: AbstractMMU,
+        PCache: PrivateCaches,
+        SCache: SharedCache,
+        const PRECISE_COHERENCE_RECONSTRUCTION: bool,
+        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    > Default for MemoryHierarchy<
+        MMU,
+        PCache,
+        SCache,
+        PRECISE_COHERENCE_RECONSTRUCTION,
+        FILL_SCACHE_ON_FILLING_PCACHE,
+        FILL_SCACLE_ON_PCACHE_EVICTION,
+        FILL_SCACHE_ON_PCACHE_WRITEBACK,
+    > {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<
@@ -359,24 +385,17 @@ impl<
             let shared_cache_result = self.shared_cache.lookup(core_id, block_id, ts);
 
             directory_entry.ts = ts;
-            directory_entry.sharers.set(p_cache_id as usize, true);
+            directory_entry.sharers.set(p_cache_id, true);
 
             if is_store {
                 directory_entry.modify_ts_before_eviction = ts;
             }
 
-            let modified = match shared_cache_result {
-                Some(m) => m, // if the shared cache has modified permission, then the private cache should also have modified permission.
-                None => false,
-            } || is_store;
+            let modified = shared_cache_result.unwrap_or(false) || is_store;
 
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
-            } else if is_instruction {
-                false
-            } else {
-                true
-            };
+            } else { !is_instruction };
 
             let evicted = self.private_caches.refill_from_shared_cache(
                 core_id,
@@ -435,17 +454,17 @@ impl<
             return CacheHierarchyAccessResult::Miss;
         }
 
-        let mut acquire_list = sharers.clone();
+        let mut acquire_list = sharers;
         // this list should either
         // - Not contain the current core, so it is a miss, or
         // - Contain the current core, because the permission is wrong.
         assert!(
-            acquire_list.get(p_cache_id as usize).unwrap() == false
+            acquire_list.get(p_cache_id).unwrap() == false
                 || private_hit == private_cache::PrivateCachePokeResult::PermissionViolation
         );
 
         // the core itself should be also part of the acquire_list.
-        acquire_list.set(p_cache_id as usize, true);
+        acquire_list.set(p_cache_id, true);
 
         // Now, acquire the lock of all sets of the private cache, suggested by the directory.
         let mut acquired_sets = self
@@ -488,7 +507,7 @@ impl<
 
                 // Update the directory.
                 let mut incoming_sharer = SharerList::ZERO;
-                incoming_sharer.set(other_sharer_id as usize, true);
+                incoming_sharer.set(other_sharer_id, true);
                 directory_entry.ts = ts;
                 directory_entry.sharers = incoming_sharer;
 
@@ -528,7 +547,7 @@ impl<
         };
 
         let evicted = if is_store {
-            let mut incoming_sharer = directory_entry.sharers.clone();
+            let mut incoming_sharer = directory_entry.sharers;
             let mut set_for_refill_lock = None;
 
             // Here actually we can do something to tell the difference between CleanExclusive and CleanShared.
@@ -541,7 +560,7 @@ impl<
                     assert_eq!(entry.block_id(), block_id);
                     if !PRECISE_COHERENCE_RECONSTRUCTION || entry.access_ts() < ts {
                         // invalid the directory entry.
-                        incoming_sharer.set(*replica_cache_id as usize, false);
+                        incoming_sharer.set(*replica_cache_id, false);
                         // invalid the private cache entry.
                         set.invalidate(*index);
                         if ENABLE_CACHE_LINE_HISTORY {
@@ -567,7 +586,7 @@ impl<
                 } else {
                     // This is the only case that we can see a the private cache does not have this block.
                     assert!(*replica_cache_id == p_cache_id);
-                    incoming_sharer.set(*replica_cache_id as usize, false);
+                    incoming_sharer.set(*replica_cache_id, false);
                 }
 
                 if *replica_cache_id == p_cache_id {
@@ -600,7 +619,7 @@ impl<
             };
 
             // add self to the incoming sharer list.
-            incoming_sharer.set(p_cache_id as usize, true);
+            incoming_sharer.set(p_cache_id, true);
 
             // update the directory.
             directory_entry.ts = ts;
@@ -630,7 +649,7 @@ impl<
                     assert_eq!(entry.block_id(), block_id);
                     if entry.has_write_permission() {
                         // well, if you have write permission, you have to yield the write permission.
-                        assert!(already_modified == false);
+                        assert!(!already_modified);
 
                         if entry.is_modified()
                             && entry.write_ts() > ts
@@ -666,7 +685,7 @@ impl<
 
             // Then, we need to add self to the directory.
             directory_entry.ts = ts;
-            directory_entry.sharers.set(p_cache_id as usize, true);
+            directory_entry.sharers.set(p_cache_id, true);
 
             // We can insert the block to the private cache now.
             let set_for_refill_lock = set_for_refill_lock.unwrap();
@@ -699,7 +718,7 @@ impl<
             );
         }
 
-        return res;
+        res
     }
 
     pub fn handle_eviction(
@@ -721,8 +740,8 @@ impl<
             if parameter::ENABLE_CACHE_LINE_HISTORY {
                 let his = CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap();
                 his.value().print_history();
-                println!("Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}, Share List: {:?}",
-                    CacheOperationType::Drop, cache_id, ts, false, sharer.iter_ones().collect::<Vec<usize>>() );
+                println!("Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: false, Share List: {:?}",
+                    CacheOperationType::Drop, cache_id, ts, sharer.iter_ones().collect::<Vec<usize>>() );
             }
             assert!(false);
             return;

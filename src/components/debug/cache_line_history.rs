@@ -17,6 +17,12 @@ pub struct SingleCacheLineCoherenceHistory {
     history: Vec<(CacheOperationType, usize, u64, bool, SharerList, u32)>, // operation, cache_id, timestamp, is_refilled, sharers, line number
 }
 
+impl Default for SingleCacheLineCoherenceHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SingleCacheLineCoherenceHistory {
     pub fn new() -> Self {
         Self {
@@ -84,6 +90,12 @@ pub struct CacheLineCoherenceHistory {
 static mut GLOBAL_HISTORY: Lazy<CacheLineCoherenceHistory> =
     Lazy::new(CacheLineCoherenceHistory::new);
 
+impl Default for CacheLineCoherenceHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CacheLineCoherenceHistory {
     pub fn new() -> Self {
         Self {
@@ -104,7 +116,7 @@ impl CacheLineCoherenceHistory {
         let mut history = self
             .history
             .entry(block_id)
-            .or_insert(SingleCacheLineCoherenceHistory::new());
+            .or_default();
         history.record(
             operation,
             cache_id,
@@ -140,6 +152,6 @@ impl CacheLineCoherenceHistory {
     pub fn global_get_block_history(
         block_id: u64,
     ) -> Option<Ref<'static, u64, SingleCacheLineCoherenceHistory>> {
-        unsafe { GLOBAL_HISTORY.history.get(&block_id).map(|v| v) }
+        unsafe { GLOBAL_HISTORY.history.get(&block_id) }
     }
 }

@@ -5,7 +5,7 @@ use crate::components::cache_hierarchy::util::CCell;
 use super::PrivateCaches;
 use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
 use spin::mutex::SpinMutex;
-use spin::mutex::SpinMutexGuard;
+
 use std::collections::HashMap;
 use std::ops::DerefMut;
 
@@ -61,9 +61,9 @@ impl<
     const DIRECTORY_SET: usize = gcd::binary_usize(I_SET, D_SET);
 
     fn new() -> Self {
-        return Self {
+        Self {
             caches: crate::util::init_heap_array(|_| HarvardPerCorePrivateCache::new()),
-        };
+        }
     }
 
     #[inline]
@@ -130,12 +130,12 @@ impl<
             let is_instruction = sharer_index % 2 == 0;
 
             if is_instruction {
-                let set = &self.caches[core_id as usize].i_cache[block_id as usize % I_SET];
+                let set = &self.caches[core_id].i_cache[block_id as usize % I_SET];
                 let guard = set.inner();
                 let index = guard.index_of(block_id);
                 res.push((sharer_index, guard, index));
             } else {
-                let set = &self.caches[core_id as usize].d_cache[block_id as usize % D_SET];
+                let set = &self.caches[core_id].d_cache[block_id as usize % D_SET];
                 let guard = set.inner();
                 let index = guard.index_of(block_id);
                 res.push((sharer_index, guard, index));
@@ -186,7 +186,7 @@ impl<
             if let Some(i_line) = is_i {
                 assert!(i_line.block_id() == block_id);
                 assert!(i_line.is_instruction());
-                assert!(i_line.is_modified() == false);
+                assert!(!i_line.is_modified());
 
                 // alright, we check the data cache and make sure there is no modified copy.
                 if let Some(d_line) = is_d {
@@ -196,14 +196,12 @@ impl<
                 }
 
                 res.insert(core_id as u32, false);
-            } else {
-                if let Some(d_line) = is_d {
-                    assert!(d_line.block_id() == block_id);
-                    assert!(!d_line.is_instruction());
-                    res.insert(core_id as u32, d_line.is_modified());
+            } else if let Some(d_line) = is_d {
+                assert!(d_line.block_id() == block_id);
+                assert!(!d_line.is_instruction());
+                res.insert(core_id as u32, d_line.is_modified());
 
-                    continue;
-                }
+                continue;
             }
         }
 

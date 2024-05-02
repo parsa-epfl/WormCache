@@ -12,14 +12,14 @@ pub struct PerCoreICount {
 
 impl PerCoreICount {
     pub fn new() -> PerCoreICount {
-        return PerCoreICount {
+        PerCoreICount {
             user_icount: 0,
             kernel_icount: 0,
-        };
+        }
     }
 
     pub fn sum(&self) -> u64 {
-        return self.user_icount + self.kernel_icount;
+        self.user_icount + self.kernel_icount
     }
 
     pub fn reset(&mut self) {
@@ -45,13 +45,13 @@ impl ICountPlugin {
                 );
             }
         }
-        return res;
+        res
     }
 
     pub fn get_total_icounts_of_core(&self, core_id: u8) -> u64 {
         unsafe {
             let core_id = core_id as usize;
-            return (*self.data[core_id].get()).sum();
+            (*self.data[core_id].get()).sum()
         }
     }
 
@@ -70,9 +70,9 @@ impl ICountPlugin {
     }
 
     pub fn new() -> ICountPlugin {
-        return ICountPlugin {
+        ICountPlugin {
             data: std::array::from_fn(|_| UnsafeCell::new(PerCoreICount::new())),
-        };
+        }
     }
 
     pub fn reset(&self) {

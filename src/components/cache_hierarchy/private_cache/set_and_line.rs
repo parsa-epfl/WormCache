@@ -13,32 +13,32 @@ pub struct PrivateCacheLine {
 impl PrivateCacheLine {
     #[inline]
     pub fn block_id(&self) -> u64 {
-        return self.block_id_with_v >> 1;
+        self.block_id_with_v >> 1
     }
 
     #[inline]
     pub fn is_modified(&self) -> bool {
-        return self.modified;
+        self.modified
     }
 
     #[inline]
     pub fn has_write_permission(&self) -> bool {
-        return self.writeable;
+        self.writeable
     }
 
     #[inline]
     pub fn write_ts(&self) -> u64 {
-        return self.write_ts;
+        self.write_ts
     }
 
     #[inline]
     pub fn access_ts(&self) -> u64 {
-        return self.ts;
+        self.ts
     }
 
     #[inline]
     pub fn is_instruction(&self) -> bool {
-        return self.is_instruction;
+        self.is_instruction
     }
 }
 
@@ -80,10 +80,10 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self.lines.iter().position(|p| {
-            return p.block_id_with_v == block_id_to_find;
+            p.block_id_with_v == block_id_to_find
         });
 
-        return hit_element;
+        hit_element
     }
 
     pub fn poke(&self, block_id: u64) -> Option<PrivateCacheLine> {
@@ -91,15 +91,10 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self.lines.iter().find(|p| {
-            return p.block_id_with_v == block_id_to_find;
+            p.block_id_with_v == block_id_to_find
         });
 
-        if let Some(hit_element) = hit_element {
-            return Some(hit_element.clone());
-        } else {
-            // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
-            return None;
-        }
+        hit_element.cloned()
     }
 
     // This function check the cache and update the cache if it is a cache hit. Otherwise, it return false.
@@ -113,7 +108,7 @@ impl PrivateCacheSet {
         let block_id_to_find = (block_id << 1) | 1;
 
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.block_id_with_v == block_id_to_find;
+            p.block_id_with_v == block_id_to_find
         });
 
         if let Some(line) = hit_element {
@@ -130,9 +125,9 @@ impl PrivateCacheSet {
             assert!(line.ts <= ts); // This is a strong assumption. (The cache line should be updated with the latest timestamp.
             line.ts = ts;
             line.is_instruction = is_instruction_fetch;
-            return PrivateCachePokeResult::Hit;
+            PrivateCachePokeResult::Hit
         } else {
-            return PrivateCachePokeResult::Miss;
+            PrivateCachePokeResult::Miss
         }
     }
 
@@ -149,7 +144,7 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.block_id_with_v == block_id_to_find;
+            p.block_id_with_v == block_id_to_find
         });
 
         assert!(hit_element.is_none());
@@ -161,7 +156,7 @@ impl PrivateCacheSet {
 
         // find the first invalid element.
         let invalid_element = self.lines.iter_mut().find(|p| {
-            return (p.block_id_with_v & 0x1) == 0;
+            (p.block_id_with_v & 0x1) == 0
         });
 
         if let Some(invalid_element) = invalid_element {
@@ -173,11 +168,11 @@ impl PrivateCacheSet {
             if modified {
                 invalid_element.write_ts = ts;
             }
-            return None;
+            None
         } else {
             // find the oldest element.
             let oldest_element = self.lines.iter_mut().min_by(|p, q| {
-                return p.ts.cmp(&q.ts);
+                p.ts.cmp(&q.ts)
             });
 
             match oldest_element {
@@ -194,7 +189,7 @@ impl PrivateCacheSet {
                     if modified {
                         oldest_element.write_ts = ts;
                     }
-                    return Some(res);
+                    Some(res)
                 }
                 None => {
                     unreachable!("PrivateCache::insert: no element in the cache set.");
@@ -208,12 +203,12 @@ impl PrivateCacheSet {
         self.lines[index].block_id_with_v = 0;
     }
 
-    pub fn request_sharer(&mut self, index: usize, ts: u64) -> Option<bool> {
+    pub fn request_sharer(&mut self, index: usize, _ts: u64) -> Option<bool> {
         let line = &mut self.lines[index];
         line.writeable = false;
         let res = line.modified;
         line.modified = false;
-        return Some(res);
+        Some(res)
     }
 
     #[inline]
@@ -222,42 +217,42 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.block_id_with_v == block_id_to_find;
+            p.block_id_with_v == block_id_to_find
         });
 
         if let Some(hit_element) = hit_element {
             let res = hit_element.clone();
             hit_element.block_id_with_v = 0;
-            return Some(res);
+            Some(res)
         } else {
             // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
-            return None;
+            None
         }
     }
 
     // get a shared copy of the cache line. Return true if the cache line's permission is changed or it is a miss. (Strong contention)
     #[inline]
-    pub fn request_sharer_by_block_id(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    pub fn request_sharer_by_block_id(&mut self, block_id: u64, _ts: u64) -> Option<bool> {
         let block_id_to_find = (block_id << 1) | 1;
         // find from the cache set with block id.
         let hit_element = self.lines.iter_mut().find(|p| {
-            return p.block_id_with_v == block_id_to_find;
+            p.block_id_with_v == block_id_to_find
         });
 
         if let Some(hit_element) = hit_element {
             hit_element.writeable = false; // remove the write permission.
             let res = hit_element.modified;
             hit_element.modified = false; // this has something to do with the owned state.
-            return Some(res);
+            Some(res)
         } else {
             // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
-            return None;
+            None
         }
     }
 
     #[inline]
     pub fn is_fully_touched(&self) -> bool {
-        return self.touched_count == self.lines.len();
+        self.touched_count == self.lines.len()
     }
 }
 

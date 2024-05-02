@@ -56,9 +56,9 @@ struct PerCoreStatistics {
 
 impl PerCoreStatistics {
     pub fn new() -> Self {
-        return Self {
+        Self {
             counters: [0; EventType::EventCount as usize],
-        };
+        }
     }
 
     #[inline]
@@ -74,7 +74,7 @@ impl PerCoreStatistics {
         for event in 0..EventType::EventCount as usize {
             line.push_str(&format!(",{}", self.counters[event]));
         }
-        return line;
+        line
     }
 }
 
@@ -82,11 +82,17 @@ pub struct Statistics {
     per_core: [UnsafeCell<PerCoreStatistics>; ALLOCATED_CORE_COUNT],
 }
 
+impl Default for Statistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Statistics {
     pub fn new() -> Self {
-        return Self {
+        Self {
             per_core: std::array::from_fn(|_| UnsafeCell::new(PerCoreStatistics::new())),
-        };
+        }
     }
 
     #[inline]
@@ -99,7 +105,7 @@ impl Statistics {
     }
 
     pub const fn get_header() -> &'static str {
-        return "timestamp,core_id,MemoryAccess,InstructionAccess,DataAccess,PrivateICacheMiss,PrivateDCacheMiss,PrivateCacheMiss,SharedCacheAccess,SharedCacheMiss,TLBMiss,ITLBMiss,DTLBMiss";
+        "timestamp,core_id,MemoryAccess,InstructionAccess,DataAccess,PrivateICacheMiss,PrivateDCacheMiss,PrivateCacheMiss,SharedCacheAccess,SharedCacheMiss,TLBMiss,ITLBMiss,DTLBMiss"
     }
 
     pub fn get_line_for_all_cores(&self, ts: u64) -> Vec<String> {
@@ -109,7 +115,7 @@ impl Statistics {
                 lines.push((*self.per_core[core_id as usize].get()).get_line(ts, core_id));
             }
         }
-        return lines;
+        lines
     }
 }
 
@@ -124,7 +130,7 @@ impl Statistics {
 
     pub fn global_get_line_for_all_cores(ts: u64) -> Vec<String> {
         unsafe {
-            return GLOBAL_STATISTICS.get_line_for_all_cores(ts);
+            GLOBAL_STATISTICS.get_line_for_all_cores(ts)
         }
     }
 }

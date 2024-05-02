@@ -41,7 +41,7 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
 
         // first, find an invalid entry
         for i in 0..ASSO {
-            if !(self.array[index][i].tag_and_valid & 1 == 1) {
+            if self.array[index][i].tag_and_valid & 1 != 1 {
                 self.array[index][i].tag_and_valid = internal_tag;
                 self.array[index][i].target = target;
                 self.array[index][i].ts = self.local_ts;

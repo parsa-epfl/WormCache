@@ -25,7 +25,7 @@ type MH = MemoryHierarchy<
 
 #[test]
 fn read_evict_and_other_core_read_back() {
-    let mut mh = MH::new();
+    let mh = MH::new();
     let block_id = 1043;
 
     // core 0 reads a data at timestamp 10.
@@ -52,7 +52,7 @@ fn read_evict_and_other_core_read_back() {
 
 #[test]
 fn one_core_write_first_then_read() {
-    let mut mh = MH::new();
+    let mh = MH::new();
     let block_id = 1043;
 
     // core 0 reads a data at timestamp 10.
@@ -71,7 +71,7 @@ fn one_core_write_first_then_read() {
 #[test]
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
-    let mut mh = MH::new();
+    let mh = MH::new();
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
@@ -101,7 +101,7 @@ fn write_write_read_then_old_write() {
 
 #[test]
 fn read_then_write() {
-    let mut mh = MH::new();
+    let mh = MH::new();
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.

@@ -13,7 +13,7 @@ use crate::util::get_monotonic_ts;
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
 
-static mut ICOUNT_PLUGIN: Lazy<icount::ICountPlugin> = Lazy::new(|| icount::ICountPlugin::new());
+static mut ICOUNT_PLUGIN: Lazy<icount::ICountPlugin> = Lazy::new(icount::ICountPlugin::new);
 
 unsafe extern "C" fn calculate_cpu_clock() -> i64 {
     return TIME_PLUGIN

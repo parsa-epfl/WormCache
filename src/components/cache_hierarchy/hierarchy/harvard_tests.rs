@@ -47,7 +47,7 @@ fn i_create_sharer_from_clean_d() {
     // Now, we get the share information.
     let replicas = mh.private_caches.query_replica_state(block_id);
     assert_eq!(replicas.len(), 1);
-    assert_eq!(replicas[&0], false);
+    assert!(!replicas[&0]);
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn i_create_sharer_from_dirty_d() {
     // Now, we get the share information.
     let replicas = mh.private_caches.query_replica_state(block_id);
     assert_eq!(replicas.len(), 1);
-    assert_eq!(replicas[&0], false);
+    assert!(!replicas[&0]);
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn d_create_sharer_from_clean_i() {
     // Now, we get the share information.
     let replicas = mh.private_caches.query_replica_state(block_id);
     assert_eq!(replicas.len(), 1);
-    assert_eq!(replicas[&0], false);
+    assert!(!replicas[&0]);
 }
 
 #[test]
@@ -135,5 +135,5 @@ fn d_dirty_create_sharer_from_clean_i() {
     // Now, we get the share information.
     let replicas = mh.private_caches.query_replica_state(block_id);
     assert_eq!(replicas.len(), 1);
-    assert_eq!(replicas[&0], true);
+    assert!(replicas[&0]);
 }

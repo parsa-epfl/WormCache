@@ -44,7 +44,7 @@ fn test_wiether_tsc_is_atomic() {
 fn test_whether_timer_atomic() {
     // let me try whether the rdstic timer on the single thread is monotonic.
 
-    const TOTAL_TEST_COUNT: usize = 1000_000;
+    const TOTAL_TEST_COUNT: usize = 1_000_000;
     const TOTAL_THREAD_COUNT: usize = 16;
 
     let time_list = Arc::new(SpinMutex::<Vec<u64>, Spin>::new(Vec::<u64>::with_capacity(
@@ -96,16 +96,16 @@ fn the_cost_of_timer() {
                     println!("This is a fake number: {}", fake_number);
                 }
 
-                return end;
+                end
             });
-            return handler;
+            handler
         })
         .collect();
 
     // sum all durations from each thread
     let acc = handlers.into_iter().fold(0, |acc, handler| {
         let end = handler.join().unwrap();
-        return acc + end.as_nanos();
+        acc + end.as_nanos()
     });
 
     println!(

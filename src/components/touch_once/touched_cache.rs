@@ -26,7 +26,7 @@ impl TouchedCacheSet {
             self.fully_touched = true;
             return true;
         }
-        return false;
+        false
     }
 }
 
@@ -44,7 +44,7 @@ impl TouchedCache {
     }
 
     fn touch(&mut self, set_id: usize, block_id: usize) -> bool {
-        return self.sets[set_id].touch(block_id);
+        self.sets[set_id].touch(block_id)
     }
 
     pub fn access(&mut self, pa: usize) -> bool {
@@ -54,11 +54,11 @@ impl TouchedCache {
         if res {
             self.fully_touched_sets += 1;
         }
-        return res;
+        res
     }
 
     pub fn is_fully_touched(&self) -> bool {
-        return self.fully_touched_sets == self.sets.len();
+        self.fully_touched_sets == self.sets.len()
     }
 
     pub fn get_fully_touched_set_count(&self) -> usize {
