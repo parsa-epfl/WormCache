@@ -127,6 +127,7 @@ impl PrivateCacheSet {
                     return PrivateCachePokeResult::PermissionViolation;
                 }
             }
+            assert!(line.ts <= ts); // This is a strong assumption. (The cache line should be updated with the latest timestamp.
             line.ts = ts;
             line.is_instruction = is_instruction_fetch;
             return PrivateCachePokeResult::Hit;

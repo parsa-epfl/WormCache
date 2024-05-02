@@ -36,6 +36,9 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         if let Some(hit_block) = hit_block {
             if ts > hit_block.ts {
                 hit_block.ts = ts;
+            } else {
+                // this should not happen.
+                println!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
             }
             return Some(hit_block.modified);
         }

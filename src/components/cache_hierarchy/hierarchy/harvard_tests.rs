@@ -10,9 +10,9 @@ type MH = MemoryHierarchy<
     NoMMU,
     ParallelHarvardPrivateCache<
         32,
-        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { DIRECTORY_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
-        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { DIRECTORY_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<

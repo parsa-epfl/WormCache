@@ -106,7 +106,6 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         let vpn_2mb = vpn >> 9;
         if let Some(ppn) = self.htbl_2mb.get(&(asid, vpn_2mb)) {
             let pa = ppn << 21 | (va & 0x1fffff);
-            self.htbl_2mb.insert((asid, vpn_2mb), *ppn);
             return MMUTranslationResult::Hit(pa);
         }
 
@@ -114,7 +113,6 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         let vpn_1gb = vpn >> 18;
         if let Some(ppn) = self.htlb_1gb.get(&(asid, vpn_1gb)) {
             let pa = ppn << 30 | (va & 0x3fffffff);
-            self.htlb_1gb.insert((asid, vpn_1gb), *ppn);
             return MMUTranslationResult::Hit(pa);
         }
 
