@@ -6,8 +6,11 @@ mod qemu_api;
 mod util;
 
 // Plugin
+#[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
+#[allow(unused_imports)]
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
+#[allow(unused_imports)]
 use components::marker::MarkerPlugin;
 #[allow(unused_imports)]
 use components::pw_log::PageWalkLoggerPlugin;
@@ -15,6 +18,7 @@ use components::pw_log::PageWalkLoggerPlugin;
 use components::touch_once::TouchOnePlugin;
 #[allow(unused_imports)]
 use components::trace::TracePlugin;
+#[allow(unused_imports)]
 use components::virtual_time::VirtualTimePlugin;
 
 use parameter::PluginList;

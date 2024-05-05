@@ -227,7 +227,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             }
 
             // open a csv file.
-            let mut miss_file = std::fs::File::create("cache_misses.csv").unwrap();
+            let mut miss_file = std::fs::File::create("cache-misses.csv").unwrap();
             let mut warmed_rate = std::fs::File::create("shared_cache_warm_count.csv").unwrap();
 
             miss_file

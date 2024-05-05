@@ -60,7 +60,7 @@ impl super::Plugin for VirtualTimePlugin {
 
         std::thread::spawn(|| {
             // open a csv file to store the icounts.
-            let mut file = std::fs::File::create("cache-icount.csv").unwrap();
+            let mut file = std::fs::File::create("icount.csv").unwrap();
             // write the header.
             // file.write_fmt(format_args!("ts")).unwrap();
             // for i in 0..CORE_COUNT {
