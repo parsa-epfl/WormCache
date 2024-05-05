@@ -1,10 +1,11 @@
 use std::{
-    collections::HashMap,
     ffi,
     fs::File,
     io::{BufWriter, Write},
     sync::Mutex,
 };
+
+use rustc_hash::FxHashMap as HashMap;
 
 use once_cell::sync::Lazy;
 
@@ -31,7 +32,7 @@ pub struct PluginFetchBlockContext {
 }
 
 static FETCH_BLOCK_CONTEXT_MAP: Lazy<Mutex<HashMap<usize, Box<PluginFetchBlockContext>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+    Lazy::new(|| Mutex::new(HashMap::default()));
 
 unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, size: *mut ffi::c_void) {
     let context = &*(size as *mut PluginFetchBlockContext);
