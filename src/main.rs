@@ -3,10 +3,9 @@
 // the trace file is encoded in binary and continuous records in the following data structure
 
 use std::env;
-use std::io::{BufReader};
+use std::io::BufReader;
 use std::{fs::File, io::Read};
 // use worm_cache::components::memory_ts::{PrivateCacheParameters, TimestampMemoryHierarchy};
-
 
 #[repr(C)]
 #[cfg(target_pointer_width = "64")]

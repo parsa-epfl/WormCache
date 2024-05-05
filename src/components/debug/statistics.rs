@@ -129,8 +129,6 @@ impl Statistics {
     }
 
     pub fn global_get_line_for_all_cores(ts: u64) -> Vec<String> {
-        unsafe {
-            GLOBAL_STATISTICS.get_line_for_all_cores(ts)
-        }
+        unsafe { GLOBAL_STATISTICS.get_line_for_all_cores(ts) }
     }
 }
