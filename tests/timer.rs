@@ -85,7 +85,8 @@ fn the_cost_of_timer() {
 
     let handlers: Vec<_> = (0..THREAD_COUNT)
         .map(|_| {
-            let handler = std::thread::spawn(|| {
+            
+            std::thread::spawn(|| {
                 let mut fake_number: u64 = 0;
                 let start = Instant::now();
                 for _ in 0..TOTAL_TEST_COUNT {
@@ -97,8 +98,7 @@ fn the_cost_of_timer() {
                 }
 
                 end
-            });
-            handler
+            })
         })
         .collect();
 

@@ -62,7 +62,7 @@ unsafe extern "C" fn vcpu_mem_access(
         buffer[8..16].copy_from_slice(&get_monotonic_ts().to_le_bytes());
         buffer[16] = if is_store { 2 } else { 1 };
         buffer[17] = cpu_idx as u8;
-        TRACE_FILE.lock().unwrap().write(&buffer).unwrap();
+        TRACE_FILE.lock().unwrap().write_all(&buffer).unwrap();
     } else {
         // TODO: check the I/O event
     }

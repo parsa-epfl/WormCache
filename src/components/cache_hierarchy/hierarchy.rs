@@ -746,8 +746,7 @@ impl<
                 println!("Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: false, Share List: {:?}",
                     CacheOperationType::Drop, cache_id, ts, sharer.iter_ones().collect::<Vec<usize>>() );
             }
-            assert!(false);
-            return;
+            panic!();
         }
 
         // we put the element back to the directory.

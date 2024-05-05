@@ -9,19 +9,10 @@ use crate::util::get_monotonic_ts;
 use std::io::prelude::*;
 
 use crate::{
-    arch::AArch64,
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
 };
 use std::ffi;
-
-use self::{
-    private_cache::{
-        ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache, SerialHarvardPrivateCache,
-        SerialUnifiedPrivateCache,
-    },
-    shared_cache::{ParallelSingleSharedCache, SerialSingleSharedCache},
-};
 
 use super::debug::statistics::Statistics;
 
@@ -32,111 +23,9 @@ pub mod hierarchy;
 pub mod private_cache;
 pub mod shared_cache;
 
-const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
-    parameter::CORE_COUNT / 2
-} else {
-    parameter::CORE_COUNT
-};
+mod parser;
 
-type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
-    AArch64,
-    { parameter::TLB_ASSO },
-    { parameter::TLB_SET },
->;
-
-#[allow(dead_code)]
-type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
-    AArch64MMU,
-    ParallelUnifiedPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
-    >,
-    ParallelSingleSharedCache<
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    // ReplicatedSharedCache<
-    //     { parameter::CORE_COUNT },
-    //     { parameter::SHARED_CACHE_SET },
-    //     { parameter::SHARED_CACHE_ASSO },
-    //     { parameter::SHARED_CACHE_EXCLUSIVE },
-    // >,
-    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
->;
-
-#[allow(dead_code)]
-type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
-    AArch64MMU,
-    ParallelHarvardPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::HARVARD_PRI_I_CACHE_SET },
-        { parameter::HARVARD_PRI_I_CACHE_ASSO },
-        { parameter::HARVARD_PRI_D_CACHE_SET },
-        { parameter::HARVARD_PRI_D_CACHE_ASSO },
-    >,
-    ParallelSingleSharedCache<
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    // ReplicatedSharedCache<
-    //     { parameter::CORE_COUNT },
-    //     { parameter::SHARED_CACHE_SET },
-    //     { parameter::SHARED_CACHE_ASSO },
-    //     { parameter::SHARED_CACHE_EXCLUSIVE },
-    // >,
-    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
->;
-
-#[allow(dead_code)]
-type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
-    AArch64MMU,
-    SerialUnifiedPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
-    >,
-    SerialSingleSharedCache<
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    false,
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
->;
-
-#[allow(dead_code)]
-type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
-    AArch64MMU,
-    SerialHarvardPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::HARVARD_PRI_I_CACHE_SET },
-        { parameter::HARVARD_PRI_I_CACHE_ASSO },
-        { parameter::HARVARD_PRI_D_CACHE_SET },
-        { parameter::HARVARD_PRI_D_CACHE_ASSO },
-    >,
-    SerialSingleSharedCache<
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    false,
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
->;
-
-type HierarchyForPlugin = ParallelMemoryHierarchyHarvard;
+type HierarchyForPlugin = parser::HierarchyForPlugin;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 

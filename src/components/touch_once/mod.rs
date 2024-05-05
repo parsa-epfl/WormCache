@@ -134,7 +134,7 @@ impl super::Plugin for TouchOnePlugin {
                 i,
                 Some(vcpu_insn_exec),
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                qemu_api::qemu_plugin_insn_haddr(i) as *mut ffi::c_void,
+                qemu_api::qemu_plugin_insn_haddr(i),
             );
         }
 
