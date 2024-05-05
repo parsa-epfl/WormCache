@@ -1,6 +1,6 @@
+use rustc_hash::FxHashMap as HashMap;
 use spin::mutex::SpinMutex;
 use spin::mutex::SpinMutexGuard;
-use std::collections::HashMap;
 
 use bitvec::prelude::*;
 use bitvec::BitArr;
@@ -36,7 +36,7 @@ pub struct DirectorySet<const SET: usize> {
 impl<const SET: usize> DirectorySet<SET> {
     pub fn new(index: usize) -> Self {
         Self {
-            entries: HashMap::new(),
+            entries: HashMap::<u64, DirectoryEntry>::default(),
             index,
         }
     }
@@ -54,10 +54,10 @@ impl<const SET: usize> DirectorySet<SET> {
         let internal_id = block_id >> Self::LOG2_SET;
 
         self.entries.entry(internal_id).or_insert(DirectoryEntry {
-                    ts: 0,
-                    sharers: SharerList::ZERO,
-                    modify_ts_before_eviction: 0,
-                });
+            ts: 0,
+            sharers: SharerList::ZERO,
+            modify_ts_before_eviction: 0,
+        });
 
         self.entries.get_mut(&internal_id).unwrap()
     }

@@ -35,9 +35,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         let internal_block_id = block_id << 1 | 1;
 
         // first of all, find whether this block is a hit.
-        let hit_block = self.blocks.iter_mut().find(|p| {
-            p.block_id_with_v == internal_block_id
-        });
+        let hit_block = self
+            .blocks
+            .iter_mut()
+            .find(|p| p.block_id_with_v == internal_block_id);
 
         if let Some(hit_block) = hit_block {
             if ts > hit_block.ts {
@@ -57,9 +58,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         let internal_block_id = block_id << 1 | 1;
 
         // first of all, find whether this block is a hit.
-        let hit_block = self.blocks.iter_mut().find(|p| {
-            p.block_id_with_v == internal_block_id
-        });
+        let hit_block = self
+            .blocks
+            .iter_mut()
+            .find(|p| p.block_id_with_v == internal_block_id);
 
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = hit_block {
@@ -93,9 +95,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         let internal_block_id = block_id << 1 | 1;
 
         // first of all, find whether this block is a hit.
-        let hit_block = self.blocks.iter_mut().find(|p| {
-            p.block_id_with_v == internal_block_id
-        });
+        let hit_block = self
+            .blocks
+            .iter_mut()
+            .find(|p| p.block_id_with_v == internal_block_id);
 
         // it is definitely not be a hit, so we need to assert.
 
@@ -124,9 +127,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         };
 
         // then, find the first invalid block.
-        let invalid_block = self.blocks.iter_mut().find(|p| {
-            (p.block_id_with_v & 1) == 0
-        });
+        let invalid_block = self
+            .blocks
+            .iter_mut()
+            .find(|p| (p.block_id_with_v & 1) == 0);
 
         // if there is an invalid block, we replace that block.
         if let Some(invalid_block) = invalid_block {
@@ -137,13 +141,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         }
 
         // otherwise, we need to find the oldest block.
-        let oldest_block = self
-            .blocks
-            .iter_mut()
-            .min_by_key(|p| {
-                p.ts
-            })
-            .unwrap();
+        let oldest_block = self.blocks.iter_mut().min_by_key(|p| p.ts).unwrap();
 
         // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {

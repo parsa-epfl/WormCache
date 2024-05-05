@@ -7,7 +7,7 @@ use crate::arch;
 use crate::arch::aarch64::ptw;
 use crate::qemu_api;
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::ffi::c_void;
 use tlb::TLB;
 
@@ -72,8 +72,8 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
     fn new() -> Self {
         Self {
             tlb: TLB::new(),
-            htbl_2mb: HashMap::new(),
-            htlb_1gb: HashMap::new(),
+            htbl_2mb: HashMap::default(),
+            htlb_1gb: HashMap::default(),
             last_ttbr: u64::MAX, // This is special for kernel instruction space.
             arch: std::marker::PhantomData,
         }

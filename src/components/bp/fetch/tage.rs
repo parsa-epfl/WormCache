@@ -236,7 +236,7 @@ impl TAGEPredictor {
             let a2 = a >> LOGG;
             let a2 = (a2 << bank) & (((1 << LOGG) - 1) + (a2 >> (LOGG - bank)));
             let a = a1 ^ a2;
-            
+
             (a << bank) & (((1 << LOGG) - 1) + (a >> (LOGG - bank)))
         };
 

@@ -79,9 +79,10 @@ impl PrivateCacheSet {
         let block_id_to_find = (block_id << 1) | 1;
 
         // find from the cache set with block id.
-        let hit_element = self.lines.iter().position(|p| {
-            p.block_id_with_v == block_id_to_find
-        });
+        let hit_element = self
+            .lines
+            .iter()
+            .position(|p| p.block_id_with_v == block_id_to_find);
 
         hit_element
     }
@@ -90,9 +91,10 @@ impl PrivateCacheSet {
         let block_id_to_find = (block_id << 1) | 1;
 
         // find from the cache set with block id.
-        let hit_element = self.lines.iter().find(|p| {
-            p.block_id_with_v == block_id_to_find
-        });
+        let hit_element = self
+            .lines
+            .iter()
+            .find(|p| p.block_id_with_v == block_id_to_find);
 
         hit_element.cloned()
     }
@@ -107,9 +109,10 @@ impl PrivateCacheSet {
     ) -> PrivateCachePokeResult {
         let block_id_to_find = (block_id << 1) | 1;
 
-        let hit_element = self.lines.iter_mut().find(|p| {
-            p.block_id_with_v == block_id_to_find
-        });
+        let hit_element = self
+            .lines
+            .iter_mut()
+            .find(|p| p.block_id_with_v == block_id_to_find);
 
         if let Some(line) = hit_element {
             if is_store {
@@ -143,9 +146,10 @@ impl PrivateCacheSet {
         let block_id_to_find = (block_id << 1) | 1;
 
         // find from the cache set with block id.
-        let hit_element = self.lines.iter_mut().find(|p| {
-            p.block_id_with_v == block_id_to_find
-        });
+        let hit_element = self
+            .lines
+            .iter_mut()
+            .find(|p| p.block_id_with_v == block_id_to_find);
 
         assert!(hit_element.is_none());
 
@@ -155,9 +159,10 @@ impl PrivateCacheSet {
         }
 
         // find the first invalid element.
-        let invalid_element = self.lines.iter_mut().find(|p| {
-            (p.block_id_with_v & 0x1) == 0
-        });
+        let invalid_element = self
+            .lines
+            .iter_mut()
+            .find(|p| (p.block_id_with_v & 0x1) == 0);
 
         if let Some(invalid_element) = invalid_element {
             invalid_element.ts = ts;
@@ -171,9 +176,7 @@ impl PrivateCacheSet {
             None
         } else {
             // find the oldest element.
-            let oldest_element = self.lines.iter_mut().min_by(|p, q| {
-                p.ts.cmp(&q.ts)
-            });
+            let oldest_element = self.lines.iter_mut().min_by(|p, q| p.ts.cmp(&q.ts));
 
             match oldest_element {
                 Some(oldest_element) => {
@@ -216,9 +219,10 @@ impl PrivateCacheSet {
         let block_id_to_find = (block_id << 1) | 1;
 
         // find from the cache set with block id.
-        let hit_element = self.lines.iter_mut().find(|p| {
-            p.block_id_with_v == block_id_to_find
-        });
+        let hit_element = self
+            .lines
+            .iter_mut()
+            .find(|p| p.block_id_with_v == block_id_to_find);
 
         if let Some(hit_element) = hit_element {
             let res = hit_element.clone();
@@ -235,9 +239,10 @@ impl PrivateCacheSet {
     pub fn request_sharer_by_block_id(&mut self, block_id: u64, _ts: u64) -> Option<bool> {
         let block_id_to_find = (block_id << 1) | 1;
         // find from the cache set with block id.
-        let hit_element = self.lines.iter_mut().find(|p| {
-            p.block_id_with_v == block_id_to_find
-        });
+        let hit_element = self
+            .lines
+            .iter_mut()
+            .find(|p| p.block_id_with_v == block_id_to_find);
 
         if let Some(hit_element) = hit_element {
             hit_element.writeable = false; // remove the write permission.

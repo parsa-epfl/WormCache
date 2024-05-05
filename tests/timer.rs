@@ -85,7 +85,6 @@ fn the_cost_of_timer() {
 
     let handlers: Vec<_> = (0..THREAD_COUNT)
         .map(|_| {
-            
             std::thread::spawn(|| {
                 let mut fake_number: u64 = 0;
                 let start = Instant::now();

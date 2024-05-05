@@ -113,10 +113,7 @@ impl CacheLineCoherenceHistory {
         sharers: SharerList,
         line_number: u32,
     ) {
-        let mut history = self
-            .history
-            .entry(block_id)
-            .or_default();
+        let mut history = self.history.entry(block_id).or_default();
         history.record(
             operation,
             cache_id,
