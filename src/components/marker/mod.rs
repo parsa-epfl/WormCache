@@ -31,8 +31,8 @@ impl super::Plugin for MarkerPlugin {
             let literal = qemu_api::qemu_plugin_insn_data(inst) as *const u32;
             let literal: u32 = *literal;
             // decode the instruction
-            let hint_opcode = 0b1101_0101_0000_0011_0010_0000_0001_1111 as u32;
-            let hint_mask = 0b1111_1111_1111_1111_1111_0000_0001_1111 as u32;
+            let hint_opcode = 0b1101_0101_0000_0011_0010_0000_0001_1111_u32;
+            let hint_mask = 0b1111_1111_1111_1111_1111_0000_0001_1111_u32;
             if (literal & hint_mask) == hint_opcode {
                 // OK, this is an hint instruction.
                 let hint_value = (literal >> 5) & 0b1111111;

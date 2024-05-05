@@ -74,7 +74,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
         let t0sz = 64 - ((tcr >> 16) & 0b111111);
         assert_eq!(t0sz, 48, "We only support 4-level page table!")
     } else {
-        let t0sz = 64 - ((tcr >> 0) & 0b111111);
+        let t0sz = 64 - (tcr & 0b111111);
         assert_eq!(t0sz, 48, "We only support 4-level page table!");
     }
 
@@ -82,7 +82,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
         paddr: 0,
         page_size: PageSize::_4KB,
         traces: [u64::MAX; 4],
-        cacheable: cacheable,
+        cacheable,
     };
 
     // Now, we start the real page walk. First, we get the page table base address.
@@ -141,7 +141,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     result.paddr = (l3pte & 0x0000FFFFFFFFF000) + (va & 0x0000_0000_0000_0FFF);
     result.page_size = PageSize::_4KB;
 
-    return result;
+    result
 }
 
 pub enum TLBInvalidateInfo {

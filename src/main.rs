@@ -3,10 +3,10 @@
 // the trace file is encoded in binary and continuous records in the following data structure
 
 use std::env;
-use std::io::{BufReader, Write};
+use std::io::{BufReader};
 use std::{fs::File, io::Read};
 // use worm_cache::components::memory_ts::{PrivateCacheParameters, TimestampMemoryHierarchy};
-use worm_cache::components::NoMMU;
+
 
 #[repr(C)]
 #[cfg(target_pointer_width = "64")]
@@ -89,8 +89,8 @@ fn main() {
             core_count
         );
         // simulate that entry.
-        let is_instruction = entry.permission == 0;
-        let is_write: bool = entry.permission == 2;
+        let _is_instruction = entry.permission == 0;
+        let _is_write: bool = entry.permission == 2;
         // mh.hierarchies(entry.core_id).access_memory(
         //     entry.timestamp as usize,
         //     entry.paddr,
@@ -100,7 +100,7 @@ fn main() {
     }
 
     // dump the simulation result.
-    let mut output_file = File::create(&args[3]).unwrap();
+    let _output_file = File::create(&args[3]).unwrap();
     // let mtr = mh.render_mtr::<P_S>();
     // let cache_param = PrivateCacheParameters {
     //     l1i_sets: 64,

@@ -13,6 +13,12 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub touched_count: usize,
 }
 
+impl<const WAY: usize, const EXCLUSIVE: bool> Default for SharedCacheSet<WAY, EXCLUSIVE> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
     pub fn new() -> Self {
         Self {
@@ -30,7 +36,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
         // first of all, find whether this block is a hit.
         let hit_block = self.blocks.iter_mut().find(|p| {
-            return p.block_id_with_v == internal_block_id;
+            p.block_id_with_v == internal_block_id
         });
 
         if let Some(hit_block) = hit_block {
@@ -44,7 +50,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         }
 
         // otherwise, it is a miss.
-        return None;
+        None
     }
 
     pub fn invalidate(&mut self, block_id: u64) -> Option<bool> {
@@ -52,7 +58,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
         // first of all, find whether this block is a hit.
         let hit_block = self.blocks.iter_mut().find(|p| {
-            return p.block_id_with_v == internal_block_id;
+            p.block_id_with_v == internal_block_id
         });
 
         // if it is a hit, we remove this block from the cache
@@ -63,16 +69,16 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         }
 
         // otherwise, it is a miss.
-        return None;
+        None
     }
 
     #[inline]
     pub fn lookup(&mut self, block_id: u64, ts: u64) -> Option<bool> {
-        return if EXCLUSIVE {
+        if EXCLUSIVE {
             self.invalidate(block_id)
         } else {
             self.peek(block_id, ts)
-        };
+        }
     }
 
     // return whether this cache set is just warmed.
@@ -88,7 +94,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
         // first of all, find whether this block is a hit.
         let hit_block = self.blocks.iter_mut().find(|p| {
-            return p.block_id_with_v == internal_block_id;
+            p.block_id_with_v == internal_block_id
         });
 
         // it is definitely not be a hit, so we need to assert.
@@ -119,7 +125,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
         // then, find the first invalid block.
         let invalid_block = self.blocks.iter_mut().find(|p| {
-            return (p.block_id_with_v & 1) == 0;
+            (p.block_id_with_v & 1) == 0
         });
 
         // if there is an invalid block, we replace that block.
@@ -135,7 +141,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             .blocks
             .iter_mut()
             .min_by_key(|p| {
-                return p.ts;
+                p.ts
             })
             .unwrap();
 
@@ -150,6 +156,6 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         oldest_block.modified = is_modified;
         oldest_block.ts = ts;
 
-        return result;
+        result
     }
 }

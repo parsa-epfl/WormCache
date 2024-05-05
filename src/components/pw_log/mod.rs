@@ -32,7 +32,7 @@ unsafe extern "C" fn vcpu_mem_access(
             // println!("- {:x} -> {:x}", *t, buf);
         }
 
-        let va = vaddr as u64;
+        let va = vaddr;
         let is_kernel = (va & 0xFFFF000000000000) != 0;
         let _ttbr0 = qemu_api::qemu_plugin_read_ttbr_el1(0);
         let _ttbr1 = qemu_api::qemu_plugin_read_ttbr_el1(1);
@@ -62,7 +62,7 @@ fn paddr_reader(addr: u64) -> u64 {
     unsafe {
         qemu_api::qemu_plugin_read_physical_memory(addr, 8, &mut buf as *mut u64 as *mut c_void);
     }
-    return buf;
+    buf
 }
 
 unsafe extern "C" fn vcpu_insn_exec(

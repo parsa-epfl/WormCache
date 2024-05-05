@@ -50,7 +50,6 @@ impl<const ASSO: usize> TLBSet<ASSO> {
             self.entries[self.current_pointer].vpn = vpn;
             self.entries[self.current_pointer].ppn = ppn;
             self.current_pointer += 1;
-            return;
         } else {
             // find a victim.
             let mut victim_idx = 0;

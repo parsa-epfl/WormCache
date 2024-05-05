@@ -13,32 +13,32 @@ use crate::util::get_monotonic_ts;
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
 
-static mut ICOUNT_PLUGIN: Lazy<icount::ICountPlugin> = Lazy::new(|| icount::ICountPlugin::new());
+static mut ICOUNT_PLUGIN: *mut icount::ICountPlugin = std::ptr::null_mut();
 
 unsafe extern "C" fn calculate_cpu_clock() -> i64 {
     return TIME_PLUGIN
         .lock()
         .unwrap()
-        .calculate_cpu_clock(&ICOUNT_PLUGIN);
+        .calculate_cpu_clock(&(*ICOUNT_PLUGIN));
 }
 
 unsafe extern "C" fn on_snapshot_cpu_clock_update() {
     TIME_PLUGIN.lock().unwrap().reset();
-    ICOUNT_PLUGIN.reset();
+    (*ICOUNT_PLUGIN).reset();
 }
 
 unsafe extern "C" fn user_vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block
 ) {
-    ICOUNT_PLUGIN.increase_user_icount(vcpu_idx as u8, size as u64);
+    (*ICOUNT_PLUGIN).increase_user_icount(vcpu_idx as u8, size as u64);
 }
 
 unsafe extern "C" fn kernel_vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block
 ) {
-    ICOUNT_PLUGIN.increase_kernel_icount(vcpu_idx as u8, size as u64);
+    (*ICOUNT_PLUGIN).increase_kernel_icount(vcpu_idx as u8, size as u64);
 }
 
 pub struct VirtualTimePlugin {}
@@ -54,9 +54,13 @@ impl super::Plugin for VirtualTimePlugin {
             ))
         });
 
+        unsafe {
+            ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
+        }
+
         std::thread::spawn(|| {
             // open a csv file to store the icounts.
-            let mut file = std::fs::File::create("cache-icount.csv").unwrap();
+            let mut file = std::fs::File::create("icount.csv").unwrap();
             // write the header.
             // file.write_fmt(format_args!("ts")).unwrap();
             // for i in 0..CORE_COUNT {
@@ -74,7 +78,7 @@ impl super::Plugin for VirtualTimePlugin {
                 .unwrap();
 
             loop {
-                let icounts = unsafe { ICOUNT_PLUGIN.get_icounts() };
+                let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
                 let mut lines = vec![];
                 lines.push(format!("{}", get_monotonic_ts()));
                 for i in 0..param::CORE_COUNT {

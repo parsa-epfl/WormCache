@@ -162,7 +162,7 @@ impl TAGEPredictor {
 
         println!("m: {:?}", m);
 
-        return TAGEPredictor {
+        TAGEPredictor {
             seed: 0,
             tick: 0,
 
@@ -220,12 +220,12 @@ impl TAGEPredictor {
             }),
 
             m,
-        };
+        }
     }
 
     fn bindex(&self, pc: Address) -> usize {
         let b_mask = (1 << LOGB) - 1;
-        return (pc & b_mask) as usize;
+        (pc & b_mask) as usize
     }
 
     // I am really confused by this function.
@@ -234,10 +234,10 @@ impl TAGEPredictor {
             let a = (path_history as usize) & ((1 << size) - 1);
             let a1 = a & ((1 << LOGG) - 1);
             let a2 = a >> LOGG;
-            let a2 = (a2 << bank) & ((1 << LOGG) - 1) + (a2 >> (LOGG - bank));
+            let a2 = (a2 << bank) & (((1 << LOGG) - 1) + (a2 >> (LOGG - bank)));
             let a = a1 ^ a2;
-            let a = (a << bank) & ((1 << LOGG) - 1) + (a >> (LOGG - bank));
-            return a;
+            
+            (a << bank) & (((1 << LOGG) - 1) + (a >> (LOGG - bank)))
         };
 
         let index_without_path =
@@ -253,31 +253,29 @@ impl TAGEPredictor {
 
         let g_mask = (1 << LOGG) - 1;
 
-        return (index & g_mask) as usize;
+        (index & g_mask) as usize
     }
 
     fn gtag(&self, pc: Address, bank: usize) -> u16 {
         let tag = pc ^ self.ch_t[0][bank].comp as u64 ^ (self.ch_t[1][bank].comp << 1) as u64;
         let mask = (1 << (TBITS - (bank + (NHIST & 1)) / 2)) - 1;
-        return (tag & mask) as u16;
+        (tag & mask) as u16
     }
 
     fn ctrupdate(cnt: i8, taken: bool, nbits: usize) -> i8 {
         let max: i8 = (1 << (nbits - 1)) - 1;
         let min: i8 = -max - 1;
-        return if taken {
+        if taken {
             if cnt < max {
                 cnt + 1
             } else {
                 cnt
             }
+        } else if cnt > min {
+            cnt - 1
         } else {
-            if cnt > min {
-                cnt - 1
-            } else {
-                cnt
-            }
-        };
+            cnt
+        }
     }
 
     fn is_cond_taken(&self, pc: Address) -> TAGEPredictionResultWithBank {
@@ -312,22 +310,22 @@ impl TAGEPredictor {
                 self.btable[bi].pred > 0
             };
             let cnt = self.gtable[which_bank][gi[which_bank]].ctr;
-            return TAGEPredictionResultWithBank {
+            TAGEPredictionResultWithBank {
                 result: cnt >= 0,
                 bank: which_bank,
                 alternate_prediction,
                 gi,
                 bi,
-            };
+            }
         } else {
             let alternate_prediction = self.btable[bi].pred > 0;
-            return TAGEPredictionResultWithBank {
+            TAGEPredictionResultWithBank {
                 result: alternate_prediction,
                 bank: which_bank,
                 alternate_prediction,
                 gi,
                 bi,
-            };
+            }
         }
     }
 
@@ -341,7 +339,7 @@ impl TAGEPredictor {
         self.shift_global_history(taken);
         // update phist.
         self.phist = (self.phist << 1) | ((pc >> 2) & 1) as i32;
-        self.phist = self.phist & ((1 << 16) - 1);
+        self.phist &= (1 << 16) - 1;
 
         // update ch_i
         for idx in 0..NHIST {
@@ -352,9 +350,9 @@ impl TAGEPredictor {
     }
 
     fn get_random(&mut self) -> i32 {
-        self.seed = ((1 << 2 * NHIST) + 1) * self.seed + 0xf3f531;
-        self.seed = self.seed & ((1 << (2 * (NHIST))) - 1);
-        return self.seed;
+        self.seed = ((1 << (2 * NHIST)) + 1) * self.seed + 0xf3f531;
+        self.seed &= (1 << (2 * (NHIST))) - 1;
+        self.seed
     }
 
     pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
@@ -388,7 +386,7 @@ impl TAGEPredictor {
                     let mut x = prediction_result.bank - 1;
                     while (y & 1) != 0 {
                         x -= 1;
-                        y = y >> 1;
+                        y >>= 1;
                     }
 
                     for idx in 0..(x + 1) {
@@ -407,7 +405,7 @@ impl TAGEPredictor {
             // periodic reset of ubit: reset is not complete but bit by bit
             self.tick += 1;
 
-            if (self.tick & (1 << 18) - 1) == 0 {
+            if (self.tick & ((1 << 18) - 1)) == 0 {
                 let mut mask = (self.tick >> 18) & 1;
                 if mask == 0 {
                     mask = 2;
@@ -439,10 +437,8 @@ impl TAGEPredictor {
                         if self.btable[prediction_result.bi].pred != 0 {
                             self.btable[prediction_result.bi].hyst = 1;
                         }
-                    } else {
-                        if self.btable[prediction_result.bi].pred == 0 {
-                            self.btable[prediction_result.bi].hyst = 0;
-                        }
+                    } else if self.btable[prediction_result.bi].pred == 0 {
+                        self.btable[prediction_result.bi].hyst = 0;
                     }
                 } else {
                     let mut inter = self.btable[prediction_result.bi].pred * 2
@@ -451,10 +447,8 @@ impl TAGEPredictor {
                         if inter < 3 {
                             inter += 1;
                         }
-                    } else {
-                        if inter > 0 {
-                            inter -= 1;
-                        }
+                    } else if inter > 0 {
+                        inter -= 1;
                     }
                     self.btable[prediction_result.bi].pred = inter >> 1;
                     self.btable[prediction_result.bi].hyst = inter & 1;

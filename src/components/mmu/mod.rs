@@ -63,7 +63,7 @@ fn paddr_reader(addr: u64) -> u64 {
     unsafe {
         qemu_api::qemu_plugin_read_physical_memory(addr, 8, &mut buf as *mut u64 as *mut c_void);
     }
-    return buf;
+    buf
 }
 
 impl<const T_A: usize, const T_S: usize> AbstractMMU
@@ -89,7 +89,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         }
 
         let asid = if is_kernel {
-            0xffff as u16
+            0xffff_u16
         } else {
             (self.last_ttbr >> 48) as u16
         };
@@ -136,9 +136,9 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         }
 
         if ptw_result.cacheable {
-            return MMUTranslationResult::Miss(ptw_result.paddr, ptw_result.traces);
+            MMUTranslationResult::Miss(ptw_result.paddr, ptw_result.traces)
         } else {
-            return MMUTranslationResult::MissNotCacheable(ptw_result.paddr);
+            MMUTranslationResult::MissNotCacheable(ptw_result.paddr)
         }
     }
 
@@ -152,7 +152,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         }
 
         let asid = if is_kernel {
-            0xffff as u16
+            0xffff_u16
         } else {
             (self.last_ttbr >> 48) as u16
         };
@@ -170,7 +170,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         }
 
         let asid = if is_kernel {
-            0xffff as u16
+            0xffff_u16
         } else {
             (self.last_ttbr >> 48) as u16
         };

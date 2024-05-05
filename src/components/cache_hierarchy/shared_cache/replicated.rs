@@ -37,12 +37,12 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
 
     fn invalidate(&mut self, block_id: u64, _: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
-        return self.blocks[set_idx].invalidate(block_id);
+        self.blocks[set_idx].invalidate(block_id)
     }
 
     fn lookup(&mut self, block_id: u64, ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
-        return self.blocks[set_idx].lookup(block_id, ts);
+        self.blocks[set_idx].lookup(block_id, ts)
     }
 
     fn insert(&mut self, block_id: u64, ts: u64, is_modified: bool, increase_touched_count: bool) {
@@ -124,12 +124,12 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
 
     fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        return pcache.invalidate(block_id, ts);
+        pcache.invalidate(block_id, ts)
     }
 
     fn lookup(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        return pcache.lookup(block_id, ts);
+        pcache.lookup(block_id, ts)
     }
 
     fn insert(
@@ -157,17 +157,17 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
     }
 
     fn warmed_sets_count(&self) -> usize {
-        return 0;
+        0
     }
 
     fn warmed_slots_count(&self) -> usize {
-        return 0;
+        0
     }
 
     fn information() -> String {
-        return format!(
+        format!(
             "ReplicatedSharedCache: SET={}, WAY={}, EXCLUSIVE={}",
             SET, WAY, EXCLUSIVE
-        );
+        )
     }
 }

@@ -6,12 +6,19 @@ mod qemu_api;
 mod util;
 
 // Plugin
+#[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
+#[allow(unused_imports)]
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
+#[allow(unused_imports)]
 use components::marker::MarkerPlugin;
+#[allow(unused_imports)]
 use components::pw_log::PageWalkLoggerPlugin;
+#[allow(unused_imports)]
 use components::touch_once::TouchOnePlugin;
+#[allow(unused_imports)]
 use components::trace::TracePlugin;
+#[allow(unused_imports)]
 use components::virtual_time::VirtualTimePlugin;
 
 use parameter::PluginList;
@@ -58,9 +65,8 @@ unsafe extern "C" fn qemu_plugin_install(
     );
 
     // check system emulation cost.
-    assert_eq!(
+    assert!(
         qemu_info.as_ref().unwrap().system_emulation,
-        true,
         "Only support system emulation mode, thus exit."
     );
 
@@ -79,5 +85,5 @@ unsafe extern "C" fn qemu_plugin_install(
 
     PluginList::init();
 
-    return 0;
+    0
 }

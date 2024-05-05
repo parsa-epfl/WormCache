@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::components::NoMMU;
 
-use self::{private_cache::ParallelUnifiedPrivateCache, shared_cache::ParallelSingleSharedCache};
+use self::private_cache::ParallelUnifiedPrivateCache;
+use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 
 use super::*;
 
@@ -46,12 +47,12 @@ impl MH {
         if self.shared_cache.lookup(0, block_id, 0).is_some() {
             return BlockPosition::InSharedCache;
         }
-        return BlockPosition::NotInCache;
+        BlockPosition::NotInCache
     }
 
     fn get_all_private_replicas(&mut self, block_id: u64) -> HashMap<u32, BlockState> {
-        let mut result = self.private_caches.query_replica_state(block_id);
-        return result
+        let result = self.private_caches.query_replica_state(block_id);
+        result
             .into_iter()
             .map(|(k, v)| {
                 (
@@ -63,14 +64,14 @@ impl MH {
                     },
                 )
             })
-            .collect();
+            .collect()
     }
 }
 
 #[test]
 #[should_panic(expected = "assertion failed: res.ts <= ts")]
 fn reversed_timestamp_from_the_same_core() {
-    let mut mh = MH::new();
+    let mh = MH::new();
     let mut ts = 100;
     // Fill one cache set with some data.
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {

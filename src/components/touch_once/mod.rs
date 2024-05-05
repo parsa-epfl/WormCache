@@ -14,14 +14,14 @@ use touched_cache::TouchedCache;
 
 use crate::util::get_monotonic_ts;
 
-const CONFIGURATION: [usize; 1] = [1 * 1024 * 1024];
+const CONFIGURATION: [usize; 1] = [1024 * 1024];
 
 static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
     Mutex::new(Vec::from_iter(CONFIGURATION.iter().map(|&set| {
-        return (
+        (
             TouchedCache::new(set, 16),
             File::create(format!("./{}MB_touched.csv", set / 1024)).unwrap(),
-        );
+        )
     })))
 });
 
@@ -45,17 +45,15 @@ unsafe extern "C" fn vcpu_mem_access(
         let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
 
         PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
-            if cache.access(paddr) {
-                if cache.is_fully_touched() {
-                    file.write_fmt(format_args!(
-                        "{},{},{}\n",
-                        get_monotonic_ts(),
-                        ICOUNT.load(Ordering::Relaxed),
-                        cache.get_fully_touched_set_count()
-                    ))
-                    .unwrap();
-                    cache.reset();
-                }
+            if cache.access(paddr) && cache.is_fully_touched() {
+                file.write_fmt(format_args!(
+                    "{},{},{}\n",
+                    get_monotonic_ts(),
+                    ICOUNT.load(Ordering::Relaxed),
+                    cache.get_fully_touched_set_count()
+                ))
+                .unwrap();
+                cache.reset();
             }
         });
     } else {
@@ -72,17 +70,15 @@ unsafe extern "C" fn vcpu_insn_exec(
     }
 
     PLUGIN.lock().unwrap().iter_mut().for_each(|(cache, file)| {
-        if cache.access(paddr as usize) {
-            if cache.is_fully_touched() {
-                file.write_fmt(format_args!(
-                    "{},{},{}\n",
-                    get_monotonic_ts(),
-                    ICOUNT.load(Ordering::Relaxed),
-                    cache.get_fully_touched_set_count()
-                ))
-                .unwrap();
-                cache.reset();
-            }
+        if cache.access(paddr as usize) && cache.is_fully_touched() {
+            file.write_fmt(format_args!(
+                "{},{},{}\n",
+                get_monotonic_ts(),
+                ICOUNT.load(Ordering::Relaxed),
+                cache.get_fully_touched_set_count()
+            ))
+            .unwrap();
+            cache.reset();
         }
     });
 }
@@ -138,7 +134,7 @@ impl super::Plugin for TouchOnePlugin {
                 i,
                 Some(vcpu_insn_exec),
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                qemu_api::qemu_plugin_insn_haddr(i) as *mut ffi::c_void,
+                qemu_api::qemu_plugin_insn_haddr(i),
             );
         }
 
