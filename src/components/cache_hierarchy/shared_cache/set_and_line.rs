@@ -1,4 +1,4 @@
-use crate::{components::debug::cache_line_history::CacheLineCoherenceHistory, parameter};
+use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedCacheBlock {
