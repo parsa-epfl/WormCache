@@ -31,16 +31,17 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         }
     }
 
-    fn peek(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    #[inline]
+    fn index_of(&self, block_id: u64) -> Option<usize> {
         let internal_block_id = block_id << 1 | 1;
+        self.blocks
+            .iter()
+            .position(|p| p.block_id_with_v == internal_block_id)
+    }
 
-        // first of all, find whether this block is a hit.
-        let hit_block = self
-            .blocks
-            .iter_mut()
-            .find(|p| p.block_id_with_v == internal_block_id);
-
-        if let Some(hit_block) = hit_block {
+    fn peek(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+        if let Some(hit_block) = self.index_of(block_id) {
+            let hit_block = &mut self.blocks[hit_block];
             if ts >= hit_block.ts {
                 // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                 hit_block.ts = ts;
@@ -63,18 +64,12 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
     }
 
     pub fn invalidate(&mut self, block_id: u64) -> Option<bool> {
-        let internal_block_id = block_id << 1 | 1;
-
-        // first of all, find whether this block is a hit.
-        let hit_block = self
-            .blocks
-            .iter_mut()
-            .find(|p| p.block_id_with_v == internal_block_id);
-
         // if it is a hit, we remove this block from the cache
-        if let Some(hit_block) = hit_block {
+        if let Some(hit_block) = self.index_of(block_id) {
+            let hit_block = &mut self.blocks[hit_block];
             let res = Some(hit_block.modified);
             hit_block.block_id_with_v = 0;
+            hit_block.ts = 0;
             return res;
         }
 
@@ -100,17 +95,8 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         is_modified: bool,
         increase_touched_count: bool,
     ) -> bool {
-        let internal_block_id = block_id << 1 | 1;
-
-        // first of all, find whether this block is a hit.
-        let hit_block = self
-            .blocks
-            .iter_mut()
-            .find(|p| p.block_id_with_v == internal_block_id);
-
-        // it is definitely not be a hit, so we need to assert.
-
-        if let Some(hit_block) = hit_block {
+        if let Some(hit_block) = self.index_of(block_id) {
+            let hit_block = &mut self.blocks[hit_block];
             if EXCLUSIVE {
                 // this should not happen for exclusive caches
                 CacheLineCoherenceHistory::global_get_block_history(block_id)
@@ -134,22 +120,20 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             false
         };
 
-        // then, find the first invalid block.
-        let invalid_block = self
-            .blocks
-            .iter_mut()
-            .find(|p| (p.block_id_with_v & 1) == 0);
+        let block_id_with_v = block_id << 1 | 1;
 
-        // if there is an invalid block, we replace that block.
-        if let Some(invalid_block) = invalid_block {
-            invalid_block.block_id_with_v = internal_block_id;
-            invalid_block.modified = is_modified;
-            invalid_block.ts = ts;
-            return result;
+        // TODO: This part can be accelerated using SIMD instructions.
+        let mut minimal_ts = u64::MAX;
+        let mut minimal_index = 0;
+
+        for (index, line) in self.blocks.iter_mut().enumerate() {
+            if line.ts < minimal_ts {
+                minimal_ts = line.ts;
+                minimal_index = index;
+            }
         }
 
-        // otherwise, we need to find the oldest block.
-        let oldest_block = self.blocks.iter_mut().min_by_key(|p| p.ts).unwrap();
+        let oldest_block = &mut self.blocks[minimal_index];
 
         // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {
@@ -158,7 +142,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         }
 
         // otherwise, we replace the oldest block.
-        oldest_block.block_id_with_v = internal_block_id;
+        oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = is_modified;
         oldest_block.ts = ts;
 
