@@ -73,14 +73,14 @@ impl MH {
 }
 
 #[test]
-#[should_panic(expected = "assertion failed: res.ts <= ts")]
+#[should_panic(expected = "assertion failed: self.lines[minimal_index].ts <= ts")]
 fn reversed_timestamp_from_the_same_core() {
     let mh = MH::new();
     let mut ts = 100;
     // Fill one cache set with some data.
     for l in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 = (l * DIRECTORY_SET) as u64;
-        mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false, false);
+        mh.access_memory_pblock_id(0, block_id, l as u64 + ts + 1, false, false, false);
     }
 
     ts += 100;
@@ -89,7 +89,7 @@ fn reversed_timestamp_from_the_same_core() {
     for l in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
         let block_id: u64 = (l * DIRECTORY_SET) as u64;
         assert_eq!(
-            mh.access_memory_pblock_id(0, block_id, l as u64 + ts, false, false, false),
+            mh.access_memory_pblock_id(0, block_id, l as u64 + ts + 1, false, false, false),
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         );
     }
@@ -98,7 +98,7 @@ fn reversed_timestamp_from_the_same_core() {
     let eval_block_id = (128 * DIRECTORY_SET) as u64;
     // The following line should trigger an assertion failure.
     assert_eq!(
-        mh.access_memory_pblock_id(0, eval_block_id, 0, false, false, false),
+        mh.access_memory_pblock_id(0, eval_block_id, 1, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
 }
@@ -108,9 +108,9 @@ fn write_invalidation_coherence() {
     let mut mh = MH::new();
 
     let block_id = 1024;
-    // Core 0 gets a read permission at 0.
+    // Core 0 gets a read permission at 1.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 0, false, false, false),
+        mh.access_memory_pblock_id(0, block_id, 1, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
@@ -146,7 +146,7 @@ fn raw_and_war() {
     let block_id = 1024;
     // Core 0 gets a read permission at 0.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 0, false, false, false),
+        mh.access_memory_pblock_id(0, block_id, 1, false, false, false),
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.

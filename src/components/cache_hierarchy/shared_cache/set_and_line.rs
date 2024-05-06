@@ -46,15 +46,8 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                 hit_block.ts = ts;
             } else {
-                // this should not happen.
-                if parameter::ENABLE_CACHE_LINE_HISTORY {
-                    CacheLineCoherenceHistory::global_get_block_history(block_id)
-                        .unwrap()
-                        .value()
-                        .print_history();
-                }
-
-                panic!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
+                // this should not happen if there is no reordering.
+                println!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
             }
             return Some(hit_block.modified);
         }

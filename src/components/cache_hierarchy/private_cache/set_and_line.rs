@@ -173,6 +173,8 @@ impl PrivateCacheSet {
             None
         };
 
+        assert!(self.lines[minimal_index].ts <= ts); // Timestamp of each core should be monotonic.
+
         // Replace.
         self.lines[minimal_index].ts = ts;
         self.lines[minimal_index].block_id_with_v = block_id_with_v;
@@ -322,7 +324,7 @@ fn minimum_can_find_invalid() {
         set.fill(10, ts, false, false, false, true),
         Some(PrivateCacheLine {
             block_id_with_v: 1 << 1 | 1,
-            ts: 1,
+            ts: 2,
             write_ts: 0,
             is_instruction: false,
             writeable: false,
