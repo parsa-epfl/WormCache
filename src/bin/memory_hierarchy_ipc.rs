@@ -33,7 +33,7 @@ fn test_hit_last() {
         mh.access_memory_pblock_id(
             0,
             (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
-            0,
+            1 + i as u64,
             false,
             false,
             false,
@@ -62,7 +62,7 @@ fn testing_pcache_always_miss() {
     // The block id is calculated as follows:
     // block_id = set_id * associativity + way_id
 
-    let mut ts: u64 = 0;
+    let mut ts: u64 = 1;
     let mut block_id = 42;
 
     loop {
@@ -90,7 +90,7 @@ fn testing_always_miss() {
     // The block id is calculated as follows:
     // block_id = set_id * associativity + way_id
 
-    let mut ts: u64 = 0;
+    let mut ts: u64 = 1;
     let mut block_id = 37;
 
     loop {

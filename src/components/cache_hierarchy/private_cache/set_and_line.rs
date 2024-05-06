@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrivateCacheLine {
     block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
@@ -75,7 +75,13 @@ impl PrivateCacheSet {
         }
     }
 
+    #[inline]
     pub fn index_of(&self, block_id: u64) -> Option<usize> {
+        // TODO: Replace this function with SIMD instructions.
+        // This requires the following changes:
+        // - Aligned data layout for the tags and the ts.
+        // - Explicit loop size, which means refactoring the interface of the private cache to the hierarchy.
+
         let block_id_to_find = (block_id << 1) | 1;
 
         // find from the cache set with block id.
@@ -107,14 +113,10 @@ impl PrivateCacheSet {
         is_store: bool,
         is_instruction_fetch: bool,
     ) -> PrivateCachePokeResult {
-        let block_id_to_find = (block_id << 1) | 1;
+        let hit_idx = self.index_of(block_id);
 
-        let hit_element = self
-            .lines
-            .iter_mut()
-            .find(|p| p.block_id_with_v == block_id_to_find);
-
-        if let Some(line) = hit_element {
+        if let Some(idx) = hit_idx {
+            let line = &mut self.lines[idx];
             if is_store {
                 if line.writeable {
                     line.ts = ts;
@@ -134,7 +136,7 @@ impl PrivateCacheSet {
         }
     }
 
-    pub fn refill(
+    pub fn fill(
         &mut self,
         block_id: u64,
         ts: u64,
@@ -143,67 +145,53 @@ impl PrivateCacheSet {
         modified: bool,
         increase_touched_count: bool,
     ) -> Option<PrivateCacheLine> {
-        let block_id_to_find = (block_id << 1) | 1;
+        assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
-        // find from the cache set with block id.
-        let hit_element = self
-            .lines
-            .iter_mut()
-            .find(|p| p.block_id_with_v == block_id_to_find);
-
-        assert!(hit_element.is_none());
+        assert!(self.index_of(block_id).is_none());
 
         // increase the touched count.
         if increase_touched_count && self.touched_count < self.lines.len() {
             self.touched_count += 1;
         }
 
-        // find the first invalid element.
-        let invalid_element = self
-            .lines
-            .iter_mut()
-            .find(|p| (p.block_id_with_v & 0x1) == 0);
+        // TODO: This part can be accelerated using SIMD instructions.
+        let mut minimal_ts = u64::MAX;
+        let mut minimal_index = 0;
 
-        if let Some(invalid_element) = invalid_element {
-            invalid_element.ts = ts;
-            invalid_element.block_id_with_v = block_id_to_find;
-            invalid_element.is_instruction = is_instruction;
-            invalid_element.writeable = writable;
-            invalid_element.modified = modified;
-            if modified {
-                invalid_element.write_ts = ts;
-            }
-            None
-        } else {
-            // find the oldest element.
-            let oldest_element = self.lines.iter_mut().min_by(|p, q| p.ts.cmp(&q.ts));
-
-            match oldest_element {
-                Some(oldest_element) => {
-                    // Here we need to be careful. In case we have order violation, we don't know the result of this cache hit / miss.
-                    let res = oldest_element.clone();
-                    // This should be not possible. You can never refill a cache line using the old timestamp from the same core.
-                    assert!(res.ts <= ts);
-                    oldest_element.ts = ts;
-                    oldest_element.block_id_with_v = block_id_to_find;
-                    oldest_element.is_instruction = is_instruction;
-                    oldest_element.writeable = writable;
-                    oldest_element.modified = modified;
-                    if modified {
-                        oldest_element.write_ts = ts;
-                    }
-                    Some(res)
-                }
-                None => {
-                    unreachable!("PrivateCache::insert: no element in the cache set.");
-                }
+        for (index, line) in self.lines.iter_mut().enumerate() {
+            if line.ts < minimal_ts {
+                minimal_ts = line.ts;
+                minimal_index = index;
             }
         }
+
+        let block_id_with_v = (block_id << 1) | 1;
+
+        let res = if (self.lines[minimal_index].block_id_with_v & 0x1) == 1 {
+            Some(self.lines[minimal_index].clone())
+        } else {
+            None
+        };
+
+        assert!(self.lines[minimal_index].ts <= ts); // Timestamp of each core should be monotonic.
+
+        // Replace.
+        self.lines[minimal_index].ts = ts;
+        self.lines[minimal_index].block_id_with_v = block_id_with_v;
+        self.lines[minimal_index].is_instruction = is_instruction;
+        self.lines[minimal_index].writeable = writable;
+        self.lines[minimal_index].modified = modified;
+        if modified {
+            self.lines[minimal_index].write_ts = ts;
+        }
+
+        res
     }
 
     #[inline]
     pub fn invalidate(&mut self, index: usize) {
         self.lines[index].block_id_with_v = 0;
+        self.lines[index].ts = 0; // set ts to 0 so that this place will be find by the minimal ts. Good for replacement.
     }
 
     pub fn request_sharer(&mut self, index: usize, _ts: u64) -> Option<bool> {
@@ -216,17 +204,14 @@ impl PrivateCacheSet {
 
     #[inline]
     pub fn invalidate_by_block_id(&mut self, block_id: u64) -> Option<PrivateCacheLine> {
-        let block_id_to_find = (block_id << 1) | 1;
-
         // find from the cache set with block id.
-        let hit_element = self
-            .lines
-            .iter_mut()
-            .find(|p| p.block_id_with_v == block_id_to_find);
+        let hit_idx = self.index_of(block_id);
 
-        if let Some(hit_element) = hit_element {
+        if let Some(idx) = hit_idx {
+            let hit_element = &mut self.lines[idx];
             let res = hit_element.clone();
             hit_element.block_id_with_v = 0;
+            hit_element.ts = 0; // set ts to 0 so that this place will be find by the minimal ts. Good for replacement.
             Some(res)
         } else {
             // it is possible to see this path. One case is that the cache line is evicted before updating the directory.
@@ -237,14 +222,11 @@ impl PrivateCacheSet {
     // get a shared copy of the cache line. Return true if the cache line's permission is changed or it is a miss. (Strong contention)
     #[inline]
     pub fn request_sharer_by_block_id(&mut self, block_id: u64, _ts: u64) -> Option<bool> {
-        let block_id_to_find = (block_id << 1) | 1;
         // find from the cache set with block id.
-        let hit_element = self
-            .lines
-            .iter_mut()
-            .find(|p| p.block_id_with_v == block_id_to_find);
+        let hit_idx = self.index_of(block_id);
 
-        if let Some(hit_element) = hit_element {
+        if let Some(hit_idx) = hit_idx {
+            let hit_element = &mut self.lines[hit_idx];
             hit_element.writeable = false; // remove the write permission.
             let res = hit_element.modified;
             hit_element.modified = false; // this has something to do with the owned state.
@@ -291,4 +273,62 @@ impl PrivateCacheSet {
             })
             .collect();
     }
+}
+
+#[test]
+fn minimum_can_find_invalid() {
+    let mut set = PrivateCacheSet::new(8);
+    let mut ts = 1;
+
+    // push 8 elements inside.
+    for i in 0..8 {
+        set.fill(i, ts, false, false, false, true);
+        ts += 1;
+    }
+
+    assert!(set.is_fully_touched());
+
+    // now, we invalid set 0.
+    assert_eq!(
+        set.invalidate_by_block_id(0),
+        Some(PrivateCacheLine {
+            block_id_with_v: 1,
+            ts: 1,
+            write_ts: 0,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        })
+    );
+
+    // Now if we refill, we will hit the first place.
+    assert_eq!(set.fill(9, ts, false, false, false, true), None);
+
+    // And the cache line 0 should be replaced.
+    assert_eq!(
+        set.lines[0],
+        PrivateCacheLine {
+            block_id_with_v: 9 << 1 | 1,
+            ts: ts,
+            write_ts: 0,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        }
+    );
+
+    ts += 1;
+
+    // If we now insert another one, line[1] will be replaced.
+    assert_eq!(
+        set.fill(10, ts, false, false, false, true),
+        Some(PrivateCacheLine {
+            block_id_with_v: 1 << 1 | 1,
+            ts: 2,
+            write_ts: 0,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        })
+    );
 }
