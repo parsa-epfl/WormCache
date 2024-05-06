@@ -1,4 +1,4 @@
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::{components::debug::cache_line_history::CacheLineCoherenceHistory, parameter};
 
 #[derive(Debug, Clone)]
 pub struct SharedCacheBlock {
@@ -41,11 +41,19 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             .find(|p| p.block_id_with_v == internal_block_id);
 
         if let Some(hit_block) = hit_block {
-            if ts > hit_block.ts {
+            if ts >= hit_block.ts {
+                // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                 hit_block.ts = ts;
             } else {
                 // this should not happen.
-                println!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
+                if parameter::ENABLE_CACHE_LINE_HISTORY {
+                    CacheLineCoherenceHistory::global_get_block_history(block_id)
+                        .unwrap()
+                        .value()
+                        .print_history();
+                }
+
+                panic!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
             }
             return Some(hit_block.modified);
         }

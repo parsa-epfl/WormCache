@@ -162,8 +162,8 @@ impl<
                     if pa == u64::MAX {
                         break;
                     }
-                    let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(core_id, block_id, ts, false, false, false);
+                    let pte_block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                    self.access_memory_pblock_id(core_id, pte_block_id, ts, false, false, false);
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(
@@ -257,8 +257,8 @@ impl<
                     if trace_pa == u64::MAX {
                         break;
                     }
-                    let block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(core_id, block_id, ts, false, false, false);
+                    let pte_block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                    self.access_memory_pblock_id(core_id, pte_block_id, ts, false, false, false);
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
