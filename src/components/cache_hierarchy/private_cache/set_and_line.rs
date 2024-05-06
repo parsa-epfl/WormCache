@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrivateCacheLine {
     block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
@@ -136,7 +136,7 @@ impl PrivateCacheSet {
         }
     }
 
-    pub fn refill(
+    pub fn fill(
         &mut self,
         block_id: u64,
         ts: u64,
@@ -145,6 +145,8 @@ impl PrivateCacheSet {
         modified: bool,
         increase_touched_count: bool,
     ) -> Option<PrivateCacheLine> {
+        assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
+
         assert!(self.index_of(block_id).is_none());
 
         // increase the touched count.
@@ -165,8 +167,13 @@ impl PrivateCacheSet {
 
         let block_id_with_v = (block_id << 1) | 1;
 
+        let res = if (self.lines[minimal_index].block_id_with_v & 0x1) == 1 {
+            Some(self.lines[minimal_index].clone())
+        } else {
+            None
+        };
+
         // Replace.
-        let res = self.lines[minimal_index].clone();
         self.lines[minimal_index].ts = ts;
         self.lines[minimal_index].block_id_with_v = block_id_with_v;
         self.lines[minimal_index].is_instruction = is_instruction;
@@ -176,7 +183,7 @@ impl PrivateCacheSet {
             self.lines[minimal_index].write_ts = ts;
         }
 
-        Some(res)
+        res
     }
 
     #[inline]
@@ -264,4 +271,62 @@ impl PrivateCacheSet {
             })
             .collect();
     }
+}
+
+#[test]
+fn minimum_can_find_invalid() {
+    let mut set = PrivateCacheSet::new(8);
+    let mut ts = 1;
+
+    // push 8 elements inside.
+    for i in 0..8 {
+        set.fill(i, ts, false, false, false, true);
+        ts += 1;
+    }
+
+    assert!(set.is_fully_touched());
+
+    // now, we invalid set 0.
+    assert_eq!(
+        set.invalidate_by_block_id(0),
+        Some(PrivateCacheLine {
+            block_id_with_v: 1,
+            ts: 1,
+            write_ts: 0,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        })
+    );
+
+    // Now if we refill, we will hit the first place.
+    assert_eq!(set.fill(9, ts, false, false, false, true), None);
+
+    // And the cache line 0 should be replaced.
+    assert_eq!(
+        set.lines[0],
+        PrivateCacheLine {
+            block_id_with_v: 9 << 1 | 1,
+            ts: ts,
+            write_ts: 0,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        }
+    );
+
+    ts += 1;
+
+    // If we now insert another one, line[1] will be replaced.
+    assert_eq!(
+        set.fill(10, ts, false, false, false, true),
+        Some(PrivateCacheLine {
+            block_id_with_v: 1 << 1 | 1,
+            ts: 1,
+            write_ts: 0,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        })
+    );
 }

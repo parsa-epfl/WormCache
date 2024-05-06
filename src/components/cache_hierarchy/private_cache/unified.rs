@@ -90,7 +90,7 @@ impl<
         self.caches[core_id as usize]
             .get_set(block_id)
             .inner()
-            .refill(block_id, ts, is_instruction, writable, modified, true)
+            .fill(block_id, ts, is_instruction, writable, modified, true)
     }
 
     #[inline]

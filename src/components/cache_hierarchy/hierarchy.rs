@@ -601,7 +601,7 @@ impl<
 
             let evicted = if incoming_sharer.count_ones() == 0 {
                 // This means there is no sharer. The core will get modified permission.
-                set_for_refill_lock.refill(
+                set_for_refill_lock.fill(
                     block_id,
                     ts,
                     is_instruction,
@@ -611,7 +611,7 @@ impl<
                 )
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
-                set_for_refill_lock.refill(
+                set_for_refill_lock.fill(
                     block_id,
                     ts,
                     is_instruction,
@@ -694,7 +694,7 @@ impl<
             let set_for_refill_lock = set_for_refill_lock.unwrap();
 
             let evicted =
-                set_for_refill_lock.refill(block_id, ts, is_instruction, false, false, true);
+                set_for_refill_lock.fill(block_id, ts, is_instruction, false, false, true);
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,

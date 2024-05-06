@@ -1,6 +1,6 @@
 use crate::{components::debug::cache_line_history::CacheLineCoherenceHistory, parameter};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.
     pub ts: u64,
@@ -95,6 +95,8 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         is_modified: bool,
         increase_touched_count: bool,
     ) -> bool {
+        assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
+
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
             if EXCLUSIVE {
@@ -148,4 +150,46 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
         result
     }
+}
+
+#[test]
+fn minimum_can_find_invalid() {
+    let mut set = SharedCacheSet::<8, false>::new();
+    let mut ts = 1;
+
+    // push 8 elements inside.
+    for i in 0..8 {
+        assert_eq!(set.insert(i, ts, false, true), i == 7);
+        ts += 1;
+    }
+
+    // now, we invalid set 0.
+    assert_eq!(set.invalidate(0), Some(false));
+
+    // Now if we refill, we will hit the first place.
+    set.insert(9, ts, false, true);
+
+    // And the cache line 0 should be replaced.
+    assert_eq!(
+        set.blocks[0],
+        SharedCacheBlock {
+            block_id_with_v: 9 << 1 | 1,
+            ts: ts,
+            modified: false,
+        }
+    );
+
+    ts += 1;
+
+    // If we now insert another one, line[1] will be replaced.
+    assert_eq!(set.insert(10, ts, false, true), false);
+
+    assert_eq!(
+        set.blocks[1],
+        SharedCacheBlock {
+            block_id_with_v: 10 << 1 | 1,
+            ts: ts,
+            modified: false,
+        }
+    )
 }
