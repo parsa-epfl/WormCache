@@ -39,26 +39,22 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         // assert_eq!((pc & 0x3), 0);
         let internal_tag = pc | 1;
 
-        // first, find an invalid entry
-        for i in 0..ASSO {
-            if self.array[index][i].tag_and_valid & 1 != 1 {
-                self.array[index][i].tag_and_valid = internal_tag;
-                self.array[index][i].target = target;
-                self.array[index][i].ts = self.local_ts;
-                return;
+        // Find the entry with the minimum timestamp. Ts is zero means it is not valid.
+
+        let mut min_index = 0;
+        let mut min_ts = u64::MAX;
+
+        for (i, entry) in self.array[index].iter().enumerate() {
+            if entry.ts < min_ts {
+                min_ts = entry.ts;
+                min_index = i;
             }
         }
 
-        // Well, we have to evict one, find the one with the minimum timestamp.
-        // We will use iterator to find the minimum timestamp.
-        let min_index = self.array[index]
-            .iter_mut()
-            .min_by(|a, b| a.ts.cmp(&b.ts))
-            .unwrap();
-
-        min_index.tag_and_valid = internal_tag;
-        min_index.target = target;
-        min_index.ts = self.local_ts;
+        // always replace the entry with the minimum timestamp
+        self.array[index][min_index].tag_and_valid = internal_tag;
+        self.array[index][min_index].target = target;
+        self.array[index][min_index].ts = self.local_ts;
     }
 }
 

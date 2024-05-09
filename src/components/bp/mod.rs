@@ -1,4 +1,4 @@
-mod fetch;
+pub mod fetch;
 
 mod aarch64;
 mod callbacks;
