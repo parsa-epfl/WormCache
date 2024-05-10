@@ -196,14 +196,14 @@ impl PrivateCacheSet {
         is_instruction: bool,
         writable: bool,
         modified: bool,
-        increase_touched_count: bool,
     ) -> Option<bool> {
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
         assert!(self.index_of(block_id).is_none());
 
         // increase the touched count.
-        if increase_touched_count && self.touched_count < self.lines.len() {
+        if !matches!(potential_slot, EvictedSlot::Same(_)) && self.touched_count < self.lines.len()
+        {
             self.touched_count += 1;
         }
 
@@ -310,7 +310,6 @@ fn minimum_can_find_invalid() {
             false,
             false,
             false,
-            true,
         );
         ts += 1;
     }
@@ -336,7 +335,7 @@ fn minimum_can_find_invalid() {
     // Now if we refill, we will hit the first place.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, EvictedSlot::Invalid(0));
-    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, false, false, false, true);
+    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, false, false, false);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -356,5 +355,5 @@ fn minimum_can_find_invalid() {
     // If we now insert another one, line[1] will be replaced.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, EvictedSlot::Valid(1, 1));
-    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, false, false, false, true);
+    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, false, false, false);
 }

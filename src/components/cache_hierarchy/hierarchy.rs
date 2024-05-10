@@ -12,8 +12,6 @@ use super::{
     private_cache::{self, PrivateCaches},
 };
 
-use gcd;
-
 use crate::components::mmu::AbstractMMU;
 use std::cell::UnsafeCell;
 use std::ops::DerefMut;
@@ -26,15 +24,6 @@ mod harvard_reverse_order_tests;
 mod harvard_tests;
 #[cfg(test)]
 mod reverse_order_tests;
-
-const DIRECTORY_SET: usize = if parameter::USE_UNIFIED_CACHE {
-    parameter::UNIFIED_PRI_CACHE_SET
-} else {
-    gcd::binary_usize(
-        parameter::HARVARD_PRI_I_CACHE_SET,
-        parameter::HARVARD_PRI_D_CACHE_SET,
-    )
-};
 
 pub struct MemoryHierarchy<
     MMU: AbstractMMU,
@@ -444,7 +433,6 @@ impl<
                 is_instruction,
                 writable,
                 modified,
-                true,
             ) {
                 let (evicted_block_id, mut evicted_block_directory_guard) =
                     evict_directory.unwrap();
@@ -626,7 +614,6 @@ impl<
                     is_instruction,
                     true,
                     true,
-                    !private_hit.permission_violation(),
                 )
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
@@ -637,7 +624,6 @@ impl<
                     is_instruction,
                     false,
                     false,
-                    !private_hit.permission_violation(),
                 )
             };
 
@@ -720,7 +706,6 @@ impl<
                 is_instruction,
                 false,
                 false,
-                true,
             );
 
             CacheLineCoherenceHistory::global_record_history(

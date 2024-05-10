@@ -7,13 +7,15 @@ use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 
 use super::*;
 
+const PCACHE_SET: usize = 64;
+
 type MH = MemoryHierarchy<
     NoMMU,
     ParallelHarvardPrivateCache<
         32,
-        { DIRECTORY_SET },
+        { PCACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
-        { DIRECTORY_SET },
+        { PCACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
@@ -79,7 +81,7 @@ fn reversed_timestamp_from_the_same_core() {
     let mut ts = 100;
     // Fill one cache set with some data.
     for l in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (l * DIRECTORY_SET) as u64;
+        let block_id: u64 = (l * PCACHE_SET) as u64;
         mh.access_memory_pblock_id(0, block_id, l as u64 + ts + 1, false, false, false);
     }
 
@@ -87,7 +89,7 @@ fn reversed_timestamp_from_the_same_core() {
 
     // If I access any touched block, it should be hit.
     for l in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (l * DIRECTORY_SET) as u64;
+        let block_id: u64 = (l * PCACHE_SET) as u64;
         assert_eq!(
             mh.access_memory_pblock_id(0, block_id, l as u64 + ts + 1, false, false, false),
             CacheHierarchyAccessResult::HitInSelfPrivateCache
@@ -95,7 +97,7 @@ fn reversed_timestamp_from_the_same_core() {
     }
 
     // OK, now there is an access with a reversed timestamp.
-    let eval_block_id = (128 * DIRECTORY_SET) as u64;
+    let eval_block_id = (128 * PCACHE_SET) as u64;
     // The following line should trigger an assertion failure.
     assert_eq!(
         mh.access_memory_pblock_id(0, eval_block_id, 1, false, false, false),
@@ -260,7 +262,7 @@ fn rae() {
 
     // This block is evicted due to contention.
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (10 * (i + 1) * DIRECTORY_SET + block_id as usize) as u64;
+        let block_id: u64 = (10 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (100 + i) as u64, false, false, false);
     }
 
@@ -290,7 +292,7 @@ fn eae() {
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (100 * (i + 1) * DIRECTORY_SET + block_id as usize) as u64;
+        let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false, false);
     }
 
@@ -305,7 +307,7 @@ fn eae() {
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (255 * (i + 1) * DIRECTORY_SET + block_id as usize) as u64;
+        let block_id: u64 = (255 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false, false);
     }
 
@@ -331,7 +333,7 @@ fn wae() {
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (100 * (i + 1) * DIRECTORY_SET + block_id as usize) as u64;
+        let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(0, block_id, (200 + i) as u64, false, false, false);
     }
 
@@ -374,7 +376,7 @@ fn eaw() {
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (100 * (i + 1) * DIRECTORY_SET + block_id as usize) as u64;
+        let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false, false);
     }
 
@@ -401,7 +403,7 @@ fn ear() {
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
-        let block_id: u64 = (100 * (i + 1) * DIRECTORY_SET + block_id as usize) as u64;
+        let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
         mh.access_memory_pblock_id(1, block_id, (10 + i) as u64, false, false, false);
     }
 

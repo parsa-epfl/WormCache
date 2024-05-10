@@ -7,13 +7,15 @@ use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 
 use super::*;
 
+const PCACHE_SET: usize = 64;
+
 type MH = MemoryHierarchy<
     NoMMU,
     ParallelHarvardPrivateCache<
         32,
-        { DIRECTORY_SET },
+        { PCACHE_SET },
         { parameter::HARVARD_PRI_I_CACHE_ASSO },
-        { DIRECTORY_SET },
+        { PCACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
