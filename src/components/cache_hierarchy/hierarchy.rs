@@ -6,7 +6,7 @@ use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::directory::DirectorySet;
+use super::directory::DirectoryEntry;
 use super::{
     directory,
     private_cache::{self, PrivateCaches},
@@ -15,8 +15,8 @@ use super::{
 use gcd;
 
 use crate::components::mmu::AbstractMMU;
-use spin::mutex::SpinMutexGuard;
 use std::cell::UnsafeCell;
+use std::ops::DerefMut;
 
 #[cfg(test)]
 mod debug_tests;
@@ -48,10 +48,7 @@ pub struct MemoryHierarchy<
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
-    // In case the hardware has separate L1i and L1d, and there is no private L2, we can just add two groups of caches.
-    // The logic to handle it is the same. It is equivalent that we have more cores with a single private cache.
-    // There might be a way to optimize if the permission is shared. I need to think about it.
-    directory: directory::Directory<{ DIRECTORY_SET }>,
+    directory: directory::Directory<32768>,
 
     shared_cache: SCache,
 }
@@ -349,11 +346,29 @@ impl<
             }
         }
 
-        // now, it is a miss. We need to check the directory.
-        let mut directory_set_guard = self.directory.get_set(block_id);
-        let directory_entry = directory_set_guard.get_or_create(block_id);
+        let evicted_slot = match private_hit {
+            private_cache::PrivateCachePokeResult::Hit => unreachable!(),
+            private_cache::PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
+            private_cache::PrivateCachePokeResult::PermissionViolation(ref slot) => slot.clone(),
+        };
 
-        let sharers = directory_entry.sharers;
+        // get the locks for the fill and the evict, in a fixed order, if possible.
+        let (mut miss_directory_guard, mut evict_directory) = {
+            match evicted_slot {
+                private_cache::EvictedSlot::Valid(_, potential_evicted_id) => {
+                    let (mut m_guard, e_guard) = self
+                        .directory
+                        .fetch_two_entries(block_id, potential_evicted_id);
+                    (m_guard, Some((potential_evicted_id, e_guard)))
+                }
+                _ => {
+                    let directory_set_guard = self.directory.get_or_create(block_id);
+                    (directory_set_guard, None)
+                }
+            }
+        };
+
+        let sharers = miss_directory_guard.sharers;
 
         // Now, we communicate with the directory. Current miss is mapped to the following position in the directory entry share list.
         let p_cache_id = PCache::get_cache_id_by_cache_info(core_id, is_instruction);
@@ -364,7 +379,7 @@ impl<
             CacheOperationType::GetR
         };
 
-        if PRECISE_COHERENCE_RECONSTRUCTION && directory_entry.modify_ts_before_eviction > ts {
+        if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.modify_ts_before_eviction > ts {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
             CacheLineCoherenceHistory::global_record_history(
@@ -385,11 +400,11 @@ impl<
             // NOTE: currently shared cache access is disabled.
             let shared_cache_result = self.shared_cache.lookup(core_id, block_id, ts);
 
-            directory_entry.ts = ts;
-            directory_entry.sharers.set(p_cache_id, true);
+            miss_directory_guard.ts = ts;
+            miss_directory_guard.sharers.set(p_cache_id, true);
 
             if is_store {
-                directory_entry.modify_ts_before_eviction = ts;
+                miss_directory_guard.modify_ts_before_eviction = ts;
             }
 
             let modified = shared_cache_result.unwrap_or(false) || is_store;
@@ -400,22 +415,10 @@ impl<
                 !is_instruction
             };
 
-            let evicted = self.private_caches.refill_from_shared_cache(
-                core_id,
-                block_id,
-                ts,
-                is_instruction,
-                writable,
-                modified,
-            );
-
             if FILL_SCACHE_ON_FILLING_PCACHE {
                 self.shared_cache
                     .insert(core_id, block_id, ts, modified, true);
             }
-
-            // Here we have a problem. The line is evicted from the cache, but there is no notification to the directory that the line is evicted.
-            // In order to do so, we need to get the lock of evicted line.
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -423,18 +426,34 @@ impl<
                 p_cache_id,
                 ts,
                 true,
-                directory_entry.sharers,
+                miss_directory_guard.sharers,
                 line!(),
             );
 
+            // Now, it is time to fill the private cache.
+
+            let mut set_to_fill =
+                self.private_caches
+                    .get_set_for_fill(core_id, block_id, is_instruction);
+
             // handle eviction now.
-            if let Some(evicted_line) = evicted {
+            if let Some(evicted_line_is_modified) = set_to_fill.fill_with_potential_eviction_slot(
+                evicted_slot,
+                block_id,
+                ts,
+                is_instruction,
+                writable,
+                modified,
+                true,
+            ) {
+                let (evicted_block_id, mut evicted_block_directory_guard) =
+                    evict_directory.unwrap();
                 self.handle_eviction(
-                    &mut directory_set_guard,
+                    &mut evicted_block_directory_guard,
                     p_cache_id,
-                    evicted_line.block_id(),
+                    evicted_block_id,
                     ts,
-                    evicted_line.is_modified(),
+                    evicted_line_is_modified,
                 );
             }
 
@@ -462,8 +481,7 @@ impl<
         // - Not contain the current core, so it is a miss, or
         // - Contain the current core, because the permission is wrong.
         assert!(
-            acquire_list.get(p_cache_id).unwrap() == false
-                || private_hit == private_cache::PrivateCachePokeResult::PermissionViolation
+            acquire_list.get(p_cache_id).unwrap() == false || private_hit.permission_violation()
         );
 
         // the core itself should be also part of the acquire_list.
@@ -511,8 +529,8 @@ impl<
                 // Update the directory.
                 let mut incoming_sharer = SharerList::ZERO;
                 incoming_sharer.set(other_sharer_id, true);
-                directory_entry.ts = ts;
-                directory_entry.sharers = incoming_sharer;
+                miss_directory_guard.ts = ts;
+                miss_directory_guard.sharers = incoming_sharer;
 
                 for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
@@ -531,7 +549,7 @@ impl<
                     p_cache_id,
                     ts,
                     false,
-                    directory_entry.sharers,
+                    miss_directory_guard.sharers,
                     line!(),
                 );
 
@@ -543,14 +561,14 @@ impl<
             }
         }
 
-        let mut res = if private_hit != private_cache::PrivateCachePokeResult::PermissionViolation {
+        let mut res = if !private_hit.permission_violation() {
             CacheHierarchyAccessResult::HitInOtherPrivateCache
         } else {
             CacheHierarchyAccessResult::MissDueToPermission
         };
 
         let evicted = if is_store {
-            let mut incoming_sharer = directory_entry.sharers;
+            let mut incoming_sharer = miss_directory_guard.sharers;
             let mut set_for_refill_lock = None;
 
             // Here actually we can do something to tell the difference between CleanExclusive and CleanShared.
@@ -601,23 +619,27 @@ impl<
 
             let evicted = if incoming_sharer.count_ones() == 0 {
                 // This means there is no sharer. The core will get modified permission.
-                set_for_refill_lock.fill(
+                let evict_result = set_for_refill_lock.fill_with_potential_eviction_slot(
+                    evicted_slot,
                     block_id,
                     ts,
                     is_instruction,
                     true,
                     true,
-                    private_hit != private_cache::PrivateCachePokeResult::PermissionViolation,
-                )
+                    !private_hit.permission_violation(),
+                );
+
+                evict_result
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
-                set_for_refill_lock.fill(
+                set_for_refill_lock.fill_with_potential_eviction_slot(
+                    evicted_slot,
                     block_id,
                     ts,
                     is_instruction,
                     false,
                     false,
-                    private_hit != private_cache::PrivateCachePokeResult::PermissionViolation,
+                    !private_hit.permission_violation(),
                 )
             };
 
@@ -625,8 +647,8 @@ impl<
             incoming_sharer.set(p_cache_id, true);
 
             // update the directory.
-            directory_entry.ts = ts;
-            directory_entry.sharers = incoming_sharer;
+            miss_directory_guard.ts = ts;
+            miss_directory_guard.sharers = incoming_sharer;
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -634,7 +656,7 @@ impl<
                 p_cache_id,
                 ts,
                 true,
-                directory_entry.sharers,
+                miss_directory_guard.sharers,
                 line!(),
             );
 
@@ -667,7 +689,7 @@ impl<
                                 p_cache_id,
                                 ts,
                                 false,
-                                directory_entry.sharers,
+                                miss_directory_guard.sharers,
                                 line!(),
                             );
 
@@ -687,14 +709,21 @@ impl<
             }
 
             // Then, we need to add self to the directory.
-            directory_entry.ts = ts;
-            directory_entry.sharers.set(p_cache_id, true);
+            miss_directory_guard.ts = ts;
+            miss_directory_guard.sharers.set(p_cache_id, true);
 
             // We can insert the block to the private cache now.
             let set_for_refill_lock = set_for_refill_lock.unwrap();
 
-            let evicted =
-                set_for_refill_lock.fill(block_id, ts, is_instruction, false, false, true);
+            let evicted = set_for_refill_lock.fill_with_potential_eviction_slot(
+                evicted_slot,
+                block_id,
+                ts,
+                is_instruction,
+                false,
+                false,
+                true,
+            );
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -702,7 +731,7 @@ impl<
                 p_cache_id,
                 ts,
                 true,
-                directory_entry.sharers,
+                miss_directory_guard.sharers,
                 line!(),
             );
 
@@ -711,13 +740,14 @@ impl<
             evicted
         };
 
-        if let Some(evicted_line) = evicted {
+        if let Some(is_modified) = evicted {
+            let (evicted_block_id, mut evicted_block_directory_guard) = evict_directory.unwrap();
             self.handle_eviction(
-                &mut directory_set_guard,
+                &mut evicted_block_directory_guard,
                 p_cache_id,
-                evicted_line.block_id(),
+                evicted_block_id,
                 ts,
-                evicted_line.is_modified(),
+                is_modified,
             );
         }
 
@@ -726,17 +756,14 @@ impl<
 
     pub fn handle_eviction(
         &self,
-        directory_set_guard: &mut SpinMutexGuard<'_, DirectorySet<DIRECTORY_SET>>,
+        directory_entry_guard: &mut impl DerefMut<Target = DirectoryEntry>,
         cache_id: usize,
         block_id: u64,
         ts: u64,
         modified: bool,
     ) {
-        // first, we need to check the directory.
-        let directory_set = directory_set_guard.get_or_create(block_id);
-
         // we cancel the element of this block in the directory.
-        let sharer = directory_set.sharers;
+        let sharer = directory_entry_guard.sharers;
 
         if sharer.get(cache_id).unwrap() == false {
             // Well, it is already invalid by other core.
@@ -750,8 +777,8 @@ impl<
         }
 
         // we put the element back to the directory.
-        directory_set.ts = ts;
-        directory_set.sharers.set(cache_id, false);
+        directory_entry_guard.ts = ts;
+        directory_entry_guard.sharers.set(cache_id, false);
 
         CacheLineCoherenceHistory::global_record_history(
             block_id,
@@ -759,23 +786,23 @@ impl<
             cache_id,
             ts,
             false,
-            directory_set.sharers,
+            directory_entry_guard.sharers,
             line!(),
         );
 
         // Also update the writer timestamp before eviction.
         if modified {
             // keep the latest write timestamp.
-            directory_set.modify_ts_before_eviction =
-                if directory_set.modify_ts_before_eviction < ts {
+            directory_entry_guard.modify_ts_before_eviction =
+                if directory_entry_guard.modify_ts_before_eviction < ts {
                     ts
                 } else {
-                    directory_set.modify_ts_before_eviction
+                    directory_entry_guard.modify_ts_before_eviction
                 };
         }
 
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
-        if directory_set.sharers.count_ones() == 0 {
+        if directory_entry_guard.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
             Statistics::global_record(
                 PCache::find_cache_info_by_cache_id(cache_id).0,

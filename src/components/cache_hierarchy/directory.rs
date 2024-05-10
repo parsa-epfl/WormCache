@@ -1,3 +1,6 @@
+use std::ops::Deref;
+use std::ops::DerefMut;
+
 use rustc_hash::FxHashMap as HashMap;
 use spin::mutex::SpinMutex;
 use spin::mutex::SpinMutexGuard;
@@ -5,6 +8,7 @@ use spin::mutex::SpinMutexGuard;
 use bitvec::prelude::*;
 use bitvec::BitArr;
 use serde::Serialize;
+use spin::Spin;
 
 use crate::parameter;
 
@@ -43,13 +47,6 @@ impl<const SET: usize> DirectorySet<SET> {
 
     const LOG2_SET: usize = SET.trailing_zeros() as usize;
 
-    pub fn exists(&self, block_id: u64) -> bool {
-        let internal_id = block_id >> Self::LOG2_SET;
-
-        // Internal id is more efficient than block_id, because it removes the same lower bits.
-        self.entries.contains_key(&internal_id)
-    }
-
     pub fn get_or_create(&mut self, block_id: u64) -> &mut DirectoryEntry {
         let internal_id = block_id >> Self::LOG2_SET;
 
@@ -60,6 +57,32 @@ impl<const SET: usize> DirectorySet<SET> {
         });
 
         self.entries.get_mut(&internal_id).unwrap()
+    }
+}
+
+pub struct DirectoryEntryGuard<'a, const SET: usize> {
+    pub set_guard: SpinMutexGuard<'a, DirectorySet<SET>>,
+    pub entry: *mut DirectoryEntry,
+}
+
+impl<const SET: usize> Deref for DirectoryEntryGuard<'_, SET> {
+    type Target = DirectoryEntry;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.entry }
+    }
+}
+
+impl<const SET: usize> DerefMut for DirectoryEntryGuard<'_, SET> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.entry }
+    }
+}
+
+impl<'a, const SET: usize> DirectoryEntryGuard<'a, SET> {
+    pub fn new(mut set_guard: SpinMutexGuard<'a, DirectorySet<SET>>, block_id: u64) -> Self {
+        let entry = set_guard.get_or_create(block_id) as *mut _ as *mut DirectoryEntry;
+        Self { set_guard, entry }
     }
 }
 
@@ -81,9 +104,28 @@ impl<const SET: usize> Directory<SET> {
         }
     }
 
-    pub fn get_set(&self, block_id: u64) -> SpinMutexGuard<'_, DirectorySet<SET>> {
+    pub fn get_or_create(&self, block_id: u64) -> DirectoryEntryGuard<'_, SET> {
         let set_id = (block_id as usize) % SET;
-        self.entries[set_id].lock()
+        let set_guard = self.entries[set_id].lock();
+        DirectoryEntryGuard::new(set_guard, block_id)
+    }
+
+    pub fn fetch_two_entries(
+        &self,
+        block_id_0: u64,
+        block_id_1: u64,
+    ) -> (DirectoryEntryGuard<'_, SET>, DirectoryEntryGuard<'_, SET>) {
+        assert_ne!(block_id_0, block_id_1);
+        if block_id_0 < block_id_1 {
+            return (
+                self.get_or_create(block_id_0),
+                self.get_or_create(block_id_1),
+            );
+        } else {
+            let g1 = self.get_or_create(block_id_1);
+            let g0 = self.get_or_create(block_id_0);
+            return (g0, g1);
+        }
     }
 }
 
