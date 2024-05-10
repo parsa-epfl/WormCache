@@ -77,10 +77,7 @@ pub enum PrivateCachePokeResult {
 
 impl PrivateCachePokeResult {
     pub fn permission_violation(&self) -> bool {
-        return match self {
-            PrivateCachePokeResult::PermissionViolation(_) => true,
-            _ => false,
-        };
+        matches!(self, PrivateCachePokeResult::PermissionViolation(_))
     }
 }
 

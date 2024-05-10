@@ -3,7 +3,7 @@ use serde_json::json;
 use crate::components::cache_hierarchy::util::CCell;
 
 use super::PrivateCaches;
-use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
+use super::{PrivateCachePokeResult, PrivateCacheSet};
 use spin::mutex::SpinMutex;
 
 use std::collections::HashMap;
@@ -130,12 +130,10 @@ impl<
                 .inner()
                 .poke(block_id)
                 .is_some()
-            {
-                res.push(core_id as u32);
-            } else if self.caches[core_id].d_cache[block_id as usize % D_SET]
-                .inner()
-                .poke(block_id)
-                .is_some()
+                || self.caches[core_id].d_cache[block_id as usize % D_SET]
+                    .inner()
+                    .poke(block_id)
+                    .is_some()
             {
                 res.push(core_id as u32);
             }

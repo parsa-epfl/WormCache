@@ -69,7 +69,7 @@ impl MH {
 }
 
 #[test]
-#[should_panic(expected = "assertion failed: self.lines[minimal_index].ts <= ts")]
+#[should_panic(expected = "assertion failed: self.lines[idx_of_slot_to_fill].ts <= ts")]
 fn reversed_timestamp_from_the_same_core() {
     let mh = MH::new();
     let mut ts = 100;

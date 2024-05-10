@@ -2,7 +2,7 @@ use serde_json::json;
 
 use crate::components::cache_hierarchy::util::CCell;
 
-use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
+use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use spin::mutex::SpinMutex;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;

@@ -8,9 +8,9 @@ use spin::mutex::SpinMutexGuard;
 use bitvec::prelude::*;
 use bitvec::BitArr;
 use serde::Serialize;
-use spin::Spin;
 
 use crate::parameter;
+use crate::util;
 
 const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
     parameter::CORE_COUNT
@@ -25,12 +25,14 @@ pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 //     sharers: SharerList,
 // }
 
+#[derive(Debug)]
 pub struct DirectoryEntry {
     pub ts: u64,
     pub sharers: SharerList,
     pub modify_ts_before_eviction: u64, // This field is to avoid the eviction causes the write history to be lost.
 }
 
+#[derive(Debug)]
 #[repr(align(64))]
 pub struct DirectorySet<const SET: usize> {
     entries: HashMap<u64, DirectoryEntry>,
@@ -81,14 +83,14 @@ impl<const SET: usize> DerefMut for DirectoryEntryGuard<'_, SET> {
 
 impl<'a, const SET: usize> DirectoryEntryGuard<'a, SET> {
     pub fn new(mut set_guard: SpinMutexGuard<'a, DirectorySet<SET>>, block_id: u64) -> Self {
-        let entry = set_guard.get_or_create(block_id) as *mut _ as *mut DirectoryEntry;
+        let entry = set_guard.get_or_create(block_id) as *mut _;
         Self { set_guard, entry }
     }
 }
 
 // Probably the Directory should be infinitely sized.
 pub struct Directory<const SET: usize> {
-    entries: [SpinMutex<DirectorySet<SET>>; SET],
+    entries: Box<[SpinMutex<DirectorySet<SET>>; SET]>,
 }
 
 impl<const SET: usize> Default for Directory<SET> {
@@ -100,7 +102,7 @@ impl<const SET: usize> Default for Directory<SET> {
 impl<const SET: usize> Directory<SET> {
     pub fn new() -> Self {
         Self {
-            entries: std::array::from_fn(|idx| SpinMutex::new(DirectorySet::new(idx))),
+            entries: util::init_heap_array(|idx| SpinMutex::new(DirectorySet::new(idx))),
         }
     }
 
@@ -124,7 +126,7 @@ impl<const SET: usize> Directory<SET> {
         } else {
             let g1 = self.get_or_create(block_id_1);
             let g0 = self.get_or_create(block_id_0);
-            return (g0, g1);
+            (g0, g1)
         }
     }
 }

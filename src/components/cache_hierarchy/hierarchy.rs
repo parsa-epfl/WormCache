@@ -353,10 +353,10 @@ impl<
         };
 
         // get the locks for the fill and the evict, in a fixed order, if possible.
-        let (mut miss_directory_guard, mut evict_directory) = {
+        let (mut miss_directory_guard, evict_directory) = {
             match evicted_slot {
                 private_cache::EvictedSlot::Valid(_, potential_evicted_id) => {
-                    let (mut m_guard, e_guard) = self
+                    let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);
                     (m_guard, Some((potential_evicted_id, e_guard)))
@@ -619,7 +619,7 @@ impl<
 
             let evicted = if incoming_sharer.count_ones() == 0 {
                 // This means there is no sharer. The core will get modified permission.
-                let evict_result = set_for_refill_lock.fill_with_potential_eviction_slot(
+                set_for_refill_lock.fill_with_potential_eviction_slot(
                     evicted_slot,
                     block_id,
                     ts,
@@ -627,9 +627,7 @@ impl<
                     true,
                     true,
                     !private_hit.permission_violation(),
-                );
-
-                evict_result
+                )
             } else {
                 // There are sharers. So unfortunately, you can only get shared permission.
                 set_for_refill_lock.fill_with_potential_eviction_slot(
