@@ -33,11 +33,12 @@ pub struct MemoryHierarchy<
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
+    const DIRECTORY_SHARED_COUNT: usize,
 > {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
-    directory: directory::Directory<32768>,
+    directory: directory::Directory<DIRECTORY_SHARED_COUNT>,
 
     shared_cache: SCache,
 }
@@ -60,6 +61,7 @@ impl<
         const FILL_SCACHE_ON_FILLING_PCACHE: bool,
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+        const DIRECTORY_SHARED_COUNT: usize,
     > Default
     for MemoryHierarchy<
         MMU,
@@ -69,6 +71,7 @@ impl<
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
+        DIRECTORY_SHARED_COUNT,
     >
 {
     fn default() -> Self {
@@ -84,6 +87,7 @@ impl<
         const FILL_SCACHE_ON_FILLING_PCACHE: bool,
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+        const DIRECTORY_SHARED_COUNT: usize,
     >
     MemoryHierarchy<
         MMU,
@@ -93,6 +97,7 @@ impl<
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
+        DIRECTORY_SHARED_COUNT,
     >
 {
     pub fn new() -> Self {

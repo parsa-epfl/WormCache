@@ -173,6 +173,17 @@ pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = false;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_CLEAN_EVICTION));
 
 /**
+ * DIRECTORY_SHARED_COUNT
+ *
+ * The number of sets of the directory. It should be much larger than the number of sets of all private caches to prevent directory contention.
+ *
+ * It should be a power of 2.
+ *
+*/
+pub const DIRECTORY_SHARED_COUNT: usize = 32768;
+static_assertions::const_assert!(DIRECTORY_SHARED_COUNT.is_power_of_two());
+
+/**
 * ADJACENT_LINE_PREFETCHING
 *
 * Whether to enable the adjacent (in PA) line prefetching for functional warming.

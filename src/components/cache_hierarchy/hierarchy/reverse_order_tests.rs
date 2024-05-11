@@ -21,6 +21,7 @@ type MH = MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::DIRECTORY_SHARED_COUNT },
 >;
 
 #[derive(Debug, PartialEq, Eq)]
