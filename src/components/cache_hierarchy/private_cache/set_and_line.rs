@@ -139,6 +139,7 @@ impl PrivateCacheSet {
         }
     }
 
+    #[inline]
     pub fn poke(&self, block_id: u64) -> Option<PrivateCacheLine> {
         let block_id_to_find = (block_id << 1) | 1;
 
@@ -151,6 +152,7 @@ impl PrivateCacheSet {
         hit_element.cloned()
     }
 
+    #[inline]
     // This function check the cache and update the cache if it is a cache hit. Otherwise, it return false.
     pub fn poke_and_update(
         &mut self,
@@ -188,6 +190,7 @@ impl PrivateCacheSet {
     // This function should be use in pair with `poke_and_update`.
     // Return Some if it evicts an valid and different cache line, and the content is the modified bit of the evicted cache line.
     // Return None if it does not evict any valid cache line.
+    #[inline]
     pub fn fill_with_potential_eviction_slot(
         &mut self,
         potential_slot: EvictedSlot,
