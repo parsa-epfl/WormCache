@@ -6,7 +6,7 @@ use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::directory::DirectoryEntry;
+use super::directory::DirectorySet;
 use super::{
     directory,
     private_cache::{self, PrivateCaches},
@@ -342,7 +342,7 @@ impl<
         };
 
         // get the locks for the fill and the evict, in a fixed order, if possible.
-        let (mut miss_directory_guard, evict_directory) = {
+        let (mut miss_directory_set_guard, evict_directory) = {
             match evicted_slot {
                 private_cache::EvictedSlot::Valid(_, potential_evicted_id) => {
                     let (m_guard, e_guard) = self
@@ -351,11 +351,13 @@ impl<
                     (m_guard, Some((potential_evicted_id, e_guard)))
                 }
                 _ => {
-                    let directory_set_guard = self.directory.get_or_create(block_id);
+                    let directory_set_guard = self.directory.lock_set(block_id);
                     (directory_set_guard, None)
                 }
             }
         };
+
+        let miss_directory_guard = miss_directory_set_guard.get_or_create(block_id);
 
         let sharers = miss_directory_guard.sharers;
 
@@ -437,7 +439,9 @@ impl<
                 let (evicted_block_id, mut evicted_block_directory_guard) =
                     evict_directory.unwrap();
                 self.handle_eviction(
-                    &mut evicted_block_directory_guard,
+                    evicted_block_directory_guard
+                        .as_mut()
+                        .unwrap_or(&mut miss_directory_set_guard),
                     p_cache_id,
                     evicted_block_id,
                     ts,
@@ -460,7 +464,6 @@ impl<
         }
 
         if is_prefetch {
-            // Currently, we don't prefetch from other cores.
             return CacheHierarchyAccessResult::Miss;
         }
 
@@ -726,7 +729,9 @@ impl<
         if let Some(is_modified) = evicted {
             let (evicted_block_id, mut evicted_block_directory_guard) = evict_directory.unwrap();
             self.handle_eviction(
-                &mut evicted_block_directory_guard,
+                evicted_block_directory_guard
+                    .as_mut()
+                    .unwrap_or(&mut miss_directory_set_guard),
                 p_cache_id,
                 evicted_block_id,
                 ts,
@@ -737,16 +742,18 @@ impl<
         res
     }
 
-    pub fn handle_eviction(
+    pub fn handle_eviction<const SET: usize>(
         &self,
-        directory_entry_guard: &mut impl DerefMut<Target = DirectoryEntry>,
+        directory_set_guard: &mut impl DerefMut<Target = DirectorySet<SET>>,
         cache_id: usize,
         block_id: u64,
         ts: u64,
         modified: bool,
     ) {
+        let directory_entry = directory_set_guard.get_or_create(block_id);
+
         // we cancel the element of this block in the directory.
-        let sharer = directory_entry_guard.sharers;
+        let sharer = directory_entry.sharers;
 
         if sharer.get(cache_id).unwrap() == false {
             // Well, it is already invalid by other core.
@@ -760,8 +767,8 @@ impl<
         }
 
         // we put the element back to the directory.
-        directory_entry_guard.ts = ts;
-        directory_entry_guard.sharers.set(cache_id, false);
+        directory_entry.ts = ts;
+        directory_entry.sharers.set(cache_id, false);
 
         CacheLineCoherenceHistory::global_record_history(
             block_id,
@@ -769,23 +776,23 @@ impl<
             cache_id,
             ts,
             false,
-            directory_entry_guard.sharers,
+            directory_entry.sharers,
             line!(),
         );
 
         // Also update the writer timestamp before eviction.
         if modified {
             // keep the latest write timestamp.
-            directory_entry_guard.modify_ts_before_eviction =
-                if directory_entry_guard.modify_ts_before_eviction < ts {
+            directory_entry.modify_ts_before_eviction =
+                if directory_entry.modify_ts_before_eviction < ts {
                     ts
                 } else {
-                    directory_entry_guard.modify_ts_before_eviction
+                    directory_entry.modify_ts_before_eviction
                 };
         }
 
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
-        if directory_entry_guard.sharers.count_ones() == 0 {
+        if directory_entry.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
             Statistics::global_record(
                 PCache::find_cache_info_by_cache_id(cache_id).0,

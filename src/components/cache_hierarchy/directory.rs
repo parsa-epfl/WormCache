@@ -1,6 +1,3 @@
-use std::ops::Deref;
-use std::ops::DerefMut;
-
 use rustc_hash::FxHashMap as HashMap;
 use spin::mutex::SpinMutex;
 use spin::mutex::SpinMutexGuard;
@@ -62,32 +59,6 @@ impl<const SET: usize> DirectorySet<SET> {
     }
 }
 
-pub struct DirectoryEntryGuard<'a, const SET: usize> {
-    pub set_guard: SpinMutexGuard<'a, DirectorySet<SET>>,
-    pub entry: *mut DirectoryEntry,
-}
-
-impl<const SET: usize> Deref for DirectoryEntryGuard<'_, SET> {
-    type Target = DirectoryEntry;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.entry }
-    }
-}
-
-impl<const SET: usize> DerefMut for DirectoryEntryGuard<'_, SET> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.entry }
-    }
-}
-
-impl<'a, const SET: usize> DirectoryEntryGuard<'a, SET> {
-    pub fn new(mut set_guard: SpinMutexGuard<'a, DirectorySet<SET>>, block_id: u64) -> Self {
-        let entry = set_guard.get_or_create(block_id) as *mut _;
-        Self { set_guard, entry }
-    }
-}
-
 // Probably the Directory should be infinitely sized.
 pub struct Directory<const SET: usize> {
     entries: Box<[SpinMutex<DirectorySet<SET>>; SET]>,
@@ -106,27 +77,34 @@ impl<const SET: usize> Directory<SET> {
         }
     }
 
-    pub fn get_or_create(&self, block_id: u64) -> DirectoryEntryGuard<'_, SET> {
+    pub fn lock_set(&self, block_id: u64) -> SpinMutexGuard<'_, DirectorySet<SET>> {
         let set_id = (block_id as usize) % SET;
-        let set_guard = self.entries[set_id].lock();
-        DirectoryEntryGuard::new(set_guard, block_id)
+        self.entries[set_id].lock()
     }
 
     pub fn fetch_two_entries(
         &self,
         block_id_0: u64,
         block_id_1: u64,
-    ) -> (DirectoryEntryGuard<'_, SET>, DirectoryEntryGuard<'_, SET>) {
-        assert_ne!(block_id_0, block_id_1);
-        if block_id_0 < block_id_1 {
-            return (
-                self.get_or_create(block_id_0),
-                self.get_or_create(block_id_1),
-            );
-        } else {
-            let g1 = self.get_or_create(block_id_1);
-            let g0 = self.get_or_create(block_id_0);
-            (g0, g1)
+    ) -> (
+        SpinMutexGuard<'_, DirectorySet<SET>>,
+        Option<SpinMutexGuard<'_, DirectorySet<SET>>>,
+    ) {
+        let index_0 = (block_id_0 as usize) % SET;
+        let index_1 = (block_id_1 as usize) % SET;
+
+        match index_0.cmp(&index_1) {
+            std::cmp::Ordering::Equal => {
+                return (self.lock_set(block_id_0), None);
+            }
+            std::cmp::Ordering::Less => {
+                return (self.lock_set(block_id_0), Some(self.lock_set(block_id_1)));
+            }
+            std::cmp::Ordering::Greater => {
+                let g1 = self.lock_set(block_id_1);
+                let g0 = self.lock_set(block_id_0);
+                (g0, Some(g1))
+            }
         }
     }
 }
