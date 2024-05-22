@@ -219,7 +219,30 @@ impl PrivateCacheSet {
             EvictedSlot::Same(idx) => {
                 // This is actually an upgrade, not a cache fill.
                 assert!(self.recent_invalid_slot_index.is_some());
-                assert_eq!(self.recent_invalid_slot_index.unwrap(), idx);
+
+                // Usually, the recent_invalid_slot_index should be identical to the idx.
+
+                // It is possible that this index has been evicted by other cores?
+                // No. The only core that can cause eviction is the core itself.
+
+                // Is it possible that this cache line is invalidated by others?
+                // Yes. It is possible.
+                // Is it possible that multiple invalidation happens between the peek and the fill?
+                // Yes. It is possible.
+
+                // Under the following case, the recent_invalid_slot_index does not have to be identical to the idx.
+                // - The cache line is peeked, and it lacks memory operation.
+                // - Another core invalidates this cache line, with a past timestamp.
+                // - A third core invalidates another cache line (and update the recent_invalid_slot_index).
+                // - The cache line now is filled. The recent_invalid_slot_index is not identical to the idx.
+
+                // As a result, if recent_invalid_slot_index is not equal to the idx, the idx must be invalid.
+
+                if self.recent_invalid_slot_index.unwrap() != idx {
+                    assert_eq!(self.lines[idx].block_id_with_v & 0x1, 0);
+                    assert_eq!(self.lines[idx].ts, 0);
+                }
+
                 (None, idx)
             }
         };
