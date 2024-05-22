@@ -130,7 +130,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 4 * 1024; // 1GB shared cache.
+pub const SHARED_CACHE_SET: usize = 1024 * 1024; // 1GB shared cache.
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -169,7 +169,7 @@ static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_O
  *
  * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
-pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = false;
+pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = true;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_CLEAN_EVICTION));
 
 /**
@@ -242,16 +242,11 @@ use crate::components::Plugin;
 
 #[derive(PluginHelper)]
 pub struct PluginList {
+    // Please comment out the plugins that you don't want to use.
     _pb: crate::BranchPredictorPlugin,
-    // _ts_m : crate::TimeStampedMemoryPlugin,
     _vt: crate::VirtualTimePlugin,
     _mk: crate::MarkerPlugin,
-    // to : crate::TouchOnePlugin,
-    // pwl : crate::PageWalkLoggerPlugin,
     _lm: crate::ParallelCacheHierarchyPlugin,
-    // tr : crate::TracePlugin,
-    // _mtrec: crate::MTRMemoryPlugin,
-    // _dm: crate::DelayedMemoryPlugin,
 }
 
 /**
@@ -280,5 +275,7 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
  * Whether to disable precise coherence message reconstruction.
  *
  * This option is for testing the accuracy of the functional warming model.
+ *
+ * This option is only effective when the parallel cache model is used.
  */
 pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
