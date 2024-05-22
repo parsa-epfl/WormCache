@@ -98,7 +98,9 @@ impl<const SET: usize> Directory<SET> {
                 return (self.lock_set(block_id_0), None);
             }
             std::cmp::Ordering::Less => {
-                return (self.lock_set(block_id_0), Some(self.lock_set(block_id_1)));
+                let g0 = self.lock_set(block_id_0);
+                let g1 = self.lock_set(block_id_1);
+                return (g0, Some(g1));
             }
             std::cmp::Ordering::Greater => {
                 let g1 = self.lock_set(block_id_1);
