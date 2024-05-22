@@ -2,7 +2,7 @@ use serde_json::json;
 
 use crate::components::cache_hierarchy::util::CCell;
 
-use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
+use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use spin::mutex::SpinMutex;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -70,27 +70,6 @@ impl<
             .get_set(block_id)
             .inner()
             .poke_and_update(block_id, ts, is_store, is_instruction)
-    }
-
-    #[inline]
-    fn poke_victim(&self) -> Option<u64> {
-        None
-    }
-
-    #[inline]
-    fn refill_from_shared_cache(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        is_instruction: bool,
-        writable: bool,
-        modified: bool,
-    ) -> Option<PrivateCacheLine> {
-        self.caches[core_id as usize]
-            .get_set(block_id)
-            .inner()
-            .fill(block_id, ts, is_instruction, writable, modified, true)
     }
 
     #[inline]
@@ -192,6 +171,16 @@ impl<
             ASSO,
             G::support_parallel_access()
         )
+    }
+
+    #[inline]
+    fn get_set_for_fill(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        _: bool,
+    ) -> impl DerefMut<Target = PrivateCacheSet> {
+        self.caches[core_id as usize].get_set(block_id).inner()
     }
 }
 

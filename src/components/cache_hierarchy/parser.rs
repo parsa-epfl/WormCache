@@ -64,6 +64,7 @@ type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::DIRECTORY_SHARED_COUNT },
 >;
 
 #[allow(dead_code)]
@@ -85,6 +86,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::DIRECTORY_SHARED_COUNT },
 >;
 
 #[allow(dead_code)]
@@ -104,6 +106,7 @@ type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::DIRECTORY_SHARED_COUNT },
 >;
 
 #[allow(dead_code)]
@@ -125,6 +128,7 @@ type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::DIRECTORY_SHARED_COUNT },
 >;
 
 impl CacheModelParser<true, true> for DummyParser {

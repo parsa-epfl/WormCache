@@ -3,7 +3,7 @@ use serde_json::json;
 use crate::components::cache_hierarchy::util::CCell;
 
 use super::PrivateCaches;
-use super::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
+use super::{PrivateCachePokeResult, PrivateCacheSet};
 use spin::mutex::SpinMutex;
 
 use std::collections::HashMap;
@@ -87,30 +87,6 @@ impl<
     }
 
     #[inline]
-    fn poke_victim(&self) -> Option<u64> {
-        None
-    }
-
-    #[inline]
-    fn refill_from_shared_cache(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        is_instruction: bool,
-        writable: bool,
-        modified: bool,
-    ) -> Option<PrivateCacheLine> {
-        if is_instruction {
-            let mut set = self.caches[core_id as usize].i_cache[block_id as usize % I_SET].inner();
-            set.fill(block_id, ts, true, writable, modified, true)
-        } else {
-            let mut set = self.caches[core_id as usize].d_cache[block_id as usize % D_SET].inner();
-            set.fill(block_id, ts, false, writable, modified, true)
-        }
-    }
-
-    #[inline]
     fn get_set_guard_by_sharer_list(
         &self,
         block_id: u64,
@@ -154,12 +130,10 @@ impl<
                 .inner()
                 .poke(block_id)
                 .is_some()
-            {
-                res.push(core_id as u32);
-            } else if self.caches[core_id].d_cache[block_id as usize % D_SET]
-                .inner()
-                .poke(block_id)
-                .is_some()
+                || self.caches[core_id].d_cache[block_id as usize % D_SET]
+                    .inner()
+                    .poke(block_id)
+                    .is_some()
             {
                 res.push(core_id as u32);
             }
@@ -278,6 +252,19 @@ impl<
 
             G::support_parallel_access()
         )
+    }
+
+    fn get_set_for_fill(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        is_instruction: bool,
+    ) -> impl DerefMut<Target = PrivateCacheSet> {
+        if is_instruction {
+            self.caches[core_id as usize].i_cache[block_id as usize % I_SET].inner()
+        } else {
+            self.caches[core_id as usize].d_cache[block_id as usize % D_SET].inner()
+        }
     }
 }
 

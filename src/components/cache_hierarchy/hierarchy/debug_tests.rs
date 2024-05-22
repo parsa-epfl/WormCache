@@ -8,11 +8,11 @@ use self::private_cache::ParallelUnifiedPrivateCache;
 use super::*;
 use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 
-use super::DIRECTORY_SET;
+const PCACHE_SET: usize = 1024;
 
 type MH = MemoryHierarchy<
     NoMMU,
-    ParallelUnifiedPrivateCache<32, { DIRECTORY_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
+    ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
     ParallelSingleSharedCache<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
@@ -22,6 +22,7 @@ type MH = MemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::DIRECTORY_SHARED_COUNT },
 >;
 
 #[test]
@@ -37,7 +38,7 @@ fn read_evict_and_other_core_read_back() {
 
     // Now, evict the block from the cache.
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        let block_id: u64 = ((l + 1) * DIRECTORY_SET) as u64 + block_id;
+        let block_id: u64 = ((l + 1) * PCACHE_SET) as u64 + block_id;
         assert_eq!(
             mh.access_memory_pblock_id(0, block_id, get_monotonic_ts(), false, false, false),
             CacheHierarchyAccessResult::Miss

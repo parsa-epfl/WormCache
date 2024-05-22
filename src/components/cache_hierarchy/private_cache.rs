@@ -5,7 +5,7 @@ mod havard;
 mod set_and_line;
 mod unified;
 
-pub use set_and_line::{PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
+pub use set_and_line::{EvictedSlot, PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
 
 pub trait PrivateCaches {
     // This function is for creating all new private caches.
@@ -21,19 +21,13 @@ pub trait PrivateCaches {
         is_store: bool,
     ) -> PrivateCachePokeResult;
 
-    // Find the next victim in the cache set.
-    fn poke_victim(&self) -> Option<u64>;
-
-    // This function is for refilling the cache line from the shared cache. Coherence refilling has its own way.
-    fn refill_from_shared_cache(
+    // This function is for filling the cache line from the shared LLC.
+    fn get_set_for_fill(
         &self,
         core_id: u32,
         block_id: u64,
-        ts: u64,
         is_instruction: bool,
-        writable: bool,
-        modified: bool,
-    ) -> Option<PrivateCacheLine>;
+    ) -> impl DerefMut<Target = PrivateCacheSet>;
 
     // This function is for coherence messages and refill.
     // The rest of the function of coherence logic is handled outside.

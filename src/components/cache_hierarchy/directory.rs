@@ -7,6 +7,7 @@ use bitvec::BitArr;
 use serde::Serialize;
 
 use crate::parameter;
+use crate::util;
 
 const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
     parameter::CORE_COUNT
@@ -21,12 +22,14 @@ pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 //     sharers: SharerList,
 // }
 
+#[derive(Debug)]
 pub struct DirectoryEntry {
     pub ts: u64,
     pub sharers: SharerList,
     pub modify_ts_before_eviction: u64, // This field is to avoid the eviction causes the write history to be lost.
 }
 
+#[derive(Debug)]
 #[repr(align(64))]
 pub struct DirectorySet<const SET: usize> {
     entries: HashMap<u64, DirectoryEntry>,
@@ -43,13 +46,6 @@ impl<const SET: usize> DirectorySet<SET> {
 
     const LOG2_SET: usize = SET.trailing_zeros() as usize;
 
-    pub fn exists(&self, block_id: u64) -> bool {
-        let internal_id = block_id >> Self::LOG2_SET;
-
-        // Internal id is more efficient than block_id, because it removes the same lower bits.
-        self.entries.contains_key(&internal_id)
-    }
-
     pub fn get_or_create(&mut self, block_id: u64) -> &mut DirectoryEntry {
         let internal_id = block_id >> Self::LOG2_SET;
 
@@ -65,7 +61,7 @@ impl<const SET: usize> DirectorySet<SET> {
 
 // Probably the Directory should be infinitely sized.
 pub struct Directory<const SET: usize> {
-    entries: [SpinMutex<DirectorySet<SET>>; SET],
+    entries: Box<[SpinMutex<DirectorySet<SET>>; SET]>,
 }
 
 impl<const SET: usize> Default for Directory<SET> {
@@ -77,13 +73,39 @@ impl<const SET: usize> Default for Directory<SET> {
 impl<const SET: usize> Directory<SET> {
     pub fn new() -> Self {
         Self {
-            entries: std::array::from_fn(|idx| SpinMutex::new(DirectorySet::new(idx))),
+            entries: util::init_heap_array(|idx| SpinMutex::new(DirectorySet::new(idx))),
         }
     }
 
-    pub fn get_set(&self, block_id: u64) -> SpinMutexGuard<'_, DirectorySet<SET>> {
+    pub fn lock_set(&self, block_id: u64) -> SpinMutexGuard<'_, DirectorySet<SET>> {
         let set_id = (block_id as usize) % SET;
         self.entries[set_id].lock()
+    }
+
+    pub fn fetch_two_entries(
+        &self,
+        block_id_0: u64,
+        block_id_1: u64,
+    ) -> (
+        SpinMutexGuard<'_, DirectorySet<SET>>,
+        Option<SpinMutexGuard<'_, DirectorySet<SET>>>,
+    ) {
+        let index_0 = (block_id_0 as usize) % SET;
+        let index_1 = (block_id_1 as usize) % SET;
+
+        match index_0.cmp(&index_1) {
+            std::cmp::Ordering::Equal => (self.lock_set(block_id_0), None),
+            std::cmp::Ordering::Less => {
+                let g0 = self.lock_set(block_id_0);
+                let g1 = self.lock_set(block_id_1);
+                (g0, Some(g1))
+            }
+            std::cmp::Ordering::Greater => {
+                let g1 = self.lock_set(block_id_1);
+                let g0 = self.lock_set(block_id_0);
+                (g0, Some(g1))
+            }
+        }
     }
 }
 
