@@ -94,13 +94,11 @@ impl<const SET: usize> Directory<SET> {
         let index_1 = (block_id_1 as usize) % SET;
 
         match index_0.cmp(&index_1) {
-            std::cmp::Ordering::Equal => {
-                return (self.lock_set(block_id_0), None);
-            }
+            std::cmp::Ordering::Equal => (self.lock_set(block_id_0), None),
             std::cmp::Ordering::Less => {
                 let g0 = self.lock_set(block_id_0);
                 let g1 = self.lock_set(block_id_1);
-                return (g0, Some(g1));
+                (g0, Some(g1))
             }
             std::cmp::Ordering::Greater => {
                 let g1 = self.lock_set(block_id_1);
