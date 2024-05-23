@@ -4,6 +4,8 @@ use crate::components::bp::BranchResolveFlag;
 
 use serde::{Deserialize, Serialize};
 
+use super::BranchPredictorResult;
+
 // The maximum size of the global history register is 64 bits.
 #[derive(Deserialize, Serialize)]
 struct GShare<const S: usize> {
@@ -19,19 +21,31 @@ impl<const S: usize> GShare<S> {
         }
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
+    pub fn train(
+        &mut self,
+        pc: u64,
+        result: BranchResolveFlag,
+        _target: u64,
+    ) -> BranchPredictorResult {
         if result != BranchResolveFlag::Taken && result != BranchResolveFlag::NotTaken {
             self.history = (self.history << 1) | 1;
-            return;
+            return BranchPredictorResult::NotActive;
         }
         let taken = result == BranchResolveFlag::Taken;
         let index = ((pc ^ self.history) % S as u64) as usize;
+        let prediction = self.get_prediction(index);
         if taken {
             self.saturaing_add(index);
         } else {
             self.saturating_sub(index)
         }
         self.history = (self.history << 1) | (if taken { 1 } else { 0 });
+
+        if prediction == taken {
+            BranchPredictorResult::Match
+        } else {
+            BranchPredictorResult::Mispredict
+        }
     }
 
     fn saturaing_add(&mut self, index: usize) {
@@ -46,5 +60,9 @@ impl<const S: usize> GShare<S> {
         if v > 0 {
             self.table[index] = v - 1;
         }
+    }
+
+    fn get_prediction(&self, index: usize) -> bool {
+        self.table[index] >= 2
     }
 }

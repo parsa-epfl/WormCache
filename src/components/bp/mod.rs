@@ -10,7 +10,7 @@ use std::io::Write;
 // https://crates.io/crates/bumpalo
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
-enum BranchResolveFlag {
+pub enum BranchResolveFlag {
     Taken = 0,
     NotTaken = 1,
     Call = 2,

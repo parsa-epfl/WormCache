@@ -10,6 +10,12 @@ use crate::parameter::{self, BP_RAS_COUNT};
 
 use super::BranchResolveFlag;
 
+pub enum BranchPredictorResult {
+    Match,
+    Mispredict,
+    NotActive,
+}
+
 #[repr(align(64))]
 #[derive(Serialize)]
 pub struct PerCoreFetchUnit {
