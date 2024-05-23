@@ -2,6 +2,8 @@ use crate::components::bp::BranchResolveFlag;
 
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
+use super::BranchPredictorResult;
+
 #[derive(Deserialize, Serialize)]
 struct BTBEntry {
     tag_and_valid: u64, // the upper 63 bits are the tag, and the lowest bit is the valid bit
@@ -28,19 +30,38 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         }
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64) {
+    // return true if the target is predicted by the BTB.
+    pub fn train(
+        &mut self,
+        pc: u64,
+        result: BranchResolveFlag,
+        target: u64,
+    ) -> BranchPredictorResult {
         if result == BranchResolveFlag::NotTaken {
-            return;
+            return BranchPredictorResult::NotActive;
         }
         self.local_ts += 1;
 
         let index = (pc % SET as u64) as usize;
 
-        // assert_eq!((pc & 0x3), 0);
-        let internal_tag = pc | 1;
+        // We need to check if the entry is already in the BTB. If yes, we update the timestamp and return.
+        // This should be the common case.
+        for entry in self.array[index].iter_mut() {
+            if entry.tag_and_valid == pc {
+                entry.ts = self.local_ts;
+
+                let miss = entry.target != target;
+
+                entry.target = target; // also update the target.
+                return if miss {
+                    BranchPredictorResult::Mispredict
+                } else {
+                    BranchPredictorResult::Match
+                };
+            }
+        }
 
         // Find the entry with the minimum timestamp. Ts is zero means it is not valid.
-
         let mut min_index = 0;
         let mut min_ts = u64::MAX;
 
@@ -52,9 +73,11 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         }
 
         // always replace the entry with the minimum timestamp
-        self.array[index][min_index].tag_and_valid = internal_tag;
+        self.array[index][min_index].tag_and_valid = pc;
         self.array[index][min_index].target = target;
         self.array[index][min_index].ts = self.local_ts;
+
+        BranchPredictorResult::Mispredict
     }
 }
 
