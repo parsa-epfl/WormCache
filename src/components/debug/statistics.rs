@@ -1,3 +1,6 @@
+use strum::{EnumCount, IntoEnumIterator};
+use strum_macros::{Display, EnumCount, EnumIter};
+
 use std::cell::UnsafeCell;
 
 use once_cell::sync::Lazy;
@@ -10,7 +13,7 @@ const ALLOCATED_CORE_COUNT: usize = if parameter::USE_UNIFIED_CACHE {
     CORE_COUNT * 2
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(EnumCount, EnumIter, Display, Debug, Clone, Copy)]
 pub enum EventType {
     MemoryAccess = 0,
     InstructionAccess = 1,
@@ -27,37 +30,20 @@ pub enum EventType {
     ITLBMiss = 9,
     DTLBMiss = 10,
 
-    EventCount,
-}
-
-impl std::fmt::Display for EventType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            EventType::MemoryAccess => write!(f, "MemoryAccess"),
-            EventType::InstructionAccess => write!(f, "InstructionAccess"),
-            EventType::DataAccess => write!(f, "DataAccess"),
-            EventType::PrivateICacheMiss => write!(f, "PrivateICacheMiss"),
-            EventType::PrivateDCacheMiss => write!(f, "PrivateDCacheMiss"),
-            EventType::PrivateCacheMiss => write!(f, "PrivateCacheMiss"),
-            EventType::SharedCacheAccess => write!(f, "SharedCacheAccess"),
-            EventType::SharedCacheMiss => write!(f, "SharedCacheMiss"),
-            EventType::TLBMiss => write!(f, "TLBMiss"),
-            EventType::ITLBMiss => write!(f, "ITLBMiss"),
-            EventType::DTLBMiss => write!(f, "DTLBMiss"),
-            EventType::EventCount => write!(f, "EventCount"),
-        }
-    }
+    BTBMiss = 11,
+    RASMiss = 12,
+    TageMiss = 13,
 }
 
 #[repr(align(64))]
 struct PerCoreStatistics {
-    counters: [u64; EventType::EventCount as usize],
+    counters: [u64; EventType::COUNT as usize],
 }
 
 impl PerCoreStatistics {
     pub fn new() -> Self {
         Self {
-            counters: [0; EventType::EventCount as usize],
+            counters: [0; EventType::COUNT as usize],
         }
     }
 
@@ -71,7 +57,7 @@ impl PerCoreStatistics {
     #[inline]
     pub fn get_line(&self, ts: u64, core_id: u32) -> String {
         let mut line = format!("{},{}", ts, core_id);
-        for event in 0..EventType::EventCount as usize {
+        for event in 0..EventType::COUNT as usize {
             line.push_str(&format!(",{}", self.counters[event]));
         }
         line
@@ -104,8 +90,14 @@ impl Statistics {
         }
     }
 
-    pub const fn get_header() -> &'static str {
-        "timestamp,core_id,MemoryAccess,InstructionAccess,DataAccess,PrivateICacheMiss,PrivateDCacheMiss,PrivateCacheMiss,SharedCacheAccess,SharedCacheMiss,TLBMiss,ITLBMiss,DTLBMiss"
+    pub fn get_header() -> String {
+        // generate all event names.
+        let headers = EventType::iter()
+            .map(|event| event.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+
+        return format!("ts,core_id,{}", headers);
     }
 
     pub fn get_line_for_all_cores(&self, ts: u64) -> Vec<String> {
@@ -130,5 +122,16 @@ impl Statistics {
 
     pub fn global_get_line_for_all_cores(ts: u64) -> Vec<String> {
         unsafe { GLOBAL_STATISTICS.get_line_for_all_cores(ts) }
+    }
+
+    pub fn global_one_line_statistics() -> String {
+        let mut lines = vec![];
+        lines.push(Self::get_header());
+
+        for stat in Self::global_get_line_for_all_cores(0) {
+            lines.push(stat);
+        }
+
+        lines.join("\n")
     }
 }
