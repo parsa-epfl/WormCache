@@ -114,6 +114,7 @@ impl Statistics {
 static mut GLOBAL_STATISTICS: Lazy<Statistics> = Lazy::new(Statistics::new);
 
 impl Statistics {
+    #[inline]
     pub fn global_record(core_id: u32, event: EventType) {
         unsafe {
             GLOBAL_STATISTICS.record(core_id, event);
