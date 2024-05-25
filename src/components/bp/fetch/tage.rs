@@ -377,7 +377,6 @@ impl TAGEPredictor {
             result == BranchResolveFlag::Taken || result == BranchResolveFlag::NotTaken;
         let taken = result == BranchResolveFlag::Taken;
         if is_conditional {
-            let pc = pc >> 2;
             let prediction_result = self.is_cond_taken(pc);
             let allocation = prediction_result.result != taken;
 
