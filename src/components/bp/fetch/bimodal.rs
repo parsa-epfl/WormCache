@@ -4,11 +4,13 @@ use crate::components::bp::BranchResolveFlag;
 
 use serde::{Deserialize, Serialize};
 
+use super::BranchPredictorResult;
+
 #[derive(Deserialize, Serialize)]
 struct BimodalPredictor<const S: usize> {
     array: Vec<u8>,
-    // 0, 1 -> Miss
-    // 2, 3 -> Hit
+    // 0, 1 -> NT
+    // 2, 3 -> T
 }
 
 impl<const S: usize> BimodalPredictor<S> {
@@ -32,15 +34,32 @@ impl<const S: usize> BimodalPredictor<S> {
         }
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
+    // True for taken, false for not taken
+    fn get_prediction(&self, index: usize) -> bool {
+        self.array[index] >= 2
+    }
+
+    pub fn train(
+        &mut self,
+        pc: u64,
+        result: BranchResolveFlag,
+        _target: u64,
+    ) -> BranchPredictorResult {
         if result != BranchResolveFlag::Taken && result != BranchResolveFlag::NotTaken {
-            return;
+            return BranchPredictorResult::NotActive;
         }
         let index = (pc % S as u64) as usize;
+        let prediction = self.get_prediction(index);
         if result == BranchResolveFlag::Taken {
             self.saturaing_add(index);
         } else {
             self.saturating_sub(index)
+        }
+
+        if prediction == (result == BranchResolveFlag::Taken) {
+            BranchPredictorResult::Match
+        } else {
+            BranchPredictorResult::Mispredict
         }
     }
 

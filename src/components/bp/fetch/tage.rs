@@ -29,8 +29,20 @@ const TBITS: usize = 12;
 
 // AS: we use Geometric history length
 // AS: maximum global history length used and minimum history length
+// The table HISTORIES can be calculated with the following python code:
+// ```
+// import math
+// MAXHIST = 131 - 1
+// MINHIST = 5
+// NHIST = 7
+// HISTORIES = [int(math.ceil(MINHIST * math.pow(MAXHIST / MINHIST, i / (NHIST - 1)))) for i in range(NHIST)]
+// HISTORIES = reversed(HISTORIES)
+// print(HISTORIES)
+// ```
+// This logic should be able to purely implemented in Rust after constant floating point arithmetic is stabilized.
 const MAXHIST: usize = 131;
 const MINHIST: usize = 5;
+const HISTORIES: [usize; NHIST] = [130, 76, 44, 26, 15, 9, 5];
 
 type Address = u64;
 
@@ -114,7 +126,7 @@ struct TAGEPredictionResultWithBank {
     pub result: bool,
     pub bank: usize,
     pub alternate_prediction: bool,
-    pub gi: Vec<usize>,
+    pub gi: [usize; NHIST],
     pub bi: usize,
 }
 
@@ -141,9 +153,6 @@ pub struct TAGEPredictor {
     btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
     gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
 
-    // used for storing the history lengths
-    m: [usize; NHIST], // this value stores the length of histories to combine to access each table.
-
     // the seed for pseudo-random number generator
     seed: i32,
 }
@@ -160,13 +169,14 @@ impl TAGEPredictor {
             m[NHIST - 1 - i] = (MINHIST as f64 * f64::powf(base, exp)).ceil() as usize;
         }
 
-        println!("m: {:?}", m);
+        // m and HISTORIES should be the same.
+        assert_eq!(m, HISTORIES);
 
         TAGEPredictor {
             seed: 0,
             tick: 0,
 
-            phist: 0,
+            phist: 0, // the path history. Only 16 bits are used.
             // phist_runahead: 0,
             // phist_retired: 0,
             ghist: [false; MAXHIST],
@@ -218,8 +228,6 @@ impl TAGEPredictor {
             gtable: std::array::from_fn(|_| {
                 Box::new(std::array::from_fn(|_| TAGEGlobalTableEntry::new()))
             }),
-
-            m,
         }
     }
 
@@ -229,6 +237,7 @@ impl TAGEPredictor {
     }
 
     // I am really confused by this function.
+    #[inline(always)]
     fn gindex(&self, pc: Address, bank: usize) -> usize {
         let path_history_mixer_hash_function = |path_history: u32, size: usize, bank: usize| {
             let a = (path_history as usize) & ((1 << size) - 1);
@@ -243,12 +252,12 @@ impl TAGEPredictor {
         let index_without_path =
             pc ^ (pc >> (LOGG - NHIST + bank + 1)) ^ self.ch_i[bank].comp as u64;
 
-        let index = if self.m[bank] >= 16 {
+        let index = if HISTORIES[bank] >= 16 {
             index_without_path
                 ^ path_history_mixer_hash_function(self.phist as u32, 16, bank) as u64
         } else {
             index_without_path
-                ^ path_history_mixer_hash_function(self.phist as u32, self.m[bank], bank) as u64
+                ^ path_history_mixer_hash_function(self.phist as u32, HISTORIES[bank], bank) as u64
         };
 
         let g_mask = (1 << LOGG) - 1;
@@ -278,10 +287,12 @@ impl TAGEPredictor {
         }
     }
 
+    #[inline(always)]
     fn is_cond_taken(&self, pc: Address) -> TAGEPredictionResultWithBank {
         let pc = pc >> 2; // pc is always aligned to 4 bytes
         let bi: usize = self.bindex(pc);
-        let gi: Vec<_> = (0..NHIST).map(|idx| self.gindex(pc, idx)).collect();
+        // let gi: Vec<_> = (0..NHIST).map(|idx| self.gindex(pc, idx)).collect();
+        let gi: [usize; NHIST] = std::array::from_fn(|idx| self.gindex(pc, idx));
 
         let mut which_bank = NHIST;
         let mut alter_which_bank: usize = NHIST;
@@ -355,13 +366,17 @@ impl TAGEPredictor {
         self.seed
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, _target: u64) {
+    pub fn train(
+        &mut self,
+        pc: u64,
+        result: BranchResolveFlag,
+        _target: u64,
+    ) -> BranchPredictorResult {
         // we only update the predictor when the branch is conditional, but we update the history all the time.
         let is_conditional =
             result == BranchResolveFlag::Taken || result == BranchResolveFlag::NotTaken;
         let taken = result == BranchResolveFlag::Taken;
         if is_conditional {
-            let pc = pc >> 2;
             let prediction_result = self.is_cond_taken(pc);
             let allocation = prediction_result.result != taken;
 
@@ -454,14 +469,24 @@ impl TAGEPredictor {
                     self.btable[prediction_result.bi].hyst = inter & 1;
                 }
             }
+
+            if allocation {
+                return BranchPredictorResult::Mispredict;
+            } else {
+                return BranchPredictorResult::Match;
+            }
         }
 
         // In any case, the history must be updated.
-        self.update_history(pc, taken)
+        self.update_history(pc, taken);
+
+        return BranchPredictorResult::NotActive;
     }
 }
 
 use serde::ser::SerializeStruct;
+
+use super::BranchPredictorResult;
 
 impl Serialize for TAGEPredictor {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -475,7 +500,6 @@ impl Serialize for TAGEPredictor {
         state.serialize_field("btable", &self.btable.as_slice())?;
         let gtable = self.gtable.iter().map(|x| x.as_slice()).collect::<Vec<_>>();
         state.serialize_field("gtable", &gtable)?;
-        state.serialize_field("m", &self.m)?;
         state.end()
     }
 }
