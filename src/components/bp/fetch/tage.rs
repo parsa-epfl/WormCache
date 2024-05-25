@@ -7,6 +7,8 @@ use crate::components::bp::BranchResolveFlag;
 
 use serde::{Deserialize, Serialize};
 
+use bitvec::prelude::*;
+
 // bits per counter in the global history tables
 const CBITS: usize = 3;
 
@@ -46,7 +48,8 @@ const HISTORIES: [usize; NHIST] = [130, 76, 44, 26, 15, 9, 5];
 
 type Address = u64;
 
-type History = [bool; MAXHIST];
+// type History = [bool; MAXHIST];
+type History = BitArr!(for MAXHIST, in u64, Lsb0);
 
 #[derive(Debug, Serialize, Deserialize)]
 struct FoldedHistory {
@@ -179,7 +182,7 @@ impl TAGEPredictor {
             phist: 0, // the path history. Only 16 bits are used.
             // phist_runahead: 0,
             // phist_retired: 0,
-            ghist: [false; MAXHIST],
+            ghist: History::ZERO,
             // ghist_runahead: [false; MAXHIST],
             // ghist_retired: [false; MAXHIST],
             ch_i: std::array::from_fn(|idx| {
@@ -291,7 +294,6 @@ impl TAGEPredictor {
     fn is_cond_taken(&self, pc: Address) -> TAGEPredictionResultWithBank {
         let pc = pc >> 2; // pc is always aligned to 4 bytes
         let bi: usize = self.bindex(pc);
-        // let gi: Vec<_> = (0..NHIST).map(|idx| self.gindex(pc, idx)).collect();
         let gi: [usize; NHIST] = std::array::from_fn(|idx| self.gindex(pc, idx));
 
         let mut which_bank = NHIST;
@@ -342,7 +344,8 @@ impl TAGEPredictor {
 
     fn shift_global_history(&mut self, taken: bool) {
         self.ghist.rotate_right(1);
-        self.ghist[0] = taken;
+        // self.ghist[0] = taken;
+        self.ghist.set(0, taken);
     }
 
     fn update_history(&mut self, pc: Address, taken: bool) {
@@ -494,7 +497,7 @@ impl Serialize for TAGEPredictor {
         state.serialize_field("seed", &self.seed)?;
         state.serialize_field("tick", &self.tick)?;
         state.serialize_field("phist", &self.phist)?;
-        state.serialize_field("ghist", &self.ghist.as_slice())?;
+        state.serialize_field("ghist", &self.ghist)?;
         state.serialize_field("ch_i", &self.ch_i)?;
         state.serialize_field("ch_t", &self.ch_t)?;
         state.serialize_field("btable", &self.btable.as_slice())?;
