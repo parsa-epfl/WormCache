@@ -287,6 +287,7 @@ impl TAGEPredictor {
         }
     }
 
+    #[inline(always)]
     fn is_cond_taken(&self, pc: Address) -> TAGEPredictionResultWithBank {
         let pc = pc >> 2; // pc is always aligned to 4 bytes
         let bi: usize = self.bindex(pc);
