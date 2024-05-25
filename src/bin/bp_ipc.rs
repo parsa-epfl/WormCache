@@ -111,6 +111,23 @@ fn exercise_ras_best() {
     println!("{}", Statistics::global_one_line_statistics());
 }
 
+#[allow(dead_code)]
+fn tage_best_case() {
+    let mut fetch_unit = FetchUnitType::new();
+
+    for _ in 0..(100 * 1000 * 1000) {
+        fetch_unit.train(
+            0,
+            4,
+            worm_cache::components::bp::BranchResolveFlag::Taken,
+            16,
+        );
+    }
+
+    println!("{}", Statistics::global_one_line_statistics());
+}
+
+#[allow(dead_code)]
 fn tage_worst_case() {
     // generate 1000 branches, and their directions are random.
     let branches = (0..100000)
@@ -146,5 +163,6 @@ fn main() {
     // all_misses_btb_same_branch();
     // all_misses_btb_different_branches();
     // exercise_ras_best();
-    tage_worst_case();
+    // tage_worst_case();
+    tage_best_case();
 }
