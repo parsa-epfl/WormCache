@@ -47,6 +47,8 @@ impl PerCoreFetchUnit {
         if self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict {
             Statistics::global_record(core_id as u32, EventType::TageMiss);
         }
+
+        Statistics::global_record(core_id as u32, EventType::BranchCount);
     }
 }
 

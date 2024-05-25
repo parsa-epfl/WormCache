@@ -30,9 +30,10 @@ pub enum EventType {
     ITLBMiss = 9,
     DTLBMiss = 10,
 
-    BTBMiss = 11,
-    RASMiss = 12,
-    TageMiss = 13,
+    BranchCount = 11,
+    BTBMiss = 12,
+    RASMiss = 13,
+    TageMiss = 14,
 }
 
 #[repr(align(64))]
