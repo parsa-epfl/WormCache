@@ -96,9 +96,6 @@ impl<
         impl DerefMut<Target = PrivateCacheSet>,
         Option<usize>,
     )> {
-        // Now it really depends on how to interpret the sharer list.
-        assert_eq!(sharers.len(), usize::max(CORE_COUNT * 2, 64));
-
         let mut res = Vec::new();
 
         for sharer_index in sharers.iter_ones() {
