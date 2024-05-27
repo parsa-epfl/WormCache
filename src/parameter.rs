@@ -173,15 +173,15 @@ pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = true;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_CLEAN_EVICTION));
 
 /**
- * DIRECTORY_SHARED_COUNT
+ * DIRECTORY_SHARD_COUNT
  *
  * The number of sets of the directory. It should be much larger than the number of sets of all private caches to prevent directory contention.
  *
  * It should be a power of 2.
  *
 */
-pub const DIRECTORY_SHARED_COUNT: usize = 32768;
-static_assertions::const_assert!(DIRECTORY_SHARED_COUNT.is_power_of_two());
+pub const DIRECTORY_SHARD_COUNT: usize = 32768;
+static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
 
 /**
 * ADJACENT_LINE_PREFETCHING
