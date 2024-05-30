@@ -21,6 +21,7 @@ libc = "0.2.154"
 rustc-hash = "1.1.0"
 strum_macros = "0.26.2"
 strum = "0.26.2"
+perf-event = "0.4.8"
 
 [lib]
 crate-type=["rlib", "cdylib"]
