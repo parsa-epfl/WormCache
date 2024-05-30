@@ -22,18 +22,20 @@ pub enum EventType {
     PrivateICacheMiss = 3,
     PrivateDCacheMiss = 4,
     PrivateCacheMiss = 5,
+    PrivateCacheMissDueToPTW = 6,
 
-    SharedCacheAccess = 6,
-    SharedCacheMiss = 7,
+    SharedCacheAccess = 7,
+    SharedCacheMiss = 8,
+    SharedCacheMissDueToPTW = 9,
 
-    TLBMiss = 8,
-    ITLBMiss = 9,
-    DTLBMiss = 10,
+    TLBMiss = 10,
+    ITLBMiss = 11,
+    DTLBMiss = 12,
 
-    BranchCount = 11,
-    BTBMiss = 12,
-    RASMiss = 13,
-    TageMiss = 14,
+    BranchCount = 13,
+    BTBMiss = 14,
+    RASMiss = 15,
+    TageMiss = 16,
 }
 
 #[repr(align(64))]

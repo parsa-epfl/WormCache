@@ -292,6 +292,7 @@ impl<
 
         let is_instruction = access_type == CacheAccessType::InstructionFetch;
         let is_store = access_type == CacheAccessType::DataWrite;
+        let is_page_walk = access_type == CacheAccessType::PageWalkRead;
 
         if !is_prefetch {
             Statistics::global_record(core_id, EventType::MemoryAccess);
@@ -320,6 +321,8 @@ impl<
 
             if is_instruction {
                 Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+            } else if is_page_walk {
+                Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
             } else {
                 Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
             }
@@ -447,7 +450,11 @@ impl<
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
                 if !is_prefetch {
-                    Statistics::global_record(core_id, EventType::SharedCacheMiss);
+                    if is_page_walk {
+                        Statistics::global_record(core_id, EventType::SharedCacheMissDueToPTW);
+                    } else {
+                        Statistics::global_record(core_id, EventType::SharedCacheMiss);
+                    }
                 }
                 return CacheHierarchyAccessResult::Miss;
             }
