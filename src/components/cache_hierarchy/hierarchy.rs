@@ -43,6 +43,19 @@ pub struct MemoryHierarchy<
     shared_cache: SCache,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum CacheAccessType {
+    InstructionFetch,
+
+    DataRead,
+    DataWrite,
+
+    PageWalkRead,
+
+    PrefetchRead,
+    PrefetchWrite,
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
@@ -117,6 +130,27 @@ impl<
         is_store: bool,
         is_instruction: bool,
     ) {
+        assert!(
+            !(is_instruction && is_store),
+            "Instruction and store permission cannot be used at the same time."
+        );
+
+        let access_type = if is_instruction {
+            CacheAccessType::InstructionFetch
+        } else if is_store {
+            CacheAccessType::DataWrite
+        } else {
+            CacheAccessType::DataRead
+        };
+
+        let prefetch_access_type = if is_instruction {
+            CacheAccessType::PrefetchRead
+        } else if is_store {
+            CacheAccessType::PrefetchWrite
+        } else {
+            CacheAccessType::PrefetchRead
+        };
+
         let translation = unsafe {
             self.mmus[core_id as usize]
                 .get()
@@ -128,23 +162,9 @@ impl<
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    is_store,
-                    is_instruction,
-                    false,
-                );
+                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        false,
-                        is_instruction,
-                        true,
-                    );
+                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
                 }
             }
             crate::components::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
@@ -154,49 +174,26 @@ impl<
                         break;
                     }
                     let pte_block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(core_id, pte_block_id, ts, false, false, false);
-                }
-                let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    is_store,
-                    is_instruction,
-                    false,
-                );
-                if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
-                        block_id + 1,
+                        pte_block_id,
                         ts,
-                        false,
-                        is_instruction,
-                        true,
+                        CacheAccessType::PageWalkRead,
                     );
+                }
+                let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                if ADJACENT_LINE_PREFETCHING {
+                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
                 }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    is_store,
-                    is_instruction,
-                    false,
-                );
+                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        false,
-                        is_instruction,
-                        true,
-                    );
+                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
                 }
             }
         }
@@ -211,6 +208,27 @@ impl<
         is_store: bool,
         is_instruction: bool,
     ) {
+        assert!(
+            !(is_instruction && is_store),
+            "Instruction and store permission cannot be used at the same time."
+        );
+
+        let access_type = if is_instruction {
+            CacheAccessType::InstructionFetch
+        } else if is_store {
+            CacheAccessType::DataWrite
+        } else {
+            CacheAccessType::DataRead
+        };
+
+        let prefetch_access_type = if is_instruction {
+            CacheAccessType::PrefetchRead
+        } else if is_store {
+            CacheAccessType::PrefetchWrite
+        } else {
+            CacheAccessType::PrefetchRead
+        };
+
         let translation = unsafe {
             self.mmus[core_id as usize]
                 .get()
@@ -223,23 +241,9 @@ impl<
             crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    is_store,
-                    is_instruction,
-                    false,
-                );
+                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        false,
-                        is_instruction,
-                        true,
-                    );
+                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
                 }
             }
             crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
@@ -249,27 +253,18 @@ impl<
                         break;
                     }
                     let pte_block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(core_id, pte_block_id, ts, false, false, false);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        pte_block_id,
+                        ts,
+                        CacheAccessType::PageWalkRead,
+                    );
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    is_store,
-                    is_instruction,
-                    false,
-                );
+                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        false,
-                        is_instruction,
-                        true,
-                    );
+                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
                 }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
@@ -277,23 +272,9 @@ impl<
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    is_store,
-                    is_instruction,
-                    false,
-                );
+                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        false,
-                        is_instruction,
-                        true,
-                    );
+                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
                 }
             }
         }
@@ -304,10 +285,14 @@ impl<
         core_id: u32,
         block_id: u64,
         ts: u64,
-        is_store: bool,
-        is_instruction: bool,
-        is_prefetch: bool,
+        access_type: CacheAccessType,
     ) -> CacheHierarchyAccessResult {
+        let is_prefetch = access_type == CacheAccessType::PrefetchRead
+            || access_type == CacheAccessType::PrefetchWrite;
+
+        let is_instruction = access_type == CacheAccessType::InstructionFetch;
+        let is_store = access_type == CacheAccessType::DataWrite;
+
         if !is_prefetch {
             Statistics::global_record(core_id, EventType::MemoryAccess);
             if is_instruction {

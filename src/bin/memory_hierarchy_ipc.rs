@@ -1,3 +1,4 @@
+use worm_cache::components::cache_hierarchy::hierarchy::CacheAccessType;
 use worm_cache::components::cache_hierarchy::hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::private_cache::ParallelUnifiedPrivateCache;
 use worm_cache::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
@@ -35,9 +36,7 @@ fn test_hit_last() {
             0,
             (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
             1 + i as u64,
-            false,
-            false,
-            false,
+            CacheAccessType::DataRead,
         );
     }
 
@@ -50,7 +49,7 @@ fn test_hit_last() {
 
     let mut ts = 0;
     loop {
-        mh.access_memory_pblock_id(0, addr, ts, false, false, false);
+        mh.access_memory_pblock_id(0, addr, ts, CacheAccessType::DataRead);
         ts += 1;
     }
 }
@@ -68,7 +67,7 @@ fn testing_pcache_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, false, false, false);
+            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
             ts += 1;
             block_id += parameter::UNIFIED_PRI_CACHE_SET as u64;
         }
@@ -96,7 +95,7 @@ fn testing_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, false, false, false);
+            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
             ts += 1;
             block_id += parameter::SHARED_CACHE_SET as u64;
         }

@@ -480,7 +480,7 @@ impl TAGEPredictor {
         // In any case, the history must be updated.
         self.update_history(pc, taken);
 
-        return BranchPredictorResult::NotActive;
+        BranchPredictorResult::NotActive
     }
 }
 
