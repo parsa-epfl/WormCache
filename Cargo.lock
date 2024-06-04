@@ -122,6 +122,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "perf-event"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4d6393d9238342159080d79b78cb59c67399a8e7ecfa5d410bd614169e4e823"
+dependencies = [
+ "libc",
+ "perf-event-open-sys",
+]
+
+[[package]]
+name = "perf-event-open-sys"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c44fb1c7651a45a3652c4afc6e754e40b3d6e6556f1487e2b230bfc4f33c2a8"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "plugin_helper"
 version = "0.1.0"
 dependencies = [
@@ -400,6 +419,7 @@ dependencies = [
  "gcd",
  "libc",
  "once_cell",
+ "perf-event",
  "plugin_helper",
  "rand",
  "rustc-hash",

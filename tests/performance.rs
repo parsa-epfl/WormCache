@@ -1,7 +1,5 @@
 // This file contains the performance test of various configurations.
 
-use std::env;
-
 use perf_event::Builder;
 
 use worm_cache::components::cache_hierarchy::hierarchy::CacheAccessType;

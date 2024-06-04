@@ -52,6 +52,12 @@ impl PerCoreFetchUnit {
     }
 }
 
+impl Default for PerCoreFetchUnit {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct FetchUnit<const CORE_COUNT: usize> {
     pub private_units: [PerCoreFetchUnit; CORE_COUNT],
 }
@@ -65,5 +71,11 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
 
     pub fn train(&mut self, core_id: usize, pc: u64, result: BranchResolveFlag, target: u64) {
         self.private_units[core_id].train(pc, result, target, core_id);
+    }
+}
+
+impl<const CORE_COUNT: usize> Default for FetchUnit<CORE_COUNT> {
+    fn default() -> Self {
+        Self::new()
     }
 }

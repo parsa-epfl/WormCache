@@ -1,3 +1,4 @@
+use perf_event::Builder;
 use worm_cache::components::cache_hierarchy::hierarchy::CacheAccessType;
 use worm_cache::components::cache_hierarchy::hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::private_cache::ParallelUnifiedPrivateCache;
