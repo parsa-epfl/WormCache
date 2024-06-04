@@ -22,29 +22,31 @@ pub enum EventType {
     PrivateICacheMiss = 3,
     PrivateDCacheMiss = 4,
     PrivateCacheMiss = 5,
+    PrivateCacheMissDueToPTW = 6,
 
-    SharedCacheAccess = 6,
-    SharedCacheMiss = 7,
+    SharedCacheAccess = 7,
+    SharedCacheMiss = 8,
+    SharedCacheMissDueToPTW = 9,
 
-    TLBMiss = 8,
-    ITLBMiss = 9,
-    DTLBMiss = 10,
+    TLBMiss = 10,
+    ITLBMiss = 11,
+    DTLBMiss = 12,
 
-    BranchCount = 11,
-    BTBMiss = 12,
-    RASMiss = 13,
-    TageMiss = 14,
+    BranchCount = 13,
+    BTBMiss = 14,
+    RASMiss = 15,
+    TageMiss = 16,
 }
 
 #[repr(align(64))]
 struct PerCoreStatistics {
-    counters: [u64; EventType::COUNT as usize],
+    counters: [u64; EventType::COUNT],
 }
 
 impl PerCoreStatistics {
     pub fn new() -> Self {
         Self {
-            counters: [0; EventType::COUNT as usize],
+            counters: [0; EventType::COUNT],
         }
     }
 
@@ -58,7 +60,7 @@ impl PerCoreStatistics {
     #[inline]
     pub fn get_line(&self, ts: u64, core_id: u32) -> String {
         let mut line = format!("{},{}", ts, core_id);
-        for event in 0..EventType::COUNT as usize {
+        for event in 0..EventType::COUNT {
             line.push_str(&format!(",{}", self.counters[event]));
         }
         line
@@ -98,7 +100,7 @@ impl Statistics {
             .collect::<Vec<String>>()
             .join(",");
 
-        return format!("ts,core_id,{}", headers);
+        format!("ts,core_id,{}", headers)
     }
 
     pub fn get_line_for_all_cores(&self, ts: u64) -> Vec<String> {

@@ -1,4 +1,7 @@
+// This file contains the performance test of various configurations.
+
 use perf_event::Builder;
+
 use worm_cache::components::cache_hierarchy::hierarchy::CacheAccessType;
 use worm_cache::components::cache_hierarchy::hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::private_cache::ParallelUnifiedPrivateCache;
@@ -27,35 +30,7 @@ type MH = MemoryHierarchy<
     { parameter::DIRECTORY_SHARD_COUNT },
 >;
 
-#[allow(dead_code)]
-fn test_hit_last() {
-    let mh = MH::new();
-
-    let set_idx = 1;
-    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        mh.access_memory_pblock_id(
-            0,
-            (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
-            1 + i as u64,
-            CacheAccessType::DataRead,
-        );
-    }
-
-    println!("Set filled: {}", set_idx);
-
-    // start testing. Access the same set and the last way.
-    let addr = (parameter::UNIFIED_PRI_CACHE_ASSO as u64 - 1)
-        * (parameter::UNIFIED_PRI_CACHE_SET as u64)
-        + set_idx;
-
-    let mut ts = 0;
-    loop {
-        mh.access_memory_pblock_id(0, addr, ts, CacheAccessType::DataRead);
-        ts += 1;
-    }
-}
-
-#[allow(dead_code)]
+#[test]
 fn testing_pcache_always_miss() {
     let mh = MH::new();
 
@@ -66,6 +41,9 @@ fn testing_pcache_always_miss() {
     let mut ts: u64 = 1;
     let mut block_id = 42;
 
+    let mut counter = Builder::new().build().unwrap();
+
+    counter.enable().unwrap();
     loop {
         for _ in 0..64 {
             mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
@@ -78,13 +56,20 @@ fn testing_pcache_always_miss() {
             break;
         }
     }
+    counter.disable().unwrap();
+
+    let count = counter.read().unwrap();
+    let ave_count = count / 1024 / 1024 / 10;
+
+    println!("{}", ave_count);
+    assert!(ave_count < 1200);
 
     // print the miss rate of the data cache and shared cache from core 0. They should be 100%.
     println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);
 }
 
-#[allow(dead_code)]
-fn testing_always_miss() {
+#[test]
+fn testing_pcache_always_hit() {
     let mh = MH::new();
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
@@ -92,31 +77,29 @@ fn testing_always_miss() {
     // block_id = set_id * associativity + way_id
 
     let mut ts: u64 = 1;
-    let mut block_id = 37;
+    let block_id = 42;
 
+    let mut counter = Builder::new().build().unwrap();
+
+    counter.enable().unwrap();
     loop {
         for _ in 0..64 {
             mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
             ts += 1;
-            block_id += parameter::SHARED_CACHE_SET as u64;
         }
-        block_id = 37;
 
-        if ts > 1024 * 1024 * 1000 {
+        if ts > 1024 * 1024 * 10 {
             break;
         }
     }
+    counter.disable().unwrap();
+
+    let count = counter.read().unwrap();
+    let ave_count = count / 1024 / 1024 / 10;
+
+    println!("{}", ave_count);
+    assert!(ave_count < 110);
 
     // print the miss rate of the data cache and shared cache from core 0. They should be 100%.
     println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);
-}
-
-pub fn main() {
-    let mut counter = Builder::new().build().unwrap();
-
-    counter.enable().unwrap();
-    testing_pcache_always_miss();
-    counter.disable().unwrap();
-
-    println!("Instructions: {}", counter.read().unwrap());
 }
