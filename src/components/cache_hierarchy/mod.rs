@@ -5,6 +5,8 @@
 // - Directory, with set locks.
 // - Shared caches, with set locks.
 
+use l0i::L0InstructionCache;
+
 use crate::util::get_monotonic_ts;
 use std::io::prelude::*;
 
@@ -20,6 +22,7 @@ mod util;
 
 pub mod directory;
 pub mod hierarchy;
+pub mod l0i;
 pub mod private_cache;
 pub mod shared_cache;
 
@@ -66,6 +69,9 @@ unsafe extern "C" fn vcpu_mem_access(
     }
 }
 
+static mut L0_CACHE: *mut L0InstructionCache<{ parser::ALLOCATED_CORE_COUNT }> =
+    std::ptr::null_mut();
+
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     voffset: *mut ffi::c_void, // it is basically its physical address.
@@ -77,6 +83,12 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
+
+    if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
+        // this is very necessary. It avoids the slow lookup of the basic blocks.
+        // It also guarantees the traffic to the cache is similar when the tb size is forced to be 1.
+        return;
+    }
 
     (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true);
 }
@@ -98,6 +110,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     fn init() {
         unsafe {
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
+            L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
         }
 
         if parameter::USE_UNIFIED_CACHE {

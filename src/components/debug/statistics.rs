@@ -5,13 +5,7 @@ use std::cell::UnsafeCell;
 
 use once_cell::sync::Lazy;
 
-use crate::parameter::{self, CORE_COUNT, ENABLE_STATISTICS};
-
-const ALLOCATED_CORE_COUNT: usize = if parameter::USE_UNIFIED_CACHE {
-    CORE_COUNT
-} else {
-    CORE_COUNT * 2
-};
+use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 
 #[derive(EnumCount, EnumIter, Display, Debug, Clone, Copy)]
 pub enum EventType {
@@ -68,7 +62,7 @@ impl PerCoreStatistics {
 }
 
 pub struct Statistics {
-    per_core: [UnsafeCell<PerCoreStatistics>; ALLOCATED_CORE_COUNT],
+    per_core: [UnsafeCell<PerCoreStatistics>; CORE_COUNT],
 }
 
 impl Default for Statistics {
@@ -105,7 +99,7 @@ impl Statistics {
 
     pub fn get_line_for_all_cores(&self, ts: u64) -> Vec<String> {
         let mut lines = Vec::new();
-        for core_id in 0..ALLOCATED_CORE_COUNT as u32 {
+        for core_id in 0..CORE_COUNT as u32 {
             unsafe {
                 lines.push((*self.per_core[core_id as usize].get()).get_line(ts, core_id));
             }
