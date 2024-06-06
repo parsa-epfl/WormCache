@@ -5,7 +5,7 @@ use std::cell::UnsafeCell;
 
 use once_cell::sync::Lazy;
 
-use crate::parameter::{self, CORE_COUNT, ENABLE_STATISTICS};
+use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 
 #[derive(EnumCount, EnumIter, Display, Debug, Clone, Copy)]
 pub enum EventType {
