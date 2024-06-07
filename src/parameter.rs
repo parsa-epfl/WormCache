@@ -219,21 +219,15 @@ pub const BTB_ASSO: usize = 3;
 pub const BP_RAS_COUNT: usize = 32;
 
 /**
- * HOST_TIME_SCALE
+ * INIT_HOST_TIME_SCALE
  *
- * The denominator of taking host time to advance CPU clock.
+ * The initial denominator of taking host time to advance target CPU clock.
  *
- * The virtual_time plugin overrides the function to calculate the CPU clock.
- * Each time the QEMU polls the CPU clock, the plugin calculates the CPU clock based on the instruction count.
- * However, when the instruction count is zero, the plugin uses the escaped real time to calculate the CPU clock.
- * The real time is calculated by the host system, which escapes very fast for the heavily instrumented QEMU.
- * Therefore, we need to scale the real time to make the CPU clock advance slower.
+ * By default, the VirtualTime plugin calculate the denominator by periodically picking the fast core, and uses its speed
+ * to calculate this denominator. This parameter is used to set the initial value of this denominator.
  *
- * For example, if the host time scale is 1000, the CPU clock advances 1 ns for every 1000 ns of the real time.
- *
- * Please set this value to 1 if you want to use the real time directly. This is helpful when only virtual time is used.
  */
-pub const HOST_TIME_SCALE: usize = 1000;
+pub const INIT_HOST_TIME_SCALE: usize = 1000;
 
 /**
  * The list of plugins.

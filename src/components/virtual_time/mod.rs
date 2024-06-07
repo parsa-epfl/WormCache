@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use std::{io::Write, sync::Mutex};
 
 use crate::parameter as param;
+use crate::parameter::CORE_COUNT;
 use crate::qemu_api;
 
 use crate::util::get_monotonic_ts;
@@ -16,10 +17,7 @@ static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
 static mut ICOUNT_PLUGIN: *mut icount::ICountPlugin = std::ptr::null_mut();
 
 unsafe extern "C" fn calculate_cpu_clock() -> i64 {
-    return TIME_PLUGIN
-        .lock()
-        .unwrap()
-        .calculate_cpu_clock(&(*ICOUNT_PLUGIN));
+    return TIME_PLUGIN.lock().unwrap().calculate_cpu_clock();
 }
 
 unsafe extern "C" fn on_snapshot_cpu_clock_update() {
@@ -77,6 +75,9 @@ impl super::Plugin for VirtualTimePlugin {
             file.write_fmt(format_args!("{}\n", head.join(",")))
                 .unwrap();
 
+            let mut accumulated_host_time: u64 = 0;
+            let mut history_icount = [(0, 0); param::CORE_COUNT];
+
             loop {
                 let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
                 let mut lines = vec![];
@@ -90,6 +91,37 @@ impl super::Plugin for VirtualTimePlugin {
                 }
                 file.write_fmt(format_args!("{}\n", lines.join(",")))
                     .unwrap();
+
+                // do a copy
+                let mut maximum_icount = 0;
+                let mut progress = false;
+                for i in 0..param::CORE_COUNT {
+                    let (u, k) = icounts[i];
+                    let this_core_icount = u + k;
+                    if this_core_icount > maximum_icount {
+                        maximum_icount = this_core_icount;
+                    }
+
+                    if (u, k) != history_icount[i] {
+                        progress = true;
+                    }
+
+                    history_icount[i] = (u, k);
+                }
+
+                // if the maximum icount is not zero, we update the time scaling factor.
+                if maximum_icount > 0 {
+                    let mut time_plugin = TIME_PLUGIN.lock().unwrap();
+                    time_plugin.update_scaling_factor(
+                        ((accumulated_host_time * 1e9 as u64) as f64 / maximum_icount as f64)
+                            as u64,
+                    );
+                }
+
+                if progress {
+                    accumulated_host_time += 10;
+                }
+
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
         });
