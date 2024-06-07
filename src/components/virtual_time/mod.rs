@@ -6,7 +6,6 @@ use once_cell::sync::Lazy;
 use std::{io::Write, sync::Mutex};
 
 use crate::parameter as param;
-use crate::parameter::CORE_COUNT;
 use crate::qemu_api;
 
 use crate::util::get_monotonic_ts;

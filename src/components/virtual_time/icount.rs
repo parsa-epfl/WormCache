@@ -18,10 +18,6 @@ impl PerCoreICount {
         }
     }
 
-    pub fn sum(&self) -> u64 {
-        self.user_icount + self.kernel_icount
-    }
-
     pub fn reset(&mut self) {
         self.user_icount = 0;
         self.kernel_icount = 0;
@@ -46,13 +42,6 @@ impl ICountPlugin {
             }
         }
         res
-    }
-
-    pub fn get_total_icounts_of_core(&self, core_id: u8) -> u64 {
-        unsafe {
-            let core_id = core_id as usize;
-            (*self.data[core_id].get()).sum()
-        }
     }
 
     pub fn increase_user_icount(&self, core_id: u8, icount: u64) {
