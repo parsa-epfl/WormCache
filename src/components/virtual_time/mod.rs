@@ -109,7 +109,7 @@ impl super::Plugin for VirtualTimePlugin {
                 }
 
                 // if the maximum icount is not zero, we update the time scaling factor.
-                if maximum_icount > 0 {
+                if maximum_icount > 0 && accumulated_host_time > 0 {
                     let mut time_plugin = TIME_PLUGIN.lock().unwrap();
                     time_plugin.update_scaling_factor(
                         ((accumulated_host_time * 1e9 as u64) as f64 / maximum_icount as f64)

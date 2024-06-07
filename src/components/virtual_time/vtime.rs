@@ -20,6 +20,9 @@ impl VirtualTimeContext {
     }
 
     pub fn update_scaling_factor(&mut self, scaling_factor: u64) {
+        if scaling_factor == 0 {
+            panic!("The scaling factor should not be zero.");
+        }
         self.time_scaling_factor = scaling_factor;
     }
 
@@ -32,7 +35,7 @@ impl VirtualTimeContext {
 
         // 2. calculate the potential update
         unsafe {
-            if qemu_plugin_cpu_is_tick_enabled() {
+            if qemu_plugin_cpu_is_tick_enabled() && self.last_real_time != 0 {
                 // 3.2 if the maximum is zero, we use the difference of the real time.
                 let advanced_vtime =
                     ((real_time - self.last_real_time) / self.time_scaling_factor as i128) as i64;
