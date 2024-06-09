@@ -273,3 +273,18 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
  * This option is only effective when the parallel cache model is used.
  */
 pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
+
+/**
+ * USE_QEMU_HW_ADDR_AS_PC
+ *
+ * Whether to use `qemu_plugin_insn_haddr` to calculate the physical address of the instruction.
+ *
+ * This option is for alignment with QEMU Cache simulator and QFlex KeenKraken.
+ *
+ * Please note that `qemu_plugin_insn_haddr` does not return the target physical address of the instruction.
+ * Instead, it returns the host virtual address of the instruction.
+ * By dereferencing this address, you can get the instruction itself.
+ *
+ * You should not enable this option unless you are sure that you need it.
+ */
+pub const USE_QEMU_HW_ADDR_AS_PHYSICAL_PC: bool = false;
