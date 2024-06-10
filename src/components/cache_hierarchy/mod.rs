@@ -74,7 +74,7 @@ static mut L0_CACHE: *mut L0InstructionCache<{ parser::ALLOCATED_CORE_COUNT }> =
 
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
-    voffset: *mut ffi::c_void, // it is basically its physical address.
+    inst_host_addr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
     {
@@ -82,7 +82,7 @@ unsafe extern "C" fn vcpu_insn_exec(
     }
 
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
-    let vaddr = vpn << 12 | (voffset as u64 & 0xfff);
+    let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
 
     if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
         // this is very necessary. It avoids the slow lookup of the basic blocks.
@@ -90,7 +90,18 @@ unsafe extern "C" fn vcpu_insn_exec(
         return;
     }
 
-    (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true);
+    if parameter::USE_QEMU_HW_ADDR_AS_PHYSICAL_PC {
+        (*PLUGIN).access_memory_with_va_and_pa(
+            vcpu_idx,
+            vaddr,
+            inst_host_addr as u64,
+            get_monotonic_ts(),
+            false,
+            true,
+        );
+    } else {
+        (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true);
+    }
 }
 
 // TODO: One additional PluginAPI is needed for this instruction. It will be a similar function to the memory access.
@@ -218,11 +229,18 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         // bind the instruction call back.
         for (idx, _) in fb_info.into_iter() {
             let i = qemu_api::qemu_plugin_tb_get_insn(tb, idx);
+
+            // The target virtual address should have the same page offset as the host virtual address.
+            assert_eq!(
+                (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0xfff,
+                (qemu_api::qemu_plugin_insn_haddr(i) as u64) & 0xfff
+            );
+
             qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
                 i,
                 Some(vcpu_insn_exec),
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                (qemu_api::qemu_plugin_insn_vaddr(i) & 0xfff) as *mut ffi::c_void,
+                qemu_api::qemu_plugin_insn_haddr(i) as *mut ffi::c_void,
             );
         }
 
