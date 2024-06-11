@@ -94,10 +94,10 @@ fn write_write_read_then_old_write() {
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
-    // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure.
+    // Third, core 2 writes the data at timestamp 125.
     assert_eq!(
         mh.access_memory_pblock_id(2, block_id, 125, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 }
 

@@ -9,27 +9,30 @@ use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 
 #[derive(EnumCount, EnumIter, Display, Debug, Clone, Copy)]
 pub enum EventType {
-    MemoryAccess = 0,
-    InstructionAccess = 1,
-    DataAccess = 2,
+    MemoryAccess,
+    InstructionAccess,
+    DataAccess,
 
-    PrivateICacheMiss = 3,
-    PrivateDCacheMiss = 4,
-    PrivateCacheMiss = 5,
-    PrivateCacheMissDueToPTW = 6,
+    PrivateICacheMiss,
+    PrivateDCacheMiss,
+    PrivateCacheMiss,
+    PrivateCacheMissDueToPTW,
 
-    SharedCacheAccess = 7,
-    SharedCacheMiss = 8,
-    SharedCacheMissDueToPTW = 9,
+    SharedCacheAccess,
+    SharedCacheMiss,
+    SharedCacheMissDueToPTW,
 
-    TLBMiss = 10,
-    ITLBMiss = 11,
-    DTLBMiss = 12,
+    UnknownCacheAccessResult,
+    UnknownSharedCacheAccessResult,
 
-    BranchCount = 13,
-    BTBMiss = 14,
-    RASMiss = 15,
-    TageMiss = 16,
+    TLBMiss,
+    ITLBMiss,
+    DTLBMiss,
+
+    BranchCount,
+    BTBMiss,
+    RASMiss,
+    TageMiss,
 }
 
 #[repr(align(64))]

@@ -7,7 +7,7 @@ pub struct PrivateCacheLine {
     write_ts: u64,
     is_instruction: bool,
     writeable: bool,
-    modified: bool,
+    modified: bool, // TODO: modified can be combined with write_ts.
 }
 
 impl PrivateCacheLine {
@@ -199,7 +199,8 @@ impl PrivateCacheSet {
         is_instruction: bool,
         writable: bool,
         modified: bool,
-    ) -> Option<bool> {
+    ) -> Option<(bool, u64)> {
+        // (modified, write_ts)
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
         assert!(self.index_of(block_id).is_none());
@@ -214,7 +215,10 @@ impl PrivateCacheSet {
             EvictedSlot::Invalid(idx) => (None, idx),
             EvictedSlot::Valid(idx, _) => match self.recent_invalid_slot_index {
                 Some(idx) => (None, idx),
-                None => (Some(self.lines[idx].modified), idx),
+                None => (
+                    Some((self.lines[idx].modified, self.lines[idx].write_ts)),
+                    idx,
+                ),
             },
             EvictedSlot::Same(idx) => {
                 // This is actually an upgrade, not a cache fill.
@@ -263,6 +267,8 @@ impl PrivateCacheSet {
         self.lines[idx_of_slot_to_fill].modified = modified;
         if modified {
             self.lines[idx_of_slot_to_fill].write_ts = ts;
+        } else {
+            self.lines[idx_of_slot_to_fill].write_ts = 0; // no one has written this cache line, so its timestamp should be zero.
         }
 
         res
@@ -275,10 +281,12 @@ impl PrivateCacheSet {
         self.recent_invalid_slot_index = Some(index);
     }
 
+    #[inline]
     pub fn request_sharer(&mut self, index: usize, _ts: u64) -> Option<bool> {
         // This function should not upgrade the timestamp of the cache line, because it can change the eviction target here.
         let line = &mut self.lines[index];
         line.writeable = false;
+        line.write_ts = 0; // also clean the writing time.
         let res = line.modified;
         line.modified = false;
         Some(res)

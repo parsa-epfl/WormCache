@@ -160,7 +160,7 @@ fn raw_and_war() {
     // Core 2 get a write permission at 5.
     assert_eq!(
         mh.access_memory_pblock_id(2, block_id, 5, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Now, core 0 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
@@ -189,10 +189,10 @@ fn rarw() {
         }
     );
 
-    // Core 1 get a read permission at 0.
+    // Core 1 get a read permission at 1.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 0, CacheAccessType::DataRead),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Now, core 1 should have invalid the cache.
@@ -214,7 +214,7 @@ fn waw() {
     // Core 1 gets a write permission at timestamp 5.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 5, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Now, the only owner of the data should be core 0.
@@ -242,7 +242,7 @@ fn wwaw() {
     // Core 1 gets a write permission at timestamp 15.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 15, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Now, the only owner of the data should be core 0.
@@ -274,7 +274,7 @@ fn rae() {
     // Then, there is a reader replica which is created before core 0 writes to the position.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 5, CacheAccessType::DataRead),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Still, there should be no reader replica.
@@ -304,7 +304,7 @@ fn eae() {
     // Core 1 accesses the core at 10 and evict the block
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
@@ -345,7 +345,7 @@ fn wae() {
     // Core 1 writes to the block at 10.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Now there should be nothing in the private cache.
@@ -373,7 +373,7 @@ fn eaw() {
     // Core 1 evicts the block at 100 with the dirty permission. the write happens at 10.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 10, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
@@ -428,7 +428,7 @@ fn rar() {
     // Core 1 reads the block at 5.
     assert_eq!(
         mh.access_memory_pblock_id(1, block_id, 5, CacheAccessType::DataRead),
-        CacheHierarchyAccessResult::HitInOtherPrivateCache
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     // Now there should be two replicas of core 0 and core 1 in the private cache.
