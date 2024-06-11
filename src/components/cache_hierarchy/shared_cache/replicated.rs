@@ -1,4 +1,7 @@
-use super::{SerializedSharedCacheBlock, SharedCache, SharedCacheSet};
+use super::{
+    set_and_line::SharedCacheLookupAndInsertResult, SerializedSharedCacheBlock, SharedCache,
+    SharedCacheSet,
+};
 
 use serde_json::json;
 use std::cell::UnsafeCell;
@@ -48,6 +51,21 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
     fn insert(&mut self, block_id: u64, ts: u64, is_modified: bool, increase_touched_count: bool) {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx].insert(block_id, ts, is_modified, increase_touched_count);
+    }
+
+    fn lookup_and_insert(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        is_store: bool,
+        increase_touched_count: bool,
+    ) -> Option<bool> {
+        let set_idx = (block_id % SET as u64) as usize;
+        match self.blocks[set_idx].lookup_and_insert(block_id, ts, is_store, increase_touched_count)
+        {
+            SharedCacheLookupAndInsertResult::Hit(is_dirty) => Some(is_dirty),
+            SharedCacheLookupAndInsertResult::Inserted(_) => None,
+        }
     }
 
     fn dump_snapshot(&self, snapshot_name: &str) {
@@ -142,6 +160,18 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
     ) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.insert(block_id, ts, is_modified, increase_touched_count);
+    }
+
+    fn lookup_and_insert(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_store: bool,
+        increase_touched_count: bool,
+    ) -> Option<bool> {
+        let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
+        pcache.lookup_and_insert(block_id, ts, is_store, increase_touched_count)
     }
 
     fn dump_snapshot(&self, snapshot_name: &str) {

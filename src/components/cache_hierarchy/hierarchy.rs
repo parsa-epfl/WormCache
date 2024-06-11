@@ -381,8 +381,12 @@ impl<
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
-            // NOTE: currently shared cache access is disabled.
-            let shared_cache_result = self.shared_cache.lookup(core_id, block_id, ts);
+            let shared_cache_result = if FILL_SCACHE_ON_FILLING_PCACHE {
+                self.shared_cache
+                    .lookup_and_insert(core_id, block_id, ts, is_store, true)
+            } else {
+                self.shared_cache.lookup(core_id, block_id, ts)
+            };
 
             miss_directory_guard.ts = ts;
             miss_directory_guard.sharers.set(p_cache_id, true);
@@ -391,6 +395,7 @@ impl<
                 miss_directory_guard.modify_ts_before_eviction = ts;
             }
 
+            // the dirtiness of the cache line in the shared cache is passed to the private cache.
             let modified = shared_cache_result.unwrap_or(false) || is_store;
 
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
@@ -398,11 +403,6 @@ impl<
             } else {
                 !is_instruction
             };
-
-            if FILL_SCACHE_ON_FILLING_PCACHE {
-                self.shared_cache
-                    .insert(core_id, block_id, ts, modified, true);
-            }
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,

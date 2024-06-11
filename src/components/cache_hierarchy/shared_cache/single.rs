@@ -5,7 +5,9 @@ use std::{
 
 use crate::components::cache_hierarchy::util::CCell;
 
-use super::{SerializedSharedCacheBlock, SharedCacheSet};
+use super::{
+    set_and_line::SharedCacheLookupAndInsertResult, SerializedSharedCacheBlock, SharedCacheSet,
+};
 use serde_json::json;
 use spin::mutex::SpinMutex;
 
@@ -59,6 +61,33 @@ impl<
         if just_warmed {
             self.warmed_sets.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    fn lookup_and_insert(
+        &self,
+        _core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_store: bool,
+        increase_touched_count: bool,
+    ) -> Option<bool> {
+        let set_idx = (block_id % SET as u64) as usize;
+        let result = self.blocks[set_idx].inner().lookup_and_insert(
+            block_id,
+            ts,
+            is_store,
+            increase_touched_count,
+        );
+
+        return match result {
+            SharedCacheLookupAndInsertResult::Hit(is_dirty) => Some(is_dirty),
+            SharedCacheLookupAndInsertResult::Inserted(just_warmed) => {
+                if just_warmed {
+                    self.warmed_sets.fetch_add(1, Ordering::Relaxed);
+                }
+                None
+            }
+        };
     }
 
     fn warmed_sets_count(&self) -> usize {

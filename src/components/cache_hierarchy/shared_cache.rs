@@ -20,6 +20,15 @@ pub trait SharedCache {
         increase_touched_count: bool,
     );
 
+    fn lookup_and_insert(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        is_store: bool,
+        increase_touched_count: bool,
+    ) -> Option<bool>; // the lookup result: (is_modified)
+
     fn warmed_sets_count(&self) -> usize;
 
     fn warmed_slots_count(&self) -> usize;

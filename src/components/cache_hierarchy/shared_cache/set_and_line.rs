@@ -7,6 +7,12 @@ pub struct SharedCacheBlock {
     pub modified: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum SharedCacheLookupAndInsertResult {
+    Hit(bool),      // (is_dirty)
+    Inserted(bool), // (just_warmed)
+}
+
 #[derive(Debug)]
 pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
@@ -142,6 +148,25 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         oldest_block.ts = ts;
 
         result
+    }
+
+    #[inline]
+    pub fn lookup_and_insert(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        is_store: bool,
+        increase_touched_count: bool,
+    ) -> SharedCacheLookupAndInsertResult {
+        // (is_hit, dirty/just_warmed)
+        let result = self.lookup(block_id, ts);
+
+        if let Some(is_dirty) = result {
+            SharedCacheLookupAndInsertResult::Hit(is_dirty)
+        } else {
+            let just_warmed = self.insert(block_id, ts, is_store, increase_touched_count);
+            SharedCacheLookupAndInsertResult::Inserted(just_warmed)
+        }
     }
 }
 
