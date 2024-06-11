@@ -24,9 +24,19 @@ pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 
 #[derive(Debug)]
 pub struct DirectoryEntry {
-    pub ts: u64,
+    pub lru_ts: u64,
     pub sharers: SharerList,
-    pub modify_ts_before_eviction: u64, // This field is to avoid the eviction causes the write history to be lost.
+    pub recent_writer_ts: u64, // This field is to avoid the eviction causes the write history to be lost.
+    pub insertion_ts: u64,
+}
+
+impl DirectoryEntry {
+    #[inline]
+    pub fn update_lru_ts(&mut self, ts: u64) {
+        if ts > self.lru_ts {
+            self.lru_ts = ts;
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -50,9 +60,10 @@ impl<const SET: usize> DirectorySet<SET> {
         let internal_id = block_id >> Self::LOG2_SET;
 
         self.entries.entry(internal_id).or_insert(DirectoryEntry {
-            ts: 0,
+            lru_ts: 0,
             sharers: SharerList::ZERO,
-            modify_ts_before_eviction: 0,
+            recent_writer_ts: 0,
+            insertion_ts: 0,
         });
 
         self.entries.get_mut(&internal_id).unwrap()
@@ -77,7 +88,7 @@ impl<const SET: usize> Directory<SET> {
         }
     }
 
-    pub fn lock_set(&self, block_id: u64) -> SpinMutexGuard<'_, DirectorySet<SET>> {
+    pub fn fetch_one_entry(&self, block_id: u64) -> SpinMutexGuard<'_, DirectorySet<SET>> {
         let set_id = (block_id as usize) % SET;
         self.entries[set_id].lock()
     }
@@ -94,15 +105,15 @@ impl<const SET: usize> Directory<SET> {
         let index_1 = (block_id_1 as usize) % SET;
 
         match index_0.cmp(&index_1) {
-            std::cmp::Ordering::Equal => (self.lock_set(block_id_0), None),
+            std::cmp::Ordering::Equal => (self.fetch_one_entry(block_id_0), None),
             std::cmp::Ordering::Less => {
-                let g0 = self.lock_set(block_id_0);
-                let g1 = self.lock_set(block_id_1);
+                let g0 = self.fetch_one_entry(block_id_0);
+                let g1 = self.fetch_one_entry(block_id_1);
                 (g0, Some(g1))
             }
             std::cmp::Ordering::Greater => {
-                let g1 = self.lock_set(block_id_1);
-                let g0 = self.lock_set(block_id_0);
+                let g1 = self.fetch_one_entry(block_id_1);
+                let g0 = self.fetch_one_entry(block_id_0);
                 (g0, Some(g1))
             }
         }

@@ -64,6 +64,7 @@ pub enum CacheHierarchyAccessResult {
     MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
     HitInSharedCache,
     Miss,
+    Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
 }
 
 impl<
@@ -313,28 +314,14 @@ impl<
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
-        // Alright, we may need to get another directory entry of the eviction.
-        // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
-
-        if !is_prefetch {
-            Statistics::global_record(core_id, EventType::PrivateCacheMiss);
-
-            if is_instruction {
-                Statistics::global_record(core_id, EventType::PrivateICacheMiss);
-            } else if is_page_walk {
-                Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
-            } else {
-                Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
-            }
-        }
-
         let evicted_slot = match private_hit {
             private_cache::PrivateCachePokeResult::Hit => unreachable!(),
             private_cache::PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
             private_cache::PrivateCachePokeResult::PermissionViolation(ref slot) => slot.clone(),
         };
 
-        // get the locks for the fill and the evict, in a fixed order, if possible.
+        // Alright, we may need to get another directory entry of the eviction.
+        // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
         let (mut miss_directory_set_guard, evict_directory) = {
             match evicted_slot {
                 private_cache::EvictedSlot::Valid(_, potential_evicted_id) => {
@@ -344,7 +331,7 @@ impl<
                     (m_guard, Some((potential_evicted_id, e_guard)))
                 }
                 _ => {
-                    let directory_set_guard = self.directory.lock_set(block_id);
+                    let directory_set_guard = self.directory.fetch_one_entry(block_id);
                     (directory_set_guard, None)
                 }
             }
@@ -363,7 +350,7 @@ impl<
             CacheOperationType::GetR
         };
 
-        if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.modify_ts_before_eviction > ts {
+        if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.recent_writer_ts > ts {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
             CacheLineCoherenceHistory::global_record_history(
@@ -376,33 +363,42 @@ impl<
                 line!(),
             );
 
-            return CacheHierarchyAccessResult::MissInPrivateCache;
+            // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit,
+            // because the history has been cleaned up by an earlier writer.
+            if !is_prefetch {
+                Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+            }
+
+            return CacheHierarchyAccessResult::Unknown;
         }
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
-            // NOTE: currently shared cache access is disabled.
-            let shared_cache_result = self.shared_cache.lookup(core_id, block_id, ts);
+            let shared_cache_result = if FILL_SCACHE_ON_FILLING_PCACHE {
+                // here we take the ownership of the cache line from the shared cache to the private cache.
+                // So abandon_dirty is true.
+                // We also don't need to write through to the LLC, so the is_store is false.
+                self.shared_cache
+                    .lookup_and_insert_on_miss(core_id, block_id, ts, true, false, true)
+            } else {
+                self.shared_cache.lookup(core_id, block_id, ts, true)
+            };
 
-            miss_directory_guard.ts = ts;
+            miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers.set(p_cache_id, true);
+            miss_directory_guard.insertion_ts = ts; // this is the moment when the block is inserted to the directory.
 
             if is_store {
-                miss_directory_guard.modify_ts_before_eviction = ts;
+                miss_directory_guard.recent_writer_ts = ts;
             }
 
-            let modified = shared_cache_result.unwrap_or(false) || is_store;
+            let modified = is_store;
 
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
             } else {
                 !is_instruction
             };
-
-            if FILL_SCACHE_ON_FILLING_PCACHE {
-                self.shared_cache
-                    .insert(core_id, block_id, ts, modified, true);
-            }
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -443,6 +439,17 @@ impl<
             }
 
             if !is_prefetch {
+                // Here it is a miss in the private cache.
+                Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+
+                if is_instruction {
+                    Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+                } else if is_page_walk {
+                    Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
+                } else {
+                    Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+                }
+
                 Statistics::global_record(core_id, EventType::SharedCacheAccess);
             }
 
@@ -481,16 +488,27 @@ impl<
             .get_set_guard_by_sharer_list(block_id, acquire_list);
 
         if PRECISE_COHERENCE_RECONSTRUCTION {
+            // Here for MESI, there are two cases that we need to consider:
+            // - Another core has written the cache line with a larger timestamp.
+            //   In this case, we need to only keep the latest writer, and ignore this operation.
+
+            // - Another core has the write permission but it is not written yet.
+            //   In this case, the logic is different from the reader and the writer.
+            //     For the reader, it just needs to reclaim the write permission.
+            //     For the writer, it just needs to invalidate this cache line.
+
+            // The following code handles the first case.
+
             // Do we have another sharer that has a write permission with a larger timestamp?
-            let mut other_has_write_permission_with_late_ts = false;
+            let mut other_has_written_with_large_ts = false;
             let mut other_write_ts = 0;
             let mut other_sharer_id = 0;
             for (replica_cache_id, set, index) in acquired_sets.iter() {
                 if let Some(index) = index {
                     let line = &set.lines[*index];
                     assert_eq!(line.block_id(), block_id);
-                    if line.write_ts() > ts {
-                        other_has_write_permission_with_late_ts = true;
+                    if line.is_modified() && line.write_ts() > ts {
+                        other_has_written_with_large_ts = true;
                         if line.write_ts() > other_write_ts {
                             other_write_ts = line.write_ts();
                             other_sharer_id = *replica_cache_id;
@@ -510,15 +528,17 @@ impl<
                 }
             }
 
-            if other_has_write_permission_with_late_ts {
+            if other_has_written_with_large_ts {
                 // Well, this cache line is already touched by another core with a later timestamp.
                 // Only that core should be kept.
 
                 // Update the directory.
                 let mut incoming_sharer = SharerList::ZERO;
                 incoming_sharer.set(other_sharer_id, true);
-                miss_directory_guard.ts = ts;
+                miss_directory_guard.update_lru_ts(ts);
                 miss_directory_guard.sharers = incoming_sharer;
+                assert!(miss_directory_guard.recent_writer_ts <= other_write_ts);
+                miss_directory_guard.recent_writer_ts = other_write_ts; // The writer timestamp can be updated as well.
 
                 for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
                     if *replica_cache_id != other_sharer_id {
@@ -544,8 +564,10 @@ impl<
                 // Now, release the lock of the private cache.
                 drop(acquired_sets);
 
-                // We don't know whether this cache line should trigger a hit or miss. It definitely misses in the private cache.
-                return CacheHierarchyAccessResult::MissInPrivateCache;
+                // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit.
+                Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+
+                return CacheHierarchyAccessResult::Unknown;
             }
         }
 
@@ -558,10 +580,6 @@ impl<
         let evicted = if is_store {
             let mut incoming_sharer = miss_directory_guard.sharers;
             let mut set_for_refill_lock = None;
-
-            // Here actually we can do something to tell the difference between CleanExclusive and CleanShared.
-            // When checking replica, we can see the number of replica. If it is 1 and its owner is the current core, then it is CleanExclusive.
-            // We can just return HitInSelfPrivateCache if the coherence protocol is MESI and the timing information is needed.
 
             for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                 if let Some(index) = index {
@@ -584,13 +602,12 @@ impl<
                             )
                         }
                     } else {
+                        // This means you will only get the read permission, because there is a core with read permission and large timestamp.
                         assert!(entry.write_ts() <= ts);
                         assert!(*replica_cache_id != p_cache_id);
 
-                        // This means you will only get the read permission, because there is a core with read permission and large timestamp.
-
-                        // The result must be inaccurate because the access arrives OoO.
-                        res = CacheHierarchyAccessResult::MissInPrivateCache;
+                        // remove the write permission.
+                        set.request_sharer(*index, ts);
                     }
                 } else {
                     // This is the only case that we can see a the private cache does not have this block.
@@ -627,12 +644,34 @@ impl<
                 )
             };
 
+            if !private_hit.permission_violation() {
+                if miss_directory_guard.insertion_ts < ts {
+                    res = CacheHierarchyAccessResult::HitInOtherPrivateCache;
+                } else {
+                    // This access turns out to be a earlier request
+                    res = CacheHierarchyAccessResult::MissInPrivateCache;
+                    // We extend the life time of this directory by considering this access.
+                    miss_directory_guard.insertion_ts = ts;
+
+                    // So, this makes the LLC miss rate not precise, because we don't know whether this access is a hit or miss.
+                    // This can bring uncertainty to the LLC miss rate.
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheAccessResult);
+                }
+            } else {
+                // This memory access is definitely not the first one to this cache line.
+                assert!(miss_directory_guard.insertion_ts <= ts);
+            }
+
             // add self to the incoming sharer list.
             incoming_sharer.set(p_cache_id, true);
 
             // update the directory.
-            miss_directory_guard.ts = ts;
+            miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers = incoming_sharer;
+
+            // We have a new write exposed to the directory.
+            assert!(miss_directory_guard.recent_writer_ts <= ts);
+            miss_directory_guard.recent_writer_ts = ts;
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -678,7 +717,12 @@ impl<
                             );
 
                             drop(acquired_sets);
-                            return CacheHierarchyAccessResult::MissInPrivateCache;
+
+                            // This read happens after a early arrival write operation, so
+                            // we don't know the state of this cache line for this specific case.
+                            Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+
+                            return CacheHierarchyAccessResult::Unknown;
                         }
 
                         // Alright, we find the modifier of this cache line.
@@ -693,8 +737,26 @@ impl<
             }
 
             // Then, we need to add self to the directory.
-            miss_directory_guard.ts = ts;
+            miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers.set(p_cache_id, true);
+
+            if !private_hit.permission_violation() {
+                if miss_directory_guard.insertion_ts < ts {
+                    res = CacheHierarchyAccessResult::HitInOtherPrivateCache;
+                } else {
+                    // This access turns out to be earlier than the directory creation.
+                    res = CacheHierarchyAccessResult::MissInPrivateCache;
+                    // We decide to create a replica for this cache line, so we expand this directory life time.
+                    miss_directory_guard.insertion_ts = ts;
+
+                    // So, this makes the LLC miss rate not precise, because we don't know whether this access is a hit or miss.
+                    // This can bring uncertainty to the LLC miss rate.
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheAccessResult);
+                }
+            } else {
+                // read should never see a permission violation.
+                assert!(false);
+            }
 
             // We can insert the block to the private cache now.
             let set_for_refill_lock = set_for_refill_lock.unwrap();
@@ -736,6 +798,16 @@ impl<
             );
         }
 
+        Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+
+        if is_instruction {
+            Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+        } else if is_page_walk {
+            Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
+        } else {
+            Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+        }
+
         res
     }
 
@@ -745,7 +817,7 @@ impl<
         cache_id: usize,
         block_id: u64,
         ts: u64,
-        modified: bool,
+        modified: (bool, u64),
     ) {
         let directory_entry = directory_set_guard.get_or_create(block_id);
 
@@ -764,7 +836,7 @@ impl<
         }
 
         // we put the element back to the directory.
-        directory_entry.ts = ts;
+        directory_entry.update_lru_ts(ts);
         directory_entry.sharers.set(cache_id, false);
 
         CacheLineCoherenceHistory::global_record_history(
@@ -778,13 +850,14 @@ impl<
         );
 
         // Also update the writer timestamp before eviction.
-        if modified {
+        if modified.0 {
+            let evicted_cache_line_write_ts = modified.1;
             // keep the latest write timestamp.
-            directory_entry.modify_ts_before_eviction =
-                if directory_entry.modify_ts_before_eviction < ts {
-                    ts
+            directory_entry.recent_writer_ts =
+                if directory_entry.recent_writer_ts < evicted_cache_line_write_ts {
+                    evicted_cache_line_write_ts
                 } else {
-                    directory_entry.modify_ts_before_eviction
+                    directory_entry.recent_writer_ts
                 };
         }
 
@@ -798,14 +871,14 @@ impl<
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
-            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
+            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified, true);
+                    .insert(core_id, block_id, ts, modified.0, true);
             }
 
-            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified {
+            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified, true);
+                    .insert(core_id, block_id, ts, modified.0, true);
             }
         }
     }

@@ -94,10 +94,10 @@ fn write_write_read_then_old_write() {
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
-    // Third, core 2 writes the data at timestamp 125. This should trigger an assertion failure.
+    // Third, core 2 writes the data at timestamp 125.
     assert_eq!(
         mh.access_memory_pblock_id(2, block_id, 125, CacheAccessType::DataWrite),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 }
 
@@ -120,5 +120,29 @@ fn read_then_write() {
         } else {
             CacheHierarchyAccessResult::MissDueToPermission
         }
+    );
+}
+
+#[test]
+fn write_read_after_write() {
+    let mh = MH::new();
+    let block_id = 1043;
+
+    // First, there should be a write permission, by core 0, at timestamp 100.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 100, CacheAccessType::DataWrite),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Second, core 0 read the cache line. This can update the access timestamp but does not touch the write timestamp.
+    assert_eq!(
+        mh.access_memory_pblock_id(0, block_id, 150, CacheAccessType::DataRead),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+
+    // Third, core 1 writes the data at timestamp 200.
+    assert_eq!(
+        mh.access_memory_pblock_id(1, block_id, 150, CacheAccessType::DataWrite),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 }

@@ -7,6 +7,12 @@ pub struct SharedCacheBlock {
     pub modified: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum SharedCacheLookupAndInsertResult {
+    Hit(bool),      // (is_dirty)
+    Inserted(bool), // (just_warmed)
+}
+
 #[derive(Debug)]
 pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
@@ -39,7 +45,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             .position(|p| p.block_id_with_v == internal_block_id)
     }
 
-    fn peek(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    fn peek(&mut self, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool> {
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
             if ts >= hit_block.ts {
@@ -49,6 +55,12 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 // this should not happen if there is no reordering.
                 // println!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
             }
+            if abandon_dirty {
+                // Force a write back to the DRAM here.
+                // We don't simulate this event now.
+                hit_block.modified = false;
+            }
+
             return Some(hit_block.modified);
         }
 
@@ -71,11 +83,11 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
     }
 
     #[inline]
-    pub fn lookup(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    pub fn lookup(&mut self, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool> {
         if EXCLUSIVE {
             self.invalidate(block_id)
         } else {
-            self.peek(block_id, ts)
+            self.peek(block_id, ts, abandon_dirty)
         }
     }
 
@@ -103,7 +115,14 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 if ts > hit_block.ts {
                     hit_block.ts = ts;
                 }
-                hit_block.modified = is_modified;
+
+                if is_modified {
+                    // This cache line's permission should have been taken by the private cache.
+                    // So it should not be modified in the shared cache.
+                    assert!(!hit_block.modified);
+                    hit_block.modified = is_modified;
+                }
+
                 return false;
             }
         }
@@ -142,6 +161,26 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         oldest_block.ts = ts;
 
         result
+    }
+
+    #[inline]
+    pub fn lookup_and_insert(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        abandon_dirty: bool,
+        is_store: bool,
+        increase_touched_count: bool,
+    ) -> SharedCacheLookupAndInsertResult {
+        // (is_hit, dirty/just_warmed)
+        let result = self.lookup(block_id, ts, abandon_dirty);
+
+        if let Some(is_dirty) = result {
+            SharedCacheLookupAndInsertResult::Hit(is_dirty)
+        } else {
+            let just_warmed = self.insert(block_id, ts, is_store, increase_touched_count);
+            SharedCacheLookupAndInsertResult::Inserted(just_warmed)
+        }
     }
 }
 
