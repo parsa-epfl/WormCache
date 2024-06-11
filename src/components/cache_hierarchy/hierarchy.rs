@@ -607,7 +607,6 @@ impl<
                         assert!(*replica_cache_id != p_cache_id);
 
                         // remove the write permission.
-                        assert!(!entry.is_modified());
                         set.request_sharer(*index, ts);
                     }
                 } else {
