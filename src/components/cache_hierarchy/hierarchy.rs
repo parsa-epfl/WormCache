@@ -398,8 +398,7 @@ impl<
                 miss_directory_guard.modify_ts_before_eviction = ts;
             }
 
-            // the dirtiness of the cache line in the shared cache is passed to the private cache.
-            let modified = shared_cache_result.unwrap_or(false) || is_store;
+            let modified = is_store;
 
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
