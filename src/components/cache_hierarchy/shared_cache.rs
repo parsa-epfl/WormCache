@@ -10,7 +10,9 @@ use serde::Serialize;
 pub trait SharedCache {
     fn new() -> Self;
     fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool>; // (is_modified)
-    fn lookup(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool>; // (is_modified)
+
+    // abandon_dirty is here to create a replica to the private cache.
+    fn lookup(&self, core_id: u32, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool>; // (is_modified)
     fn insert(
         &self,
         core_id: u32,
@@ -20,11 +22,12 @@ pub trait SharedCache {
         increase_touched_count: bool,
     );
 
-    fn lookup_and_insert(
+    fn lookup_and_insert_on_miss(
         &self,
         core_id: u32,
         block_id: u64,
         ts: u64,
+        abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
     ) -> Option<bool>; // the lookup result: (is_modified)

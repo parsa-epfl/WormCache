@@ -40,9 +40,11 @@ impl<
         return self.blocks[set_idx].inner().invalidate(block_id);
     }
 
-    fn lookup(&self, _core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
+    fn lookup(&self, _core_id: u32, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
-        return self.blocks[set_idx].inner().lookup(block_id, ts);
+        return self.blocks[set_idx]
+            .inner()
+            .lookup(block_id, ts, abandon_dirty);
     }
 
     fn insert(
@@ -63,11 +65,12 @@ impl<
         }
     }
 
-    fn lookup_and_insert(
+    fn lookup_and_insert_on_miss(
         &self,
         _core_id: u32,
         block_id: u64,
         ts: u64,
+        abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
     ) -> Option<bool> {
@@ -75,6 +78,7 @@ impl<
         let result = self.blocks[set_idx].inner().lookup_and_insert(
             block_id,
             ts,
+            abandon_dirty,
             is_store,
             increase_touched_count,
         );

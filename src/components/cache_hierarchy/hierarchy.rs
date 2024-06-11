@@ -382,10 +382,13 @@ impl<
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
             let shared_cache_result = if FILL_SCACHE_ON_FILLING_PCACHE {
+                // here we take the ownership of the cache line from the shared cache to the private cache.
+                // So abandon_dirty is true.
+                // We also don't need to write through to the LLC, so the is_store is false.
                 self.shared_cache
-                    .lookup_and_insert(core_id, block_id, ts, is_store, true)
+                    .lookup_and_insert_on_miss(core_id, block_id, ts, true, false, true)
             } else {
-                self.shared_cache.lookup(core_id, block_id, ts)
+                self.shared_cache.lookup(core_id, block_id, ts, true)
             };
 
             miss_directory_guard.ts = ts;
