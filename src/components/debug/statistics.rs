@@ -24,6 +24,7 @@ pub enum EventType {
 
     UnknownCacheAccessResult,
     UnknownSharedCacheAccessResult,
+    UnknownShareedCacheMissAndRefill, // this can cause miss rate inaccuracy in the shared cache.
 
     TLBMiss,
     ITLBMiss,

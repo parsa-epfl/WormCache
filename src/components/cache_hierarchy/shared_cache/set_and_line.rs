@@ -1,4 +1,7 @@
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::components::debug::{
+    cache_line_history::CacheLineCoherenceHistory,
+    statistics::{EventType, Statistics},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedCacheBlock {
@@ -54,6 +57,8 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             } else {
                 // this should not happen if there is no reordering.
                 // println!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
+                Statistics::global_record(0, EventType::UnknownShareedCacheMissAndRefill);
+                // always attribute this to core 0.
             }
             if abandon_dirty {
                 // Force a write back to the DRAM here.
@@ -152,6 +157,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {
             println!("Warning: the incoming block has smaller timestamp than the oldest block in the shared cache.");
+            Statistics::global_record(0, EventType::UnknownShareedCacheMissAndRefill); // always attribute this to core 0.
             return result;
         }
 
