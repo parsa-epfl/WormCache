@@ -12,7 +12,7 @@ pub const CORE_COUNT: usize = 8;
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
  *
- * Whether to use the cache hierarchy for half of the cores [0, CORE_COUNT/2)
+ * Whether to use the cache hierarchy and the vtime calculation for half of the cores [0, CORE_COUNT/2)
  *
  * This option is specially for profiling online services images.
  *

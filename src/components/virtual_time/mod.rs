@@ -74,8 +74,15 @@ impl super::Plugin for VirtualTimePlugin {
             file.write_fmt(format_args!("{}\n", head.join(",")))
                 .unwrap();
 
+            const CORE_RANGE_FOR_TIME_CALCULATION: usize =
+                if param::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+                    param::CORE_COUNT / 2
+                } else {
+                    param::CORE_COUNT
+                };
+
             let mut accumulated_host_time: u64 = 0;
-            let mut history_icount = [(0, 0); param::CORE_COUNT];
+            let mut history_icount = [(0, 0); CORE_RANGE_FOR_TIME_CALCULATION];
 
             loop {
                 let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
@@ -94,7 +101,7 @@ impl super::Plugin for VirtualTimePlugin {
                 // do a copy
                 let mut maximum_icount = 0;
                 let mut progress = false;
-                for i in 0..param::CORE_COUNT {
+                for i in 0..CORE_RANGE_FOR_TIME_CALCULATION {
                     let (u, k) = icounts[i];
                     let this_core_icount = u + k;
                     if this_core_icount > maximum_icount {
