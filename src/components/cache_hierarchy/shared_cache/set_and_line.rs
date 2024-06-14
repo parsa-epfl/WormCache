@@ -261,3 +261,61 @@ fn minimum_can_find_invalid() {
         }
     )
 }
+
+#[test]
+fn virtual_timestamp_violation() {
+    let mut set = SharedCacheSet::<8, false>::new();
+    let mut ts = 1;
+
+    let original_value =
+        Statistics::global_query_record(0, EventType::SharedCacheVTsOrderViolation);
+
+    // push 8 elements inside.
+    for i in 0..8 {
+        assert_eq!(set.insert(i, ts, ts, false, true), i == 7);
+        ts += 1;
+    }
+
+    // now, we invalid set 0.
+    assert_eq!(set.invalidate(0), Some(false));
+
+    // Now if we refill, we will hit the first place.
+    set.insert(9, ts, ts, false, true);
+
+    // And the cache line 0 should be replaced.
+    assert_eq!(
+        set.blocks[0],
+        SharedCacheBlock {
+            block_id_with_v: 9 << 1 | 1,
+            ts: ts,
+            modified: false,
+        }
+    );
+
+    ts += 1;
+
+    // If we now insert another one, line[1] will be replaced.
+    assert_eq!(set.insert(10, ts, ts, false, true), false);
+
+    assert_eq!(
+        set.blocks[1],
+        SharedCacheBlock {
+            block_id_with_v: 10 << 1 | 1,
+            ts: ts,
+            modified: false,
+        }
+    );
+
+    // Now, we insert a block with smaller v_ts.
+    assert_eq!(set.insert(11, ts, ts - 1, false, true), false);
+
+    // The v_ts should be updated.
+    assert_eq!(set.v_ts, ts as usize);
+
+    // And we should have a violation.
+    assert_eq!(
+        Statistics::global_query_record(0, EventType::SharedCacheVTsOrderViolation)
+            - original_value,
+        1
+    );
+}
