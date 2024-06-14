@@ -142,7 +142,46 @@ fn write_write_read_then_old_write() {
             125,
             CacheAccessType::DataWrite
         ),
+        CacheHierarchyAccessResult::Unknown
+    );
+}
+
+#[test]
+fn write_read_then_early_read() {
+    let mh = MH::new();
+    let block_id = 1043;
+
+    // First, there should be a write permission, by core 0, at timestamp 100.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            0,
+            block_id,
+            100,
+            CacheAccessType::DataWrite
+        ),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Second, core 1 reads the cache line. This can update the access timestamp but does not touch the write timestamp.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            1,
+            block_id,
+            150,
+            CacheAccessType::DataRead
+        ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+
+    // Third, core 2 reads the cache line at timestamp 50.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            2,
+            block_id,
+            50,
+            CacheAccessType::DataRead
+        ),
+        CacheHierarchyAccessResult::Unknown
     );
 }
 

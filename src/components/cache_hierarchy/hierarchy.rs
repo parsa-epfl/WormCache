@@ -565,7 +565,7 @@ impl<
                 if let Some(index) = index {
                     let line = &set.lines[*index];
                     assert_eq!(line.block_id(), block_id);
-                    if line.is_modified() && line.write_ts() > ts {
+                    if line.write_ts() > ts {
                         other_has_written_with_large_ts = true;
                         if line.write_ts() > other_write_ts {
                             other_write_ts = line.write_ts();

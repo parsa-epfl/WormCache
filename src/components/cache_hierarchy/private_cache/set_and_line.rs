@@ -297,7 +297,6 @@ impl PrivateCacheSet {
         // This function should not upgrade the timestamp of the cache line, because it can change the eviction target here.
         let line = &mut self.lines[index];
         line.writeable = false;
-        line.write_ts = 0; // also clean the writing time.
         let res = line.modified;
         line.modified = false;
         Some(res)
