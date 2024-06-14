@@ -8,6 +8,7 @@ pub struct PrivateCacheLine {
     is_instruction: bool,
     writeable: bool,
     modified: bool, // TODO: modified can be combined with write_ts.
+    v_ts: u64,      // The timestamp is generated assuming all instructions take exactly 1ns.
 }
 
 impl PrivateCacheLine {
@@ -39,6 +40,11 @@ impl PrivateCacheLine {
     #[inline]
     pub fn is_instruction(&self) -> bool {
         self.is_instruction
+    }
+
+    #[inline]
+    pub fn virtual_timestamp(&self) -> u64 {
+        self.v_ts
     }
 }
 
@@ -92,6 +98,7 @@ impl PrivateCacheSet {
                     is_instruction: false,
                     writeable: false,
                     modified: false,
+                    v_ts: 0,
                 })
                 .take(asso),
             ),
@@ -158,6 +165,7 @@ impl PrivateCacheSet {
         &mut self,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_store: bool,
         is_instruction_fetch: bool,
     ) -> PrivateCachePokeResult {
@@ -173,6 +181,7 @@ impl PrivateCacheSet {
                     line.ts = ts;
                     line.write_ts = ts;
                     line.modified = true;
+                    line.v_ts = v_ts;
                     return PrivateCachePokeResult::Hit;
                 } else {
                     return PrivateCachePokeResult::PermissionViolation(EvictedSlot::Same(idx));
@@ -196,6 +205,7 @@ impl PrivateCacheSet {
         potential_slot: EvictedSlot,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_instruction: bool,
         writable: bool,
         modified: bool,
@@ -265,6 +275,7 @@ impl PrivateCacheSet {
         self.lines[idx_of_slot_to_fill].is_instruction = is_instruction;
         self.lines[idx_of_slot_to_fill].writeable = writable;
         self.lines[idx_of_slot_to_fill].modified = modified;
+        self.lines[idx_of_slot_to_fill].v_ts = v_ts;
         if modified {
             self.lines[idx_of_slot_to_fill].write_ts = ts;
         } else {
@@ -341,6 +352,7 @@ fn minimum_can_find_invalid() {
             EvictedSlot::Invalid(i),
             i as u64,
             ts,
+            ts,
             false,
             false,
             false,
@@ -357,6 +369,7 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 1,
             ts: 1,
+            v_ts: 1,
             write_ts: 0,
             is_instruction: false,
             writeable: false,
@@ -369,7 +382,7 @@ fn minimum_can_find_invalid() {
     // Now if we refill, we will hit the first place.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, EvictedSlot::Invalid(0));
-    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, false, false, false);
+    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, ts, false, false, false);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -377,6 +390,7 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 9 << 1 | 1,
             ts: ts,
+            v_ts: ts,
             write_ts: 0,
             is_instruction: false,
             writeable: false,
@@ -389,5 +403,5 @@ fn minimum_can_find_invalid() {
     // If we now insert another one, line[1] will be replaced.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, EvictedSlot::Valid(1, 1));
-    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, false, false, false);
+    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, ts, false, false, false);
 }

@@ -17,6 +17,8 @@ pub enum EventType {
     PrivateDCacheMiss,
     PrivateCacheMiss,
     PrivateCacheMissDueToPTW,
+    PrivateCacheTriggerCoherence, // All misses that involve the coherence activity (GetS, GetX)
+    PrivateCacheTriggerInvalidation, // All misses that invalid other copies (GetX)
 
     SharedCacheAccess,
     SharedCacheMiss,
@@ -26,6 +28,10 @@ pub enum EventType {
     UnknownSharedCacheAccessResult,
     UnknownShareedCacheMissAndRefill, // this can cause miss rate inaccuracy in the shared cache.
 
+    PrivateCacheVtsOrderViolation, // The violation of the order suggested by VTs, for the coherence state information.
+    SharedCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the LRU information in the shared cache.
+
+    // the key problem is still how I convert the previous two counters' value into the miss rate impact.
     TLBMiss,
     ITLBMiss,
     DTLBMiss,

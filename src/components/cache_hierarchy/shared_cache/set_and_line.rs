@@ -20,6 +20,7 @@ pub enum SharedCacheLookupAndInsertResult {
 pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
+    pub v_ts: usize,
 }
 
 impl<const WAY: usize, const EXCLUSIVE: bool> Default for SharedCacheSet<WAY, EXCLUSIVE> {
@@ -37,6 +38,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 modified: false,
             }),
             touched_count: 0,
+            v_ts: 0,
         }
     }
 
@@ -48,7 +50,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             .position(|p| p.block_id_with_v == internal_block_id)
     }
 
-    fn peek(&mut self, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool> {
+    fn peek(&mut self, block_id: u64, ts: u64, v_ts: u64, abandon_dirty: bool) -> Option<bool> {
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
             if ts >= hit_block.ts {
@@ -64,6 +66,14 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 // Force a write back to the DRAM here.
                 // We don't simulate this event now.
                 hit_block.modified = false;
+            }
+
+            if v_ts >= self.v_ts as u64 {
+                self.v_ts = v_ts as usize;
+            } else {
+                // well, we have an virtual ts order violation.
+                // This can potentially cause a problem in the replacement policy.
+                Statistics::global_record(0, EventType::SharedCacheVTsOrderViolation);
             }
 
             return Some(hit_block.modified);
@@ -88,11 +98,17 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
     }
 
     #[inline]
-    pub fn lookup(&mut self, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool> {
+    pub fn lookup(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        v_ts: u64,
+        abandon_dirty: bool,
+    ) -> Option<bool> {
         if EXCLUSIVE {
             self.invalidate(block_id)
         } else {
-            self.peek(block_id, ts, abandon_dirty)
+            self.peek(block_id, ts, v_ts, abandon_dirty)
         }
     }
 
@@ -102,6 +118,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         &mut self,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) -> bool {
@@ -119,6 +136,12 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 // update the timestamp and the modified bit.
                 if ts > hit_block.ts {
                     hit_block.ts = ts;
+                }
+
+                if v_ts >= self.v_ts as u64 {
+                    self.v_ts = v_ts as usize;
+                } else {
+                    Statistics::global_record(0, EventType::SharedCacheVTsOrderViolation);
                 }
 
                 if is_modified {
@@ -161,6 +184,12 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             return result;
         }
 
+        if v_ts >= self.v_ts as u64 {
+            self.v_ts = v_ts as usize;
+        } else {
+            Statistics::global_record(0, EventType::SharedCacheVTsOrderViolation);
+        }
+
         // otherwise, we replace the oldest block.
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = is_modified;
@@ -174,17 +203,18 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         &mut self,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
     ) -> SharedCacheLookupAndInsertResult {
         // (is_hit, dirty/just_warmed)
-        let result = self.lookup(block_id, ts, abandon_dirty);
+        let result = self.lookup(block_id, ts, v_ts, abandon_dirty);
 
         if let Some(is_dirty) = result {
             SharedCacheLookupAndInsertResult::Hit(is_dirty)
         } else {
-            let just_warmed = self.insert(block_id, ts, is_store, increase_touched_count);
+            let just_warmed = self.insert(block_id, ts, v_ts, is_store, increase_touched_count);
             SharedCacheLookupAndInsertResult::Inserted(just_warmed)
         }
     }
@@ -197,7 +227,7 @@ fn minimum_can_find_invalid() {
 
     // push 8 elements inside.
     for i in 0..8 {
-        assert_eq!(set.insert(i, ts, false, true), i == 7);
+        assert_eq!(set.insert(i, ts, ts, false, true), i == 7);
         ts += 1;
     }
 
@@ -205,7 +235,7 @@ fn minimum_can_find_invalid() {
     assert_eq!(set.invalidate(0), Some(false));
 
     // Now if we refill, we will hit the first place.
-    set.insert(9, ts, false, true);
+    set.insert(9, ts, ts, false, true);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -220,7 +250,7 @@ fn minimum_can_find_invalid() {
     ts += 1;
 
     // If we now insert another one, line[1] will be replaced.
-    assert_eq!(set.insert(10, ts, false, true), false);
+    assert_eq!(set.insert(10, ts, ts, false, true), false);
 
     assert_eq!(
         set.blocks[1],

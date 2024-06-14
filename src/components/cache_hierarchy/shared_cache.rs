@@ -12,12 +12,21 @@ pub trait SharedCache {
     fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool>; // (is_modified)
 
     // abandon_dirty is here to create a replica to the private cache.
-    fn lookup(&self, core_id: u32, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool>; // (is_modified)
+    fn lookup(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        v_ts: u64,
+        abandon_dirty: bool,
+    ) -> Option<bool>; // (is_modified)
+
     fn insert(
         &self,
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     );
@@ -27,6 +36,7 @@ pub trait SharedCache {
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,

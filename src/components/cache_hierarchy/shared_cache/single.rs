@@ -40,11 +40,18 @@ impl<
         return self.blocks[set_idx].inner().invalidate(block_id);
     }
 
-    fn lookup(&self, _core_id: u32, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool> {
+    fn lookup(
+        &self,
+        _core_id: u32,
+        block_id: u64,
+        ts: u64,
+        v_ts: u64,
+        abandon_dirty: bool,
+    ) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
         return self.blocks[set_idx]
             .inner()
-            .lookup(block_id, ts, abandon_dirty);
+            .lookup(block_id, ts, v_ts, abandon_dirty);
     }
 
     fn insert(
@@ -52,14 +59,18 @@ impl<
         _core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) {
         let set_idx = (block_id % SET as u64) as usize;
-        let just_warmed =
-            self.blocks[set_idx]
-                .inner()
-                .insert(block_id, ts, is_modified, increase_touched_count);
+        let just_warmed = self.blocks[set_idx].inner().insert(
+            block_id,
+            ts,
+            v_ts,
+            is_modified,
+            increase_touched_count,
+        );
         if just_warmed {
             self.warmed_sets.fetch_add(1, Ordering::Relaxed);
         }
@@ -70,6 +81,7 @@ impl<
         _core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
@@ -78,6 +90,7 @@ impl<
         let result = self.blocks[set_idx].inner().lookup_and_insert(
             block_id,
             ts,
+            v_ts,
             abandon_dirty,
             is_store,
             increase_touched_count,

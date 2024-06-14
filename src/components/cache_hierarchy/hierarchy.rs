@@ -130,6 +130,7 @@ impl<
         ts: u64,
         is_store: bool,
         is_instruction: bool,
+        v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
     ) {
         assert!(
             !(is_instruction && is_store),
@@ -163,9 +164,15 @@ impl<
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                    );
                 }
             }
             crate::components::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
@@ -179,22 +186,35 @@ impl<
                         core_id,
                         pte_block_id,
                         ts,
+                        v_ts,
                         CacheAccessType::PageWalkRead,
                     );
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                    );
                 }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                    );
                 }
             }
         }
@@ -208,6 +228,7 @@ impl<
         ts: u64,
         is_store: bool,
         is_instruction: bool,
+        v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
     ) {
         assert!(
             !(is_instruction && is_store),
@@ -242,9 +263,15 @@ impl<
             crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                    );
                 }
             }
             crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
@@ -258,14 +285,21 @@ impl<
                         core_id,
                         pte_block_id,
                         ts,
+                        v_ts,
                         CacheAccessType::PageWalkRead,
                     );
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                    );
                 }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
@@ -273,12 +307,28 @@ impl<
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                    );
                 }
             }
         }
+    }
+
+    pub fn access_memory_pblock_id_with_the_same_ts_and_vts(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        access_type: CacheAccessType,
+    ) -> CacheHierarchyAccessResult {
+        self.access_memory_pblock_id(core_id, block_id, ts, ts, access_type)
     }
 
     pub fn access_memory_pblock_id(
@@ -286,6 +336,7 @@ impl<
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         access_type: CacheAccessType,
     ) -> CacheHierarchyAccessResult {
         let is_prefetch = access_type == CacheAccessType::PrefetchRead
@@ -305,9 +356,14 @@ impl<
         }
 
         // first, we need to check the private cache.
-        let private_hit =
-            self.private_caches
-                .poke_and_update(core_id, block_id, ts, is_instruction, is_store);
+        let private_hit = self.private_caches.poke_and_update(
+            core_id,
+            block_id,
+            ts,
+            v_ts,
+            is_instruction,
+            is_store,
+        );
 
         if private_hit == private_cache::PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
@@ -379,9 +435,9 @@ impl<
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
                 self.shared_cache
-                    .lookup_and_insert_on_miss(core_id, block_id, ts, true, false, true)
+                    .lookup_and_insert_on_miss(core_id, block_id, ts, v_ts, true, false, true)
             } else {
-                self.shared_cache.lookup(core_id, block_id, ts, true)
+                self.shared_cache.lookup(core_id, block_id, ts, v_ts, true)
             };
 
             miss_directory_guard.update_lru_ts(ts);
@@ -421,6 +477,7 @@ impl<
                 evicted_slot,
                 block_id,
                 ts,
+                v_ts,
                 is_instruction,
                 writable,
                 modified,
@@ -434,6 +491,7 @@ impl<
                     p_cache_id,
                     evicted_block_id,
                     ts,
+                    v_ts,
                     evicted_line_is_modified,
                 );
             }
@@ -628,6 +686,7 @@ impl<
                     evicted_slot,
                     block_id,
                     ts,
+                    v_ts,
                     is_instruction,
                     true,
                     true,
@@ -638,6 +697,7 @@ impl<
                     evicted_slot,
                     block_id,
                     ts,
+                    v_ts,
                     is_instruction,
                     false,
                     false,
@@ -765,6 +825,7 @@ impl<
                 evicted_slot,
                 block_id,
                 ts,
+                v_ts,
                 is_instruction,
                 false,
                 false,
@@ -794,6 +855,7 @@ impl<
                 p_cache_id,
                 evicted_block_id,
                 ts,
+                v_ts,
                 is_modified,
             );
         }
@@ -817,6 +879,7 @@ impl<
         cache_id: usize,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         modified: (bool, u64),
     ) {
         let directory_entry = directory_set_guard.get_or_create(block_id);
@@ -873,12 +936,12 @@ impl<
 
             if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
+                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
 
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
+                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
         }
     }

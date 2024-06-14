@@ -33,7 +33,7 @@ fn test_hit_last() {
 
     let set_idx = 1;
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        mh.access_memory_pblock_id(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
             0,
             (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
             1 + i as u64,
@@ -50,7 +50,7 @@ fn test_hit_last() {
 
     let mut ts = 0;
     loop {
-        mh.access_memory_pblock_id(0, addr, ts, CacheAccessType::DataRead);
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(0, addr, ts, CacheAccessType::DataRead);
         ts += 1;
     }
 }
@@ -68,7 +68,12 @@ fn testing_pcache_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                0,
+                block_id,
+                ts,
+                CacheAccessType::DataRead,
+            );
             ts += 1;
             block_id += parameter::UNIFIED_PRI_CACHE_SET as u64;
         }
@@ -96,7 +101,12 @@ fn testing_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                0,
+                block_id,
+                ts,
+                CacheAccessType::DataRead,
+            );
             ts += 1;
             block_id += parameter::SHARED_CACHE_SET as u64;
         }

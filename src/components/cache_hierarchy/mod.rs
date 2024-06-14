@@ -63,6 +63,7 @@ unsafe extern "C" fn vcpu_mem_access(
             get_monotonic_ts(),
             is_store,
             false,
+            get_monotonic_ts(), // v_ts
         );
     } else {
         // TODO: check the I/O event
@@ -98,9 +99,17 @@ unsafe extern "C" fn vcpu_insn_exec(
             get_monotonic_ts(),
             false,
             true,
+            get_monotonic_ts(),
         );
     } else {
-        (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true);
+        (*PLUGIN).access_memory_with_va(
+            vcpu_idx,
+            vaddr,
+            get_monotonic_ts(),
+            false,
+            true,
+            get_monotonic_ts(),
+        );
     }
 }
 

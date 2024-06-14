@@ -17,6 +17,7 @@ pub trait PrivateCaches {
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_instruction: bool,
         is_store: bool,
     ) -> PrivateCachePokeResult;

@@ -46,7 +46,12 @@ fn testing_pcache_always_miss() {
     counter.enable().unwrap();
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                0,
+                block_id,
+                ts,
+                CacheAccessType::DataRead,
+            );
             ts += 1;
             block_id += parameter::UNIFIED_PRI_CACHE_SET as u64;
         }
@@ -84,7 +89,12 @@ fn testing_pcache_always_hit() {
     counter.enable().unwrap();
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                0,
+                block_id,
+                ts,
+                CacheAccessType::DataRead,
+            );
             ts += 1;
         }
 

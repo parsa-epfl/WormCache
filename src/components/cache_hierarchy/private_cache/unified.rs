@@ -63,13 +63,14 @@ impl<
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_instruction: bool,
         is_store: bool,
     ) -> PrivateCachePokeResult {
         self.caches[core_id as usize]
             .get_set(block_id)
             .inner()
-            .poke_and_update(block_id, ts, is_store, is_instruction)
+            .poke_and_update(block_id, ts, v_ts, is_store, is_instruction)
     }
 
     #[inline]
