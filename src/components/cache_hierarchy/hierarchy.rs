@@ -323,6 +323,7 @@ impl<
         }
     }
 
+    // This function is only for debugging.
     pub fn access_memory_pblock_id_with_the_same_ts_and_vts(
         &self,
         core_id: u32,
