@@ -7,8 +7,9 @@ pub struct PrivateCacheLine {
     write_ts: u64,
     is_instruction: bool,
     writeable: bool,
-    modified: bool, // TODO: modified can be combined with write_ts.
-    v_ts: u64,      // The timestamp is generated assuming all instructions take exactly 1ns.
+    modified: bool,   // TODO: modified can be combined with write_ts.
+    access_v_ts: u64, // The timestamp is generated assuming all instructions take exactly 1ns.
+    write_v_ts: u64,
 }
 
 impl PrivateCacheLine {
@@ -43,8 +44,13 @@ impl PrivateCacheLine {
     }
 
     #[inline]
-    pub fn virtual_timestamp(&self) -> u64 {
-        self.v_ts
+    pub fn access_virtual_timestamp(&self) -> u64 {
+        self.access_v_ts
+    }
+
+    #[inline]
+    pub fn write_virtual_timestamp(&self) -> u64 {
+        self.write_v_ts
     }
 }
 
@@ -98,7 +104,8 @@ impl PrivateCacheSet {
                     is_instruction: false,
                     writeable: false,
                     modified: false,
-                    v_ts: 0,
+                    access_v_ts: 0,
+                    write_v_ts: 0,
                 })
                 .take(asso),
             ),
@@ -181,7 +188,8 @@ impl PrivateCacheSet {
                     line.ts = ts;
                     line.write_ts = ts;
                     line.modified = true;
-                    line.v_ts = v_ts;
+                    line.access_v_ts = v_ts;
+                    line.write_v_ts = v_ts;
                     return PrivateCachePokeResult::Hit;
                 } else {
                     return PrivateCachePokeResult::PermissionViolation(EvictedSlot::Same(idx));
@@ -189,6 +197,7 @@ impl PrivateCacheSet {
             }
             assert!(line.ts <= ts); // This is a strong assumption. (The cache line should be updated with the latest timestamp.
             line.ts = ts;
+            line.access_v_ts = v_ts;
             line.is_instruction = is_instruction_fetch;
             PrivateCachePokeResult::Hit
         } else {
@@ -275,11 +284,13 @@ impl PrivateCacheSet {
         self.lines[idx_of_slot_to_fill].is_instruction = is_instruction;
         self.lines[idx_of_slot_to_fill].writeable = writable;
         self.lines[idx_of_slot_to_fill].modified = modified;
-        self.lines[idx_of_slot_to_fill].v_ts = v_ts;
+        self.lines[idx_of_slot_to_fill].access_v_ts = v_ts;
         if modified {
             self.lines[idx_of_slot_to_fill].write_ts = ts;
+            self.lines[idx_of_slot_to_fill].write_v_ts = v_ts;
         } else {
             self.lines[idx_of_slot_to_fill].write_ts = 0; // no one has written this cache line, so its timestamp should be zero.
+            self.lines[idx_of_slot_to_fill].write_v_ts = 0;
         }
 
         res
@@ -289,6 +300,7 @@ impl PrivateCacheSet {
     pub fn invalidate(&mut self, index: usize) {
         self.lines[index].block_id_with_v = 0;
         self.lines[index].ts = 0; // set ts to 0 so that this place will be find by the minimal ts. Good for replacement.
+        self.lines[index].access_v_ts = 0;
         self.recent_invalid_slot_index = Some(index);
     }
 
@@ -368,8 +380,9 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 1,
             ts: 1,
-            v_ts: 1,
+            access_v_ts: 1,
             write_ts: 0,
+            write_v_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -389,8 +402,9 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 9 << 1 | 1,
             ts: ts,
-            v_ts: ts,
+            access_v_ts: ts,
             write_ts: 0,
+            write_v_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,

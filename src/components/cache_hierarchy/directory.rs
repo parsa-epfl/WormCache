@@ -27,6 +27,7 @@ pub struct DirectoryEntry {
     pub lru_ts: u64,
     pub sharers: SharerList,
     pub recent_writer_ts: u64, // This field is to avoid the eviction causes the write history to be lost.
+    pub recent_writer_vts: u64,
     pub insertion_ts: u64,
 }
 
@@ -64,6 +65,7 @@ impl<const SET: usize> DirectorySet<SET> {
             sharers: SharerList::ZERO,
             recent_writer_ts: 0,
             insertion_ts: 0,
+            recent_writer_vts: 0,
         });
 
         self.entries.get_mut(&internal_id).unwrap()

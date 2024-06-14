@@ -24,6 +24,8 @@ mod harvard_reverse_order_tests;
 mod harvard_tests;
 #[cfg(test)]
 mod reverse_order_tests;
+#[cfg(test)]
+mod virtual_timestamp;
 
 pub struct MemoryHierarchy<
     MMU: AbstractMMU,
@@ -406,6 +408,11 @@ impl<
             CacheOperationType::GetR
         };
 
+        if miss_directory_guard.recent_writer_vts > v_ts {
+            // this cache line is evicted and previously is written. This is definitely a order violation.
+            Statistics::global_record(core_id, EventType::PrivateCacheVtsOrderViolation);
+        }
+
         if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.recent_writer_ts > ts {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
@@ -446,6 +453,7 @@ impl<
 
             if is_store {
                 miss_directory_guard.recent_writer_ts = ts;
+                miss_directory_guard.recent_writer_vts = v_ts;
             }
 
             let modified = is_store;
@@ -544,6 +552,37 @@ impl<
         let mut acquired_sets = self
             .private_caches
             .get_set_guard_by_sharer_list(block_id, acquire_list);
+
+        // The check for the v_ts.
+        for (replica_cache_id, set, index) in acquired_sets.iter() {
+            if let Some(index) = index {
+                let line = &set.lines[*index];
+
+                if *replica_cache_id == p_cache_id {
+                    continue;
+                }
+
+                if is_store {
+                    if line.access_virtual_timestamp() > v_ts {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::PrivateCacheVtsOrderViolation,
+                        );
+
+                        break;
+                    }
+                } else {
+                    if line.write_virtual_timestamp() > v_ts {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::PrivateCacheVtsOrderViolation,
+                        );
+
+                        break;
+                    }
+                }
+            }
+        }
 
         if PRECISE_COHERENCE_RECONSTRUCTION {
             // Here for MESI, there are two cases that we need to consider:

@@ -128,6 +128,10 @@ impl Statistics {
         }
     }
 
+    pub fn global_query_record(core_id: u32, event: EventType) -> u64 {
+        unsafe { (*GLOBAL_STATISTICS.per_core[core_id as usize].get()).counters[event as usize] }
+    }
+
     pub fn global_get_line_for_all_cores(ts: u64) -> Vec<String> {
         unsafe { GLOBAL_STATISTICS.get_line_for_all_cores(ts) }
     }
