@@ -207,6 +207,11 @@ impl<
                 }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
+                if is_instruction {
+                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction);
+                } else {
+                    Statistics::global_record(core_id, EventType::TLBMissDueToData);
+                }
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
@@ -307,6 +312,12 @@ impl<
                 }
 
                 Statistics::global_record(core_id, EventType::TLBMiss);
+
+                if is_instruction {
+                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction);
+                } else {
+                    Statistics::global_record(core_id, EventType::TLBMissDueToData);
+                }
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);

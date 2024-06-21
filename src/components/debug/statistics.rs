@@ -17,13 +17,13 @@ pub enum EventType {
     PrivateDCacheMiss,
     PrivateCacheMiss,
     PrivateCacheMissDueToPTW,
-    PrivateCacheTriggerCoherence, // All misses that involve the coherence activity (GetS, GetX)
-    PrivateCacheTriggerInvalidation, // All misses that invalid other copies (GetX)
+    PrivateCacheMissTriggerCoherence, // All misses that involve the coherence activity (GetS, GetX)
+    PrivateCacheMissTriggerInvalidation, // All misses that invalid other copies (GetX)
 
     SharedCacheAccess,
     SharedCacheMiss,
     SharedCacheMissDueToPTW,
-    SharedCacheMissDueToInstruction,
+    SharedCacheMissDueToInstructionFetch,
     SharedCacheMissDueToData,
 
     UnknownPrivateCacheMisses,
@@ -34,8 +34,8 @@ pub enum EventType {
 
     // the key problem is still how I convert the previous two counters' value into the miss rate impact.
     TLBMiss,
-    ITLBMiss,
-    DTLBMiss,
+    TLBMissDueToInstruction,
+    TLBMissDueToData,
 
     BranchCount,
     BTBMiss,
