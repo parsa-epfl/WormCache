@@ -22,6 +22,12 @@ impl PerCoreICount {
     }
 }
 
+impl Default for PerCoreICount {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 pub struct ICountPlugin {
     data: [UnsafeCell<PerCoreICount>; CORE_COUNT],
@@ -47,5 +53,11 @@ impl ICountPlugin {
             // the reason why we do so is because this function is called before instructions are actually executed.
             // therefore, when getting the icount, the instruction should not see the icount of the current translation block.
         }
+    }
+}
+
+impl Default for ICountPlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }

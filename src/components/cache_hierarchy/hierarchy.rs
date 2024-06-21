@@ -1,5 +1,5 @@
 use crate::components::cache_hierarchy::shared_cache::{
-    SharedCache, SharedCacheLookupAndInsertResult, SharedCacheLookupResult, VTsViolationResult,
+    SharedCache, SharedCacheLookupResult, VTsViolationResult,
 };
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 use crate::{components::cache_hierarchy::directory::SharerList, parameter};
@@ -617,15 +617,10 @@ impl<
 
                         break;
                     }
-                } else {
-                    if line.write_virtual_timestamp() > v_ts {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::PrivateCacheVTsOrderViolation,
-                        );
+                } else if line.write_virtual_timestamp() > v_ts {
+                    Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation);
 
-                        break;
-                    }
+                    break;
                 }
             }
         }
@@ -909,7 +904,7 @@ impl<
                 }
             } else {
                 // read should never see a permission violation.
-                assert!(false);
+                panic!("Permission violation should not be seen by a read operation.");
             }
 
             // We can insert the block to the private cache now.

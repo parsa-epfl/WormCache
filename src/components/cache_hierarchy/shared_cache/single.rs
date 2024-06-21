@@ -98,7 +98,7 @@ impl<
             increase_touched_count,
         );
 
-        return (
+        (
             match result {
                 SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
                     SharedCacheLookupResult::Hit(is_dirty)
@@ -112,7 +112,7 @@ impl<
                 SharedCacheLookupAndInsertResult::Unknown => SharedCacheLookupResult::Unknown,
             },
             VTsViolationResult::NotViolated,
-        );
+        )
     }
 
     fn warmed_sets_count(&self) -> usize {

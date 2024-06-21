@@ -1,6 +1,6 @@
 use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
-use super::{SharedCacheLookupAndInsertResult, SharedCacheLookupResult, VTsViolationResult};
+use super::{SharedCacheLookupAndInsertResult, SharedCacheLookupResult};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedCacheBlock {

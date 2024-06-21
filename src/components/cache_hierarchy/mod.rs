@@ -94,7 +94,7 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
-    let instruction_offset = (inst_host_addr as u64 >> 48) as u64;
+    let instruction_offset = (inst_host_addr as u64 >> 48);
     let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
 
     let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
@@ -113,7 +113,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             get_monotonic_ts(),
             false,
             true,
-            current_icount + instruction_offset as u64,
+            current_icount + instruction_offset,
         );
     } else {
         (*PLUGIN).access_memory_with_va(
@@ -122,7 +122,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             get_monotonic_ts(),
             false,
             true,
-            current_icount + instruction_offset as u64,
+            current_icount + instruction_offset,
         );
     }
 }
