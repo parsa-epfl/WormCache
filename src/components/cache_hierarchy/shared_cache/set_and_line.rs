@@ -1,7 +1,6 @@
-use crate::components::debug::{
-    cache_line_history::CacheLineCoherenceHistory,
-    statistics::{EventType, Statistics},
-};
+use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+
+use super::{SharedCacheLookupAndInsertResult, SharedCacheLookupResult, VTsViolationResult};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedCacheBlock {
@@ -10,17 +9,11 @@ pub struct SharedCacheBlock {
     pub modified: bool,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum SharedCacheLookupAndInsertResult {
-    Hit(bool),      // (is_dirty)
-    Inserted(bool), // (just_warmed)
-}
-
 #[derive(Debug)]
 pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
-    pub v_ts: usize,
+    pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
 }
 
 impl<const WAY: usize, const EXCLUSIVE: bool> Default for SharedCacheSet<WAY, EXCLUSIVE> {
@@ -37,8 +30,9 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 ts: 0,
                 modified: false,
             }),
+
             touched_count: 0,
-            v_ts: 0,
+            recent_evict_ts: 0,
         }
     }
 
@@ -50,30 +44,18 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             .position(|p| p.block_id_with_v == internal_block_id)
     }
 
-    fn peek(&mut self, block_id: u64, ts: u64, v_ts: u64, abandon_dirty: bool) -> Option<bool> {
+    fn peek(&mut self, block_id: u64, ts: u64, abandon_dirty: bool) -> Option<bool> {
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
             if ts >= hit_block.ts {
                 // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                 hit_block.ts = ts;
-            } else {
-                // this should not happen if there is no reordering.
-                // println!("Warning: the incoming block has smaller timestamp than the hit block in the shared cache.");
-                Statistics::global_record(0, EventType::UnknownShareedCacheMissAndRefill);
-                // always attribute this to core 0.
             }
+
             if abandon_dirty {
                 // Force a write back to the DRAM here.
                 // We don't simulate this event now.
                 hit_block.modified = false;
-            }
-
-            if v_ts >= self.v_ts as u64 {
-                self.v_ts = v_ts as usize;
-            } else {
-                // well, we have an virtual ts order violation.
-                // This can potentially cause a problem in the replacement policy.
-                Statistics::global_record(0, EventType::SharedCacheVTsOrderViolation);
             }
 
             return Some(hit_block.modified);
@@ -83,13 +65,18 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         None
     }
 
-    pub fn invalidate(&mut self, block_id: u64) -> Option<bool> {
+    pub fn invalidate(&mut self, block_id: u64, ts: u64) -> Option<bool> {
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
             let res = Some(hit_block.modified);
             hit_block.block_id_with_v = 0;
             hit_block.ts = 0;
+
+            if self.recent_evict_ts < ts {
+                self.recent_evict_ts = ts;
+            }
+
             return res;
         }
 
@@ -102,13 +89,22 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         &mut self,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
-    ) -> Option<bool> {
-        if EXCLUSIVE {
-            self.invalidate(block_id)
+    ) -> SharedCacheLookupResult {
+        match if EXCLUSIVE {
+            self.invalidate(block_id, ts)
         } else {
-            self.peek(block_id, ts, v_ts, abandon_dirty)
+            self.peek(block_id, ts, abandon_dirty)
+        } {
+            Some(is_dirty) => SharedCacheLookupResult::Hit(is_dirty),
+            None => {
+                if ts < self.recent_evict_ts {
+                    // this cache line might have been evicted, so we cannot determine whether it is a hit or a miss.
+                    SharedCacheLookupResult::Unknown
+                } else {
+                    SharedCacheLookupResult::Miss
+                }
+            }
         }
     }
 
@@ -118,7 +114,6 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         &mut self,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) -> bool {
@@ -136,12 +131,6 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                 // update the timestamp and the modified bit.
                 if ts > hit_block.ts {
                     hit_block.ts = ts;
-                }
-
-                if v_ts >= self.v_ts as u64 {
-                    self.v_ts = v_ts as usize;
-                } else {
-                    Statistics::global_record(0, EventType::SharedCacheVTsOrderViolation);
                 }
 
                 if is_modified {
@@ -180,20 +169,18 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {
             println!("Warning: the incoming block has smaller timestamp than the oldest block in the shared cache.");
-            Statistics::global_record(0, EventType::UnknownShareedCacheMissAndRefill); // always attribute this to core 0.
             return result;
-        }
-
-        if v_ts >= self.v_ts as u64 {
-            self.v_ts = v_ts as usize;
-        } else {
-            Statistics::global_record(0, EventType::SharedCacheVTsOrderViolation);
         }
 
         // otherwise, we replace the oldest block.
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = is_modified;
         oldest_block.ts = ts;
+
+        // update the eviction counter.
+        if self.recent_evict_ts < ts {
+            self.recent_evict_ts = ts;
+        }
 
         result
     }
@@ -203,19 +190,22 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         &mut self,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
     ) -> SharedCacheLookupAndInsertResult {
         // (is_hit, dirty/just_warmed)
-        let result = self.lookup(block_id, ts, v_ts, abandon_dirty);
+        let result = self.lookup(block_id, ts, abandon_dirty);
 
-        if let Some(is_dirty) = result {
-            SharedCacheLookupAndInsertResult::Hit(is_dirty)
-        } else {
-            let just_warmed = self.insert(block_id, ts, v_ts, is_store, increase_touched_count);
-            SharedCacheLookupAndInsertResult::Inserted(just_warmed)
+        match result {
+            SharedCacheLookupResult::Hit(is_dirty) => {
+                SharedCacheLookupAndInsertResult::Hit(is_dirty)
+            }
+            SharedCacheLookupResult::Miss => {
+                let just_warmed = self.insert(block_id, ts, is_store, increase_touched_count);
+                SharedCacheLookupAndInsertResult::Inserted(just_warmed)
+            }
+            SharedCacheLookupResult::Unknown => SharedCacheLookupAndInsertResult::Unknown,
         }
     }
 }
@@ -227,15 +217,16 @@ fn minimum_can_find_invalid() {
 
     // push 8 elements inside.
     for i in 0..8 {
-        assert_eq!(set.insert(i, ts, ts, false, true), i == 7);
+        assert_eq!(set.insert(i, ts, false, true), i == 7);
         ts += 1;
     }
 
     // now, we invalid set 0.
-    assert_eq!(set.invalidate(0), Some(false));
+    assert_eq!(set.invalidate(0, ts), Some(false));
+    ts += 1;
 
     // Now if we refill, we will hit the first place.
-    set.insert(9, ts, ts, false, true);
+    set.insert(9, ts, false, true);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -250,7 +241,7 @@ fn minimum_can_find_invalid() {
     ts += 1;
 
     // If we now insert another one, line[1] will be replaced.
-    assert_eq!(set.insert(10, ts, ts, false, true), false);
+    assert_eq!(set.insert(10, ts, false, true), false);
 
     assert_eq!(
         set.blocks[1],
@@ -260,62 +251,4 @@ fn minimum_can_find_invalid() {
             modified: false,
         }
     )
-}
-
-#[test]
-fn virtual_timestamp_violation() {
-    let mut set = SharedCacheSet::<8, false>::new();
-    let mut ts = 1;
-
-    let original_value =
-        Statistics::global_query_record(0, EventType::SharedCacheVTsOrderViolation);
-
-    // push 8 elements inside.
-    for i in 0..8 {
-        assert_eq!(set.insert(i, ts, ts, false, true), i == 7);
-        ts += 1;
-    }
-
-    // now, we invalid set 0.
-    assert_eq!(set.invalidate(0), Some(false));
-
-    // Now if we refill, we will hit the first place.
-    set.insert(9, ts, ts, false, true);
-
-    // And the cache line 0 should be replaced.
-    assert_eq!(
-        set.blocks[0],
-        SharedCacheBlock {
-            block_id_with_v: 9 << 1 | 1,
-            ts: ts,
-            modified: false,
-        }
-    );
-
-    ts += 1;
-
-    // If we now insert another one, line[1] will be replaced.
-    assert_eq!(set.insert(10, ts, ts, false, true), false);
-
-    assert_eq!(
-        set.blocks[1],
-        SharedCacheBlock {
-            block_id_with_v: 10 << 1 | 1,
-            ts: ts,
-            modified: false,
-        }
-    );
-
-    // Now, we insert a block with smaller v_ts.
-    assert_eq!(set.insert(11, ts, ts - 1, false, true), false);
-
-    // The v_ts should be updated.
-    assert_eq!(set.v_ts, ts as usize);
-
-    // And we should have a violation.
-    assert_eq!(
-        Statistics::global_query_record(0, EventType::SharedCacheVTsOrderViolation)
-            - original_value,
-        1
-    );
 }

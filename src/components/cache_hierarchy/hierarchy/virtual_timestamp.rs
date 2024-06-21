@@ -34,7 +34,7 @@ fn read_after_read_has_no_impact() {
     let mh = MH::new();
     let block_id = 0x1234;
     let original_value =
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation);
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation);
 
     // first, core 0 reads, with ts = 10, v_ts = 2.
     assert_eq!(
@@ -50,7 +50,7 @@ fn read_after_read_has_no_impact() {
 
     // there should be zero impact on the miss rate.
     assert_eq!(
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation)
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation)
             - original_value,
         0
     );
@@ -62,7 +62,7 @@ fn read_after_write_has_impact() {
     let block_id = 0x1234;
 
     let original_value =
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation);
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation);
 
     // first, core 0 writes, with ts = 10, v_ts = 2.
     assert_eq!(
@@ -84,7 +84,7 @@ fn read_after_write_has_impact() {
 
     // there should be one impact on the miss rate.
     assert_eq!(
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation)
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation)
             - original_value,
         1
     );
@@ -96,7 +96,7 @@ fn write_after_read_has_impact() {
     let block_id = 0x1234;
 
     let original_value =
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation);
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation);
 
     // first, core 0 reads, with ts = 10, v_ts = 2.
     assert_eq!(
@@ -112,7 +112,7 @@ fn write_after_read_has_impact() {
 
     // there should be one impact on the miss rate.
     assert_eq!(
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation)
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation)
             - original_value,
         1
     );
@@ -124,7 +124,7 @@ fn write_after_write_has_impact() {
     let block_id = 0x1234;
 
     let original_value =
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation);
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation);
 
     // first, core 0 writes, with ts = 10, v_ts = 2.
     assert_eq!(
@@ -146,7 +146,7 @@ fn write_after_write_has_impact() {
 
     // there should be one impact on the miss rate.
     assert_eq!(
-        Statistics::global_query_record(1, EventType::PrivateCacheVtsOrderViolation)
+        Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation)
             - original_value,
         1
     );

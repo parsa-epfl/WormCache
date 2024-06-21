@@ -1,6 +1,6 @@
 use super::{
-    set_and_line::SharedCacheLookupAndInsertResult, SerializedSharedCacheBlock, SharedCache,
-    SharedCacheSet,
+    SerializedSharedCacheBlock, SharedCache, SharedCacheLookupAndInsertResult,
+    SharedCacheLookupResult, SharedCacheSet, VTsViolationResult,
 };
 
 use serde_json::json;
@@ -21,7 +21,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         Self {
             blocks: std::array::from_fn(|i| (*imm[i]).clone()),
             touched_count: usize::min(self.touched_count + other.touched_count, WAY),
-            v_ts: 0,
+            recent_evict_ts: 0,
         }
     }
 }
@@ -39,14 +39,20 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
         }
     }
 
-    fn invalidate(&mut self, block_id: u64, _: u64) -> Option<bool> {
+    fn invalidate(&mut self, block_id: u64, ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].invalidate(block_id)
+        self.blocks[set_idx].invalidate(block_id, ts)
     }
 
-    fn lookup(&mut self, block_id: u64, ts: u64, v_ts: u64, abandon_dirty: bool) -> Option<bool> {
+    fn lookup(
+        &mut self,
+        block_id: u64,
+        ts: u64,
+        v_ts: u64,
+        abandon_dirty: bool,
+    ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].lookup(block_id, ts, v_ts, abandon_dirty)
+        self.blocks[set_idx].lookup(block_id, ts, abandon_dirty)
     }
 
     fn insert(
@@ -58,7 +64,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
         increase_touched_count: bool,
     ) {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].insert(block_id, ts, v_ts, is_modified, increase_touched_count);
+        self.blocks[set_idx].insert(block_id, ts, is_modified, increase_touched_count);
     }
 
     fn lookup_and_insert(
@@ -69,18 +75,20 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
-    ) -> Option<bool> {
+    ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
         match self.blocks[set_idx].lookup_and_insert(
             block_id,
             ts,
-            v_ts,
             abandon_dirty,
             is_store,
             increase_touched_count,
         ) {
-            SharedCacheLookupAndInsertResult::Hit(is_dirty) => Some(is_dirty),
-            SharedCacheLookupAndInsertResult::Inserted(_) => None,
+            SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
+                SharedCacheLookupResult::Hit(is_dirty)
+            }
+            SharedCacheLookupAndInsertResult::Inserted(_) => SharedCacheLookupResult::Miss,
+            SharedCacheLookupAndInsertResult::Unknown => SharedCacheLookupResult::Unknown,
         }
     }
 
@@ -156,7 +164,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
         }
     }
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
+    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64, v_ts: u64) -> Option<bool> {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.invalidate(block_id, ts)
     }
@@ -168,9 +176,12 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
-    ) -> Option<bool> {
+    ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        pcache.lookup(block_id, ts, v_ts, abandon_dirty)
+        (
+            pcache.lookup(block_id, ts, v_ts, abandon_dirty),
+            VTsViolationResult::NotViolated,
+        )
     }
 
     fn insert(
@@ -195,15 +206,18 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
-    ) -> Option<bool> {
+    ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        pcache.lookup_and_insert(
-            block_id,
-            ts,
-            v_ts,
-            abandon_dirty,
-            is_store,
-            increase_touched_count,
+        (
+            pcache.lookup_and_insert(
+                block_id,
+                ts,
+                v_ts,
+                abandon_dirty,
+                is_store,
+                increase_touched_count,
+            ),
+            VTsViolationResult::NotViolated,
         )
     }
 

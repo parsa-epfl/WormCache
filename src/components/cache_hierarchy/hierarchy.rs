@@ -1,4 +1,6 @@
-use crate::components::cache_hierarchy::shared_cache::SharedCache;
+use crate::components::cache_hierarchy::shared_cache::{
+    SharedCache, SharedCacheLookupAndInsertResult, SharedCacheLookupResult, VTsViolationResult,
+};
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
@@ -411,7 +413,7 @@ impl<
 
         if miss_directory_guard.recent_writer_vts > v_ts {
             // this cache line is evicted and previously is written. This is definitely a order violation.
-            Statistics::global_record(core_id, EventType::PrivateCacheVtsOrderViolation);
+            Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation);
         }
 
         if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.recent_writer_ts > ts {
@@ -430,7 +432,9 @@ impl<
             // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit,
             // because the history has been cleaned up by an earlier writer.
             if !is_prefetch {
-                Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses);
+                // accordingly, we don't know whether this access would have cause a shared cache miss.
+                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
             }
 
             return CacheHierarchyAccessResult::Unknown;
@@ -442,10 +446,44 @@ impl<
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
-                self.shared_cache
-                    .lookup_and_insert_on_miss(core_id, block_id, ts, v_ts, true, false, true)
+                let (lookup_result, vts_violated) = self
+                    .shared_cache
+                    .lookup_and_insert_on_miss(core_id, block_id, ts, v_ts, true, false, true);
+
+                match vts_violated {
+                    VTsViolationResult::Violated => {
+                        Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation)
+                    }
+                    VTsViolationResult::NotViolated => {}
+                };
+
+                match lookup_result {
+                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
+                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::Unknown => {
+                        Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                        None
+                    }
+                }
             } else {
-                self.shared_cache.lookup(core_id, block_id, ts, v_ts, true)
+                let (lookup_result, vts_violated) =
+                    self.shared_cache.lookup(core_id, block_id, ts, v_ts, true);
+
+                match vts_violated {
+                    VTsViolationResult::Violated => {
+                        Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation)
+                    }
+                    VTsViolationResult::NotViolated => {}
+                };
+
+                match lookup_result {
+                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
+                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::Unknown => {
+                        Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                        None
+                    }
+                }
             };
 
             miss_directory_guard.update_lru_ts(ts);
@@ -462,7 +500,7 @@ impl<
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
             } else {
-                !is_instruction
+                !is_instruction && !is_page_walk
             };
 
             CacheLineCoherenceHistory::global_record_history(
@@ -526,9 +564,16 @@ impl<
                 if !is_prefetch {
                     if is_page_walk {
                         Statistics::global_record(core_id, EventType::SharedCacheMissDueToPTW);
+                    } else if is_instruction {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToInstruction,
+                        );
                     } else {
-                        Statistics::global_record(core_id, EventType::SharedCacheMiss);
+                        Statistics::global_record(core_id, EventType::SharedCacheMissDueToData);
                     }
+
+                    Statistics::global_record(core_id, EventType::SharedCacheMiss);
                 }
                 return CacheHierarchyAccessResult::Miss;
             }
@@ -567,7 +612,7 @@ impl<
                     if line.access_virtual_timestamp() > v_ts {
                         Statistics::global_record(
                             core_id,
-                            EventType::PrivateCacheVtsOrderViolation,
+                            EventType::PrivateCacheVTsOrderViolation,
                         );
 
                         break;
@@ -576,7 +621,7 @@ impl<
                     if line.write_virtual_timestamp() > v_ts {
                         Statistics::global_record(
                             core_id,
-                            EventType::PrivateCacheVtsOrderViolation,
+                            EventType::PrivateCacheVTsOrderViolation,
                         );
 
                         break;
@@ -662,8 +707,10 @@ impl<
                 // Now, release the lock of the private cache.
                 drop(acquired_sets);
 
-                // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit.
-                Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+                // The truth is that we don't know whether this is a miss or hit, because a previous write operation has cleaned the history.
+                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses);
+                // Accordingly, we don't know whether this access would have cause a shared cache miss.
+                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
 
                 return CacheHierarchyAccessResult::Unknown;
             }
@@ -753,9 +800,10 @@ impl<
                     // We extend the life time of this directory by considering this access.
                     miss_directory_guard.insertion_ts = ts;
 
-                    // So, this makes the LLC miss rate not precise, because we don't know whether this access is a hit or miss.
-                    // This can bring uncertainty to the LLC miss rate.
-                    Statistics::global_record(core_id, EventType::UnknownSharedCacheAccessResult);
+                    // This memory access is supposed to access the shared cache, but now it is served by other private cache.
+                    // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
+                    // This might have triggered a shared cache miss.
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
                 }
             } else {
                 // This memory access is definitely not the first one to this cache line.
@@ -820,7 +868,12 @@ impl<
 
                             // This read happens after a early arrival write operation, so
                             // we don't know the state of this cache line for this specific case.
-                            Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+                            Statistics::global_record(
+                                core_id,
+                                EventType::UnknownPrivateCacheMisses,
+                            );
+                            // Accordingly, we don't know whether this access would have cause a shared cache miss.
+                            Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
 
                             return CacheHierarchyAccessResult::Unknown;
                         }
@@ -849,9 +902,10 @@ impl<
                     // We decide to create a replica for this cache line, so we expand this directory life time.
                     miss_directory_guard.insertion_ts = ts;
 
-                    // So, this makes the LLC miss rate not precise, because we don't know whether this access is a hit or miss.
-                    // This can bring uncertainty to the LLC miss rate.
-                    Statistics::global_record(core_id, EventType::UnknownSharedCacheAccessResult);
+                    // This memory access is supposed to access the shared cache, but now it is served by other private cache.
+                    // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
+                    // This might have triggered a shared cache miss.
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
                 }
             } else {
                 // read should never see a permission violation.

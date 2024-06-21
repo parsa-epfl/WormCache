@@ -6,7 +6,8 @@ use std::{
 use crate::components::cache_hierarchy::util::CCell;
 
 use super::{
-    set_and_line::SharedCacheLookupAndInsertResult, SerializedSharedCacheBlock, SharedCacheSet,
+    SerializedSharedCacheBlock, SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
+    SharedCacheSet, VTsViolationResult,
 };
 use serde_json::json;
 use spin::mutex::SpinMutex;
@@ -16,6 +17,7 @@ pub struct SingleSharedCache<
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
+    const VTS_MONITORING: bool = false,
 > {
     blocks: Box<[G; SET]>,
     warmed_sets: AtomicUsize,
@@ -30,14 +32,15 @@ impl<
 {
     fn new() -> Self {
         Self {
-            blocks: crate::util::init_heap_array(|_| G::new(SharedCacheSet::new())),
+            blocks: crate::util::init_heap_array(|_| (G::new(SharedCacheSet::new()))),
             warmed_sets: AtomicUsize::new(0),
         }
     }
 
-    fn invalidate(&self, _core_id: u32, block_id: u64, _ts: u64) -> Option<bool> {
+    fn invalidate(&self, _core_id: u32, block_id: u64, ts: u64, _v_ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
-        return self.blocks[set_idx].inner().invalidate(block_id);
+        self.blocks[set_idx].inner().invalidate(block_id, ts);
+        return self.blocks[set_idx].inner().invalidate(block_id, ts);
     }
 
     fn lookup(
@@ -47,11 +50,14 @@ impl<
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
-    ) -> Option<bool> {
+    ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
-        return self.blocks[set_idx]
-            .inner()
-            .lookup(block_id, ts, v_ts, abandon_dirty);
+        return (
+            self.blocks[set_idx]
+                .inner()
+                .lookup(block_id, ts, abandon_dirty),
+            VTsViolationResult::NotViolated,
+        );
     }
 
     fn insert(
@@ -64,13 +70,10 @@ impl<
         increase_touched_count: bool,
     ) {
         let set_idx = (block_id % SET as u64) as usize;
-        let just_warmed = self.blocks[set_idx].inner().insert(
-            block_id,
-            ts,
-            v_ts,
-            is_modified,
-            increase_touched_count,
-        );
+        let just_warmed =
+            self.blocks[set_idx]
+                .inner()
+                .insert(block_id, ts, is_modified, increase_touched_count);
         if just_warmed {
             self.warmed_sets.fetch_add(1, Ordering::Relaxed);
         }
@@ -85,26 +88,31 @@ impl<
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
-    ) -> Option<bool> {
+    ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
         let result = self.blocks[set_idx].inner().lookup_and_insert(
             block_id,
             ts,
-            v_ts,
             abandon_dirty,
             is_store,
             increase_touched_count,
         );
 
-        return match result {
-            SharedCacheLookupAndInsertResult::Hit(is_dirty) => Some(is_dirty),
-            SharedCacheLookupAndInsertResult::Inserted(just_warmed) => {
-                if just_warmed {
-                    self.warmed_sets.fetch_add(1, Ordering::Relaxed);
+        return (
+            match result {
+                SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
+                    SharedCacheLookupResult::Hit(is_dirty)
                 }
-                None
-            }
-        };
+                SharedCacheLookupAndInsertResult::Inserted(just_warmed) => {
+                    if just_warmed {
+                        self.warmed_sets.fetch_add(1, Ordering::Relaxed);
+                    }
+                    SharedCacheLookupResult::Miss
+                }
+                SharedCacheLookupAndInsertResult::Unknown => SharedCacheLookupResult::Unknown,
+            },
+            VTsViolationResult::NotViolated,
+        );
     }
 
     fn warmed_sets_count(&self) -> usize {

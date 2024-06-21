@@ -7,9 +7,28 @@ use serde::Serialize;
 //    - Read is a miss: Read lock
 // 3. It will be probably OK to use Mutex.
 
+pub enum VTsViolationResult {
+    Violated,
+    NotViolated,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SharedCacheLookupResult {
+    Hit(bool), // (is_dirty)
+    Miss,
+    Unknown,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SharedCacheLookupAndInsertResult {
+    Hit(bool),      // (is_dirty)
+    Inserted(bool), // (just_warmed)
+    Unknown,
+}
+
 pub trait SharedCache {
     fn new() -> Self;
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool>; // (is_modified)
+    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64, v_ts: u64) -> Option<bool>; // (is_modified)
 
     // abandon_dirty is here to create a replica to the private cache.
     fn lookup(
@@ -19,7 +38,7 @@ pub trait SharedCache {
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
-    ) -> Option<bool>; // (is_modified)
+    ) -> (SharedCacheLookupResult, VTsViolationResult); // (is_modified)
 
     fn insert(
         &self,
@@ -40,7 +59,7 @@ pub trait SharedCache {
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
-    ) -> Option<bool>; // the lookup result: (is_modified)
+    ) -> (SharedCacheLookupResult, VTsViolationResult); // the lookup result: (is_modified)
 
     fn warmed_sets_count(&self) -> usize;
 
