@@ -567,7 +567,7 @@ impl<
                     } else if is_instruction {
                         Statistics::global_record(
                             core_id,
-                            EventType::SharedCacheMissDueToInstruction,
+                            EventType::SharedCacheMissDueToInstructionFetch,
                         );
                     } else {
                         Statistics::global_record(core_id, EventType::SharedCacheMissDueToData);
@@ -582,6 +582,8 @@ impl<
         if is_prefetch {
             return CacheHierarchyAccessResult::Miss;
         }
+
+        Statistics::global_record(core_id, EventType::PrivateCacheMissTriggerCoherence);
 
         let mut acquire_list = sharers;
         // this list should either
@@ -677,17 +679,6 @@ impl<
                 miss_directory_guard.sharers = incoming_sharer;
                 assert!(miss_directory_guard.recent_writer_ts <= other_write_ts);
                 miss_directory_guard.recent_writer_ts = other_write_ts; // The writer timestamp can be updated as well.
-
-                for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
-                    if *replica_cache_id != other_sharer_id {
-                        if idx.is_some() {
-                            assert_eq!(set.lines[idx.unwrap()].block_id(), block_id);
-                            set.invalidate(idx.unwrap());
-                        } else {
-                            assert_eq!(*replica_cache_id, p_cache_id);
-                        }
-                    }
-                }
 
                 CacheLineCoherenceHistory::global_record_history(
                     block_id,
@@ -957,6 +948,10 @@ impl<
             Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
         } else {
             Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+        }
+
+        if matches!(res, CacheHierarchyAccessResult::HitInOtherPrivateCache) && is_store {
+            Statistics::global_record(core_id, EventType::PrivateCacheMissTriggerInvalidation);
         }
 
         res

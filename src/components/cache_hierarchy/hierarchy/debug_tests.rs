@@ -255,3 +255,75 @@ fn write_read_after_write() {
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 }
+
+#[test]
+fn later_read_after_write_cancel_sharers() {
+    let mh = MH::new();
+    let block_id = 1043;
+
+    // Core 0 write, at 10.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            0,
+            block_id,
+            10,
+            CacheAccessType::DataWrite
+        ),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 0 write, at 20.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            0,
+            block_id,
+            20,
+            CacheAccessType::DataWrite
+        ),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+
+    // Core 1 read. at 30.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            1,
+            block_id,
+            30,
+            CacheAccessType::DataRead
+        ),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+
+    // Core 2 read, at 15. We don't know the result.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            2,
+            block_id,
+            15,
+            CacheAccessType::DataRead
+        ),
+        CacheHierarchyAccessResult::Unknown
+    );
+
+    // But, Core 1's replica should not be invalidated.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            1,
+            block_id,
+            35,
+            CacheAccessType::DataRead
+        ),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+
+    // Core 0 and Core 1 have the cache line.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            0,
+            block_id,
+            40,
+            CacheAccessType::DataRead
+        ),
+        CacheHierarchyAccessResult::HitInSelfPrivateCache
+    );
+}
