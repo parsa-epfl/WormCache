@@ -168,7 +168,6 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
         // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {
-            println!("Warning: the incoming block has smaller timestamp than the oldest block in the shared cache.");
             return result;
         }
 
