@@ -684,10 +684,7 @@ impl<
                 // Only that core should be kept.
 
                 // Update the directory.
-                let mut incoming_sharer = SharerList::ZERO;
-                incoming_sharer.set(other_sharer_id, true);
                 miss_directory_guard.update_lru_ts(ts);
-                miss_directory_guard.sharers = incoming_sharer;
                 assert!(miss_directory_guard.recent_writer_ts <= other_write_ts);
                 miss_directory_guard.recent_writer_ts = other_write_ts; // The writer timestamp can be updated as well.
 
