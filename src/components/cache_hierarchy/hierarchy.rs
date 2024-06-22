@@ -2,7 +2,7 @@ use crate::components::cache_hierarchy::shared_cache::{
     SharedCache, SharedCacheLookupResult, VTsViolationResult,
 };
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
-use crate::{components::cache_hierarchy::directory::SharerList, parameter};
+use crate::parameter;
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
@@ -653,7 +653,6 @@ impl<
             // Do we have another sharer that has a write permission with a larger timestamp?
             let mut other_has_written_with_large_ts = false;
             let mut other_write_ts = 0;
-            let mut other_sharer_id = 0;
             for (replica_cache_id, set, index) in acquired_sets.iter() {
                 if let Some(index) = index {
                     let line = &set.lines[*index];
@@ -662,7 +661,6 @@ impl<
                         other_has_written_with_large_ts = true;
                         if line.write_ts() > other_write_ts {
                             other_write_ts = line.write_ts();
-                            other_sharer_id = *replica_cache_id;
                         }
                     }
                 } else {
