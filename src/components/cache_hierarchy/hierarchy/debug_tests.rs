@@ -326,4 +326,15 @@ fn later_read_after_write_cancel_sharers() {
         ),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
+
+    // And also, core 1's entry is recorded in the directory. 
+    // This means when there is an eviction of this cache line in core'1, it should not trigger any panic.
+    for i in 0..(parameter::UNIFIED_PRI_CACHE_ASSO+1) {
+        assert_eq!(
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(1, block_id + (i+1)* parameter::UNIFIED_PRI_CACHE_SET as u64, 50 + i, CacheAccessType::DataRead),
+            CacheHierarchyAccessResult::Miss
+        );
+    }
+
+
 }
