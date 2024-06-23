@@ -77,8 +77,8 @@ impl PerCoreStatistics {
         let mut line = format!("{},{}", ts, core_id);
         for event in 0..EventType::COUNT {
             line.push_str(&format!(",{}", self.counters[3 * event]));
-            line.push_str(&format!(",{}:u", self.counters[3 * event + 1]));
-            line.push_str(&format!(",{}:k", self.counters[3 * event + 2]));
+            line.push_str(&format!(",{}", self.counters[3 * event + 1]));
+            line.push_str(&format!(",{}", self.counters[3 * event + 2]));
         }
         line
     }
