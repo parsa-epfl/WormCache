@@ -52,7 +52,8 @@ pub struct MemoryHierarchy<
 
     shared_cache: SCache,
 
-    llc_os_write_misses: Mutex<FxHashMap<u64, u64>>, //DashMap<u64, u64, FxBuildHasher>,
+    // llc_os_write_misses: Mutex<FxHashMap<u64, u64>>,
+    llc_os_write_misses: [UnsafeCell<FxHashMap<u64, u64>>; parameter::CORE_COUNT],
 }
 
 #[derive(Debug, PartialEq)]
@@ -132,7 +133,7 @@ impl<
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
-            llc_os_write_misses: Mutex::new(FxHashMap::default()), // DashMap::<u64, u64, FxBuildHasher>::default(),
+            llc_os_write_misses: std::array::from_fn(|_| UnsafeCell::new(FxHashMap::default())),
         }
     }
 
@@ -695,7 +696,8 @@ impl<
                         );
 
                         if is_os {
-                            let mut hash_table = self.llc_os_write_misses.lock();
+                            let hash_table =
+                                unsafe { &mut *self.llc_os_write_misses[core_id as usize].get() };
                             let os_write_misses = hash_table.entry(instruction_va_pc).or_insert(0);
                             *os_write_misses += 1;
                             drop(hash_table);
@@ -1229,9 +1231,14 @@ impl<
 
         // dump the information of OS write misses.
         let mut file = File::create("os_write_misses.csv").unwrap();
+        writeln!(file, "pc,core,miss").unwrap();
 
-        for reference in self.llc_os_write_misses.lock().iter() {
-            writeln!(file, "{},{}", reference.0, reference.1).unwrap();
+        unsafe {
+            for (core_id, hash_table) in self.llc_os_write_misses.iter().enumerate() {
+                for (pc, miss) in (*hash_table.get()).iter() {
+                    writeln!(file, "{},{},{}", pc, core_id, miss).unwrap();
+                }
+            }
         }
     }
 }
