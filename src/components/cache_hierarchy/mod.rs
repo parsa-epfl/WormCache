@@ -44,15 +44,17 @@ unsafe extern "C" fn vcpu_mem_access(
     vcpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
-    offset: *mut ffi::c_void, // should be NULL.
+    offset: *mut ffi::c_void,
 ) {
     if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
     {
         return;
     }
 
-    let offset: u64 = offset as u64;
-    let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
+    // let offset: u64 = offset as u64;
+    // let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
+
+    let memory_instruction_pc = offset as u64;
 
     let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
@@ -73,7 +75,8 @@ unsafe extern "C" fn vcpu_mem_access(
             get_monotonic_ts(),
             is_store,
             false,
-            current_icount + offset, // v_ts
+            get_monotonic_ts(), // v_ts, not used, but instead, the monotonic timestamp is used.
+            memory_instruction_pc,
         );
     } else {
         // TODO: check the I/O event
@@ -114,6 +117,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             false,
             true,
             current_icount + instruction_offset,
+            vaddr,
         );
     } else {
         (*PLUGIN).access_memory_with_va(
@@ -123,6 +127,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             false,
             true,
             current_icount + instruction_offset,
+            vaddr,
         );
     }
 }
@@ -279,12 +284,13 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         // bind the memory callback.
         for i in 0..n_instruction {
             let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+            let vpc = qemu_api::qemu_plugin_insn_vaddr(inst);
             qemu_api::qemu_plugin_register_vcpu_mem_cb(
                 inst,
                 Some(vcpu_mem_access),
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
                 qemu_api::qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
-                i as *mut ffi::c_void,
+                vpc as *mut ffi::c_void,
             );
         }
 

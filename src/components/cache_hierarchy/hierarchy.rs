@@ -1,3 +1,6 @@
+use dashmap::DashMap;
+use rustc_hash::FxBuildHasher;
+
 use crate::components::cache_hierarchy::shared_cache::{
     SharedCache, SharedCacheLookupResult, VTsViolationResult,
 };
@@ -16,6 +19,8 @@ use super::{
 
 use crate::components::mmu::AbstractMMU;
 use std::cell::UnsafeCell;
+use std::fs::File;
+use std::io::Write;
 use std::ops::DerefMut;
 
 #[cfg(test)]
@@ -45,6 +50,8 @@ pub struct MemoryHierarchy<
     directory: directory::Directory<DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
+
+    llc_os_write_misses: DashMap<u64, u64, FxBuildHasher>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -124,6 +131,7 @@ impl<
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
+            llc_os_write_misses: DashMap::<u64, u64, FxBuildHasher>::default(),
         }
     }
 
@@ -135,6 +143,7 @@ impl<
         is_store: bool,
         is_instruction: bool,
         v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
+        instruction_va_pc: u64,
     ) {
         assert!(
             !(is_instruction && is_store),
@@ -170,7 +179,15 @@ impl<
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -179,6 +196,7 @@ impl<
                         v_ts,
                         prefetch_access_type,
                         is_os,
+                        instruction_va_pc,
                     );
                 }
             }
@@ -196,10 +214,19 @@ impl<
                         v_ts,
                         CacheAccessType::PageWalkRead,
                         false, // Page walk is not OS.
+                        instruction_va_pc,
                     );
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -208,6 +235,7 @@ impl<
                         v_ts,
                         prefetch_access_type,
                         is_os,
+                        instruction_va_pc,
                     );
                 }
 
@@ -220,7 +248,15 @@ impl<
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -229,6 +265,7 @@ impl<
                         v_ts,
                         prefetch_access_type,
                         is_os,
+                        instruction_va_pc,
                     );
                 }
             }
@@ -244,6 +281,7 @@ impl<
         is_store: bool,
         is_instruction: bool,
         v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
+        instruction_va_pc: u64,
     ) {
         assert!(
             !(is_instruction && is_store),
@@ -280,7 +318,15 @@ impl<
             crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -289,6 +335,7 @@ impl<
                         v_ts,
                         prefetch_access_type,
                         is_os,
+                        instruction_va_pc,
                     );
                 }
             }
@@ -306,11 +353,20 @@ impl<
                         v_ts,
                         CacheAccessType::PageWalkRead,
                         false,
+                        instruction_va_pc,
                     );
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -319,6 +375,7 @@ impl<
                         v_ts,
                         prefetch_access_type,
                         is_os,
+                        instruction_va_pc,
                     );
                 }
 
@@ -333,7 +390,15 @@ impl<
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
+                self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -342,6 +407,7 @@ impl<
                         v_ts,
                         prefetch_access_type,
                         is_os,
+                        instruction_va_pc,
                     );
                 }
             }
@@ -356,7 +422,7 @@ impl<
         ts: u64,
         access_type: CacheAccessType,
     ) -> CacheHierarchyAccessResult {
-        self.access_memory_pblock_id(core_id, block_id, ts, ts, access_type, false)
+        self.access_memory_pblock_id(core_id, block_id, ts, ts, access_type, false, 0)
     }
 
     pub fn access_memory_pblock_id(
@@ -367,6 +433,7 @@ impl<
         v_ts: u64,
         access_type: CacheAccessType,
         is_os: bool,
+        instruction_va_pc: u64,
     ) -> CacheHierarchyAccessResult {
         let is_prefetch = access_type == CacheAccessType::PrefetchRead
             || access_type == CacheAccessType::PrefetchWrite;
@@ -625,6 +692,14 @@ impl<
                             EventType::SharedCacheMissDueToDataWrite,
                             is_os,
                         );
+
+                        if is_os {
+                            let mut os_write_misses = self
+                                .llc_os_write_misses
+                                .entry(instruction_va_pc)
+                                .or_insert(0);
+                            *os_write_misses += 1;
+                        }
                     } else {
                         Statistics::global_record(
                             core_id,
@@ -1151,5 +1226,12 @@ impl<
     pub fn dump_diagnose_information(&self) {
         self.shared_cache
             .dump_access_frequency("shared_cache_access_frequency.csv");
+
+        // dump the information of OS write misses.
+        let mut file = File::create("os_write_misses.csv").unwrap();
+
+        for reference in self.llc_os_write_misses.iter() {
+            writeln!(file, "{},{}", reference.key(), reference.value()).unwrap();
+        }
     }
 }
