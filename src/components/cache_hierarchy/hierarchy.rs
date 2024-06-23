@@ -1,5 +1,6 @@
 use dashmap::DashMap;
-use rustc_hash::FxBuildHasher;
+use rustc_hash::{FxBuildHasher, FxHashMap};
+use spin::mutex::Mutex;
 
 use crate::components::cache_hierarchy::shared_cache::{
     SharedCache, SharedCacheLookupResult, VTsViolationResult,
@@ -51,7 +52,7 @@ pub struct MemoryHierarchy<
 
     shared_cache: SCache,
 
-    llc_os_write_misses: DashMap<u64, u64, FxBuildHasher>,
+    llc_os_write_misses: Mutex<FxHashMap<u64, u64>>, //DashMap<u64, u64, FxBuildHasher>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -131,7 +132,7 @@ impl<
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
-            llc_os_write_misses: DashMap::<u64, u64, FxBuildHasher>::default(),
+            llc_os_write_misses: Mutex::new(FxHashMap::default()), // DashMap::<u64, u64, FxBuildHasher>::default(),
         }
     }
 
@@ -694,11 +695,10 @@ impl<
                         );
 
                         if is_os {
-                            let mut os_write_misses = self
-                                .llc_os_write_misses
-                                .entry(instruction_va_pc)
-                                .or_insert(0);
+                            let mut hash_table = self.llc_os_write_misses.lock();
+                            let os_write_misses = hash_table.entry(instruction_va_pc).or_insert(0);
                             *os_write_misses += 1;
+                            drop(hash_table);
                         }
                     } else {
                         Statistics::global_record(
@@ -1230,8 +1230,8 @@ impl<
         // dump the information of OS write misses.
         let mut file = File::create("os_write_misses.csv").unwrap();
 
-        for reference in self.llc_os_write_misses.iter() {
-            writeln!(file, "{},{}", reference.key(), reference.value()).unwrap();
+        for reference in self.llc_os_write_misses.lock().iter() {
+            writeln!(file, "{},{}", reference.0, reference.1).unwrap();
         }
     }
 }
