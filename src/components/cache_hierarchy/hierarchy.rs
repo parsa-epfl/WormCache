@@ -479,6 +479,7 @@ impl<
                     false,
                     true,
                     access_type,
+                    is_os,
                 );
 
                 match vts_violated {
@@ -505,7 +506,7 @@ impl<
             } else {
                 let (lookup_result, vts_violated) =
                     self.shared_cache
-                        .lookup(core_id, block_id, ts, v_ts, true, access_type);
+                        .lookup(core_id, block_id, ts, v_ts, true, access_type, is_os);
 
                 match vts_violated {
                     VTsViolationResult::Violated => Statistics::global_record(

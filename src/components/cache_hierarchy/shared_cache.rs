@@ -39,6 +39,7 @@ pub trait SharedCache {
         v_ts: u64,
         abandon_dirty: bool,
         access_type: CacheAccessType,
+        is_os: bool,
     ) -> (SharedCacheLookupResult, VTsViolationResult); // (is_modified)
 
     fn insert(
@@ -61,6 +62,7 @@ pub trait SharedCache {
         is_store: bool,
         increase_touched_count: bool,
         access_type: CacheAccessType,
+        is_os: bool,
     ) -> (SharedCacheLookupResult, VTsViolationResult); // the lookup result: (is_modified)
 
     fn warmed_sets_count(&self) -> usize;

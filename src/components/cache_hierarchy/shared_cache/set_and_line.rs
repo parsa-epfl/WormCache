@@ -21,10 +21,24 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
 
     // statistics
     pub miss_count: u64,
+    pub miss_count_u: u64,
+    pub miss_count_k: u64,
+
     pub fetch_miss_count: u64,
+    pub fetch_miss_count_u: u64,
+    pub fetch_miss_count_k: u64,
+
     pub read_miss_count: u64,
+    pub read_miss_count_u: u64,
+    pub read_miss_count_k: u64,
+
     pub write_miss_count: u64,
+    pub write_miss_count_u: u64,
+    pub write_miss_count_k: u64,
+
     pub ptw_miss_count: u64,
+    pub ptw_miss_count_u: u64,
+    pub ptw_miss_count_k: u64,
 }
 
 impl<const WAY: usize, const EXCLUSIVE: bool> Default for SharedCacheSet<WAY, EXCLUSIVE> {
@@ -48,10 +62,24 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             access_count: 0,
 
             miss_count: 0,
+            miss_count_u: 0,
+            miss_count_k: 0,
+
             fetch_miss_count: 0,
+            fetch_miss_count_u: 0,
+            fetch_miss_count_k: 0,
+
             read_miss_count: 0,
+            read_miss_count_u: 0,
+            read_miss_count_k: 0,
+
             write_miss_count: 0,
+            write_miss_count_u: 0,
+            write_miss_count_k: 0,
+
             ptw_miss_count: 0,
+            ptw_miss_count_u: 0,
+            ptw_miss_count_k: 0,
         }
     }
 
@@ -110,6 +138,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         ts: u64,
         abandon_dirty: bool,
         access_type: super::CacheAccessType,
+        is_os: bool,
     ) -> SharedCacheLookupResult {
         self.access_count += 1;
         match if EXCLUSIVE {
@@ -124,14 +153,48 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                     SharedCacheLookupResult::Unknown
                 } else {
                     match access_type {
-                        CacheAccessType::InstructionFetch => self.fetch_miss_count += 1,
-                        CacheAccessType::DataRead => self.read_miss_count += 1,
-                        CacheAccessType::DataWrite => self.write_miss_count += 1,
-                        CacheAccessType::PageWalkRead => self.ptw_miss_count += 1,
+                        CacheAccessType::InstructionFetch => {
+                            self.fetch_miss_count += 1;
+
+                            if is_os {
+                                self.fetch_miss_count_k += 1;
+                            } else {
+                                self.fetch_miss_count_u += 1;
+                            }
+                        }
+                        CacheAccessType::DataRead => {
+                            self.read_miss_count += 1;
+                            if is_os {
+                                self.read_miss_count_k += 1;
+                            } else {
+                                self.read_miss_count_u += 1;
+                            }
+                        }
+                        CacheAccessType::DataWrite => {
+                            self.write_miss_count += 1;
+                            if is_os {
+                                self.write_miss_count_k += 1;
+                            } else {
+                                self.write_miss_count_u += 1;
+                            }
+                        }
+                        CacheAccessType::PageWalkRead => {
+                            self.ptw_miss_count += 1;
+                            if is_os {
+                                self.ptw_miss_count_k += 1;
+                            } else {
+                                self.ptw_miss_count_u += 1;
+                            }
+                        }
                         CacheAccessType::PrefetchRead => panic!(),
                         CacheAccessType::PrefetchWrite => panic!(),
                     }
                     self.miss_count += 1;
+                    if is_os {
+                        self.miss_count_k += 1;
+                    } else {
+                        self.miss_count_u += 1;
+                    }
                     SharedCacheLookupResult::Miss
                 }
             }
@@ -223,9 +286,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         is_store: bool,
         increase_touched_count: bool,
         access_type: super::CacheAccessType,
+        is_os: bool,
     ) -> SharedCacheLookupAndInsertResult {
         // (is_hit, dirty/just_warmed)
-        let result = self.lookup(block_id, ts, abandon_dirty, access_type);
+        let result = self.lookup(block_id, ts, abandon_dirty, access_type, is_os);
 
         match result {
             SharedCacheLookupResult::Hit(is_dirty) => {

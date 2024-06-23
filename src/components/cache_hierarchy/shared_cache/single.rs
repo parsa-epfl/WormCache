@@ -52,12 +52,13 @@ impl<
         v_ts: u64,
         abandon_dirty: bool,
         access_type: super::CacheAccessType,
+        is_os: bool,
     ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
         return (
             self.blocks[set_idx]
                 .inner()
-                .lookup(block_id, ts, abandon_dirty, access_type),
+                .lookup(block_id, ts, abandon_dirty, access_type, is_os),
             VTsViolationResult::NotViolated,
         );
     }
@@ -91,6 +92,7 @@ impl<
         is_store: bool,
         increase_touched_count: bool,
         access_type: super::CacheAccessType,
+        is_os: bool,
     ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
         let result = self.blocks[set_idx].inner().lookup_and_insert(
@@ -100,6 +102,7 @@ impl<
             is_store,
             increase_touched_count,
             access_type,
+            is_os,
         );
 
         (
@@ -184,21 +187,31 @@ impl<
         let mut file = std::fs::File::create(file_name).unwrap();
         writeln!(
             file,
-            "idx,access_count,miss_count,fetch_miss,read_miss,write_miss,ptw_miss"
+            "idx,access_count,miss_count,miss_count:u,miss_count:k,fetch_miss,fetch_miss:u,fetch_miss:k,read_miss,read_miss:u,read_miss:k,write_miss,write_miss:u,write_miss:k,ptw_miss,ptw_miss:u,ptw_miss:k"
         )
         .unwrap();
         for (idx, entry) in self.blocks.iter().enumerate() {
             let entry = entry.inner();
             writeln!(
                 file,
-                "{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                 idx,
                 entry.access_count,
                 entry.miss_count,
+                entry.miss_count_u,
+                entry.miss_count_k,
                 entry.fetch_miss_count,
+                entry.fetch_miss_count_u,
+                entry.fetch_miss_count_k,
                 entry.read_miss_count,
+                entry.read_miss_count_u,
+                entry.read_miss_count_k,
                 entry.write_miss_count,
-                entry.ptw_miss_count
+                entry.write_miss_count_u,
+                entry.write_miss_count_k,
+                entry.ptw_miss_count,
+                entry.ptw_miss_count_u,
+                entry.ptw_miss_count_k,
             )
             .unwrap();
         }
