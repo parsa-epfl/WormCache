@@ -619,10 +619,16 @@ impl<
                             EventType::SharedCacheMissDueToInstructionFetch,
                             is_os,
                         );
+                    } else if is_store {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToDataWrite,
+                            is_os,
+                        );
                     } else {
                         Statistics::global_record(
                             core_id,
-                            EventType::SharedCacheMissDueToData,
+                            EventType::SharedCacheMissDueToDataRead,
                             is_os,
                         );
                     }

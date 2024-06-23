@@ -27,7 +27,8 @@ pub enum EventType {
     SharedCacheMiss,
     SharedCacheMissDueToPTW,
     SharedCacheMissDueToInstructionFetch,
-    SharedCacheMissDueToData,
+    SharedCacheMissDueToDataRead,
+    SharedCacheMissDueToDataWrite,
 
     UnknownPrivateCacheMisses,
     UnknownSharedCacheMisses,
