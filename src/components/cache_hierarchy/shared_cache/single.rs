@@ -51,12 +51,13 @@ impl<
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
+        access_type: super::CacheAccessType,
     ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
         return (
             self.blocks[set_idx]
                 .inner()
-                .lookup(block_id, ts, abandon_dirty),
+                .lookup(block_id, ts, abandon_dirty, access_type),
             VTsViolationResult::NotViolated,
         );
     }
@@ -89,6 +90,7 @@ impl<
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
+        access_type: super::CacheAccessType,
     ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
         let result = self.blocks[set_idx].inner().lookup_and_insert(
@@ -97,6 +99,7 @@ impl<
             abandon_dirty,
             is_store,
             increase_touched_count,
+            access_type,
         );
 
         (
@@ -179,10 +182,25 @@ impl<
 
     fn dump_access_frequency(&self, file_name: &str) {
         let mut file = std::fs::File::create(file_name).unwrap();
-        writeln!(file, "idx,access_count,miss_count").unwrap();
+        writeln!(
+            file,
+            "idx,access_count,miss_count,fetch_miss,read_miss,write_miss,ptw_miss"
+        )
+        .unwrap();
         for (idx, entry) in self.blocks.iter().enumerate() {
             let entry = entry.inner();
-            writeln!(file, "{},{},{}", idx, entry.access_count, entry.miss_count,).unwrap();
+            writeln!(
+                file,
+                "{},{},{},{},{},{},{}",
+                idx,
+                entry.access_count,
+                entry.miss_count,
+                entry.fetch_miss_count,
+                entry.read_miss_count,
+                entry.write_miss_count,
+                entry.ptw_miss_count
+            )
+            .unwrap();
         }
     }
 }

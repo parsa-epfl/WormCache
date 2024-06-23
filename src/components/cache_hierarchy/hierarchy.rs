@@ -1,8 +1,8 @@
 use crate::components::cache_hierarchy::shared_cache::{
     SharedCache, SharedCacheLookupResult, VTsViolationResult,
 };
-use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 use crate::parameter;
+use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
@@ -470,9 +470,16 @@ impl<
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
-                let (lookup_result, vts_violated) = self
-                    .shared_cache
-                    .lookup_and_insert_on_miss(core_id, block_id, ts, v_ts, true, false, true);
+                let (lookup_result, vts_violated) = self.shared_cache.lookup_and_insert_on_miss(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    true,
+                    false,
+                    true,
+                    access_type,
+                );
 
                 match vts_violated {
                     VTsViolationResult::Violated => Statistics::global_record(
@@ -497,7 +504,8 @@ impl<
                 }
             } else {
                 let (lookup_result, vts_violated) =
-                    self.shared_cache.lookup(core_id, block_id, ts, v_ts, true);
+                    self.shared_cache
+                        .lookup(core_id, block_id, ts, v_ts, true, access_type);
 
                 match vts_violated {
                     VTsViolationResult::Violated => Statistics::global_record(

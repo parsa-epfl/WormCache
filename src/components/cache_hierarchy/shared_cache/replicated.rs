@@ -1,3 +1,5 @@
+use crate::components::cache_hierarchy::hierarchy::CacheAccessType;
+
 use super::{
     SerializedSharedCacheBlock, SharedCache, SharedCacheLookupAndInsertResult,
     SharedCacheLookupResult, SharedCacheSet, VTsViolationResult,
@@ -25,6 +27,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
             access_count: self.access_count + other.access_count,
             miss_count: self.miss_count + other.miss_count,
+            fetch_miss_count: self.fetch_miss_count + other.fetch_miss_count,
+            read_miss_count: self.read_miss_count + other.read_miss_count,
+            write_miss_count: self.write_miss_count + other.write_miss_count,
+            ptw_miss_count: self.ptw_miss_count + other.ptw_miss_count,
         }
     }
 }
@@ -53,9 +59,10 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
+        access_type: CacheAccessType,
     ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].lookup(block_id, ts, abandon_dirty)
+        self.blocks[set_idx].lookup(block_id, ts, abandon_dirty, access_type)
     }
 
     fn insert(
@@ -78,6 +85,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
+        access_type: CacheAccessType,
     ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
         match self.blocks[set_idx].lookup_and_insert(
@@ -86,6 +94,7 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
             abandon_dirty,
             is_store,
             increase_touched_count,
+            access_type,
         ) {
             SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
                 SharedCacheLookupResult::Hit(is_dirty)
@@ -179,10 +188,11 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
+        access_type: CacheAccessType,
     ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         (
-            pcache.lookup(block_id, ts, v_ts, abandon_dirty),
+            pcache.lookup(block_id, ts, v_ts, abandon_dirty, access_type),
             VTsViolationResult::NotViolated,
         )
     }
@@ -209,6 +219,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
+        access_type: CacheAccessType,
     ) -> (SharedCacheLookupResult, VTsViolationResult) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         (
@@ -219,6 +230,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
                 abandon_dirty,
                 is_store,
                 increase_touched_count,
+                access_type,
             ),
             VTsViolationResult::NotViolated,
         )

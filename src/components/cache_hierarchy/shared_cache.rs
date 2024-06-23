@@ -38,6 +38,7 @@ pub trait SharedCache {
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
+        access_type: CacheAccessType,
     ) -> (SharedCacheLookupResult, VTsViolationResult); // (is_modified)
 
     fn insert(
@@ -59,6 +60,7 @@ pub trait SharedCache {
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
+        access_type: CacheAccessType,
     ) -> (SharedCacheLookupResult, VTsViolationResult); // the lookup result: (is_modified)
 
     fn warmed_sets_count(&self) -> usize;
@@ -93,6 +95,8 @@ pub use replicated::ReplicatedSharedCache;
 pub use single::ParallelSingleSharedCache;
 pub use single::SerialSingleSharedCache;
 pub use single::SingleSharedCache;
+
+use super::hierarchy::CacheAccessType;
 
 #[cfg(test)]
 mod warm_counter_test;

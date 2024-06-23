@@ -1,4 +1,7 @@
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::components::{
+    cache_hierarchy::hierarchy::CacheAccessType,
+    debug::cache_line_history::CacheLineCoherenceHistory,
+};
 
 use super::{SharedCacheLookupAndInsertResult, SharedCacheLookupResult};
 
@@ -15,7 +18,13 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
     pub access_count: u64,
+
+    // statistics
     pub miss_count: u64,
+    pub fetch_miss_count: u64,
+    pub read_miss_count: u64,
+    pub write_miss_count: u64,
+    pub ptw_miss_count: u64,
 }
 
 impl<const WAY: usize, const EXCLUSIVE: bool> Default for SharedCacheSet<WAY, EXCLUSIVE> {
@@ -37,7 +46,12 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             recent_evict_ts: 0,
 
             access_count: 0,
+
             miss_count: 0,
+            fetch_miss_count: 0,
+            read_miss_count: 0,
+            write_miss_count: 0,
+            ptw_miss_count: 0,
         }
     }
 
@@ -95,6 +109,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         block_id: u64,
         ts: u64,
         abandon_dirty: bool,
+        access_type: super::CacheAccessType,
     ) -> SharedCacheLookupResult {
         self.access_count += 1;
         match if EXCLUSIVE {
@@ -108,6 +123,14 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                     // this cache line might have been evicted, so we cannot determine whether it is a hit or a miss.
                     SharedCacheLookupResult::Unknown
                 } else {
+                    match access_type {
+                        CacheAccessType::InstructionFetch => self.fetch_miss_count += 1,
+                        CacheAccessType::DataRead => self.read_miss_count += 1,
+                        CacheAccessType::DataWrite => self.write_miss_count += 1,
+                        CacheAccessType::PageWalkRead => self.ptw_miss_count += 1,
+                        CacheAccessType::PrefetchRead => panic!(),
+                        CacheAccessType::PrefetchWrite => panic!(),
+                    }
                     self.miss_count += 1;
                     SharedCacheLookupResult::Miss
                 }
@@ -199,9 +222,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
+        access_type: super::CacheAccessType,
     ) -> SharedCacheLookupAndInsertResult {
         // (is_hit, dirty/just_warmed)
-        let result = self.lookup(block_id, ts, abandon_dirty);
+        let result = self.lookup(block_id, ts, abandon_dirty, access_type);
 
         match result {
             SharedCacheLookupResult::Hit(is_dirty) => {
