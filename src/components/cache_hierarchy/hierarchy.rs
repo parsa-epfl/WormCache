@@ -54,6 +54,13 @@ pub struct MemoryHierarchy<
 
     // llc_os_write_misses: Mutex<FxHashMap<u64, u64>>,
     llc_os_write_misses: [UnsafeCell<FxHashMap<u64, u64>>; parameter::CORE_COUNT],
+
+    // The following PC's access target is recorded:
+    // - 0xffff_8000_089f_a510
+    // - 0xffff_8000_089f_a4f0
+    // - 0xffff_8000_089f_a520
+    // - 0xffff_8000_089f_a500
+    special_location_address: [UnsafeCell<[FxHashMap<u64, u64>; 4]>; parameter::CORE_COUNT],
 }
 
 #[derive(Debug, PartialEq)]
@@ -134,6 +141,9 @@ impl<
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
             llc_os_write_misses: std::array::from_fn(|_| UnsafeCell::new(FxHashMap::default())),
+            special_location_address: std::array::from_fn(|_| {
+                UnsafeCell::new(std::array::from_fn(|_| FxHashMap::default()))
+            }),
         }
     }
 
@@ -700,7 +710,34 @@ impl<
                                 unsafe { &mut *self.llc_os_write_misses[core_id as usize].get() };
                             let os_write_misses = hash_table.entry(instruction_va_pc).or_insert(0);
                             *os_write_misses += 1;
-                            drop(hash_table);
+
+                            let special_pc_hashtables = unsafe {
+                                &mut *self.special_location_address[core_id as usize].get()
+                            };
+
+                            match instruction_va_pc {
+                                0xffff_8000_089f_a510 => {
+                                    let hash_table = special_pc_hashtables.get_mut(0).unwrap();
+                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
+                                    *os_write_misses += 1;
+                                }
+                                0xffff_8000_089f_a4f0 => {
+                                    let hash_table = special_pc_hashtables.get_mut(1).unwrap();
+                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
+                                    *os_write_misses += 1;
+                                }
+                                0xffff_8000_089f_a520 => {
+                                    let hash_table = special_pc_hashtables.get_mut(2).unwrap();
+                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
+                                    *os_write_misses += 1;
+                                }
+                                0xffff_8000_089f_a500 => {
+                                    let hash_table = special_pc_hashtables.get_mut(3).unwrap();
+                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
+                                    *os_write_misses += 1;
+                                }
+                                _ => {}
+                            }
                         }
                     } else {
                         Statistics::global_record(
@@ -1237,6 +1274,27 @@ impl<
             for (core_id, hash_table) in self.llc_os_write_misses.iter().enumerate() {
                 for (pc, miss) in (*hash_table.get()).iter() {
                     writeln!(file, "{},{},{}", pc, core_id, miss).unwrap();
+                }
+            }
+        }
+
+        drop(file);
+
+        let mut file = File::create("special_pc_os_write_misses.csv").unwrap();
+        unsafe {
+            for (core_id, hash_table) in self.special_location_address.iter().enumerate() {
+                writeln!(file, "core_id,pc,block_id,miss").unwrap();
+                for (special_addr_idx, hash_table) in (*hash_table.get()).iter().enumerate() {
+                    let pc: u64 = match special_addr_idx {
+                        0 => 0xffff_8000_089f_a510,
+                        1 => 0xffff_8000_089f_a4f0,
+                        2 => 0xffff_8000_089f_a520,
+                        3 => 0xffff_8000_089f_a500,
+                        _ => unreachable!(),
+                    };
+                    for (block_id, miss) in hash_table.iter() {
+                        writeln!(file, "{},{},{},{}", core_id, pc, block_id, miss).unwrap();
+                    }
                 }
             }
         }
