@@ -17,8 +17,11 @@ pub enum EventType {
     PrivateDCacheMiss,
     PrivateCacheMiss,
     PrivateCacheMissDueToPTW,
-    PrivateCacheMissTriggerCoherence, // All misses that involve the coherence activity (GetS, GetX)
-    PrivateCacheMissTriggerInvalidation, // All misses that invalid other copies (GetX)
+
+    PrivateCacheMissTriggerCoherenceDueToFetch, // All misses that involve the coherence activity (GetS, GetX)
+    PrivateCacheMissTriggerCoherenceDueToRead, // All misses that involve the coherence activity (GetS, GetX)
+    PrivateCacheMissTriggerCoherenceDueToWrite, // All misses that involve the coherence activity (GetS, GetX)
+    PrivateCacheMissTriggerInvalidation,        // All misses that invalid other copies (GetX)
 
     SharedCacheAccess,
     SharedCacheMiss,
@@ -45,20 +48,27 @@ pub enum EventType {
 
 #[repr(align(64))]
 struct PerCoreStatistics {
-    counters: [u64; EventType::COUNT],
+    counters: [u64; EventType::COUNT * 3],
 }
 
 impl PerCoreStatistics {
     pub fn new() -> Self {
         Self {
-            counters: [0; EventType::COUNT],
+            counters: [0; EventType::COUNT * 3],
         }
     }
 
     #[inline]
-    pub fn record(&mut self, event: EventType) {
+    pub fn record(&mut self, event: EventType, is_os: bool) {
         if ENABLE_STATISTICS {
-            self.counters[event as usize] += 1;
+            let index = (event as usize) * 3;
+            self.counters[index as usize] += 1;
+
+            if is_os {
+                self.counters[index + 2] += 1;
+            } else {
+                self.counters[index + 1] += 1;
+            }
         }
     }
 
@@ -66,7 +76,9 @@ impl PerCoreStatistics {
     pub fn get_line(&self, ts: u64, core_id: u32) -> String {
         let mut line = format!("{},{}", ts, core_id);
         for event in 0..EventType::COUNT {
-            line.push_str(&format!(",{}", self.counters[event]));
+            line.push_str(&format!(",{}", self.counters[3 * event]));
+            line.push_str(&format!(",{}:u", self.counters[3 * event + 1]));
+            line.push_str(&format!(",{}:k", self.counters[3 * event + 2]));
         }
         line
     }
@@ -90,10 +102,10 @@ impl Statistics {
     }
 
     #[inline]
-    pub fn record(&self, core_id: u32, event: EventType) {
+    pub fn record(&self, core_id: u32, event: EventType, is_os: bool) {
         if ENABLE_STATISTICS {
             unsafe {
-                (*self.per_core[core_id as usize].get()).record(event);
+                (*self.per_core[core_id as usize].get()).record(event, is_os);
             }
         }
     }
@@ -101,7 +113,10 @@ impl Statistics {
     pub fn get_header() -> String {
         // generate all event names.
         let headers = EventType::iter()
-            .map(|event| event.to_string())
+            .map(|event| {
+                let event_name = event.to_string();
+                format!("{},{}:u,{}:k", event_name, event_name, event_name)
+            })
             .collect::<Vec<String>>()
             .join(",");
 
@@ -123,9 +138,9 @@ static mut GLOBAL_STATISTICS: Lazy<Statistics> = Lazy::new(Statistics::new);
 
 impl Statistics {
     #[inline]
-    pub fn global_record(core_id: u32, event: EventType) {
+    pub fn global_record(core_id: u32, event: EventType, is_os: bool) {
         unsafe {
-            GLOBAL_STATISTICS.record(core_id, event);
+            GLOBAL_STATISTICS.record(core_id, event, is_os);
         }
     }
 

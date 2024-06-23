@@ -1,5 +1,6 @@
 use std::{
     cell::UnsafeCell,
+    io::prelude::*,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -174,6 +175,15 @@ impl<
             "SingleSharedCache: SET={}, WAY={}, EXCLUSIVE={}",
             SET, WAY, EXCLUSIVE
         )
+    }
+
+    fn dump_access_frequency(&self, file_name: &str) {
+        let mut file = std::fs::File::create(file_name).unwrap();
+        writeln!(file, "idx,access_count,miss_count").unwrap();
+        for (idx, entry) in self.blocks.iter().enumerate() {
+            let entry = entry.inner();
+            writeln!(file, "{},{},{}", idx, entry.access_count, entry.miss_count,).unwrap();
+        }
     }
 }
 

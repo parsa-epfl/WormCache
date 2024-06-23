@@ -206,28 +206,32 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
 
     #[inline]
     fn dump_snapshot(name: &str) {
-        if ENABLE_STATISTICS {
-            // open a csv file and dump each cores' statistics.
-            let mut file =
-                std::fs::File::create(format!("{}/memory_locked_missrate.csv", name)).unwrap();
+        // if ENABLE_STATISTICS {
+        //     // open a csv file and dump each cores' statistics.
+        //     let mut file =
+        //         std::fs::File::create(format!("{}/memory_locked_missrate.csv", name)).unwrap();
 
-            file.write_fmt(format_args!("{}\n", Statistics::get_header()))
-                .unwrap();
+        //     file.write_fmt(format_args!("{}\n", Statistics::get_header()))
+        //         .unwrap();
 
-            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                file.write_all(stat.as_bytes()).unwrap();
-                file.write_all(b"\n").unwrap();
-            }
-        }
+        //     for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+        //         file.write_all(stat.as_bytes()).unwrap();
+        //         file.write_all(b"\n").unwrap();
+        //     }
+        // }
 
-        // dump the access counter of each set in the shared cache.
+        // // dump the access counter of each set in the shared cache.
+        // unsafe {
+        //     (*PLUGIN).dump_access_counter();
+        // }
+
+        // // dump the cache state.
+        // unsafe {
+        //     (*PLUGIN).dump_snapshot(name);
+        // }
+
         unsafe {
-            (*PLUGIN).dump_access_counter();
-        }
-
-        // dump the cache state.
-        unsafe {
-            (*PLUGIN).dump_snapshot(name);
+            (*PLUGIN).dump_diagnose_information();
         }
     }
 

@@ -68,6 +68,8 @@ pub trait SharedCache {
     fn dump_snapshot(&self, snapshot_name: &str);
 
     fn information() -> String;
+
+    fn dump_access_frequency(&self, file_name: &str);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

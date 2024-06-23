@@ -36,19 +36,20 @@ impl PerCoreFetchUnit {
     }
 
     pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64, core_id: usize) {
+        let is_os = pc >> 63 == 1;
         if self.btb.train(pc, result, target) == BranchPredictorResult::Mispredict {
-            Statistics::global_record(core_id as u32, EventType::BTBMiss);
+            Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
         }
 
         if self.ras.train(pc, result, target) == BranchPredictorResult::Mispredict {
-            Statistics::global_record(core_id as u32, EventType::RASMiss);
+            Statistics::global_record(core_id as u32, EventType::RASMiss, is_os);
         }
 
         if self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict {
-            Statistics::global_record(core_id as u32, EventType::TageMiss);
+            Statistics::global_record(core_id as u32, EventType::TageMiss, is_os);
         }
 
-        Statistics::global_record(core_id as u32, EventType::BranchCount);
+        Statistics::global_record(core_id as u32, EventType::BranchCount, is_os);
     }
 }
 

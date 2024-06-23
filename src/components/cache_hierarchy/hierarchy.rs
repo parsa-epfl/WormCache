@@ -157,6 +157,8 @@ impl<
             CacheAccessType::PrefetchRead
         };
 
+        let is_os = (va >> 63) == 1;
+
         let translation = unsafe {
             self.mmus[core_id as usize]
                 .get()
@@ -168,7 +170,7 @@ impl<
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -176,6 +178,7 @@ impl<
                         ts,
                         v_ts,
                         prefetch_access_type,
+                        is_os,
                     );
                 }
             }
@@ -192,10 +195,11 @@ impl<
                         ts,
                         v_ts,
                         CacheAccessType::PageWalkRead,
+                        false, // Page walk is not OS.
                     );
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -203,19 +207,20 @@ impl<
                         ts,
                         v_ts,
                         prefetch_access_type,
+                        is_os,
                     );
                 }
 
-                Statistics::global_record(core_id, EventType::TLBMiss);
+                Statistics::global_record(core_id, EventType::TLBMiss, is_os);
                 if is_instruction {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction);
+                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction, is_os);
                 } else {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToData);
+                    Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
                 }
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -223,6 +228,7 @@ impl<
                         ts,
                         v_ts,
                         prefetch_access_type,
+                        is_os,
                     );
                 }
             }
@@ -260,6 +266,8 @@ impl<
             CacheAccessType::PrefetchRead
         };
 
+        let is_os = (va >> 63) == 1;
+
         let translation = unsafe {
             self.mmus[core_id as usize]
                 .get()
@@ -272,7 +280,7 @@ impl<
             crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -280,6 +288,7 @@ impl<
                         ts,
                         v_ts,
                         prefetch_access_type,
+                        is_os,
                     );
                 }
             }
@@ -296,11 +305,12 @@ impl<
                         ts,
                         v_ts,
                         CacheAccessType::PageWalkRead,
+                        false,
                     );
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -308,21 +318,22 @@ impl<
                         ts,
                         v_ts,
                         prefetch_access_type,
+                        is_os,
                     );
                 }
 
-                Statistics::global_record(core_id, EventType::TLBMiss);
+                Statistics::global_record(core_id, EventType::TLBMiss, is_os);
 
                 if is_instruction {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction);
+                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction, is_os);
                 } else {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToData);
+                    Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
                 }
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type);
+                self.access_memory_pblock_id(core_id, block_id, ts, v_ts, access_type, is_os);
                 if ADJACENT_LINE_PREFETCHING {
                     self.access_memory_pblock_id(
                         core_id,
@@ -330,6 +341,7 @@ impl<
                         ts,
                         v_ts,
                         prefetch_access_type,
+                        is_os,
                     );
                 }
             }
@@ -344,7 +356,7 @@ impl<
         ts: u64,
         access_type: CacheAccessType,
     ) -> CacheHierarchyAccessResult {
-        self.access_memory_pblock_id(core_id, block_id, ts, ts, access_type)
+        self.access_memory_pblock_id(core_id, block_id, ts, ts, access_type, false)
     }
 
     pub fn access_memory_pblock_id(
@@ -354,6 +366,7 @@ impl<
         ts: u64,
         v_ts: u64,
         access_type: CacheAccessType,
+        is_os: bool,
     ) -> CacheHierarchyAccessResult {
         let is_prefetch = access_type == CacheAccessType::PrefetchRead
             || access_type == CacheAccessType::PrefetchWrite;
@@ -363,11 +376,11 @@ impl<
         let is_page_walk = access_type == CacheAccessType::PageWalkRead;
 
         if !is_prefetch {
-            Statistics::global_record(core_id, EventType::MemoryAccess);
+            Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
             if is_instruction {
-                Statistics::global_record(core_id, EventType::InstructionAccess);
+                Statistics::global_record(core_id, EventType::InstructionAccess, is_os);
             } else {
-                Statistics::global_record(core_id, EventType::DataAccess);
+                Statistics::global_record(core_id, EventType::DataAccess, is_os);
             }
         }
 
@@ -424,7 +437,7 @@ impl<
 
         if miss_directory_guard.recent_writer_vts > v_ts {
             // this cache line is evicted and previously is written. This is definitely a order violation.
-            Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation);
+            Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation, is_os);
         }
 
         if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.recent_writer_ts > ts {
@@ -443,9 +456,9 @@ impl<
             // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit,
             // because the history has been cleaned up by an earlier writer.
             if !is_prefetch {
-                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses);
+                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
                 // accordingly, we don't know whether this access would have cause a shared cache miss.
-                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
             }
 
             return CacheHierarchyAccessResult::Unknown;
@@ -462,9 +475,11 @@ impl<
                     .lookup_and_insert_on_miss(core_id, block_id, ts, v_ts, true, false, true);
 
                 match vts_violated {
-                    VTsViolationResult::Violated => {
-                        Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation)
-                    }
+                    VTsViolationResult::Violated => Statistics::global_record(
+                        core_id,
+                        EventType::SharedCacheVTsOrderViolation,
+                        is_os,
+                    ),
                     VTsViolationResult::NotViolated => {}
                 };
 
@@ -472,7 +487,11 @@ impl<
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
                     SharedCacheLookupResult::Unknown => {
-                        Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                        Statistics::global_record(
+                            core_id,
+                            EventType::UnknownSharedCacheMisses,
+                            is_os,
+                        );
                         None
                     }
                 }
@@ -481,9 +500,11 @@ impl<
                     self.shared_cache.lookup(core_id, block_id, ts, v_ts, true);
 
                 match vts_violated {
-                    VTsViolationResult::Violated => {
-                        Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation)
-                    }
+                    VTsViolationResult::Violated => Statistics::global_record(
+                        core_id,
+                        EventType::SharedCacheVTsOrderViolation,
+                        is_os,
+                    ),
                     VTsViolationResult::NotViolated => {}
                 };
 
@@ -491,7 +512,11 @@ impl<
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
                     SharedCacheLookupResult::Unknown => {
-                        Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                        Statistics::global_record(
+                            core_id,
+                            EventType::UnknownSharedCacheMisses,
+                            is_os,
+                        );
                         None
                     }
                 }
@@ -556,17 +581,17 @@ impl<
 
             if !is_prefetch {
                 // Here it is a miss in the private cache.
-                Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+                Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
                 if is_instruction {
-                    Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+                    Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
                 } else if is_page_walk {
-                    Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
+                    Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
                 } else {
-                    Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+                    Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
                 }
 
-                Statistics::global_record(core_id, EventType::SharedCacheAccess);
+                Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
             if shared_cache_result.is_some() {
@@ -574,17 +599,26 @@ impl<
             } else {
                 if !is_prefetch {
                     if is_page_walk {
-                        Statistics::global_record(core_id, EventType::SharedCacheMissDueToPTW);
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToPTW,
+                            is_os,
+                        );
                     } else if is_instruction {
                         Statistics::global_record(
                             core_id,
                             EventType::SharedCacheMissDueToInstructionFetch,
+                            is_os,
                         );
                     } else {
-                        Statistics::global_record(core_id, EventType::SharedCacheMissDueToData);
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToData,
+                            is_os,
+                        );
                     }
 
-                    Statistics::global_record(core_id, EventType::SharedCacheMiss);
+                    Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
                 }
                 return CacheHierarchyAccessResult::Miss;
             }
@@ -594,7 +628,25 @@ impl<
             return CacheHierarchyAccessResult::Miss;
         }
 
-        Statistics::global_record(core_id, EventType::PrivateCacheMissTriggerCoherence);
+        if is_instruction {
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerCoherenceDueToFetch,
+                is_os,
+            );
+        } else if is_store {
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerCoherenceDueToWrite,
+                is_os,
+            );
+        } else {
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerCoherenceDueToRead,
+                is_os,
+            );
+        }
 
         let mut acquire_list = sharers;
         // this list should either
@@ -626,12 +678,17 @@ impl<
                         Statistics::global_record(
                             core_id,
                             EventType::PrivateCacheVTsOrderViolation,
+                            is_os,
                         );
 
                         break;
                     }
                 } else if line.write_virtual_timestamp() > v_ts {
-                    Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation);
+                    Statistics::global_record(
+                        core_id,
+                        EventType::PrivateCacheVTsOrderViolation,
+                        is_os,
+                    );
 
                     break;
                 }
@@ -700,9 +757,9 @@ impl<
                 drop(acquired_sets);
 
                 // The truth is that we don't know whether this is a miss or hit, because a previous write operation has cleaned the history.
-                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses);
+                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
                 // Accordingly, we don't know whether this access would have cause a shared cache miss.
-                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
 
                 return CacheHierarchyAccessResult::Unknown;
             }
@@ -795,7 +852,7 @@ impl<
                     // This memory access is supposed to access the shared cache, but now it is served by other private cache.
                     // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
                     // This might have triggered a shared cache miss.
-                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
                 }
             } else {
                 // This memory access is definitely not the first one to this cache line.
@@ -863,9 +920,14 @@ impl<
                             Statistics::global_record(
                                 core_id,
                                 EventType::UnknownPrivateCacheMisses,
+                                is_os,
                             );
                             // Accordingly, we don't know whether this access would have cause a shared cache miss.
-                            Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                            Statistics::global_record(
+                                core_id,
+                                EventType::UnknownSharedCacheMisses,
+                                is_os,
+                            );
 
                             return CacheHierarchyAccessResult::Unknown;
                         }
@@ -897,7 +959,7 @@ impl<
                     // This memory access is supposed to access the shared cache, but now it is served by other private cache.
                     // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
                     // This might have triggered a shared cache miss.
-                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses);
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
                 }
             } else {
                 // read should never see a permission violation.
@@ -946,18 +1008,22 @@ impl<
             );
         }
 
-        Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+        Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
         if is_instruction {
-            Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+            Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
         } else if is_page_walk {
-            Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
+            Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
         } else {
-            Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+            Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
         }
 
         if matches!(res, CacheHierarchyAccessResult::HitInOtherPrivateCache) && is_store {
-            Statistics::global_record(core_id, EventType::PrivateCacheMissTriggerInvalidation);
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerInvalidation,
+                is_os,
+            );
         }
 
         res
@@ -1020,6 +1086,7 @@ impl<
             Statistics::global_record(
                 PCache::find_cache_info_by_cache_id(cache_id).0,
                 EventType::SharedCacheAccess,
+                false,
             );
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
@@ -1064,5 +1131,10 @@ impl<
             FILL_SCACLE_ON_PCACHE_EVICTION,
             FILL_SCACHE_ON_PCACHE_WRITEBACK
         )
+    }
+
+    pub fn dump_diagnose_information(&self) {
+        self.shared_cache
+            .dump_access_frequency("shared_cache_access_frequency.csv");
     }
 }

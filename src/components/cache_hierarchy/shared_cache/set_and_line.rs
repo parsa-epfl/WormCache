@@ -14,6 +14,8 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
+    pub access_count: u64,
+    pub miss_count: u64,
 }
 
 impl<const WAY: usize, const EXCLUSIVE: bool> Default for SharedCacheSet<WAY, EXCLUSIVE> {
@@ -33,6 +35,9 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
             touched_count: 0,
             recent_evict_ts: 0,
+
+            access_count: 0,
+            miss_count: 0,
         }
     }
 
@@ -91,6 +96,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         ts: u64,
         abandon_dirty: bool,
     ) -> SharedCacheLookupResult {
+        self.access_count += 1;
         match if EXCLUSIVE {
             self.invalidate(block_id, ts)
         } else {
@@ -102,6 +108,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
                     // this cache line might have been evicted, so we cannot determine whether it is a hit or a miss.
                     SharedCacheLookupResult::Unknown
                 } else {
+                    self.miss_count += 1;
                     SharedCacheLookupResult::Miss
                 }
             }

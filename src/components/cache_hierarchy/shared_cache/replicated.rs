@@ -22,6 +22,9 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             blocks: std::array::from_fn(|i| (*imm[i]).clone()),
             touched_count: usize::min(self.touched_count + other.touched_count, WAY),
             recent_evict_ts: 0,
+
+            access_count: self.access_count + other.access_count,
+            miss_count: self.miss_count + other.miss_count,
         }
     }
 }
@@ -247,4 +250,6 @@ impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIV
             SET, WAY, EXCLUSIVE
         )
     }
+
+    fn dump_access_frequency(&self, _: &str) {}
 }

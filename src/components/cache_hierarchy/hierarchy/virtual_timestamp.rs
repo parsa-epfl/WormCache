@@ -38,13 +38,13 @@ fn read_after_read_has_no_impact() {
 
     // first, core 0 reads, with ts = 10, v_ts = 2.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataRead),
+        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataRead, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // then, core 1 reads, with ts = 20, and v_ts = 1.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 20, 1, CacheAccessType::DataRead),
+        mh.access_memory_pblock_id(1, block_id, 20, 1, CacheAccessType::DataRead, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -66,19 +66,19 @@ fn read_after_write_has_impact() {
 
     // first, core 0 writes, with ts = 10, v_ts = 2.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataWrite),
+        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataWrite, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // To skip the write timestamp in the directory, we let core 0 write it again.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 15, 4, CacheAccessType::DataWrite),
+        mh.access_memory_pblock_id(0, block_id, 15, 4, CacheAccessType::DataWrite, false),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // then, core 1 reads, with ts = 20, and v_ts = 1.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 20, 3, CacheAccessType::DataRead),
+        mh.access_memory_pblock_id(1, block_id, 20, 3, CacheAccessType::DataRead, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -100,13 +100,13 @@ fn write_after_read_has_impact() {
 
     // first, core 0 reads, with ts = 10, v_ts = 2.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataRead),
+        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataRead, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // then, core 1 writes, with ts = 20, and v_ts = 1.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 20, 1, CacheAccessType::DataWrite),
+        mh.access_memory_pblock_id(1, block_id, 20, 1, CacheAccessType::DataWrite, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -128,19 +128,19 @@ fn write_after_write_has_impact() {
 
     // first, core 0 writes, with ts = 10, v_ts = 2.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataWrite),
+        mh.access_memory_pblock_id(0, block_id, 10, 2, CacheAccessType::DataWrite, false),
         CacheHierarchyAccessResult::Miss
     );
 
     // To skip the write timestamp in the directory, we let core 0 write it again.
     assert_eq!(
-        mh.access_memory_pblock_id(0, block_id, 15, 4, CacheAccessType::DataWrite),
+        mh.access_memory_pblock_id(0, block_id, 15, 4, CacheAccessType::DataWrite, false),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // then, core 1 writes, with ts = 20, and v_ts = 1.
     assert_eq!(
-        mh.access_memory_pblock_id(1, block_id, 20, 3, CacheAccessType::DataWrite),
+        mh.access_memory_pblock_id(1, block_id, 20, 3, CacheAccessType::DataWrite, false),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
