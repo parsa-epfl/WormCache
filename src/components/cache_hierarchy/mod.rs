@@ -107,10 +107,15 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     if vcpu_idx == 0 {
         unsafe {
-            (*C0_TRACE_FILE).write_all(&vaddr.to_le_bytes()).unwrap();
+            (*C0_TRACE_FILE)
+                .write_all(format!("{}", vaddr).as_bytes())
+                .unwrap();
         }
 
         if current_icount == 100000000 {
+            unsafe {
+                Box::from_raw(C0_TRACE_FILE).finish().unwrap();
+            }
             std::process::exit(0);
         }
     }
