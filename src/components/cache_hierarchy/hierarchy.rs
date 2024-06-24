@@ -729,7 +729,7 @@ impl<
                             };
 
                             let counter = &mut counters[0];
-                            counter[0] = counter[2] + 1;
+                            counter[2] = counter[2] + 1;
                         }
                         0xffff_8000_089f_a4f0 => {
                             let counters = unsafe {
@@ -737,7 +737,7 @@ impl<
                             };
 
                             let counter = &mut counters[1];
-                            counter[0] = counter[2] + 1;
+                            counter[2] = counter[2] + 1;
                         }
                         0xffff_8000_089f_a520 => {
                             let counters = unsafe {
@@ -745,7 +745,7 @@ impl<
                             };
 
                             let counter = &mut counters[2];
-                            counter[0] = counter[2] + 1;
+                            counter[2] = counter[2] + 1;
                         }
                         0xffff_8000_089f_a500 => {
                             let counters = unsafe {
@@ -753,7 +753,7 @@ impl<
                             };
 
                             let counter = &mut counters[3];
-                            counter[0] = counter[2] + 1;
+                            counter[2] = counter[2] + 1;
                         }
                         _ => {}
                     };
@@ -795,7 +795,7 @@ impl<
                                     };
 
                                     let counter = &mut counters[0];
-                                    counter[0] = counter[3] + 1;
+                                    counter[3] = counter[3] + 1;
                                 }
                                 0xffff_8000_089f_a4f0 => {
                                     let counters = unsafe {
@@ -804,7 +804,7 @@ impl<
                                     };
 
                                     let counter = &mut counters[1];
-                                    counter[0] = counter[3] + 1;
+                                    counter[3] = counter[3] + 1;
                                 }
                                 0xffff_8000_089f_a520 => {
                                     let counters = unsafe {
@@ -813,7 +813,7 @@ impl<
                                     };
 
                                     let counter = &mut counters[2];
-                                    counter[0] = counter[3] + 1;
+                                    counter[3] = counter[3] + 1;
                                 }
                                 0xffff_8000_089f_a500 => {
                                     let counters = unsafe {
@@ -822,7 +822,7 @@ impl<
                                     };
 
                                     let counter = &mut counters[3];
-                                    counter[0] = counter[3] + 1;
+                                    counter[3] = counter[3] + 1;
                                 }
                                 _ => {}
                             };
@@ -1066,7 +1066,7 @@ impl<
                             };
 
                             let counter = &mut counters[0];
-                            counter[0] = counter[1] + 1;
+                            counter[1] = counter[1] + 1;
                         }
                         0xffff_8000_089f_a4f0 => {
                             let counters = unsafe {
@@ -1074,7 +1074,7 @@ impl<
                             };
 
                             let counter = &mut counters[1];
-                            counter[0] = counter[1] + 1;
+                            counter[1] = counter[1] + 1;
                         }
                         0xffff_8000_089f_a520 => {
                             let counters = unsafe {
@@ -1082,7 +1082,7 @@ impl<
                             };
 
                             let counter = &mut counters[2];
-                            counter[0] = counter[1] + 1;
+                            counter[1] = counter[1] + 1;
                         }
                         0xffff_8000_089f_a500 => {
                             let counters = unsafe {
@@ -1090,7 +1090,7 @@ impl<
                             };
 
                             let counter = &mut counters[3];
-                            counter[0] = counter[1] + 1;
+                            counter[1] = counter[1] + 1;
                         }
                         _ => {}
                     };
