@@ -16,6 +16,9 @@ use crate::{
 };
 use std::ffi;
 
+use std::io::prelude::*;
+use zstd::Encoder;
+
 use super::debug::statistics::Statistics;
 
 mod util;
@@ -86,6 +89,8 @@ unsafe extern "C" fn vcpu_mem_access(
 static mut L0_CACHE: *mut L0InstructionCache<{ parser::ALLOCATED_CORE_COUNT }> =
     std::ptr::null_mut();
 
+static mut C0_TRACE_FILE: *mut Encoder<'_, std::fs::File> = std::ptr::null_mut();
+
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     inst_host_addr: *mut ffi::c_void, // it is basically its physical address.
@@ -97,10 +102,21 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
-    let instruction_offset = inst_host_addr as u64 >> 48;
-    let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
 
     let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
+
+    if vcpu_idx == 0 {
+        unsafe {
+            (*C0_TRACE_FILE).write_all(&vaddr.to_le_bytes()).unwrap();
+        }
+
+        if current_icount == 100000000 {
+            std::process::exit(0);
+        }
+    }
+
+    let instruction_offset = inst_host_addr as u64 >> 48;
+    let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
 
     if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
         // this is very necessary. It avoids the slow lookup of the basic blocks.
@@ -151,6 +167,10 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
             ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
+
+            C0_TRACE_FILE = Box::into_raw(Box::new(
+                Encoder::new(std::fs::File::create("c0_trace.zstd").unwrap(), 3).unwrap(),
+            ));
         }
 
         if parameter::USE_UNIFIED_CACHE {
