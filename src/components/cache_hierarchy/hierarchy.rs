@@ -60,7 +60,7 @@ pub struct MemoryHierarchy<
     // - 0xffff_8000_089f_a4f0
     // - 0xffff_8000_089f_a520
     // - 0xffff_8000_089f_a500
-    special_location_address: [UnsafeCell<[FxHashMap<u64, u64>; 4]>; parameter::CORE_COUNT],
+    special_pc_write_statistics: [UnsafeCell<[[u64; 4]; 4]>; parameter::CORE_COUNT],
 }
 
 #[derive(Debug, PartialEq)]
@@ -141,8 +141,8 @@ impl<
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
             llc_os_write_misses: std::array::from_fn(|_| UnsafeCell::new(FxHashMap::default())),
-            special_location_address: std::array::from_fn(|_| {
-                UnsafeCell::new(std::array::from_fn(|_| FxHashMap::default()))
+            special_pc_write_statistics: std::array::from_fn(|_| {
+                UnsafeCell::new(std::array::from_fn(|_| [0; 4]))
             }),
         }
     }
@@ -474,6 +474,44 @@ impl<
         );
 
         if private_hit == private_cache::PrivateCachePokeResult::Hit {
+            if is_store {
+                match instruction_va_pc {
+                    0xffff_8000_089f_a510 => {
+                        let counters = unsafe {
+                            &mut *self.special_pc_write_statistics[core_id as usize].get()
+                        };
+
+                        let counter = &mut counters[0];
+                        counter[0] = counter[0] + 1;
+                    }
+                    0xffff_8000_089f_a4f0 => {
+                        let counters = unsafe {
+                            &mut *self.special_pc_write_statistics[core_id as usize].get()
+                        };
+
+                        let counter = &mut counters[1];
+                        counter[0] = counter[0] + 1;
+                    }
+                    0xffff_8000_089f_a520 => {
+                        let counters = unsafe {
+                            &mut *self.special_pc_write_statistics[core_id as usize].get()
+                        };
+
+                        let counter = &mut counters[2];
+                        counter[0] = counter[0] + 1;
+                    }
+                    0xffff_8000_089f_a500 => {
+                        let counters = unsafe {
+                            &mut *self.special_pc_write_statistics[core_id as usize].get()
+                        };
+
+                        let counter = &mut counters[3];
+                        counter[0] = counter[0] + 1;
+                    }
+                    _ => {}
+                };
+            }
+
             // we don't have to anything. Just return.
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
@@ -683,6 +721,44 @@ impl<
             }
 
             if shared_cache_result.is_some() {
+                if is_store {
+                    match instruction_va_pc {
+                        0xffff_8000_089f_a510 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[0];
+                            counter[0] = counter[2] + 1;
+                        }
+                        0xffff_8000_089f_a4f0 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[1];
+                            counter[0] = counter[2] + 1;
+                        }
+                        0xffff_8000_089f_a520 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[2];
+                            counter[0] = counter[2] + 1;
+                        }
+                        0xffff_8000_089f_a500 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[3];
+                            counter[0] = counter[2] + 1;
+                        }
+                        _ => {}
+                    };
+                }
+
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
                 if !is_prefetch {
@@ -711,33 +787,45 @@ impl<
                             let os_write_misses = hash_table.entry(instruction_va_pc).or_insert(0);
                             *os_write_misses += 1;
 
-                            let special_pc_hashtables = unsafe {
-                                &mut *self.special_location_address[core_id as usize].get()
-                            };
-
                             match instruction_va_pc {
                                 0xffff_8000_089f_a510 => {
-                                    let hash_table = special_pc_hashtables.get_mut(0).unwrap();
-                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
-                                    *os_write_misses += 1;
+                                    let counters = unsafe {
+                                        &mut *self.special_pc_write_statistics[core_id as usize]
+                                            .get()
+                                    };
+
+                                    let counter = &mut counters[0];
+                                    counter[0] = counter[3] + 1;
                                 }
                                 0xffff_8000_089f_a4f0 => {
-                                    let hash_table = special_pc_hashtables.get_mut(1).unwrap();
-                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
-                                    *os_write_misses += 1;
+                                    let counters = unsafe {
+                                        &mut *self.special_pc_write_statistics[core_id as usize]
+                                            .get()
+                                    };
+
+                                    let counter = &mut counters[1];
+                                    counter[0] = counter[3] + 1;
                                 }
                                 0xffff_8000_089f_a520 => {
-                                    let hash_table = special_pc_hashtables.get_mut(2).unwrap();
-                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
-                                    *os_write_misses += 1;
+                                    let counters = unsafe {
+                                        &mut *self.special_pc_write_statistics[core_id as usize]
+                                            .get()
+                                    };
+
+                                    let counter = &mut counters[2];
+                                    counter[0] = counter[3] + 1;
                                 }
                                 0xffff_8000_089f_a500 => {
-                                    let hash_table = special_pc_hashtables.get_mut(3).unwrap();
-                                    let os_write_misses = hash_table.entry(block_id).or_insert(0);
-                                    *os_write_misses += 1;
+                                    let counters = unsafe {
+                                        &mut *self.special_pc_write_statistics[core_id as usize]
+                                            .get()
+                                    };
+
+                                    let counter = &mut counters[3];
+                                    counter[0] = counter[3] + 1;
                                 }
                                 _ => {}
-                            }
+                            };
                         }
                     } else {
                         Statistics::global_record(
@@ -971,6 +1059,41 @@ impl<
 
             if !private_hit.permission_violation() {
                 if miss_directory_guard.insertion_ts < ts {
+                    match instruction_va_pc {
+                        0xffff_8000_089f_a510 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[0];
+                            counter[0] = counter[1] + 1;
+                        }
+                        0xffff_8000_089f_a4f0 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[1];
+                            counter[0] = counter[1] + 1;
+                        }
+                        0xffff_8000_089f_a520 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[2];
+                            counter[0] = counter[1] + 1;
+                        }
+                        0xffff_8000_089f_a500 => {
+                            let counters = unsafe {
+                                &mut *self.special_pc_write_statistics[core_id as usize].get()
+                            };
+
+                            let counter = &mut counters[3];
+                            counter[0] = counter[1] + 1;
+                        }
+                        _ => {}
+                    };
                     res = CacheHierarchyAccessResult::HitInOtherPrivateCache;
                 } else {
                     // This access turns out to be a earlier request
@@ -1282,9 +1405,14 @@ impl<
 
         let mut file = File::create("special_pc_os_write_misses.csv").unwrap();
         unsafe {
-            for (core_id, hash_table) in self.special_location_address.iter().enumerate() {
-                writeln!(file, "core_id,pc,block_id,miss").unwrap();
-                for (special_addr_idx, hash_table) in (*hash_table.get()).iter().enumerate() {
+            for (core_id, four_inst_counters) in self.special_pc_write_statistics.iter().enumerate()
+            {
+                writeln!(
+                    file,
+                    "core_id,pc,write_hit_l1,write_hit_other_l1,write_hit_llc,write_miss"
+                )
+                .unwrap();
+                for (special_addr_idx, counters) in (*four_inst_counters.get()).iter().enumerate() {
                     let pc: u64 = match special_addr_idx {
                         0 => 0xffff_8000_089f_a510,
                         1 => 0xffff_8000_089f_a4f0,
@@ -1292,9 +1420,13 @@ impl<
                         3 => 0xffff_8000_089f_a500,
                         _ => unreachable!(),
                     };
-                    for (block_id, miss) in hash_table.iter() {
-                        writeln!(file, "{},{},{},{}", core_id, pc, block_id, miss).unwrap();
-                    }
+
+                    writeln!(
+                        file,
+                        "{},{},{},{},{},{}",
+                        core_id, pc, counters[0], counters[1], counters[2], counters[3]
+                    )
+                    .unwrap();
                 }
             }
         }
