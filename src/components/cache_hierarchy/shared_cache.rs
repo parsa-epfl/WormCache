@@ -85,6 +85,8 @@ pub struct SerializedSharedCacheBlock {
     pub writable: bool,
 }
 
+pub mod statistics;
+
 mod set_and_line;
 
 pub use set_and_line::SharedCacheBlock;

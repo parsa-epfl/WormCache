@@ -1,3 +1,4 @@
+use crate::components::cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics;
 use crate::util::get_monotonic_ts;
 
 use crate::components::NoMMU;
@@ -19,6 +20,7 @@ type MH = MemoryHierarchy<
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
+        ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },

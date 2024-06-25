@@ -1,12 +1,20 @@
-use crate::components::{
-    cache_hierarchy::hierarchy::CacheAccessType,
-    debug::{
-        cache_line_history::CacheLineCoherenceHistory,
-        statistics::{EventType::SharedCacheAccessTsViolation, Statistics},
+use core::panic;
+
+use crate::{
+    components::{
+        cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics,
+        debug::{
+            cache_line_history::CacheLineCoherenceHistory,
+            statistics::{EventType::SharedCacheAccessTsViolation, Statistics},
+        },
     },
+    parameter,
 };
 
-use super::{SharedCacheLookupAndInsertResult, SharedCacheLookupResult};
+use super::{
+    statistics::{SharedCacheSetMissStatistics, SharedCacheSetStatistics},
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedCacheBlock {
@@ -16,7 +24,7 @@ pub struct SharedCacheBlock {
 }
 
 #[derive(Debug)]
-pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
+pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> {
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
@@ -24,35 +32,20 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
 
     pub access_count: u64,
 
-    // statistics
-    pub miss_count: u64,
-    pub miss_count_u: u64,
-    pub miss_count_k: u64,
-
-    pub fetch_miss_count: u64,
-    pub fetch_miss_count_u: u64,
-    pub fetch_miss_count_k: u64,
-
-    pub read_miss_count: u64,
-    pub read_miss_count_u: u64,
-    pub read_miss_count_k: u64,
-
-    pub write_miss_count: u64,
-    pub write_miss_count_u: u64,
-    pub write_miss_count_k: u64,
-
-    pub ptw_miss_count: u64,
-    pub ptw_miss_count_u: u64,
-    pub ptw_miss_count_k: u64,
+    pub statistics: S,
 }
 
-impl<const WAY: usize, const EXCLUSIVE: bool> Default for SharedCacheSet<WAY, EXCLUSIVE> {
+impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> Default
+    for SharedCacheSet<WAY, EXCLUSIVE, S>
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
+impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
+    SharedCacheSet<WAY, EXCLUSIVE, S>
+{
     pub fn new() -> Self {
         Self {
             blocks: std::array::from_fn(|_| SharedCacheBlock {
@@ -67,25 +60,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
             access_count: 0,
 
-            miss_count: 0,
-            miss_count_u: 0,
-            miss_count_k: 0,
-
-            fetch_miss_count: 0,
-            fetch_miss_count_u: 0,
-            fetch_miss_count_k: 0,
-
-            read_miss_count: 0,
-            read_miss_count_u: 0,
-            read_miss_count_k: 0,
-
-            write_miss_count: 0,
-            write_miss_count_u: 0,
-            write_miss_count_k: 0,
-
-            ptw_miss_count: 0,
-            ptw_miss_count_u: 0,
-            ptw_miss_count_k: 0,
+            statistics: S::default(),
         }
     }
 
@@ -159,55 +134,15 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         } else {
             self.peek(block_id, ts, abandon_dirty)
         } {
-            Some(is_dirty) => SharedCacheLookupResult::Hit(is_dirty),
+            Some(is_dirty) => {
+                self.statistics.record(access_type, is_os, true);
+                SharedCacheLookupResult::Hit(is_dirty)
+            }
             None => {
                 if ts < self.recent_evict_ts {
-                    // this cache line might have been evicted, so we cannot determine whether it is a hit or a miss.
                     SharedCacheLookupResult::Unknown
                 } else {
-                    match access_type {
-                        CacheAccessType::InstructionFetch => {
-                            self.fetch_miss_count += 1;
-
-                            if is_os {
-                                self.fetch_miss_count_k += 1;
-                            } else {
-                                self.fetch_miss_count_u += 1;
-                            }
-                        }
-                        CacheAccessType::DataRead => {
-                            self.read_miss_count += 1;
-                            if is_os {
-                                self.read_miss_count_k += 1;
-                            } else {
-                                self.read_miss_count_u += 1;
-                            }
-                        }
-                        CacheAccessType::DataWrite => {
-                            self.write_miss_count += 1;
-                            if is_os {
-                                self.write_miss_count_k += 1;
-                            } else {
-                                self.write_miss_count_u += 1;
-                            }
-                        }
-                        CacheAccessType::PageWalkRead => {
-                            self.ptw_miss_count += 1;
-                            if is_os {
-                                self.ptw_miss_count_k += 1;
-                            } else {
-                                self.ptw_miss_count_u += 1;
-                            }
-                        }
-                        CacheAccessType::PrefetchRead => panic!(),
-                        CacheAccessType::PrefetchWrite => panic!(),
-                    }
-                    self.miss_count += 1;
-                    if is_os {
-                        self.miss_count_k += 1;
-                    } else {
-                        self.miss_count_u += 1;
-                    }
+                    self.statistics.record(access_type, is_os, false);
                     SharedCacheLookupResult::Miss
                 }
             }
@@ -323,7 +258,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
 #[test]
 fn minimum_can_find_invalid() {
-    let mut set = SharedCacheSet::<8, false>::new();
+    let mut set = SharedCacheSet::<8, false, ZeroSharedCacheSetStatistics>::new();
     let mut ts = 1;
 
     // push 8 elements inside.

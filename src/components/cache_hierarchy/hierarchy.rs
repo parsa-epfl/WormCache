@@ -1,7 +1,3 @@
-use dashmap::DashMap;
-use rustc_hash::{FxBuildHasher, FxHashMap};
-use spin::mutex::Mutex;
-
 use crate::components::cache_hierarchy::shared_cache::{
     SharedCache, SharedCacheLookupResult, VTsViolationResult,
 };
@@ -20,8 +16,6 @@ use super::{
 
 use crate::components::mmu::AbstractMMU;
 use std::cell::UnsafeCell;
-use std::fs::File;
-use std::io::Write;
 use std::ops::DerefMut;
 
 #[cfg(test)]
@@ -51,16 +45,6 @@ pub struct MemoryHierarchy<
     directory: directory::Directory<DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
-
-    // llc_os_write_misses: Mutex<FxHashMap<u64, u64>>,
-    llc_os_write_misses: [UnsafeCell<FxHashMap<u64, u64>>; parameter::CORE_COUNT],
-
-    // The following PC's access target is recorded:
-    // - 0xffff_8000_089f_a510
-    // - 0xffff_8000_089f_a4f0
-    // - 0xffff_8000_089f_a520
-    // - 0xffff_8000_089f_a500
-    special_pc_write_statistics: [UnsafeCell<[[u64; 4]; 4]>; parameter::CORE_COUNT],
 }
 
 #[derive(Debug, PartialEq)]
@@ -140,10 +124,6 @@ impl<
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
-            llc_os_write_misses: std::array::from_fn(|_| UnsafeCell::new(FxHashMap::default())),
-            special_pc_write_statistics: std::array::from_fn(|_| {
-                UnsafeCell::new(std::array::from_fn(|_| [0; 4]))
-            }),
         }
     }
 
@@ -445,7 +425,7 @@ impl<
         v_ts: u64,
         access_type: CacheAccessType,
         is_os: bool,
-        instruction_va_pc: u64,
+        _instruction_va_pc: u64,
     ) -> CacheHierarchyAccessResult {
         let is_prefetch = access_type == CacheAccessType::PrefetchRead
             || access_type == CacheAccessType::PrefetchWrite;
@@ -474,44 +454,6 @@ impl<
         );
 
         if private_hit == private_cache::PrivateCachePokeResult::Hit {
-            if is_store {
-                match instruction_va_pc {
-                    0xffff_8000_089f_a510 => {
-                        let counters = unsafe {
-                            &mut *self.special_pc_write_statistics[core_id as usize].get()
-                        };
-
-                        let counter = &mut counters[0];
-                        counter[0] = counter[0] + 1;
-                    }
-                    0xffff_8000_089f_a4f0 => {
-                        let counters = unsafe {
-                            &mut *self.special_pc_write_statistics[core_id as usize].get()
-                        };
-
-                        let counter = &mut counters[1];
-                        counter[0] = counter[0] + 1;
-                    }
-                    0xffff_8000_089f_a520 => {
-                        let counters = unsafe {
-                            &mut *self.special_pc_write_statistics[core_id as usize].get()
-                        };
-
-                        let counter = &mut counters[2];
-                        counter[0] = counter[0] + 1;
-                    }
-                    0xffff_8000_089f_a500 => {
-                        let counters = unsafe {
-                            &mut *self.special_pc_write_statistics[core_id as usize].get()
-                        };
-
-                        let counter = &mut counters[3];
-                        counter[0] = counter[0] + 1;
-                    }
-                    _ => {}
-                };
-            }
-
             // we don't have to anything. Just return.
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
@@ -721,44 +663,6 @@ impl<
             }
 
             if shared_cache_result.is_some() {
-                if is_store {
-                    match instruction_va_pc {
-                        0xffff_8000_089f_a510 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[0];
-                            counter[2] = counter[2] + 1;
-                        }
-                        0xffff_8000_089f_a4f0 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[1];
-                            counter[2] = counter[2] + 1;
-                        }
-                        0xffff_8000_089f_a520 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[2];
-                            counter[2] = counter[2] + 1;
-                        }
-                        0xffff_8000_089f_a500 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[3];
-                            counter[2] = counter[2] + 1;
-                        }
-                        _ => {}
-                    };
-                }
-
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
                 if !is_prefetch {
@@ -780,53 +684,6 @@ impl<
                             EventType::SharedCacheMissDueToDataWrite,
                             is_os,
                         );
-
-                        if is_os {
-                            let hash_table =
-                                unsafe { &mut *self.llc_os_write_misses[core_id as usize].get() };
-                            let os_write_misses = hash_table.entry(instruction_va_pc).or_insert(0);
-                            *os_write_misses += 1;
-
-                            match instruction_va_pc {
-                                0xffff_8000_089f_a510 => {
-                                    let counters = unsafe {
-                                        &mut *self.special_pc_write_statistics[core_id as usize]
-                                            .get()
-                                    };
-
-                                    let counter = &mut counters[0];
-                                    counter[3] = counter[3] + 1;
-                                }
-                                0xffff_8000_089f_a4f0 => {
-                                    let counters = unsafe {
-                                        &mut *self.special_pc_write_statistics[core_id as usize]
-                                            .get()
-                                    };
-
-                                    let counter = &mut counters[1];
-                                    counter[3] = counter[3] + 1;
-                                }
-                                0xffff_8000_089f_a520 => {
-                                    let counters = unsafe {
-                                        &mut *self.special_pc_write_statistics[core_id as usize]
-                                            .get()
-                                    };
-
-                                    let counter = &mut counters[2];
-                                    counter[3] = counter[3] + 1;
-                                }
-                                0xffff_8000_089f_a500 => {
-                                    let counters = unsafe {
-                                        &mut *self.special_pc_write_statistics[core_id as usize]
-                                            .get()
-                                    };
-
-                                    let counter = &mut counters[3];
-                                    counter[3] = counter[3] + 1;
-                                }
-                                _ => {}
-                            };
-                        }
                     } else {
                         Statistics::global_record(
                             core_id,
@@ -1059,41 +916,6 @@ impl<
 
             if !private_hit.permission_violation() {
                 if miss_directory_guard.insertion_ts < ts {
-                    match instruction_va_pc {
-                        0xffff_8000_089f_a510 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[0];
-                            counter[1] = counter[1] + 1;
-                        }
-                        0xffff_8000_089f_a4f0 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[1];
-                            counter[1] = counter[1] + 1;
-                        }
-                        0xffff_8000_089f_a520 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[2];
-                            counter[1] = counter[1] + 1;
-                        }
-                        0xffff_8000_089f_a500 => {
-                            let counters = unsafe {
-                                &mut *self.special_pc_write_statistics[core_id as usize].get()
-                            };
-
-                            let counter = &mut counters[3];
-                            counter[1] = counter[1] + 1;
-                        }
-                        _ => {}
-                    };
                     res = CacheHierarchyAccessResult::HitInOtherPrivateCache;
                 } else {
                     // This access turns out to be a earlier request
@@ -1388,47 +1210,5 @@ impl<
     pub fn dump_diagnose_information(&self) {
         self.shared_cache
             .dump_access_frequency("shared_cache_access_frequency.csv");
-
-        // dump the information of OS write misses.
-        let mut file = File::create("os_write_misses.csv").unwrap();
-        writeln!(file, "pc,core,miss").unwrap();
-
-        unsafe {
-            for (core_id, hash_table) in self.llc_os_write_misses.iter().enumerate() {
-                for (pc, miss) in (*hash_table.get()).iter() {
-                    writeln!(file, "{},{},{}", pc, core_id, miss).unwrap();
-                }
-            }
-        }
-
-        drop(file);
-
-        let mut file = File::create("special_pc_os_write_misses.csv").unwrap();
-        unsafe {
-            for (core_id, four_inst_counters) in self.special_pc_write_statistics.iter().enumerate()
-            {
-                writeln!(
-                    file,
-                    "core_id,pc,write_hit_l1,write_hit_other_l1,write_hit_llc,write_miss"
-                )
-                .unwrap();
-                for (special_addr_idx, counters) in (*four_inst_counters.get()).iter().enumerate() {
-                    let pc: u64 = match special_addr_idx {
-                        0 => 0xffff_8000_089f_a510,
-                        1 => 0xffff_8000_089f_a4f0,
-                        2 => 0xffff_8000_089f_a520,
-                        3 => 0xffff_8000_089f_a500,
-                        _ => unreachable!(),
-                    };
-
-                    writeln!(
-                        file,
-                        "{},{},{},{},{},{}",
-                        core_id, pc, counters[0], counters[1], counters[2], counters[3]
-                    )
-                    .unwrap();
-                }
-            }
-        }
     }
 }

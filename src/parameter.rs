@@ -249,6 +249,13 @@ pub struct PluginList {
 pub const ENABLE_STATISTICS: bool = true;
 
 /**
+ * Whether to enable the shared cache statistics.
+ *
+ * Turning on this option can influence the memory consumption. It adds 128 bytes to each cache set.
+ */
+pub const ENABLE_SHARED_CACHE_STATISTICS: bool = false;
+
+/**
  * Whether to enable the exclusive cache state and its coherence protocol.
  */
 pub const ENABLE_EXCLUSIVE_CACHE_STATE: bool = true;

@@ -1,8 +1,9 @@
 use crate::{
     components::{
         cache_hierarchy::{
-            hierarchy::CacheHierarchyAccessResult, private_cache::ParallelUnifiedPrivateCache,
-            shared_cache::ParallelSingleSharedCache,
+            hierarchy::CacheHierarchyAccessResult,
+            private_cache::ParallelUnifiedPrivateCache,
+            shared_cache::{statistics::ZeroSharedCacheSetStatistics, ParallelSingleSharedCache},
         },
         debug::statistics::{EventType, Statistics},
         NoMMU,
@@ -18,6 +19,7 @@ type MH = MemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
     ParallelSingleSharedCache<
+        ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },

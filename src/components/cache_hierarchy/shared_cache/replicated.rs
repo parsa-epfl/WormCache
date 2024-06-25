@@ -1,14 +1,16 @@
 use crate::components::cache_hierarchy::hierarchy::CacheAccessType;
 
 use super::{
-    SerializedSharedCacheBlock, SharedCache, SharedCacheLookupAndInsertResult,
-    SharedCacheLookupResult, SharedCacheSet, VTsViolationResult,
+    statistics::SharedCacheSetStatistics, SerializedSharedCacheBlock, SharedCache,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VTsViolationResult,
 };
 
 use serde_json::json;
 use std::cell::UnsafeCell;
 
-impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
+impl<S: SharedCacheSetStatistics, const WAY: usize, const EXCLUSIVE: bool>
+    SharedCacheSet<WAY, EXCLUSIVE, S>
+{
     fn fold(&self, other: &Self) -> Self {
         // take the two arrays, combine them, and sort them by the timestamp. Only keel the elements with highest timestamp.
         let mut imm: Vec<_> = self.blocks.iter().chain(other.blocks.iter()).collect();
@@ -27,35 +29,24 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
             recent_access_ts: 0,
 
             access_count: self.access_count + other.access_count,
-            miss_count: self.miss_count + other.miss_count,
-            miss_count_u: self.miss_count_u + other.miss_count_u,
-            miss_count_k: self.miss_count_k + other.miss_count_k,
 
-            fetch_miss_count: self.fetch_miss_count + other.fetch_miss_count,
-            fetch_miss_count_u: self.fetch_miss_count_u + other.fetch_miss_count_u,
-            fetch_miss_count_k: self.fetch_miss_count_k + other.fetch_miss_count_k,
-
-            read_miss_count: self.read_miss_count + other.read_miss_count,
-            read_miss_count_u: self.read_miss_count_u + other.read_miss_count_u,
-            read_miss_count_k: self.read_miss_count_k + other.read_miss_count_k,
-
-            write_miss_count: self.write_miss_count + other.write_miss_count,
-            write_miss_count_u: self.write_miss_count_u + other.write_miss_count_u,
-            write_miss_count_k: self.write_miss_count_k + other.write_miss_count_k,
-
-            ptw_miss_count: self.ptw_miss_count + other.ptw_miss_count,
-            ptw_miss_count_u: self.ptw_miss_count_u + other.ptw_miss_count_u,
-            ptw_miss_count_k: self.ptw_miss_count_k + other.ptw_miss_count_k,
+            // clean the statistics
+            statistics: Default::default(),
         }
     }
 }
 
-struct PrivateSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
-    blocks: Box<[SharedCacheSet<WAY, EXCLUSIVE>; SET]>,
+struct PrivateSharedCache<
+    S: SharedCacheSetStatistics,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+> {
+    blocks: Box<[SharedCacheSet<WAY, EXCLUSIVE, S>; SET]>,
 }
 
-impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
-    PrivateSharedCache<SET, WAY, EXCLUSIVE>
+impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
+    PrivateSharedCache<S, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {
@@ -177,16 +168,22 @@ impl<const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
 }
 
 pub struct ReplicatedSharedCache<
+    S: SharedCacheSetStatistics,
     const CORE_COUNT: usize,
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
 > {
-    blocks: [UnsafeCell<PrivateSharedCache<SET, WAY, EXCLUSIVE>>; CORE_COUNT],
+    blocks: [UnsafeCell<PrivateSharedCache<S, SET, WAY, EXCLUSIVE>>; CORE_COUNT],
 }
 
-impl<const CORE_COUNT: usize, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> SharedCache
-    for ReplicatedSharedCache<CORE_COUNT, SET, WAY, EXCLUSIVE>
+impl<
+        S: SharedCacheSetStatistics,
+        const CORE_COUNT: usize,
+        const SET: usize,
+        const WAY: usize,
+        const EXCLUSIVE: bool,
+    > SharedCache for ReplicatedSharedCache<S, CORE_COUNT, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {

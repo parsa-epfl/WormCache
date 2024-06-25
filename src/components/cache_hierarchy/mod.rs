@@ -16,7 +16,6 @@ use crate::{
 };
 use std::ffi;
 
-use std::io::prelude::*;
 use zstd::Encoder;
 
 use super::debug::statistics::Statistics;

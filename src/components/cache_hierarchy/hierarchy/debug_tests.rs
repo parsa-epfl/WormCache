@@ -1,6 +1,7 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
+use crate::components::cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics;
 use crate::components::NoMMU;
 use crate::util::get_monotonic_ts;
 
@@ -14,6 +15,7 @@ type MH = MemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
     ParallelSingleSharedCache<
+        ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -327,14 +329,17 @@ fn later_read_after_write_cancel_sharers() {
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
-    // And also, core 1's entry is recorded in the directory. 
+    // And also, core 1's entry is recorded in the directory.
     // This means when there is an eviction of this cache line in core'1, it should not trigger any panic.
-    for i in 0..(parameter::UNIFIED_PRI_CACHE_ASSO+1) {
+    for i in 0..(parameter::UNIFIED_PRI_CACHE_ASSO + 1) {
         assert_eq!(
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(1, block_id + ((i+1) * parameter::UNIFIED_PRI_CACHE_SET) as u64, (50 + i) as u64, CacheAccessType::DataRead),
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                1,
+                block_id + ((i + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64,
+                (50 + i) as u64,
+                CacheAccessType::DataRead
+            ),
             CacheHierarchyAccessResult::Miss
         );
     }
-
-
 }

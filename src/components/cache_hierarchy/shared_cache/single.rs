@@ -7,14 +7,15 @@ use std::{
 use crate::components::cache_hierarchy::util::CCell;
 
 use super::{
-    SerializedSharedCacheBlock, SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
-    SharedCacheSet, VTsViolationResult,
+    statistics::SharedCacheSetStatistics, SerializedSharedCacheBlock,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VTsViolationResult,
 };
 use serde_json::json;
 use spin::mutex::SpinMutex;
 
 pub struct SingleSharedCache<
-    G: CCell<SharedCacheSet<WAY, EXCLUSIVE>> + std::fmt::Debug,
+    S: SharedCacheSetStatistics,
+    G: CCell<SharedCacheSet<WAY, EXCLUSIVE, S>> + std::fmt::Debug,
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
@@ -22,19 +23,22 @@ pub struct SingleSharedCache<
 > {
     blocks: Box<[G; SET]>,
     warmed_sets: AtomicUsize,
+    _phantom: std::marker::PhantomData<S>,
 }
 
 impl<
-        G: CCell<SharedCacheSet<WAY, EXCLUSIVE>> + std::fmt::Debug,
+        S: SharedCacheSetStatistics,
+        G: CCell<SharedCacheSet<WAY, EXCLUSIVE, S>> + std::fmt::Debug,
         const SET: usize,
         const WAY: usize,
         const EXCLUSIVE: bool,
-    > super::SharedCache for SingleSharedCache<G, SET, WAY, EXCLUSIVE>
+    > super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {
             blocks: crate::util::init_heap_array(|_| (G::new(SharedCacheSet::new()))),
             warmed_sets: AtomicUsize::new(0),
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -185,41 +189,16 @@ impl<
 
     fn dump_access_frequency(&self, file_name: &str) {
         let mut file = std::fs::File::create(file_name).unwrap();
-        writeln!(
-            file,
-            "idx,access_count,miss_count,miss_count:u,miss_count:k,fetch_miss,fetch_miss:u,fetch_miss:k,read_miss,read_miss:u,read_miss:k,write_miss,write_miss:u,write_miss:k,ptw_miss,ptw_miss:u,ptw_miss:k"
-        )
-        .unwrap();
+        writeln!(file, "idx,{}\n", S::get_header()).unwrap();
         for (idx, entry) in self.blocks.iter().enumerate() {
             let entry = entry.inner();
-            writeln!(
-                file,
-                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
-                idx,
-                entry.access_count,
-                entry.miss_count,
-                entry.miss_count_u,
-                entry.miss_count_k,
-                entry.fetch_miss_count,
-                entry.fetch_miss_count_u,
-                entry.fetch_miss_count_k,
-                entry.read_miss_count,
-                entry.read_miss_count_u,
-                entry.read_miss_count_k,
-                entry.write_miss_count,
-                entry.write_miss_count_u,
-                entry.write_miss_count_k,
-                entry.ptw_miss_count,
-                entry.ptw_miss_count_u,
-                entry.ptw_miss_count_k,
-            )
-            .unwrap();
+            writeln!(file, "{},{}\n", idx, entry.statistics.render_line()).unwrap();
         }
     }
 }
 
-pub type ParallelSingleSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
-    SingleSharedCache<SpinMutex<SharedCacheSet<WAY, EXCLUSIVE>>, SET, WAY, EXCLUSIVE>;
+pub type ParallelSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
+    SingleSharedCache<S, SpinMutex<SharedCacheSet<WAY, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;
 
-pub type SerialSingleSharedCache<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
-    SingleSharedCache<UnsafeCell<SharedCacheSet<WAY, EXCLUSIVE>>, SET, WAY, EXCLUSIVE>;
+pub type SerialSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
+    SingleSharedCache<S, UnsafeCell<SharedCacheSet<WAY, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;

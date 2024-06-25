@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::components::NoMMU;
+use crate::components::{
+    cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics, NoMMU,
+};
 
 use self::private_cache::ParallelUnifiedPrivateCache;
 use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
@@ -13,6 +15,7 @@ type MH = MemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
     ParallelSingleSharedCache<
+        ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },

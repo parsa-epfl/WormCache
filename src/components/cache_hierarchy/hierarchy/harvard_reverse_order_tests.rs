@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::components::NoMMU;
+use crate::components::{
+    cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics, NoMMU,
+};
 
 use self::private_cache::ParallelHarvardPrivateCache;
 use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
@@ -19,6 +21,7 @@ type MH = MemoryHierarchy<
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
+        ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },

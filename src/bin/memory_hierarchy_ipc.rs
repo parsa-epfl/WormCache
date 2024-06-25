@@ -2,6 +2,7 @@ use perf_event::Builder;
 use worm_cache::components::cache_hierarchy::hierarchy::CacheAccessType;
 use worm_cache::components::cache_hierarchy::hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::private_cache::ParallelUnifiedPrivateCache;
+use worm_cache::components::cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics;
 use worm_cache::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 use worm_cache::components::debug::statistics::Statistics;
 use worm_cache::components::NoMMU;
@@ -16,6 +17,7 @@ type MH = MemoryHierarchy<
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
+        ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },

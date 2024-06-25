@@ -1,9 +1,11 @@
+use statistics::ZeroSharedCacheSetStatistics;
+
 use super::ParallelSingleSharedCache;
 use super::*;
 
 #[test]
 fn warm_counter_normal_function() {
-    let cache = ParallelSingleSharedCache::<1024, 4, false>::new();
+    let cache = ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 1024, 4, false>::new();
 
     let which_set_to_target = 127;
 
@@ -16,7 +18,7 @@ fn warm_counter_normal_function() {
 
 #[test]
 fn warm_counter_not_done() {
-    let cache = ParallelSingleSharedCache::<1024, 5, false>::new();
+    let cache = ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 1024, 5, false>::new();
 
     let which_set_to_target = 127;
 
