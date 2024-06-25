@@ -1,19 +1,12 @@
 use core::panic;
 
-use crate::{
-    components::{
-        cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics,
-        debug::{
-            cache_line_history::CacheLineCoherenceHistory,
-            statistics::{EventType::SharedCacheAccessTsViolation, Statistics},
-        },
-    },
-    parameter,
+use crate::components::debug::{
+    cache_line_history::CacheLineCoherenceHistory,
+    statistics::{EventType::SharedCacheAccessTsViolation, Statistics},
 };
 
 use super::{
-    statistics::{SharedCacheSetMissStatistics, SharedCacheSetStatistics},
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
+    statistics::SharedCacheSetStatistics, SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -258,6 +251,8 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
 
 #[test]
 fn minimum_can_find_invalid() {
+    use super::statistics::ZeroSharedCacheSetStatistics;
+
     let mut set = SharedCacheSet::<8, false, ZeroSharedCacheSetStatistics>::new();
     let mut ts = 1;
 
