@@ -30,6 +30,8 @@ pub enum EventType {
     SharedCacheMissDueToDataRead,
     SharedCacheMissDueToDataWrite,
 
+    SharedCacheAccessTsViolation,
+
     UnknownPrivateCacheMisses,
     UnknownSharedCacheMisses,
 

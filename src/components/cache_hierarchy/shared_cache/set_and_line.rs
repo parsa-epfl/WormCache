@@ -1,6 +1,9 @@
 use crate::components::{
     cache_hierarchy::hierarchy::CacheAccessType,
-    debug::cache_line_history::CacheLineCoherenceHistory,
+    debug::{
+        cache_line_history::CacheLineCoherenceHistory,
+        statistics::{EventType::SharedCacheAccessTsViolation, Statistics},
+    },
 };
 
 use super::{SharedCacheLookupAndInsertResult, SharedCacheLookupResult};
@@ -17,6 +20,8 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool> {
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
+    pub recent_access_ts: u64,
+
     pub access_count: u64,
 
     // statistics
@@ -58,6 +63,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
 
             touched_count: 0,
             recent_evict_ts: 0,
+            recent_access_ts: 0,
 
             access_count: 0,
 
@@ -141,6 +147,13 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         is_os: bool,
     ) -> SharedCacheLookupResult {
         self.access_count += 1;
+
+        if self.recent_access_ts < ts {
+            self.recent_access_ts = ts;
+        } else {
+            Statistics::global_record(0, SharedCacheAccessTsViolation, is_os);
+        }
+
         match if EXCLUSIVE {
             self.invalidate(block_id, ts)
         } else {
@@ -211,6 +224,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool> SharedCacheSet<WAY, EXCLUSIVE> {
         increase_touched_count: bool,
     ) -> bool {
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
+
+        if self.recent_access_ts < ts {
+            self.recent_access_ts = ts;
+        }
 
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
