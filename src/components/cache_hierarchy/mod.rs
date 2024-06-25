@@ -104,20 +104,20 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
 
-    if vcpu_idx == 0 {
-        unsafe {
-            (*C0_TRACE_FILE)
-                .write_all(format!("{}", vaddr).as_bytes())
-                .unwrap();
-        }
+    // if vcpu_idx == 0 {
+    //     unsafe {
+    //         (*C0_TRACE_FILE)
+    //             .write_all(format!("{}", vaddr).as_bytes())
+    //             .unwrap();
+    //     }
 
-        if current_icount == 100000000 {
-            unsafe {
-                Box::from_raw(C0_TRACE_FILE).finish().unwrap();
-            }
-            std::process::exit(0);
-        }
-    }
+    //     if current_icount == 100000000 {
+    //         unsafe {
+    //             Box::from_raw(C0_TRACE_FILE).finish().unwrap();
+    //         }
+    //         std::process::exit(0);
+    //     }
+    // }
 
     let instruction_offset = inst_host_addr as u64 >> 48;
     let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
