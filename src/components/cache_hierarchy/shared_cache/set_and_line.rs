@@ -119,7 +119,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
         if self.recent_access_ts < ts {
             self.recent_access_ts = ts;
         } else {
-            Statistics::global_record(0, SharedCacheAccessTsViolation, is_os);
+            // Statistics::global_record(0, SharedCacheAccessTsViolation, is_os);
         }
 
         match if EXCLUSIVE {

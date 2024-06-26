@@ -159,7 +159,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
     fn init() {
         unsafe {
-            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
+            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(true)));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
             ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
 
@@ -168,7 +168,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             ));
 
             if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
-                DUMMY_PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
+                DUMMY_PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(false)));
             }
         }
 
