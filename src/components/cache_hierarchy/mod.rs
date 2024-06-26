@@ -64,12 +64,12 @@ unsafe extern "C" fn vcpu_mem_access(
         // let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
-        let plugin_to_update = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
+        let (plugin_to_update, vcpu_idx) = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
             && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
         {
-            PLUGIN
+            (PLUGIN, vcpu_idx)
         } else {
-            DUMMY_PLUGIN
+            (DUMMY_PLUGIN, vcpu_idx - parameter::CORE_COUNT as u32 / 2)
         };
 
         // Currently, this is experimental.
@@ -111,12 +111,12 @@ unsafe extern "C" fn vcpu_insn_exec(
         return;
     }
 
-    let plugin_to_update = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
+    let (plugin_to_update, vcpu_idx) = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
         && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
     {
-        PLUGIN
+        (PLUGIN, vcpu_idx)
     } else {
-        DUMMY_PLUGIN
+        (DUMMY_PLUGIN, vcpu_idx - parameter::CORE_COUNT as u32 / 2)
     };
 
     if parameter::USE_QEMU_HW_ADDR_AS_PHYSICAL_PC {
