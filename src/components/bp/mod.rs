@@ -31,11 +31,11 @@ impl BranchResolveFlag {
     }
 }
 
-const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
-    parameter::CORE_COUNT / 2
-} else {
-    parameter::CORE_COUNT
-};
+// const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+//     parameter::CORE_COUNT / 2
+// } else {
+//     parameter::CORE_COUNT
+// };
 
 // static mut FETCH_UNIT: Lazy<UnsafeCell<fetch::FetchUnit<{ ALLOCATED_CORE_COUNT }>>> =
 //     Lazy::new(|| {
@@ -43,7 +43,7 @@ const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CO
 //         UnsafeCell::new(fetch_unit)
 //     });
 
-static mut FETCH_UNIT: *mut fetch::FetchUnit<{ ALLOCATED_CORE_COUNT }> = std::ptr::null_mut();
+static mut FETCH_UNIT: *mut fetch::FetchUnit<{ parameter::CORE_COUNT }> = std::ptr::null_mut();
 
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
     if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES

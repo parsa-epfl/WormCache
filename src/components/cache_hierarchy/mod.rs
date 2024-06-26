@@ -40,6 +40,7 @@ unsafe extern "C" fn vcpu_increase_icount(vcpu_idx: u32, count: *mut ffi::c_void
 type HierarchyForPlugin = parser::HierarchyForPlugin;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
+static mut DUMMY_PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
 // TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
@@ -48,11 +49,6 @@ unsafe extern "C" fn vcpu_mem_access(
     vaddr: u64,
     offset: *mut ffi::c_void,
 ) {
-    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
-    {
-        return;
-    }
-
     // let offset: u64 = offset as u64;
     // let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
 
@@ -68,9 +64,17 @@ unsafe extern "C" fn vcpu_mem_access(
         // let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
+        let plugin_to_update = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
+            && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
+        {
+            PLUGIN
+        } else {
+            DUMMY_PLUGIN
+        };
+
         // Currently, this is experimental.
         // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_monotonic_ts(), is_store, false, walk_trace, pa);
-        (*PLUGIN).access_memory_with_va_and_pa(
+        (*plugin_to_update).access_memory_with_va_and_pa(
             vcpu_idx,
             vaddr,
             pa,
@@ -85,8 +89,7 @@ unsafe extern "C" fn vcpu_mem_access(
     }
 }
 
-static mut L0_CACHE: *mut L0InstructionCache<{ parser::ALLOCATED_CORE_COUNT }> =
-    std::ptr::null_mut();
+static mut L0_CACHE: *mut L0InstructionCache<{ parameter::CORE_COUNT }> = std::ptr::null_mut();
 
 static mut C0_TRACE_FILE: *mut Encoder<'_, std::fs::File> = std::ptr::null_mut();
 
@@ -94,30 +97,10 @@ unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
     inst_host_addr: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
-    {
-        return;
-    }
-
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
 
     let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
-
-    // if vcpu_idx == 0 {
-    //     unsafe {
-    //         (*C0_TRACE_FILE)
-    //             .write_all(format!("{}", vaddr).as_bytes())
-    //             .unwrap();
-    //     }
-
-    //     if current_icount == 100000000 {
-    //         unsafe {
-    //             Box::from_raw(C0_TRACE_FILE).finish().unwrap();
-    //         }
-    //         std::process::exit(0);
-    //     }
-    // }
 
     let instruction_offset = inst_host_addr as u64 >> 48;
     let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
@@ -128,8 +111,16 @@ unsafe extern "C" fn vcpu_insn_exec(
         return;
     }
 
+    let plugin_to_update = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
+        && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
+    {
+        PLUGIN
+    } else {
+        DUMMY_PLUGIN
+    };
+
     if parameter::USE_QEMU_HW_ADDR_AS_PHYSICAL_PC {
-        (*PLUGIN).access_memory_with_va_and_pa(
+        (*plugin_to_update).access_memory_with_va_and_pa(
             vcpu_idx,
             vaddr,
             inst_host_addr as u64,
@@ -140,7 +131,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             vaddr,
         );
     } else {
-        (*PLUGIN).access_memory_with_va(
+        (*plugin_to_update).access_memory_with_va(
             vcpu_idx,
             vaddr,
             get_monotonic_ts(),
@@ -175,6 +166,10 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             C0_TRACE_FILE = Box::into_raw(Box::new(
                 Encoder::new(std::fs::File::create("c0_trace.zstd").unwrap(), 3).unwrap(),
             ));
+
+            if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+                DUMMY_PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
+            }
         }
 
         if parameter::USE_UNIFIED_CACHE {
