@@ -67,9 +67,9 @@ unsafe extern "C" fn vcpu_mem_access(
         let (plugin_to_update, vcpu_idx) = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
             && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
         {
-            (PLUGIN, vcpu_idx)
-        } else {
             (DUMMY_PLUGIN, vcpu_idx - parameter::CORE_COUNT as u32 / 2)
+        } else {
+            (PLUGIN, vcpu_idx)
         };
 
         // Currently, this is experimental.
@@ -114,9 +114,9 @@ unsafe extern "C" fn vcpu_insn_exec(
     let (plugin_to_update, vcpu_idx) = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
         && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
     {
-        (PLUGIN, vcpu_idx)
-    } else {
         (DUMMY_PLUGIN, vcpu_idx - parameter::CORE_COUNT as u32 / 2)
+    } else {
+        (PLUGIN, vcpu_idx)
     };
 
     if parameter::USE_QEMU_HW_ADDR_AS_PHYSICAL_PC {
