@@ -72,6 +72,19 @@ pub enum CacheHierarchyAccessResult {
     Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
 }
 
+// This function identify the memory instruction that can be influenced by the imperfect load generator.
+// Their traffic will be recorded specially.
+fn is_special_memory_access(pc: u64) -> bool {
+    const SPECIAL_PC: [u64; 4] = [
+        0xffff_8000_089f_a510,
+        0xffff_8000_089f_a4f0,
+        0xffff_8000_089f_a520,
+        0xffff_8000_089f_a500,
+    ];
+
+    return SPECIAL_PC.contains(&pc);
+}
+
 impl<
         MMU: AbstractMMU,
         PCache: PrivateCaches,
@@ -256,7 +269,7 @@ impl<
         is_instruction: bool,
         v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
         instruction_va_pc: u64,
-    ) {
+    ) -> CacheHierarchyAccessResult {
         assert!(
             !(is_instruction && is_store),
             "Instruction and store permission cannot be used at the same time."
@@ -292,7 +305,7 @@ impl<
             crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
+                let res = self.access_memory_pblock_id(
                     core_id,
                     block_id,
                     ts,
@@ -312,6 +325,8 @@ impl<
                         instruction_va_pc,
                     );
                 }
+
+                res
             }
             crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
                 // replay the trace.
@@ -332,7 +347,7 @@ impl<
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
+                let res = self.access_memory_pblock_id(
                     core_id,
                     block_id,
                     ts,
@@ -366,11 +381,13 @@ impl<
                         Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
                     }
                 }
+
+                res
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
+                let res = self.access_memory_pblock_id(
                     core_id,
                     block_id,
                     ts,
@@ -390,6 +407,8 @@ impl<
                         instruction_va_pc,
                     );
                 }
+
+                res
             }
         }
     }
@@ -413,7 +432,7 @@ impl<
         v_ts: u64,
         access_type: CacheAccessType,
         is_os: bool,
-        _instruction_va_pc: u64,
+        instruction_va_pc: u64,
     ) -> CacheHierarchyAccessResult {
         let is_prefetch = access_type == CacheAccessType::PrefetchRead
             || access_type == CacheAccessType::PrefetchWrite;
@@ -422,12 +441,23 @@ impl<
         let is_store = access_type == CacheAccessType::DataWrite;
         let is_page_walk = access_type == CacheAccessType::PageWalkRead;
 
+        let is_special_memory_instruction =
+            is_special_memory_access(instruction_va_pc) && !is_instruction;
+
         if !is_prefetch && self.with_statistics {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
             if is_instruction {
                 Statistics::global_record(core_id, EventType::InstructionAccess, is_os);
             } else {
                 Statistics::global_record(core_id, EventType::DataAccess, is_os);
+            }
+
+            if is_special_memory_instruction {
+                Statistics::global_record(
+                    core_id,
+                    EventType::SpecialMemoryInstructionAccess,
+                    is_os,
+                );
             }
         }
 
@@ -647,6 +677,14 @@ impl<
                 // Here it is a miss in the private cache.
                 Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
+                if is_special_memory_instruction {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::SpecialMemoryInstructionPrivateCacheMiss,
+                        is_os,
+                    );
+                }
+
                 if is_instruction {
                     Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
                 } else if is_page_walk {
@@ -690,6 +728,15 @@ impl<
 
                     Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
                 }
+
+                if is_special_memory_instruction {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::SpecialMemoryInstructionSharedCacheMiss,
+                        is_os,
+                    );
+                }
+
                 return CacheHierarchyAccessResult::Miss;
             }
         }

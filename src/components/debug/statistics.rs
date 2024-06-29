@@ -38,6 +38,10 @@ pub enum EventType {
     PrivateCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the coherence state information.
     SharedCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the LRU information in the shared cache.
 
+    SpecialMemoryInstructionAccess,
+    SpecialMemoryInstructionPrivateCacheMiss,
+    SpecialMemoryInstructionSharedCacheMiss,
+
     // the key problem is still how I convert the previous two counters' value into the miss rate impact.
     TLBMiss,
     TLBMissDueToInstruction,
