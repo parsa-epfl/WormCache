@@ -1093,3 +1093,11 @@ extern "C" {
     #[doc = " qemu_plugin_register_savevm_cb() - register a savevm callback\n @cb: callback function\n\n The @cb function is called after the VM state is saved.\n The exact time of the callback is after the VM state is saved to the qcow2 file and before the VM is resumed.\n\n returns true if the callback is registered successfully. Please note at currently at most one callback can be registered."]
     pub fn qemu_plugin_register_savevm_cb(cb: qemu_plugin_savevm_cb_t) -> bool;
 }
+pub type qemu_plugin_quantum_deplete_cb_t = ::std::option::Option<unsafe extern "C" fn()>;
+extern "C" {
+    pub fn qemu_plugin_register_quantum_deplete_cb(cb: qemu_plugin_quantum_deplete_cb_t) -> bool;
+}
+extern "C" {
+    #[doc = " qemu_plugin_read_vts_base - return the base virtual time calculated from the quantum budget and quantum generation.\n\n The return value does not contain the current translation block.\n You need to add the bias by yourself to get the accurate virtual timestamp.\n"]
+    pub fn qemu_plugin_read_local_virtual_time_base() -> u64;
+}

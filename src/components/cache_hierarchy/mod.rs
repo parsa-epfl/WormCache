@@ -24,18 +24,11 @@ mod util;
 
 pub mod directory;
 pub mod hierarchy;
-pub mod icount; // TODO: there should be a centralized icount system.
 pub mod l0i;
 pub mod private_cache;
 pub mod shared_cache;
 
 mod parser;
-
-static mut ICOUNT_PLUGIN: *mut icount::ICountPlugin = std::ptr::null_mut();
-
-unsafe extern "C" fn vcpu_increase_icount(vcpu_idx: u32, count: *mut ffi::c_void) {
-    (*ICOUNT_PLUGIN).increase_icount(vcpu_idx as u8, count as u64);
-}
 
 type HierarchyForPlugin = parser::HierarchyForPlugin;
 
@@ -47,12 +40,10 @@ unsafe extern "C" fn vcpu_mem_access(
     vcpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
-    offset: *mut ffi::c_void,
+    inst_host_addr: *mut ffi::c_void,
 ) {
     // let offset: u64 = offset as u64;
     // let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
-
-    let memory_instruction_pc = offset as u64;
 
     let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
@@ -60,9 +51,13 @@ unsafe extern "C" fn vcpu_mem_access(
     if !is_device {
         let is_store = qemu_api::qemu_plugin_mem_is_store(info);
 
-        // let walk_trace = qemu_api::qemu_plugin_hwaddr_translate_walk_trace(hw_handler);
-        // let walk_trace: [u64; 4] = std::slice::from_raw_parts(walk_trace, 4).try_into().unwrap();
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
+
+        let pc_vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
+        let pc_vaddr = pc_vpn << 12 | (inst_host_addr as u64 & 0xfff);
+
+        let base_vtime = qemu_api::qemu_plugin_read_local_virtual_time_base();
+        let instruction_offset = inst_host_addr as u64 >> 48;
 
         let (plugin_to_update, vcpu_idx) = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
             && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
@@ -81,8 +76,8 @@ unsafe extern "C" fn vcpu_mem_access(
             get_monotonic_ts(),
             is_store,
             false,
-            get_monotonic_ts(), // v_ts, not used, but instead, the monotonic timestamp is used.
-            memory_instruction_pc,
+            base_vtime + instruction_offset,
+            pc_vaddr,
         );
     } else {
         // TODO: check the I/O event
@@ -100,16 +95,17 @@ unsafe extern "C" fn vcpu_insn_exec(
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
 
-    let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
-
-    let instruction_offset = inst_host_addr as u64 >> 48;
-    let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
-
     if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
         // this is very necessary. It avoids the slow lookup of the basic blocks.
         // It also guarantees the traffic to the cache is similar when the tb size is forced to be 1.
         return;
     }
+
+    // get the local target time of executing the first instruction in the translation block.
+    let base_vtime = qemu_api::qemu_plugin_read_local_virtual_time_base();
+
+    let instruction_offset = inst_host_addr as u64 >> 48;
+    let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
 
     let (plugin_to_update, vcpu_idx) = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
         && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
@@ -127,7 +123,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             get_monotonic_ts(),
             false,
             true,
-            current_icount + instruction_offset,
+            base_vtime + instruction_offset,
             vaddr,
         );
     } else {
@@ -137,7 +133,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             get_monotonic_ts(),
             false,
             true,
-            current_icount + instruction_offset,
+            base_vtime + instruction_offset,
             vaddr,
         );
     }
@@ -161,7 +157,6 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         unsafe {
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(true)));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
-            ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
 
             C0_TRACE_FILE = Box::into_raw(Box::new(
                 Encoder::new(std::fs::File::create("c0_trace.zstd").unwrap(), 3).unwrap(),
@@ -303,22 +298,18 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         // bind the memory callback.
         for i in 0..n_instruction {
             let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
-            let vpc = qemu_api::qemu_plugin_insn_vaddr(inst);
+
+            let insn_addr = (qemu_api::qemu_plugin_insn_haddr(inst) as u64) & 0xffff_ffff_ffff;
+            let offset = i as u64;
+            let combined = insn_addr | (offset << 48);
+
             qemu_api::qemu_plugin_register_vcpu_mem_cb(
                 inst,
                 Some(vcpu_mem_access),
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
                 qemu_api::qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
-                vpc as *mut ffi::c_void,
+                combined as *mut ffi::c_void,
             );
         }
-
-        // add the icount callback for the whole block.
-        qemu_api::qemu_plugin_register_vcpu_tb_exec_cb(
-            tb,
-            Some(vcpu_increase_icount),
-            qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-            n_instruction as *mut ffi::c_void,
-        );
     }
 }
