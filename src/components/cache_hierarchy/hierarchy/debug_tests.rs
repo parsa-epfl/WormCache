@@ -343,3 +343,58 @@ fn later_read_after_write_cancel_sharers() {
         );
     }
 }
+
+#[test]
+fn write_evict_read_write() {
+    let mh = MH::new(true, 0);
+    let block_id = 1043;
+    // First, there is a write access from core 0, at timestamp 10.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            0,
+            block_id,
+            10,
+            CacheAccessType::DataWrite
+        ),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // We evict the cache line from the cache.
+    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+        let block_id = block_id + (i + 1) as u64 * PCACHE_SET as u64;
+        assert_eq!(
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                0,
+                block_id,
+                20 + i as u64 * 10,
+                CacheAccessType::DataWrite
+            ),
+            CacheHierarchyAccessResult::Miss
+        );
+    }
+
+    // OK, we read it back, by another core
+    // This should not trigger any assertion failure.
+    // But it creates an replica on chip. Now it should create a replica.
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            1,
+            block_id,
+            1024,
+            CacheAccessType::DataRead
+        ),
+        CacheHierarchyAccessResult::HitInSharedCache
+    );
+
+    // what if we have a write access before the first one, from core 1?
+    // Will this trigger an assertion failure?
+    assert_eq!(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+            2,
+            block_id,
+            5,
+            CacheAccessType::DataWrite
+        ),
+        CacheHierarchyAccessResult::Unknown
+    );
+}

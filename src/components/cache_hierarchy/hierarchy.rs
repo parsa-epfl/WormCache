@@ -1,6 +1,4 @@
-use crate::components::cache_hierarchy::shared_cache::{
-    SharedCache, SharedCacheLookupResult
-};
+use crate::components::cache_hierarchy::shared_cache::{SharedCache, SharedCacheLookupResult};
 use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 
@@ -124,10 +122,7 @@ impl<
             with_statistics,
             vts_violation_distribution: if quantum_size > 1 {
                 Some(std::array::from_fn(|_| {
-                    UnsafeCell::new(
-                        Histogram::new_with_max(quantum_size, 3)
-                            .unwrap(),
-                    )
+                    UnsafeCell::new(Histogram::new_with_max(quantum_size, 3).unwrap())
                 }))
             } else {
                 None
@@ -855,6 +850,22 @@ impl<
         }
 
         if PRECISE_COHERENCE_RECONSTRUCTION {
+            // Check whether it has a write history before the eviction.
+            if miss_directory_guard.recent_writer_ts > ts {
+                // well, this is an order violation.
+                // Now, release the lock of the private cache.
+                drop(acquired_sets);
+
+                if self.with_statistics {
+                    // The truth is that we don't know whether this is a miss or hit, because a previous write operation has cleaned the history.
+                    Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
+                    // Accordingly, we don't know whether this access would have cause a shared cache miss.
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
+                }
+
+                return CacheHierarchyAccessResult::Unknown;
+            }
+
             // Here for MESI, there are two cases that we need to consider:
             // - Another core has written the cache line with a larger timestamp.
             //   In this case, we need to only keep the latest writer, and ignore this operation.
@@ -1034,9 +1045,8 @@ impl<
             miss_directory_guard.sharers = incoming_sharer;
 
             // We have a new write exposed to the directory.
-            if miss_directory_guard.recent_writer_ts < ts {
-                miss_directory_guard.recent_writer_ts = ts;
-            }
+            assert!(miss_directory_guard.recent_writer_ts <= ts);
+            miss_directory_guard.recent_writer_ts = ts;
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -1343,7 +1353,6 @@ impl<
         self.shared_cache
             .dump_access_frequency("shared_cache_access_frequency.csv");
 
-    
         if let Some(hist) = self.vts_violation_distribution.as_ref() {
             // we need to dump the distribution.
             for core_id in 0..parameter::CORE_COUNT {
