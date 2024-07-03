@@ -130,7 +130,7 @@ fn tage_best_case() {
 #[allow(dead_code)]
 fn tage_worst_case() {
     // generate 1000 branches, and their directions are random.
-    let branches = (0..100000)
+    let branches = (0..100 * 1000)
         .map(|_| {
             let pc = random::<u64>();
             let direction = random::<bool>();

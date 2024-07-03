@@ -8,7 +8,7 @@ use crate::components::cache_hierarchy::util::CCell;
 
 use super::{
     statistics::SharedCacheSetStatistics, SerializedSharedCacheBlock,
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VTsViolationResult,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
 };
 use serde_json::json;
 use spin::mutex::SpinMutex;
@@ -56,7 +56,7 @@ impl<
         abandon_dirty: bool,
         access_type: super::CacheAccessType,
         is_os: bool,
-    ) -> (SharedCacheLookupResult) {
+    ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
 
         self.blocks[set_idx]

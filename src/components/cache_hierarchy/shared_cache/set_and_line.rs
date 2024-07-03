@@ -2,7 +2,6 @@ use core::panic;
 
 use crate::components::debug::{
     cache_line_history::CacheLineCoherenceHistory,
-    statistics::{EventType::SharedCacheAccessTsViolation, Statistics},
 };
 
 use super::{

@@ -7,7 +7,7 @@ use plugin_helper::PluginHelper;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 8;
+pub const CORE_COUNT: usize = 128;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -20,7 +20,7 @@ pub const CORE_COUNT: usize = 8;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = false;
+pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = true;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!CACHE_HIERARCHY_FOR_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -81,7 +81,7 @@ pub const UNIFIED_PRI_CACHE_ASSO: usize = 16;
  * The number of sets of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_SET: usize = 2048;
+pub const UNIFIED_PRI_CACHE_SET: usize = 2048 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
 
 /**
@@ -98,7 +98,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 64;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -115,7 +115,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 64;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -123,14 +123,14 @@ static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
  *
  * The associativity of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1KB.
+pub const SHARED_CACHE_ASSO: usize = 8; // with 16 and 64, each cache set is 1KB.
 
 /**
  * SHARED_CACHE_SET
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 1024 * 1024; // 1GB shared cache.
+pub const SHARED_CACHE_SET: usize = 16 * 1024;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -239,8 +239,9 @@ pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
     _pb: crate::BranchPredictorPlugin,
     _vt: crate::VirtualTimePlugin,
-    _mk: crate::MarkerPlugin,
+    // _mk: crate::MarkerPlugin,
     _lm: crate::ParallelCacheHierarchyPlugin,
+    // _t: crate::TracePlugin,
 }
 
 /**

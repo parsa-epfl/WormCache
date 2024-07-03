@@ -29,7 +29,7 @@ type MH = MemoryHierarchy<
 
 #[test]
 fn read_evict_and_other_core_read_back() {
-    let mh = MH::new(true);
+    let mh = MH::new(true, 0);
     let block_id = 1043;
 
     // core 0 reads a data at timestamp 10.
@@ -71,7 +71,7 @@ fn read_evict_and_other_core_read_back() {
 
 #[test]
 fn one_core_write_first_then_read() {
-    let mh = MH::new(true);
+    let mh = MH::new(true, 0);
     let block_id = 1043;
 
     // core 0 reads a data at timestamp 10.
@@ -100,7 +100,7 @@ fn one_core_write_first_then_read() {
 #[test]
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
-    let mh = MH::new(true);
+    let mh = MH::new(true, 0);
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
@@ -150,7 +150,7 @@ fn write_write_read_then_old_write() {
 
 #[test]
 fn write_read_then_early_read() {
-    let mh = MH::new(true);
+    let mh = MH::new(true, 0);
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
@@ -189,7 +189,7 @@ fn write_read_then_early_read() {
 
 #[test]
 fn read_then_write() {
-    let mh = MH::new(true);
+    let mh = MH::new(true, 0);
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
@@ -221,7 +221,7 @@ fn read_then_write() {
 
 #[test]
 fn write_read_after_write() {
-    let mh = MH::new(true);
+    let mh = MH::new(true, 0);
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
@@ -260,7 +260,7 @@ fn write_read_after_write() {
 
 #[test]
 fn later_read_after_write_cancel_sharers() {
-    let mh = MH::new(true);
+    let mh = MH::new(true, 0);
     let block_id = 1043;
 
     // Core 0 write, at 10.

@@ -1,5 +1,5 @@
 use crate::components::cache_hierarchy::shared_cache::{
-    SharedCache, SharedCacheLookupResult, VTsViolationResult,
+    SharedCache, SharedCacheLookupResult
 };
 use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
@@ -7,7 +7,6 @@ use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
-use crate::qemu_api::qemu_plugin_get_quantum_size;
 
 use super::directory::DirectorySet;
 use super::{
@@ -15,9 +14,13 @@ use super::{
     private_cache::{self, PrivateCaches},
 };
 
+use hdrhistogram::serialization::Serializer;
+
 use crate::components::mmu::AbstractMMU;
 use hdrhistogram::Histogram;
 use std::cell::UnsafeCell;
+use std::fs::File;
+use std::io::Write;
 use std::ops::DerefMut;
 
 #[cfg(test)]
@@ -111,9 +114,7 @@ impl<
         DIRECTORY_SHARD_COUNT,
     >
 {
-    pub fn new(with_statistics: bool) -> Self {
-        let has_quantum = unsafe { qemu_plugin_get_quantum_size() } != 0;
-
+    pub fn new(with_statistics: bool, quantum_size: u64) -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
@@ -121,10 +122,10 @@ impl<
             shared_cache: SCache::new(),
             shared_cache_recorded_with_vts: SCache::new(),
             with_statistics,
-            vts_violation_distribution: if has_quantum {
+            vts_violation_distribution: if quantum_size > 1 {
                 Some(std::array::from_fn(|_| {
                     UnsafeCell::new(
-                        Histogram::new_with_bounds(0, unsafe { qemu_plugin_get_quantum_size() }, 3)
+                        Histogram::new_with_max(quantum_size, 3)
                             .unwrap(),
                     )
                 }))
@@ -143,7 +144,7 @@ impl<
         is_instruction: bool,
         v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
         instruction_va_pc: u64,
-    ) {
+    ) -> CacheHierarchyAccessResult {
         assert!(
             !(is_instruction && is_store),
             "Instruction and store permission cannot be used at the same time."
@@ -178,7 +179,7 @@ impl<
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
+                let res = self.access_memory_pblock_id(
                     core_id,
                     block_id,
                     ts,
@@ -197,7 +198,8 @@ impl<
                         is_os,
                         instruction_va_pc,
                     );
-                }
+                };
+                res
             }
             crate::components::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
                 // replay the trace.
@@ -217,7 +219,7 @@ impl<
                     );
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
+                let res = self.access_memory_pblock_id(
                     core_id,
                     block_id,
                     ts,
@@ -250,11 +252,13 @@ impl<
                         Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
                     }
                 }
+
+                res
             }
 
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(
+                let res = self.access_memory_pblock_id(
                     core_id,
                     block_id,
                     ts,
@@ -274,6 +278,8 @@ impl<
                         instruction_va_pc,
                     );
                 }
+
+                res
             }
         }
     }
@@ -1028,8 +1034,9 @@ impl<
             miss_directory_guard.sharers = incoming_sharer;
 
             // We have a new write exposed to the directory.
-            assert!(miss_directory_guard.recent_writer_ts <= ts);
-            miss_directory_guard.recent_writer_ts = ts;
+            if miss_directory_guard.recent_writer_ts < ts {
+                miss_directory_guard.recent_writer_ts = ts;
+            }
 
             CacheLineCoherenceHistory::global_record_history(
                 block_id,
@@ -1335,5 +1342,32 @@ impl<
     pub fn dump_diagnose_information(&self) {
         self.shared_cache
             .dump_access_frequency("shared_cache_access_frequency.csv");
+
+    
+        if let Some(hist) = self.vts_violation_distribution.as_ref() {
+            // we need to dump the distribution.
+            for core_id in 0..parameter::CORE_COUNT {
+                let hist = unsafe { &mut *hist[core_id].get() };
+                // let mut serializer = hdrhistogram::serialization::V2Serializer::new();
+                // let mut buffer = Vec::new();
+                // serializer.serialize(hist, &mut buffer).unwrap();
+                // let mut file = File::create(format!("vts_violation_{}.hist", core_id)).unwrap();
+                // file.write_all(&buffer).unwrap();
+                let highest = hist.high();
+
+                // print 10 bins.
+                let mut file = File::create(format!("vts_violation_{}.csv", core_id)).unwrap();
+                writeln!(file, "Value, Count").unwrap();
+                for i in 0..10 {
+                    let count = hist.count_at(highest / 10 * i);
+                    writeln!(file, "{}, {}", highest / 10 * i, count).unwrap();
+                }
+
+                let count = hist.count_at(highest);
+                writeln!(file, "{}, {}", highest, count).unwrap();
+
+                file.flush().unwrap();
+            }
+        }
     }
 }

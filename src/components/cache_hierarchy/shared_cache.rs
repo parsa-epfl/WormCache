@@ -7,11 +7,6 @@ use serde::Serialize;
 //    - Read is a miss: Read lock
 // 3. It will be probably OK to use Mutex.
 
-pub enum VTsViolationResult {
-    Violated,
-    NotViolated,
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupResult {
     Hit(bool), // (is_dirty)

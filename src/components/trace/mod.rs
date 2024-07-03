@@ -7,14 +7,14 @@ use std::{
 
 use zstd::Encoder;
 
-static mut TRACE_FILE: *mut Encoder<BufWriter<File>> = std::ptr::null_mut();
+static mut TRACE_FILE: *mut Encoder<File> = std::ptr::null_mut();
 
 static mut C0_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 use crate::qemu_api;
 
 unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, host_va: *mut ffi::c_void) {
-    if !vcpu_idx == 0 {
+    if vcpu_idx != 0 {
         return;
     }
 
@@ -23,18 +23,25 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, host_va: *mut ffi::c_void) {
     let instruction_literal = unsafe { *(host_va as *mut u32) };
 
     // write the instruction to the trace file.
-    unsafe { writeln!(*TRACE_FILE, "{:x},{:x}", pc, instruction_literal).unwrap() };
+    unsafe {
+        //writeln!(*TRACE_FILE, "{:x} {:x}\n", pc, instruction_literal).unwrap();
+        (*TRACE_FILE)
+            .write_all(&format!("i {:x} {:x}\n", pc, instruction_literal).into_bytes())
+            .unwrap();
+    };
 
     // increment the counter.
     unsafe {
         if C0_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 20000000 {
+            let owned_trace_file = Box::from_raw(TRACE_FILE);
+            owned_trace_file.finish().unwrap();
             exit(0);
         }
     };
 }
 
 unsafe extern "C" fn vcpu_mem_access(
-    cpu_idx: u32,
+    vcpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
@@ -58,11 +65,7 @@ impl super::Plugin for TracePlugin {
     fn init() {
         unsafe {
             TRACE_FILE = Box::into_raw(Box::new(
-                Encoder::new(
-                    BufWriter::new(File::create("worm_cache.c0.trace.zst").unwrap()),
-                    4,
-                )
-                .unwrap(),
+                Encoder::new(File::create("worm_cache.c0.trace.zst").unwrap(), 3).unwrap(),
             ));
         }
     }

@@ -40,8 +40,8 @@ unsafe extern "C" fn vcpu_tb_trans(
 unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
     let name = ffi::CStr::from_ptr(name).to_str().unwrap();
     // create a folder for the name.
-    std::fs::create_dir_all(name).unwrap();
-    PluginList::dump_snapshot(name);
+    // std::fs::create_dir_all(name).unwrap();
+    // PluginList::dump_snapshot(name);
 }
 
 #[no_mangle]

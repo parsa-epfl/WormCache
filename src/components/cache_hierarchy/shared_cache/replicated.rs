@@ -2,7 +2,7 @@ use crate::components::cache_hierarchy::hierarchy::CacheAccessType;
 
 use super::{
     statistics::SharedCacheSetStatistics, SerializedSharedCacheBlock, SharedCache,
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VTsViolationResult,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
 };
 
 use serde_json::json;
@@ -184,7 +184,7 @@ impl<
         }
     }
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64, v_ts: u64) -> Option<bool> {
+    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64, _v_ts: u64) -> Option<bool> {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.invalidate(block_id, ts)
     }
