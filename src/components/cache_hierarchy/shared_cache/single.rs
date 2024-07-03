@@ -53,18 +53,15 @@ impl<
         _core_id: u32,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
         access_type: super::CacheAccessType,
         is_os: bool,
-    ) -> (SharedCacheLookupResult, VTsViolationResult) {
+    ) -> (SharedCacheLookupResult) {
         let set_idx = (block_id % SET as u64) as usize;
-        return (
-            self.blocks[set_idx]
-                .inner()
-                .lookup(block_id, ts, abandon_dirty, access_type, is_os),
-            VTsViolationResult::NotViolated,
-        );
+
+        self.blocks[set_idx]
+            .inner()
+            .lookup(block_id, ts, abandon_dirty, access_type, is_os)
     }
 
     fn insert(
@@ -72,7 +69,6 @@ impl<
         _core_id: u32,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) {
@@ -91,13 +87,12 @@ impl<
         _core_id: u32,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
         access_type: super::CacheAccessType,
         is_os: bool,
-    ) -> (SharedCacheLookupResult, VTsViolationResult) {
+    ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
         let result = self.blocks[set_idx].inner().lookup_and_insert(
             block_id,
@@ -109,21 +104,20 @@ impl<
             is_os,
         );
 
-        (
-            match result {
-                SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
-                    SharedCacheLookupResult::Hit(is_dirty)
+        match result {
+            SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
+                SharedCacheLookupResult::Hit(is_dirty)
+            }
+            SharedCacheLookupAndInsertResult::Inserted(just_warmed) => {
+                if just_warmed {
+                    self.warmed_sets.fetch_add(1, Ordering::Relaxed);
                 }
-                SharedCacheLookupAndInsertResult::Inserted(just_warmed) => {
-                    if just_warmed {
-                        self.warmed_sets.fetch_add(1, Ordering::Relaxed);
-                    }
-                    SharedCacheLookupResult::Miss
-                }
-                SharedCacheLookupAndInsertResult::Unknown => SharedCacheLookupResult::Unknown,
-            },
-            VTsViolationResult::NotViolated,
-        )
+                SharedCacheLookupResult::Miss
+            }
+            SharedCacheLookupAndInsertResult::Unknown(diff) => {
+                SharedCacheLookupResult::Unknown(diff)
+            }
+        }
     }
 
     fn warmed_sets_count(&self) -> usize {

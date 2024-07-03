@@ -32,6 +32,17 @@ mod parser;
 
 type HierarchyForPlugin = parser::HierarchyForPlugin;
 
+thread_local! {
+    static VTIME_BASE: std::cell::RefCell<u64> = std::cell::RefCell::new(0);
+}
+
+unsafe extern "C" fn evaluate_vtime_base(_vcpu_idx: u32, _unused: *mut ffi::c_void) {
+    let vtime_base = qemu_api::qemu_plugin_read_local_virtual_time_base();
+    VTIME_BASE.with(|vtime_base_cell| {
+        *vtime_base_cell.borrow_mut() = vtime_base;
+    });
+}
+
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 static mut DUMMY_PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
@@ -311,5 +322,13 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 combined as *mut ffi::c_void,
             );
         }
+
+        // insert the translation block.
+        // qemu_api::qemu_plugin_register_vcpu_tb_exec_cb(
+        //     tb,
+        //     Some(evaluate_vtime_base),
+        //     qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+        //     std::ptr::null_mut(),
+        // )
     }
 }

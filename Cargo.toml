@@ -23,6 +23,7 @@ strum_macros = "0.26.2"
 strum = "0.26.2"
 perf-event = "0.4.8"
 zstd = "0.13.1"
+hdrhistogram = "7.5.4"
 
 [lib]
 crate-type=["rlib", "cdylib"]

@@ -133,7 +133,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
             }
             None => {
                 if ts < self.recent_evict_ts {
-                    SharedCacheLookupResult::Unknown
+                    SharedCacheLookupResult::Unknown((self.recent_evict_ts - ts) as u32)
                 } else {
                     self.statistics.record(access_type, is_os, false);
                     SharedCacheLookupResult::Miss
@@ -244,7 +244,9 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
                 let just_warmed = self.insert(block_id, ts, is_store, increase_touched_count);
                 SharedCacheLookupAndInsertResult::Inserted(just_warmed)
             }
-            SharedCacheLookupResult::Unknown => SharedCacheLookupAndInsertResult::Unknown,
+            SharedCacheLookupResult::Unknown(diff) => {
+                SharedCacheLookupAndInsertResult::Unknown(diff)
+            }
         }
     }
 }
