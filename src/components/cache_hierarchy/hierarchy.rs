@@ -7,6 +7,7 @@ use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
+use crate::qemu_api::qemu_plugin_get_quantum_size;
 
 use super::directory::DirectorySet;
 use super::{
@@ -15,6 +16,7 @@ use super::{
 };
 
 use crate::components::mmu::AbstractMMU;
+use hdrhistogram::Histogram;
 use std::cell::UnsafeCell;
 use std::ops::DerefMut;
 
@@ -45,10 +47,13 @@ pub struct MemoryHierarchy<
     directory: directory::Directory<DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
+    shared_cache_recorded_with_vts: SCache,
     with_statistics: bool,
+
+    vts_violation_distribution: Option<[UnsafeCell<Histogram<u64>>; parameter::CORE_COUNT]>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CacheAccessType {
     InstructionFetch,
 
@@ -107,12 +112,25 @@ impl<
     >
 {
     pub fn new(with_statistics: bool) -> Self {
+        let has_quantum = unsafe { qemu_plugin_get_quantum_size() } != 0;
+
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
+            shared_cache_recorded_with_vts: SCache::new(),
             with_statistics,
+            vts_violation_distribution: if has_quantum {
+                Some(std::array::from_fn(|_| {
+                    UnsafeCell::new(
+                        Histogram::new_with_bounds(0, unsafe { qemu_plugin_get_quantum_size() }, 3)
+                            .unwrap(),
+                    )
+                }))
+            } else {
+                None
+            },
         }
     }
 
@@ -233,6 +251,7 @@ impl<
                     }
                 }
             }
+
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
                 self.access_memory_pblock_id(
@@ -512,12 +531,18 @@ impl<
             CacheOperationType::GetR
         };
 
-        if miss_directory_guard.recent_writer_vts > v_ts && self.with_statistics {
+        if sharers.count_ones() == 0
+            && miss_directory_guard.recent_writer_vts > v_ts
+            && self.with_statistics
+        {
             // this cache line is evicted and previously is written. This is definitely a order violation.
             Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation, is_os);
         }
 
-        if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.recent_writer_ts > ts {
+        if PRECISE_COHERENCE_RECONSTRUCTION
+            && sharers.count_ones() == 0
+            && miss_directory_guard.recent_writer_ts > ts
+        {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
             CacheLineCoherenceHistory::global_record_history(
@@ -547,33 +572,40 @@ impl<
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
-                let (lookup_result, vts_violated) = self.shared_cache.lookup_and_insert_on_miss(
+                let lookup_result = self.shared_cache.lookup_and_insert_on_miss(
                     core_id,
                     block_id,
                     ts,
-                    v_ts,
                     true,
                     false,
                     true,
-                    access_type,
+                    access_type.clone(),
                     is_os,
                 );
 
-                if self.with_statistics {
-                    match vts_violated {
-                        VTsViolationResult::Violated => Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheVTsOrderViolation,
-                            is_os,
-                        ),
-                        VTsViolationResult::NotViolated => {}
-                    };
+                let virtual_timestamped_shared_cache_result = self
+                    .shared_cache_recorded_with_vts
+                    .lookup_and_insert_on_miss(
+                        core_id,
+                        block_id,
+                        v_ts,
+                        true,
+                        false,
+                        false,
+                        access_type,
+                        is_os,
+                    );
+
+                if let SharedCacheLookupResult::Unknown(time_diff) =
+                    virtual_timestamped_shared_cache_result
+                {
+                    self.handle_vts_violation(core_id, time_diff, true, is_os);
                 }
 
                 match lookup_result {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
-                    SharedCacheLookupResult::Unknown => {
+                    SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
                             Statistics::global_record(
                                 core_id,
@@ -585,25 +617,29 @@ impl<
                     }
                 }
             } else {
-                let (lookup_result, vts_violated) =
-                    self.shared_cache
-                        .lookup(core_id, block_id, ts, v_ts, true, access_type, is_os);
+                let lookup_result = self.shared_cache.lookup(
+                    core_id,
+                    block_id,
+                    ts,
+                    true,
+                    access_type.clone(),
+                    is_os,
+                );
 
-                if self.with_statistics {
-                    match vts_violated {
-                        VTsViolationResult::Violated => Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheVTsOrderViolation,
-                            is_os,
-                        ),
-                        VTsViolationResult::NotViolated => {}
-                    };
+                let virtual_timestamped_shared_cache_result = self
+                    .shared_cache_recorded_with_vts
+                    .lookup(core_id, block_id, v_ts, true, access_type, is_os);
+
+                if let SharedCacheLookupResult::Unknown(time_diff) =
+                    virtual_timestamped_shared_cache_result
+                {
+                    self.handle_vts_violation(core_id, time_diff, true, is_os);
                 }
 
                 match lookup_result {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
-                    SharedCacheLookupResult::Unknown => {
+                    SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
                             Statistics::global_record(
                                 core_id,
@@ -794,26 +830,20 @@ impl<
 
                 if is_store {
                     if line.access_virtual_timestamp() > v_ts {
-                        if self.with_statistics {
-                            Statistics::global_record(
-                                core_id,
-                                EventType::PrivateCacheVTsOrderViolation,
-                                is_os,
-                            );
-                        }
-
-                        break;
-                    }
-                } else if line.write_virtual_timestamp() > v_ts {
-                    if self.with_statistics {
-                        Statistics::global_record(
+                        self.handle_vts_violation(
                             core_id,
-                            EventType::PrivateCacheVTsOrderViolation,
+                            (line.access_virtual_timestamp() - v_ts) as u32,
+                            false,
                             is_os,
                         );
                     }
-
-                    break;
+                } else if line.write_virtual_timestamp() > v_ts {
+                    self.handle_vts_violation(
+                        core_id,
+                        (line.write_virtual_timestamp() - v_ts) as u32,
+                        false,
+                        is_os,
+                    );
                 }
             }
         }
@@ -1236,13 +1266,39 @@ impl<
 
             if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
+                    .insert(core_id, block_id, ts, modified.0, true);
+
+                self.shared_cache_recorded_with_vts
+                    .insert(core_id, block_id, v_ts, modified.0, false);
             }
 
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
+                    .insert(core_id, block_id, ts, modified.0, true);
+
+                self.shared_cache_recorded_with_vts
+                    .insert(core_id, block_id, v_ts, modified.0, false);
             }
+        }
+    }
+
+    #[inline]
+    pub fn handle_vts_violation(
+        &self,
+        core_id: u32,
+        time_diff: u32,
+        is_shared_cache: bool,
+        is_os: bool,
+    ) {
+        if let Some(hists) = self.vts_violation_distribution.as_ref() {
+            if is_shared_cache {
+                Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation, is_os);
+            } else {
+                Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation, is_os);
+            }
+
+            let hist = unsafe { &mut *hists[core_id as usize].get() };
+            hist.record(time_diff as u64).unwrap();
         }
     }
 
