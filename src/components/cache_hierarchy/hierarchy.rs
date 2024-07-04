@@ -1357,25 +1357,11 @@ impl<
             // we need to dump the distribution.
             for core_id in 0..parameter::CORE_COUNT {
                 let hist = unsafe { &mut *hist[core_id].get() };
-                // let mut serializer = hdrhistogram::serialization::V2Serializer::new();
-                // let mut buffer = Vec::new();
-                // serializer.serialize(hist, &mut buffer).unwrap();
-                // let mut file = File::create(format!("vts_violation_{}.hist", core_id)).unwrap();
-                // file.write_all(&buffer).unwrap();
-                let highest = hist.high();
-
-                // print 10 bins.
-                let mut file = File::create(format!("vts_violation_{}.csv", core_id)).unwrap();
-                writeln!(file, "Value, Count").unwrap();
-                for i in 0..10 {
-                    let count = hist.count_at(highest / 10 * i);
-                    writeln!(file, "{}, {}", highest / 10 * i, count).unwrap();
-                }
-
-                let count = hist.count_at(highest);
-                writeln!(file, "{}, {}", highest, count).unwrap();
-
-                file.flush().unwrap();
+                let mut serializer = hdrhistogram::serialization::V2Serializer::new();
+                let mut buffer = Vec::new();
+                serializer.serialize(hist, &mut buffer).unwrap();
+                let mut file = File::create(format!("vts_violation_{}.hist", core_id)).unwrap();
+                file.write_all(&buffer).unwrap();
             }
         }
     }

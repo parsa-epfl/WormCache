@@ -38,7 +38,7 @@ unsafe extern "C" fn vcpu_tb_trans(
 
 #[no_mangle]
 unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
-    let name = ffi::CStr::from_ptr(name).to_str().unwrap();
+    // let name = ffi::CStr::from_ptr(name).to_str().unwrap();
     // create a folder for the name.
     // std::fs::create_dir_all(name).unwrap();
     // PluginList::dump_snapshot(name);
@@ -46,6 +46,11 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 
 #[no_mangle]
 unsafe extern "C" fn qemu_plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {
+    std::fs::create_dir_all("unsaved").unwrap();
+    PluginList::dump_snapshot("unsaved");
+}
+
+unsafe extern "C" fn qemu_deplete_quantum_cb() {
     std::fs::create_dir_all("unsaved").unwrap();
     PluginList::dump_snapshot("unsaved");
 }
@@ -82,6 +87,7 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
     qemu_api::qemu_plugin_register_atexit_cb(id, Some(qemu_plugin_exit), std::ptr::null_mut());
     qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
+    qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(qemu_deplete_quantum_cb));
 
     PluginList::init();
 
