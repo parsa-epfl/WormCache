@@ -1,11 +1,10 @@
 use core::panic;
 
-use crate::components::debug::{
-    cache_line_history::CacheLineCoherenceHistory,
-};
+use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
 use super::{
-    statistics::SharedCacheSetStatistics, SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
+    statistics::SharedCacheSetStatistics, SharedCacheLookupAndInsertResult,
+    SharedCacheLookupResult, VtsViolationResult,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,7 +19,7 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool, S: SharedCach
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
-    pub recent_access_ts: u64,
+    pub recent_evict_vts: u64,
 
     pub access_count: u64,
 
@@ -48,7 +47,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
 
             touched_count: 0,
             recent_evict_ts: 0,
-            recent_access_ts: 0,
+            recent_evict_vts: 0,
 
             access_count: 0,
 
@@ -109,17 +108,12 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
         &mut self,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         abandon_dirty: bool,
         access_type: super::CacheAccessType,
         is_os: bool,
-    ) -> SharedCacheLookupResult {
+    ) -> (SharedCacheLookupResult, VtsViolationResult) {
         self.access_count += 1;
-
-        if self.recent_access_ts < ts {
-            self.recent_access_ts = ts;
-        } else {
-            // Statistics::global_record(0, SharedCacheAccessTsViolation, is_os);
-        }
 
         match if EXCLUSIVE {
             self.invalidate(block_id, ts)
@@ -128,15 +122,26 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
         } {
             Some(is_dirty) => {
                 self.statistics.record(access_type, is_os, true);
-                SharedCacheLookupResult::Hit(is_dirty)
+                (
+                    SharedCacheLookupResult::Hit(is_dirty),
+                    VtsViolationResult::NotViolated,
+                )
             }
             None => {
-                if ts < self.recent_evict_ts {
+                let cache_access_res = if ts < self.recent_evict_ts {
                     SharedCacheLookupResult::Unknown((self.recent_evict_ts - ts) as u32)
                 } else {
                     self.statistics.record(access_type, is_os, false);
                     SharedCacheLookupResult::Miss
-                }
+                };
+
+                let violation = if v_ts < self.recent_evict_vts {
+                    VtsViolationResult::Violataed((self.recent_evict_vts - v_ts) as u32)
+                } else {
+                    VtsViolationResult::NotViolated
+                };
+
+                (cache_access_res, violation)
             }
         }
     }
@@ -147,14 +152,11 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
         &mut self,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) -> bool {
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
-
-        if self.recent_access_ts < ts {
-            self.recent_access_ts = ts;
-        }
 
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
@@ -218,6 +220,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
             self.recent_evict_ts = ts;
         }
 
+        if self.recent_evict_vts < v_ts {
+            self.recent_evict_vts = v_ts;
+        }
+
         result
     }
 
@@ -226,27 +232,30 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
         &mut self,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
         access_type: super::CacheAccessType,
         is_os: bool,
-    ) -> SharedCacheLookupAndInsertResult {
+    ) -> (SharedCacheLookupAndInsertResult, VtsViolationResult) {
         // (is_hit, dirty/just_warmed)
-        let result = self.lookup(block_id, ts, abandon_dirty, access_type, is_os);
+        let result = self.lookup(block_id, ts, v_ts, abandon_dirty, access_type, is_os);
 
-        match result {
+        let cache_access_result = match result.0 {
             SharedCacheLookupResult::Hit(is_dirty) => {
                 SharedCacheLookupAndInsertResult::Hit(is_dirty)
             }
             SharedCacheLookupResult::Miss => {
-                let just_warmed = self.insert(block_id, ts, is_store, increase_touched_count);
+                let just_warmed = self.insert(block_id, ts, v_ts, is_store, increase_touched_count);
                 SharedCacheLookupAndInsertResult::Inserted(just_warmed)
             }
             SharedCacheLookupResult::Unknown(diff) => {
                 SharedCacheLookupAndInsertResult::Unknown(diff)
             }
-        }
+        };
+
+        return (cache_access_result, result.1);
     }
 }
 
@@ -259,7 +268,7 @@ fn minimum_can_find_invalid() {
 
     // push 8 elements inside.
     for i in 0..8 {
-        assert_eq!(set.insert(i, ts, false, true), i == 7);
+        assert_eq!(set.insert(i, ts, ts, false, true), i == 7);
         ts += 1;
     }
 
@@ -268,7 +277,7 @@ fn minimum_can_find_invalid() {
     ts += 1;
 
     // Now if we refill, we will hit the first place.
-    set.insert(9, ts, false, true);
+    set.insert(9, ts, ts, false, true);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -283,7 +292,7 @@ fn minimum_can_find_invalid() {
     ts += 1;
 
     // If we now insert another one, line[1] will be replaced.
-    assert_eq!(set.insert(10, ts, false, true), false);
+    assert_eq!(set.insert(10, ts, ts, false, true), false);
 
     assert_eq!(
         set.blocks[1],

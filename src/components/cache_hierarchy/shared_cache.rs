@@ -21,6 +21,11 @@ pub enum SharedCacheLookupAndInsertResult {
     Unknown(u32),   // timestamp difference
 }
 
+pub enum VtsViolationResult {
+    Violataed(u32), // timestamp difference
+    NotViolated,
+}
+
 pub trait SharedCache {
     fn new() -> Self;
     fn invalidate(&self, core_id: u32, block_id: u64, ts: u64, v_ts: u64) -> Option<bool>; // (is_modified)
@@ -31,16 +36,18 @@ pub trait SharedCache {
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         abandon_dirty: bool,
         access_type: CacheAccessType,
         is_os: bool,
-    ) -> SharedCacheLookupResult; // (is_modified)
+    ) -> (SharedCacheLookupResult, VtsViolationResult); // (is_modified)
 
     fn insert(
         &self,
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     );
@@ -50,12 +57,13 @@ pub trait SharedCache {
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         abandon_dirty: bool,
         is_store: bool,
         increase_touched_count: bool,
         access_type: CacheAccessType,
         is_os: bool,
-    ) -> SharedCacheLookupResult; // the lookup result: (is_modified)
+    ) -> (SharedCacheLookupResult, VtsViolationResult); // the lookup result: (is_modified)
 
     fn warmed_sets_count(&self) -> usize;
 

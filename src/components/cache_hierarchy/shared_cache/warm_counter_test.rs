@@ -10,7 +10,7 @@ fn warm_counter_normal_function() {
     let which_set_to_target = 127;
 
     for idx in 0..4 {
-        cache.insert(0, which_set_to_target + idx * 1024, 1, false, true);
+        cache.insert(0, which_set_to_target + idx * 1024, 1, 1, false, true);
     }
 
     assert_eq!(cache.warmed_sets_count(), 1);
@@ -23,7 +23,7 @@ fn warm_counter_not_done() {
     let which_set_to_target = 127;
 
     for idx in 0..4 {
-        cache.insert(0, which_set_to_target + idx * 1024, 1, false, false);
+        cache.insert(0, which_set_to_target + idx * 1024, 1, 1, false, false);
     }
 
     assert_eq!(cache.warmed_sets_count(), 0);

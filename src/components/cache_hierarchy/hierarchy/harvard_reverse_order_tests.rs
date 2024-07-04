@@ -56,7 +56,8 @@ impl MH {
 
         if matches!(
             self.shared_cache
-                .lookup(0, block_id, 0, false, CacheAccessType::DataRead, false),
+                .lookup(0, block_id, 0, 0, false, CacheAccessType::DataRead, false)
+                .0,
             SharedCacheLookupResult::Hit(_)
         ) {
             return BlockPosition::InSharedCache;

@@ -98,20 +98,20 @@ unsafe extern "C" fn vcpu_mem_access(
             pc_vaddr,
         );
 
-            // if vcpu_idx == 0 {
-            //     if C0_COUNTER.load(Ordering::Relaxed) >= 0 {
-            //         (*C0_TRACE_FILE)
-            //             .write_all(
-            //                 &format!("d {:x} {:x} {}\n", memory_instruction_pc, pa, recording)
-            //                     .into_bytes(),
-            //             )
-            //             .unwrap();
-            //     }
-            // }
+        // if vcpu_idx == 0 {
+        //     if C0_COUNTER.load(Ordering::Relaxed) >= 0 {
+        //         (*C0_TRACE_FILE)
+        //             .write_all(
+        //                 &format!("d {:x} {:x} {}\n", memory_instruction_pc, pa, recording)
+        //                     .into_bytes(),
+        //             )
+        //             .unwrap();
+        //     }
+        // }
         // };
 
-    // Currently, this is experimental.
-    // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_monotonic_ts(), is_store, false, walk_trace, pa);
+        // Currently, this is experimental.
+        // PLUGIN.access_memory_with_va_and_hint(vcpu_idx, vaddr, get_monotonic_ts(), is_store, false, walk_trace, pa);
     } else {
         // TODO: check the I/O event
     }
@@ -142,9 +142,8 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     let instruction_offset = inst_host_addr as u64 >> 48;
     let inst_host_addr = inst_host_addr as u64 & 0xffff_ffff_ffff;
-    
-    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
-        && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
+
+    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
     {
         let res = if parameter::USE_QEMU_HW_ADDR_AS_PHYSICAL_PC {
             (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
@@ -205,15 +204,17 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
 }
 
 unsafe extern "C" fn dump_statistics() {
-    // dump the miss PCs for each core. 
+    // dump the miss PCs for each core.
     // create the folder if it does not exist.
     std::fs::create_dir_all("unsaved").unwrap();
     for (idx, miss_pcs) in (*PER_CORE_MISS_PCS).iter().enumerate() {
-        let mut file = std::fs::File::create(format!("{}/miss_pcs_{}.csv", "unsaved", idx)).unwrap();
+        let mut file =
+            std::fs::File::create(format!("{}/miss_pcs_{}.csv", "unsaved", idx)).unwrap();
         file.write_all(b"pc,count\n").unwrap();
 
         for (pc, count) in miss_pcs.0.iter() {
-            file.write_all(format!("{:x},{}\n", pc, count).as_bytes()).unwrap();
+            file.write_all(format!("{:x},{}\n", pc, count).as_bytes())
+                .unwrap();
         }
     }
 }
@@ -237,7 +238,9 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 DUMMY_PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0)));
             }
 
-            PER_CORE_MISS_PCS = Box::into_raw(Box::new(std::array::from_fn(|_| PerCoreHashTable(rustc_hash::FxHashMap::default()))));
+            PER_CORE_MISS_PCS = Box::into_raw(Box::new(std::array::from_fn(|_| {
+                PerCoreHashTable(rustc_hash::FxHashMap::default())
+            })));
 
             qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
         }

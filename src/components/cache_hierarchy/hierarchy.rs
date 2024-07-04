@@ -1,4 +1,6 @@
-use crate::components::cache_hierarchy::shared_cache::{SharedCache, SharedCacheLookupResult};
+use crate::components::cache_hierarchy::shared_cache::{
+    SharedCache, SharedCacheLookupResult, VtsViolationResult,
+};
 use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 
@@ -48,9 +50,9 @@ pub struct MemoryHierarchy<
     directory: directory::Directory<DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
-    shared_cache_recorded_with_vts: SCache,
     with_statistics: bool,
 
+    quantum_size: u64,
     vts_violation_distribution: Option<[UnsafeCell<Histogram<u64>>; parameter::CORE_COUNT]>,
 }
 
@@ -118,8 +120,8 @@ impl<
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
-            shared_cache_recorded_with_vts: SCache::new(),
             with_statistics,
+            quantum_size,
             vts_violation_distribution: if quantum_size > 1 {
                 Some(std::array::from_fn(|_| {
                     UnsafeCell::new(Histogram::new_with_max(quantum_size, 3).unwrap())
@@ -577,6 +579,7 @@ impl<
                     core_id,
                     block_id,
                     ts,
+                    v_ts,
                     true,
                     false,
                     true,
@@ -584,26 +587,15 @@ impl<
                     is_os,
                 );
 
-                let virtual_timestamped_shared_cache_result = self
-                    .shared_cache_recorded_with_vts
-                    .lookup_and_insert_on_miss(
-                        core_id,
-                        block_id,
-                        v_ts,
-                        true,
-                        false,
-                        false,
-                        access_type,
-                        is_os,
-                    );
+                match lookup_result.1 {
+                    VtsViolationResult::Violataed(time_diff) => {
+                        // This access must come from the same quantum.
+                        self.handle_vts_violation(core_id, v_ts, time_diff, true, is_os)
+                    }
+                    VtsViolationResult::NotViolated => {}
+                };
 
-                if let SharedCacheLookupResult::Unknown(time_diff) =
-                    virtual_timestamped_shared_cache_result
-                {
-                    self.handle_vts_violation(core_id, time_diff, true, is_os);
-                }
-
-                match lookup_result {
+                match lookup_result.0 {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
                     SharedCacheLookupResult::Unknown(_) => {
@@ -622,22 +614,20 @@ impl<
                     core_id,
                     block_id,
                     ts,
+                    v_ts,
                     true,
                     access_type.clone(),
                     is_os,
                 );
 
-                let virtual_timestamped_shared_cache_result = self
-                    .shared_cache_recorded_with_vts
-                    .lookup(core_id, block_id, v_ts, true, access_type, is_os);
+                match lookup_result.1 {
+                    VtsViolationResult::Violataed(time_diff) => {
+                        self.handle_vts_violation(core_id, v_ts, time_diff, true, is_os)
+                    }
+                    VtsViolationResult::NotViolated => {}
+                };
 
-                if let SharedCacheLookupResult::Unknown(time_diff) =
-                    virtual_timestamped_shared_cache_result
-                {
-                    self.handle_vts_violation(core_id, time_diff, true, is_os);
-                }
-
-                match lookup_result {
+                match lookup_result.0 {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
                     SharedCacheLookupResult::Unknown(_) => {
@@ -833,6 +823,7 @@ impl<
                     if line.access_virtual_timestamp() > v_ts {
                         self.handle_vts_violation(
                             core_id,
+                            v_ts,
                             (line.access_virtual_timestamp() - v_ts) as u32,
                             false,
                             is_os,
@@ -841,6 +832,7 @@ impl<
                 } else if line.write_virtual_timestamp() > v_ts {
                     self.handle_vts_violation(
                         core_id,
+                        v_ts,
                         (line.write_virtual_timestamp() - v_ts) as u32,
                         false,
                         is_os,
@@ -1283,18 +1275,12 @@ impl<
 
             if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
-
-                self.shared_cache_recorded_with_vts
-                    .insert(core_id, block_id, v_ts, modified.0, false);
+                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
 
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
-
-                self.shared_cache_recorded_with_vts
-                    .insert(core_id, block_id, v_ts, modified.0, false);
+                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
         }
     }
@@ -1303,11 +1289,25 @@ impl<
     pub fn handle_vts_violation(
         &self,
         core_id: u32,
+        v_ts: u64,
         time_diff: u32,
         is_shared_cache: bool,
         is_os: bool,
     ) {
         if let Some(hists) = self.vts_violation_distribution.as_ref() {
+            // let quantum_number = (v_ts - 1) / self.quantum_size;
+            // let violated_quantum_number = (v_ts + time_diff as u64 - 1) / self.quantum_size;
+            // if quantum_number != violated_quantum_number {
+            //     println!(
+            //         "Quantum Number: {}, Violated Quantum Number: {}",
+            //         quantum_number,
+            //         violated_quantum_number,
+            //     );
+            //     println!("VTS: {}, Time Diff: {} VTS + Diff: {}", v_ts, time_diff, v_ts + time_diff as u64);
+            // }
+
+            // assert_eq!(quantum_number, violated_quantum_number);
+
             if is_shared_cache {
                 Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation, is_os);
             } else {

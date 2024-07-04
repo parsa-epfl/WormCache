@@ -149,7 +149,7 @@ pub const SHARED_CACHE_EXCLUSIVE: bool = false;
  *
  * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
-pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = true;
+pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = false;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_WITH_PRIVATE_CACHE));
 
 /**

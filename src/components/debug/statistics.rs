@@ -38,6 +38,9 @@ pub enum EventType {
     PrivateCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the coherence state information.
     SharedCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the LRU information in the shared cache.
 
+    ShadowSharedCacheHit,
+    ShadowSharedCacheMiss, // this is for debugging purpose of the SharedCacheVTsOrderViolation.
+
     SpecialMemoryInstructionAccess,
     SpecialMemoryInstructionPrivateCacheMiss,
     SpecialMemoryInstructionSharedCacheMiss,
