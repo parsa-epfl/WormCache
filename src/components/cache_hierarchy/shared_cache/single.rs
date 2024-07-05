@@ -15,7 +15,7 @@ use spin::mutex::SpinMutex;
 
 pub struct SingleSharedCache<
     S: SharedCacheSetStatistics,
-    G: CCell<SharedCacheSet<WAY, EXCLUSIVE, S>> + std::fmt::Debug,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
@@ -28,7 +28,7 @@ pub struct SingleSharedCache<
 
 impl<
         S: SharedCacheSetStatistics,
-        G: CCell<SharedCacheSet<WAY, EXCLUSIVE, S>> + std::fmt::Debug,
+        G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
         const SET: usize,
         const WAY: usize,
         const EXCLUSIVE: bool,
@@ -202,7 +202,7 @@ impl<
 }
 
 pub type ParallelSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
-    SingleSharedCache<S, SpinMutex<SharedCacheSet<WAY, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;
+    SingleSharedCache<S, SpinMutex<SharedCacheSet<WAY, SET, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;
 
 pub type SerialSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
-    SingleSharedCache<S, UnsafeCell<SharedCacheSet<WAY, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;
+    SingleSharedCache<S, UnsafeCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;

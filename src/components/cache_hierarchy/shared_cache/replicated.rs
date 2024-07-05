@@ -8,8 +8,8 @@ use super::{
 use serde_json::json;
 use std::cell::UnsafeCell;
 
-impl<S: SharedCacheSetStatistics, const WAY: usize, const EXCLUSIVE: bool>
-    SharedCacheSet<WAY, EXCLUSIVE, S>
+impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCLUSIVE: bool>
+    SharedCacheSet<WAY, SET, EXCLUSIVE, S>
 {
     fn fold(&self, other: &Self) -> Self {
         // take the two arrays, combine them, and sort them by the timestamp. Only keel the elements with highest timestamp.
@@ -32,6 +32,8 @@ impl<S: SharedCacheSetStatistics, const WAY: usize, const EXCLUSIVE: bool>
 
             // clean the statistics
             statistics: Default::default(),
+
+            evicted_lines: Default::default(),
         }
     }
 }
@@ -42,7 +44,7 @@ struct PrivateSharedCache<
     const WAY: usize,
     const EXCLUSIVE: bool,
 > {
-    blocks: Box<[SharedCacheSet<WAY, EXCLUSIVE, S>; SET]>,
+    blocks: Box<[SharedCacheSet<WAY,SET, EXCLUSIVE, S>; SET]>,
 }
 
 impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>

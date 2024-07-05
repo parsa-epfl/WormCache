@@ -2,6 +2,8 @@ use core::panic;
 
 use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
+use rustc_hash::FxHashMap as HashMap;
+
 use super::{
     statistics::SharedCacheSetStatistics, SharedCacheLookupAndInsertResult,
     SharedCacheLookupResult, VtsViolationResult,
@@ -15,7 +17,7 @@ pub struct SharedCacheBlock {
 }
 
 #[derive(Debug)]
-pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> {
+pub struct SharedCacheSet<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> {
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
@@ -24,18 +26,20 @@ pub struct SharedCacheSet<const WAY: usize, const EXCLUSIVE: bool, S: SharedCach
     pub access_count: u64,
 
     pub statistics: S,
+
+    pub evicted_lines: HashMap<u64, u64> // block_id -> v_ts
 }
 
-impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> Default
-    for SharedCacheSet<WAY, EXCLUSIVE, S>
+impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> Default
+    for SharedCacheSet<WAY, SET, EXCLUSIVE, S>
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
-    SharedCacheSet<WAY, EXCLUSIVE, S>
+impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
+    SharedCacheSet<WAY, SET, EXCLUSIVE, S>
 {
     pub fn new() -> Self {
         Self {
@@ -52,6 +56,8 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
             access_count: 0,
 
             statistics: S::default(),
+
+            evicted_lines: HashMap::default()
         }
     }
 
@@ -136,7 +142,23 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
                 };
 
                 let violation = if v_ts < self.recent_evict_vts {
-                    VtsViolationResult::Violataed((self.recent_evict_vts - v_ts) as u32)
+                    // check the evicted cache line.
+                    let block_index = block_id >> WAY.trailing_ones();
+                    let evicted_vts = self.evicted_lines.get(&block_index);
+                    if evicted_vts.is_none() {
+                        // the first access, so it is not violated.
+                        VtsViolationResult::NotViolated
+                    } else {
+                        let evicted_vts = evicted_vts.unwrap();
+                        if *evicted_vts > v_ts {
+                            // this is evicted by others, unfortunately. 
+                            VtsViolationResult::Violataed((self.recent_evict_vts - v_ts) as u32)
+                        } else {
+                            // no violation.
+                            VtsViolationResult::NotViolated
+                        }
+                    }
+                    
                 } else {
                     VtsViolationResult::NotViolated
                 };
@@ -210,6 +232,8 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
             return result;
         }
 
+        let oldest_block_id = oldest_block.block_id_with_v >> 1;
+
         // otherwise, we replace the oldest block.
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = is_modified;
@@ -223,6 +247,10 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
         if self.recent_evict_vts < v_ts {
             self.recent_evict_vts = v_ts;
         }
+
+        // push the evicted line to the history.
+        let oldest_block_idx = oldest_block_id >> WAY.trailing_ones(); 
+        self.evicted_lines.insert(oldest_block_idx, v_ts);
 
         result
     }
@@ -263,7 +291,7 @@ impl<const WAY: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
 fn minimum_can_find_invalid() {
     use super::statistics::ZeroSharedCacheSetStatistics;
 
-    let mut set = SharedCacheSet::<8, false, ZeroSharedCacheSetStatistics>::new();
+    let mut set = SharedCacheSet::<8, 1, false, ZeroSharedCacheSetStatistics>::new();
     let mut ts = 1;
 
     // push 8 elements inside.

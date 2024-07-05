@@ -1294,6 +1294,11 @@ impl<
         is_shared_cache: bool,
         is_os: bool,
     ) {
+
+        if !self.with_statistics {
+            return;
+        }
+
         if let Some(hists) = self.vts_violation_distribution.as_ref() {
             // let quantum_number = (v_ts - 1) / self.quantum_size;
             // let violated_quantum_number = (v_ts + time_diff as u64 - 1) / self.quantum_size;
@@ -1307,6 +1312,7 @@ impl<
             // }
 
             // assert_eq!(quantum_number, violated_quantum_number);
+
 
             if is_shared_cache {
                 Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation, is_os);
