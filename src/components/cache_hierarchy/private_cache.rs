@@ -59,6 +59,9 @@ pub trait PrivateCaches {
 
     fn information() -> String;
 
+    // This function is for printing diagnose information. It is used for debugging.
+    fn print_debug_info(&self); 
+
     const DIRECTORY_SET: usize;
 }
 

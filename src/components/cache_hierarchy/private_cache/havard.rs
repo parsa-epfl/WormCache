@@ -264,6 +264,11 @@ impl<
             self.caches[core_id as usize].d_cache[block_id as usize % D_SET].inner()
         }
     }
+
+    #[inline]
+    fn print_debug_info(&self) {
+        
+    }
 }
 
 pub type ParallelHarvardPrivateCache<

@@ -9,6 +9,8 @@ use super::{
     SharedCacheLookupResult, VtsViolationResult,
 };
 
+const DISABLE_EVICTED_LINES: bool = false;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.
@@ -27,7 +29,7 @@ pub struct SharedCacheSet<const WAY: usize, const SET: usize, const EXCLUSIVE: b
 
     pub statistics: S,
 
-    pub evicted_lines: HashMap<u64, u64> // block_id -> v_ts
+    pub evicted_lines: Option<HashMap<u64, u64>> // block_id -> v_ts
 }
 
 impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> Default
@@ -57,7 +59,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
             statistics: S::default(),
 
-            evicted_lines: HashMap::default()
+            evicted_lines: if !DISABLE_EVICTED_LINES { Some(HashMap::default()) } else { None }
         }
     }
 
@@ -144,20 +146,25 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                 let violation = if v_ts < self.recent_evict_vts {
                     // check the evicted cache line.
                     let block_index = block_id >> WAY.trailing_ones();
-                    let evicted_vts = self.evicted_lines.get(&block_index);
-                    if evicted_vts.is_none() {
-                        // the first access, so it is not violated.
+                    if DISABLE_EVICTED_LINES {
                         VtsViolationResult::NotViolated
                     } else {
-                        let evicted_vts = evicted_vts.unwrap();
-                        if *evicted_vts > v_ts {
-                            // this is evicted by others, unfortunately. 
-                            VtsViolationResult::Violataed((self.recent_evict_vts - v_ts) as u32)
-                        } else {
-                            // no violation.
+                        let evicted_vts = self.evicted_lines.as_mut().unwrap().get(&block_index);
+                        if evicted_vts.is_none() {
+                            // the first access, so it is not violated.
                             VtsViolationResult::NotViolated
+                        } else {
+                            let evicted_vts = evicted_vts.unwrap();
+                            if *evicted_vts > v_ts {
+                                // this is evicted by others, unfortunately. 
+                                VtsViolationResult::Violataed((self.recent_evict_vts - v_ts) as u32)
+                            } else {
+                                // no violation.
+                                VtsViolationResult::NotViolated
+                            }
                         }
                     }
+                    
                     
                 } else {
                     VtsViolationResult::NotViolated
@@ -250,8 +257,9 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
         // push the evicted line to the history.
         let oldest_block_idx = oldest_block_id >> WAY.trailing_ones(); 
-        self.evicted_lines.insert(oldest_block_idx, v_ts);
-
+        if !DISABLE_EVICTED_LINES {
+            self.evicted_lines.as_mut().unwrap().insert(oldest_block_idx, v_ts);
+        }
         result
     }
 

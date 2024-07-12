@@ -61,6 +61,9 @@ pub struct PrivateCacheSet {
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.
     pub touched_count: usize,
     pub recent_invalid_slot_index: Option<usize>,
+
+    pub hit_time: usize,
+    pub hit_index_acc: usize,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -111,6 +114,9 @@ impl PrivateCacheSet {
             ),
             touched_count: 0,
             recent_invalid_slot_index: None,
+
+            hit_time: 0,
+            hit_index_acc: 0,
         }
     }
 
@@ -199,6 +205,10 @@ impl PrivateCacheSet {
             line.ts = ts;
             line.access_v_ts = v_ts;
             line.is_instruction = is_instruction_fetch;
+
+            self.hit_index_acc += idx;
+            self.hit_time += 1;
+
             PrivateCachePokeResult::Hit
         } else {
             PrivateCachePokeResult::Miss(self.find_eviction_index())

@@ -75,28 +75,36 @@ unsafe extern "C" fn vcpu_mem_access(
         let base_vtime = qemu_api::qemu_plugin_read_local_virtual_time_base();
         let instruction_offset = inst_host_addr as u64 >> 48;
 
-        let (plugin_to_update, vcpu_idx) = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
+        if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
             && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
         {
-            (DUMMY_PLUGIN, vcpu_idx - parameter::CORE_COUNT as u32 / 2)
+            (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
+                vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+                vaddr,
+                pa,
+                get_monotonic_ts(),
+                is_store,
+                false,
+                base_vtime + instruction_offset + 1,
+                pc_vaddr,
+            );
         } else {
-            (PLUGIN, vcpu_idx)
+            (*PLUGIN).access_memory_with_va_and_pa(
+                vcpu_idx,
+                vaddr,
+                pa,
+                get_monotonic_ts(),
+                is_store,
+                false,
+                base_vtime + instruction_offset + 1,
+                pc_vaddr,
+            );
         };
 
         // if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
         //     && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
         // {
         // } else {
-        let res = (*plugin_to_update).access_memory_with_va_and_pa(
-            vcpu_idx,
-            vaddr,
-            pa,
-            get_monotonic_ts(),
-            is_store,
-            false,
-            base_vtime + instruction_offset + 1,
-            pc_vaddr,
-        );
 
         // if vcpu_idx == 0 {
         //     if C0_COUNTER.load(Ordering::Relaxed) >= 0 {

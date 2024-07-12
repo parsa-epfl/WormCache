@@ -183,6 +183,32 @@ impl<
     ) -> impl DerefMut<Target = PrivateCacheSet> {
         self.caches[core_id as usize].get_set(block_id).inner()
     }
+
+    #[inline]
+    fn print_debug_info(&self) {
+        // aggregate every set's statistics.
+        let mut hit_index = 0;
+        let mut hit_count = 0;
+
+        for cache in self.caches.iter() {
+            for set in cache.cache.iter() {
+                let guard = set.inner();
+                hit_count += guard.hit_time;
+                hit_index += guard.hit_index_acc;
+            }
+        }
+
+        use std::io::prelude::*;
+
+        // dump this information to a log.
+        let mut log_file = std::fs::File::create("cache_log.txt").unwrap();
+
+        writeln!(
+            log_file,
+            "UnifiedPrivateCache: hit_time: {}, hit_index: {}, average: {}",
+            hit_count, hit_index, hit_index as f64 / hit_count as f64
+        ).unwrap();
+    }
 }
 
 pub type ParallelUnifiedPrivateCache<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> =

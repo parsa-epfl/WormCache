@@ -1356,19 +1356,21 @@ impl<
     }
 
     pub fn dump_diagnose_information(&self) {
-        self.shared_cache
-            .dump_access_frequency("shared_cache_access_frequency.csv");
+        self.private_caches.print_debug_info();
 
-        if let Some(hist) = self.vts_violation_distribution.as_ref() {
-            // we need to dump the distribution.
-            for core_id in 0..parameter::CORE_COUNT {
-                let hist = unsafe { &mut *hist[core_id].get() };
-                let mut serializer = hdrhistogram::serialization::V2Serializer::new();
-                let mut buffer = Vec::new();
-                serializer.serialize(hist, &mut buffer).unwrap();
-                let mut file = File::create(format!("vts_violation_{}.hist", core_id)).unwrap();
-                file.write_all(&buffer).unwrap();
-            }
-        }
+        // self.shared_cache
+        //     .dump_access_frequency("shared_cache_access_frequency.csv");
+
+        // if let Some(hist) = self.vts_violation_distribution.as_ref() {
+        //     // we need to dump the distribution.
+        //     for core_id in 0..parameter::CORE_COUNT {
+        //         let hist = unsafe { &mut *hist[core_id].get() };
+        //         let mut serializer = hdrhistogram::serialization::V2Serializer::new();
+        //         let mut buffer = Vec::new();
+        //         serializer.serialize(hist, &mut buffer).unwrap();
+        //         let mut file = File::create(format!("vts_violation_{}.hist", core_id)).unwrap();
+        //         file.write_all(&buffer).unwrap();
+        //     }
+        // }
     }
 }
