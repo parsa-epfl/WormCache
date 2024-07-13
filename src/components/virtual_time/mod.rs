@@ -43,13 +43,13 @@ pub struct VirtualTimePlugin {}
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init() {
-        assert!(unsafe { qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock)) });
+        // assert!(unsafe { qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock)) });
 
-        assert!(unsafe {
-            qemu_api::qemu_plugin_register_snapshot_cpu_clock_update_cb(Some(
-                on_snapshot_cpu_clock_update,
-            ))
-        });
+        // assert!(unsafe {
+        //     qemu_api::qemu_plugin_register_snapshot_cpu_clock_update_cb(Some(
+        //         on_snapshot_cpu_clock_update,
+        //     ))
+        // });
 
         unsafe {
             ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
@@ -75,7 +75,8 @@ impl super::Plugin for VirtualTimePlugin {
                 .unwrap();
 
             const CORE_RANGE_FOR_TIME_CALCULATION: usize =
-                if param::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+                // if param::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+                if false {
                     param::CORE_COUNT / 2
                 } else {
                     param::CORE_COUNT

@@ -1,5 +1,5 @@
 use crate::components::cache_hierarchy::shared_cache::{
-    SharedCache, SharedCacheLookupResult, VtsViolationResult,
+    SharedCache, SharedCacheLookupResult,
 };
 use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
@@ -14,13 +14,9 @@ use super::{
     private_cache::{self, PrivateCaches},
 };
 
-use hdrhistogram::serialization::Serializer;
 
 use crate::components::mmu::AbstractMMU;
-use hdrhistogram::Histogram;
 use std::cell::UnsafeCell;
-use std::fs::File;
-use std::io::Write;
 use std::ops::DerefMut;
 
 #[cfg(test)]
@@ -51,9 +47,6 @@ pub struct MemoryHierarchy<
 
     shared_cache: SCache,
     with_statistics: bool,
-
-    quantum_size: u64,
-    vts_violation_distribution: Option<[UnsafeCell<Histogram<u64>>; parameter::CORE_COUNT]>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -83,14 +76,7 @@ pub enum CacheHierarchyAccessResult {
 // This function identify the memory instruction that can be influenced by the imperfect load generator.
 // Their traffic will be recorded specially.
 fn is_special_memory_access(pc: u64) -> bool {
-    const SPECIAL_PC: [u64; 4] = [
-        0xffff_8000_089f_a510,
-        0xffff_8000_089f_a4f0,
-        0xffff_8000_089f_a520,
-        0xffff_8000_089f_a500,
-    ];
-
-    return SPECIAL_PC.contains(&pc);
+    return false;
 }
 
 impl<
@@ -114,21 +100,13 @@ impl<
         DIRECTORY_SHARD_COUNT,
     >
 {
-    pub fn new(with_statistics: bool, quantum_size: u64) -> Self {
+    pub fn new(with_statistics: bool, _quantum_size: u64) -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
             with_statistics,
-            quantum_size,
-            vts_violation_distribution: if quantum_size > 1 {
-                Some(std::array::from_fn(|_| {
-                    UnsafeCell::new(Histogram::new_with_max(quantum_size, 3).unwrap())
-                }))
-            } else {
-                None
-            },
         }
     }
 
@@ -454,7 +432,7 @@ impl<
         v_ts: u64,
         access_type: CacheAccessType,
         is_os: bool,
-        instruction_va_pc: u64,
+        _instruction_va_pc: u64,
     ) -> CacheHierarchyAccessResult {
         let is_prefetch = access_type == CacheAccessType::PrefetchRead
             || access_type == CacheAccessType::PrefetchWrite;
@@ -463,8 +441,6 @@ impl<
         let is_store = access_type == CacheAccessType::DataWrite;
         let is_page_walk = access_type == CacheAccessType::PageWalkRead;
 
-        let is_special_memory_instruction =
-            is_special_memory_access(instruction_va_pc) && !is_instruction;
 
         if !is_prefetch && self.with_statistics {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
@@ -472,14 +448,6 @@ impl<
                 Statistics::global_record(core_id, EventType::InstructionAccess, is_os);
             } else {
                 Statistics::global_record(core_id, EventType::DataAccess, is_os);
-            }
-
-            if is_special_memory_instruction {
-                Statistics::global_record(
-                    core_id,
-                    EventType::SpecialMemoryInstructionAccess,
-                    is_os,
-                );
             }
         }
 
@@ -587,14 +555,6 @@ impl<
                     is_os,
                 );
 
-                match lookup_result.1 {
-                    VtsViolationResult::Violataed(time_diff) => {
-                        // This access must come from the same quantum.
-                        self.handle_vts_violation(core_id, v_ts, time_diff, true, is_os)
-                    }
-                    VtsViolationResult::NotViolated => {}
-                };
-
                 match lookup_result.0 {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
@@ -619,13 +579,6 @@ impl<
                     access_type.clone(),
                     is_os,
                 );
-
-                match lookup_result.1 {
-                    VtsViolationResult::Violataed(time_diff) => {
-                        self.handle_vts_violation(core_id, v_ts, time_diff, true, is_os)
-                    }
-                    VtsViolationResult::NotViolated => {}
-                };
 
                 match lookup_result.0 {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
@@ -704,14 +657,6 @@ impl<
                 // Here it is a miss in the private cache.
                 Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
-                if is_special_memory_instruction {
-                    Statistics::global_record(
-                        core_id,
-                        EventType::SpecialMemoryInstructionPrivateCacheMiss,
-                        is_os,
-                    );
-                }
-
                 if is_instruction {
                     Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
                 } else if is_page_walk {
@@ -754,14 +699,6 @@ impl<
                     }
 
                     Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
-                }
-
-                if is_special_memory_instruction {
-                    Statistics::global_record(
-                        core_id,
-                        EventType::SpecialMemoryInstructionSharedCacheMiss,
-                        is_os,
-                    );
                 }
 
                 return CacheHierarchyAccessResult::Miss;
@@ -810,36 +747,6 @@ impl<
             .private_caches
             .get_set_guard_by_sharer_list(block_id, acquire_list);
 
-        // The check for the v_ts.
-        for (replica_cache_id, set, index) in acquired_sets.iter() {
-            if let Some(index) = index {
-                let line = &set.lines[*index];
-
-                if *replica_cache_id == p_cache_id {
-                    continue;
-                }
-
-                if is_store {
-                    if line.access_virtual_timestamp() > v_ts {
-                        self.handle_vts_violation(
-                            core_id,
-                            v_ts,
-                            (line.access_virtual_timestamp() - v_ts) as u32,
-                            false,
-                            is_os,
-                        );
-                    }
-                } else if line.write_virtual_timestamp() > v_ts {
-                    self.handle_vts_violation(
-                        core_id,
-                        v_ts,
-                        (line.write_virtual_timestamp() - v_ts) as u32,
-                        false,
-                        is_os,
-                    );
-                }
-            }
-        }
 
         if PRECISE_COHERENCE_RECONSTRUCTION {
             // Check whether it has a write history before the eviction.
@@ -1282,46 +1189,6 @@ impl<
                 self.shared_cache
                     .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
-        }
-    }
-
-    #[inline]
-    pub fn handle_vts_violation(
-        &self,
-        core_id: u32,
-        v_ts: u64,
-        time_diff: u32,
-        is_shared_cache: bool,
-        is_os: bool,
-    ) {
-
-        if !self.with_statistics {
-            return;
-        }
-
-        if let Some(hists) = self.vts_violation_distribution.as_ref() {
-            // let quantum_number = (v_ts - 1) / self.quantum_size;
-            // let violated_quantum_number = (v_ts + time_diff as u64 - 1) / self.quantum_size;
-            // if quantum_number != violated_quantum_number {
-            //     println!(
-            //         "Quantum Number: {}, Violated Quantum Number: {}",
-            //         quantum_number,
-            //         violated_quantum_number,
-            //     );
-            //     println!("VTS: {}, Time Diff: {} VTS + Diff: {}", v_ts, time_diff, v_ts + time_diff as u64);
-            // }
-
-            // assert_eq!(quantum_number, violated_quantum_number);
-
-
-            if is_shared_cache {
-                Statistics::global_record(core_id, EventType::SharedCacheVTsOrderViolation, is_os);
-            } else {
-                Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation, is_os);
-            }
-
-            let hist = unsafe { &mut *hists[core_id as usize].get() };
-            hist.record(time_diff as u64).unwrap();
         }
     }
 

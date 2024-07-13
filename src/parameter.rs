@@ -7,7 +7,7 @@ use plugin_helper::PluginHelper;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 128;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -20,7 +20,7 @@ pub const CORE_COUNT: usize = 128;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = true;
+pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!CACHE_HIERARCHY_FOR_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -66,7 +66,7 @@ static_assertions::const_assert!(TLB_SET.is_power_of_two());
  * If true, the private instruction cache and the private data cache are unified.
  * If false, the private instruction cache and the private data cache are separated, i.e., the Harvard architecture.
  */
-pub const USE_UNIFIED_CACHE: bool = false;
+pub const USE_UNIFIED_CACHE: bool = true;
 
 /**
  * PRI_CACHE_ASSO
@@ -123,14 +123,14 @@ static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
  *
  * The associativity of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_ASSO: usize = 8; // with 16 and 64, each cache set is 1KB.
+pub const SHARED_CACHE_ASSO: usize = 15; // with 16 and 64, each cache set is 1KB.
 
 /**
  * SHARED_CACHE_SET
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 16 * 1024;
+pub const SHARED_CACHE_SET: usize = 60 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**

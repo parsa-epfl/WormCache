@@ -32,8 +32,6 @@ impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCL
 
             // clean the statistics
             statistics: Default::default(),
-
-            evicted_lines: Default::default(),
         }
     }
 }
