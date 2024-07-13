@@ -4,7 +4,6 @@ mod aarch64;
 mod callbacks;
 use super::Plugin;
 use crate::{parameter, qemu_api};
-use std::io::Write;
 
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo

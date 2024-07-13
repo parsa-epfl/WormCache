@@ -1,7 +1,7 @@
 use std::{
     ffi,
     fs::File,
-    io::{BufWriter, Write},
+    io::Write,
     process::exit,
 };
 
@@ -40,8 +40,8 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, host_va: *mut ffi::c_void) {
     };
 }
 
-unsafe extern "C" fn vcpu_mem_access(
-    vcpu_idx: u32,
+unsafe extern "C" fn _vcpu_mem_access(
+    _vcpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
@@ -50,8 +50,8 @@ unsafe extern "C" fn vcpu_mem_access(
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
     if !is_device {
-        let is_store = qemu_api::qemu_plugin_mem_is_store(info);
-        let paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
+        let _is_store = qemu_api::qemu_plugin_mem_is_store(info);
+        let _paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
     } else {
         // TODO: check the I/O event
     }

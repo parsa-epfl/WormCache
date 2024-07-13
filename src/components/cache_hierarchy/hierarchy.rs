@@ -73,12 +73,6 @@ pub enum CacheHierarchyAccessResult {
     Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
 }
 
-// This function identify the memory instruction that can be influenced by the imperfect load generator.
-// Their traffic will be recorded specially.
-fn is_special_memory_access(pc: u64) -> bool {
-    return false;
-}
-
 impl<
         MMU: AbstractMMU,
         PCache: PrivateCaches,

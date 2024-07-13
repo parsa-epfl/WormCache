@@ -37,7 +37,7 @@ unsafe extern "C" fn vcpu_tb_trans(
 }
 
 #[no_mangle]
-unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
+unsafe extern "C" fn savevm_cb(_name: *const ffi::c_char) {
     // let name = ffi::CStr::from_ptr(name).to_str().unwrap();
     // create a folder for the name.
     // std::fs::create_dir_all(name).unwrap();

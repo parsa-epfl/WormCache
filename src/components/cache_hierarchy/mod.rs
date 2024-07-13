@@ -16,8 +16,6 @@ use crate::{
 };
 use std::ffi;
 
-use zstd::Encoder;
-
 use super::debug::statistics::Statistics;
 
 mod util;

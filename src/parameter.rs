@@ -230,6 +230,12 @@ pub const BP_RAS_COUNT: usize = 32;
 pub const INIT_HOST_TIME_SCALE: usize = 1000;
 
 /**
+ * If icount mode is on, the virtual time plugin does not count instruction anymore.
+ */
+pub const USE_ICOUNT_MODE: bool = true;
+
+
+/**
  * The list of plugins.
  */
 use crate::components::Plugin;
@@ -282,17 +288,3 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
  */
 pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
 
-/**
- * USE_QEMU_HW_ADDR_AS_PC
- *
- * Whether to use `qemu_plugin_insn_haddr` to calculate the physical address of the instruction.
- *
- * This option is for alignment with QEMU Cache simulator and QFlex KeenKraken.
- *
- * Please note that `qemu_plugin_insn_haddr` does not return the target physical address of the instruction.
- * Instead, it returns the host virtual address of the instruction.
- * By dereferencing this address, you can get the instruction itself.
- *
- * You should not enable this option unless you are sure that you need it.
- */
-pub const USE_QEMU_HW_ADDR_AS_PHYSICAL_PC: bool = false;
