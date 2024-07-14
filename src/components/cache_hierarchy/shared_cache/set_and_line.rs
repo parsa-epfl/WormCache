@@ -1,22 +1,31 @@
 use core::panic;
 
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
 use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
 use super::{
-    statistics::SharedCacheSetStatistics, SharedCacheLookupAndInsertResult,
-    SharedCacheLookupResult, VtsViolationResult,
+    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, VtsViolationResult,
 };
 
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.
     pub ts: u64,
     pub modified: bool,
 }
 
-#[derive(Debug)]
-pub struct SharedCacheSet<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> {
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SharedCacheSet<
+    const WAY: usize,
+    const SET: usize,
+    const EXCLUSIVE: bool,
+    S: SharedCacheSetStatistics,
+> {
+    #[serde_as(as = "[_; WAY]")]
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
@@ -53,6 +62,32 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             access_count: 0,
 
             statistics: S::default(),
+        }
+    }
+
+    pub fn from_without_statistics(
+        other: SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics>,
+    ) -> Self {
+        Self {
+            blocks: other.blocks,
+            touched_count: other.touched_count,
+            recent_evict_ts: other.recent_evict_ts,
+            recent_evict_vts: other.recent_evict_vts,
+            access_count: other.access_count,
+            statistics: S::default(),
+        }
+    }
+
+    pub fn without_statistics(
+        &self,
+    ) -> SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics> {
+        SharedCacheSet {
+            blocks: self.blocks.clone(),
+            touched_count: self.touched_count,
+            recent_evict_ts: self.recent_evict_ts,
+            recent_evict_vts: self.recent_evict_vts,
+            access_count: self.access_count,
+            statistics: ZeroSharedCacheSetStatistics {},
         }
     }
 

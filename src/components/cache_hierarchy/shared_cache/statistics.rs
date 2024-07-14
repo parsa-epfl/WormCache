@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{components::cache_hierarchy::hierarchy::CacheAccessType, parameter};
 use std::fmt::Debug;
 
-pub trait SharedCacheSetStatistics: Default + Debug {
+pub trait SharedCacheSetStatistics: Default + Debug + Clone + Serialize {
     // print statistics
     fn get_header() -> String;
     fn render_line(&self) -> String;
@@ -10,7 +12,7 @@ pub trait SharedCacheSetStatistics: Default + Debug {
     fn record(&mut self, access_type: CacheAccessType, is_os: bool, is_hit: bool);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ZeroSharedCacheSetStatistics {}
 
 impl Default for ZeroSharedCacheSetStatistics {
@@ -31,7 +33,7 @@ impl SharedCacheSetStatistics for ZeroSharedCacheSetStatistics {
     fn record(&mut self, _access_type: CacheAccessType, _is_os: bool, _is_hit: bool) {}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SharedCacheSetMissStatistics {
     // statistics
     pub miss_count: u64,

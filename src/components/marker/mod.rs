@@ -50,4 +50,8 @@ impl super::Plugin for MarkerPlugin {
     }
 
     fn dump_snapshot(_: &str) {}
+
+    fn serialize(_: &str) {}
+
+    fn deserialize(_: &str) {}
 }

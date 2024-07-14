@@ -35,6 +35,7 @@ pub const __USE_ATFILE: u32 = 1;
 pub const __USE_FORTIFY_LEVEL: u32 = 0;
 pub const __GLIBC_USE_DEPRECATED_GETS: u32 = 0;
 pub const __GLIBC_USE_DEPRECATED_SCANF: u32 = 0;
+pub const __GLIBC_USE_C2X_STRTOL: u32 = 0;
 pub const _STDC_PREDEF_H: u32 = 1;
 pub const __STDC_IEC_559__: u32 = 1;
 pub const __STDC_IEC_60559_BFP__: u32 = 201404;
@@ -43,7 +44,7 @@ pub const __STDC_IEC_60559_COMPLEX__: u32 = 201404;
 pub const __STDC_ISO_10646__: u32 = 201706;
 pub const __GNU_LIBRARY__: u32 = 6;
 pub const __GLIBC__: u32 = 2;
-pub const __GLIBC_MINOR__: u32 = 35;
+pub const __GLIBC_MINOR__: u32 = 39;
 pub const _SYS_CDEFS_H: u32 = 1;
 pub const __glibc_c99_flexarr_available: u32 = 1;
 pub const __LDOUBLE_REDIRECTS_TO_FLOAT128_ABI: u32 = 0;
@@ -68,6 +69,7 @@ pub const _BITS_TIME64_H: u32 = 1;
 pub const _BITS_WCHAR_H: u32 = 1;
 pub const _BITS_STDINT_INTN_H: u32 = 1;
 pub const _BITS_STDINT_UINTN_H: u32 = 1;
+pub const _BITS_STDINT_LEAST_H: u32 = 1;
 pub const INT8_MIN: i32 = -128;
 pub const INT16_MIN: i32 = -32768;
 pub const INT32_MIN: i32 = -2147483648;
@@ -262,9 +264,9 @@ pub const SCNiPTR: &[u8; 3] = b"li\0";
 pub const SCNoPTR: &[u8; 3] = b"lo\0";
 pub const SCNuPTR: &[u8; 3] = b"lu\0";
 pub const SCNxPTR: &[u8; 3] = b"lx\0";
+pub const __bool_true_false_are_defined: u32 = 1;
 pub const true_: u32 = 1;
 pub const false_: u32 = 0;
-pub const __bool_true_false_are_defined: u32 = 1;
 pub const QEMU_PLUGIN_VERSION: u32 = 1;
 pub const QEMU_PLUGIN_CYAN_VERSION: u32 = 9527;
 pub type __u_char = ::std::os::raw::c_uchar;
@@ -1085,11 +1087,15 @@ extern "C" {
     #[doc = " qemu_plugin_read_pc_vpn() - return the 4KB virtual page number of the current PC.\n\n The reason why we return VPN is because QEMU does not frequent update the PC in its CPUArchState.\n I still don't know why. It may be related to the performance impact but I don't know where I should see the update logic.\n However, the PC should be updated when the PC is pointing to a different page. In this case, no chaining or patching of TB is allowed.\n\n This function can be only called from threads that run a vCPU. Otherwise, it will trigger assertion failure.\n\n To get the full PC, you need to also store the PC's offset as the parameter when registering the callback.\n"]
     pub fn qemu_plugin_read_pc_vpn() -> u64;
 }
-pub type qemu_plugin_savevm_cb_t =
+pub type qemu_plugin_snapshot_cb_t =
     ::std::option::Option<unsafe extern "C" fn(arg1: *const ::std::os::raw::c_char)>;
 extern "C" {
     #[doc = " qemu_plugin_register_savevm_cb() - register a savevm callback\n @cb: callback function\n\n The @cb function is called after the VM state is saved.\n The exact time of the callback is after the VM state is saved to the qcow2 file and before the VM is resumed.\n\n returns true if the callback is registered successfully. Please note at currently at most one callback can be registered."]
-    pub fn qemu_plugin_register_savevm_cb(cb: qemu_plugin_savevm_cb_t) -> bool;
+    pub fn qemu_plugin_register_savevm_cb(cb: qemu_plugin_snapshot_cb_t) -> bool;
+}
+extern "C" {
+    #[doc = " qemu_plugin_register_loadvm_cb() - register a loadvm callback\n @cb: callback function\n\n The @cb function is called after the VM state is loaded.\n\n returns true if the callback is registered successfully. Please note at currently at most one callback can be registered."]
+    pub fn qemu_plugin_register_loadvm_cb(cb: qemu_plugin_snapshot_cb_t) -> bool;
 }
 pub type qemu_plugin_quantum_deplete_cb_t = ::std::option::Option<unsafe extern "C" fn()>;
 extern "C" {

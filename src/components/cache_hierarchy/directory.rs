@@ -1,10 +1,12 @@
 use rustc_hash::FxHashMap as HashMap;
+use serde::Deserialize;
 use spin::mutex::SpinMutex;
 use spin::mutex::SpinMutexGuard;
 
 use bitvec::prelude::*;
 use bitvec::BitArr;
 use serde::Serialize;
+use zstd::{Decoder, Encoder};
 
 use crate::parameter;
 use crate::util;
@@ -22,7 +24,7 @@ pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 //     sharers: SharerList,
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DirectoryEntry {
     pub lru_ts: u64,
     pub sharers: SharerList,
@@ -40,7 +42,7 @@ impl DirectoryEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[repr(align(64))]
 pub struct DirectorySet<const SET: usize> {
     entries: HashMap<u64, DirectoryEntry>,
@@ -80,6 +82,11 @@ impl<const SET: usize> DirectorySet<SET> {
 // Probably the Directory should be infinitely sized.
 pub struct Directory<const SET: usize> {
     entries: Box<[SpinMutex<DirectorySet<SET>>; SET]>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct DirectorySerdeHelper<const SET: usize> {
+    entries: Vec<DirectorySet<SET>>,
 }
 
 impl<const SET: usize> Default for Directory<SET> {
@@ -124,6 +131,65 @@ impl<const SET: usize> Directory<SET> {
                 (g0, Some(g1))
             }
         }
+    }
+
+    pub fn run_gc(&self) {
+        // clean all entries that has zero sharers.
+        for set in self.entries.iter() {
+            let mut set = set.lock();
+            set.entries.retain(|_, entry| entry.sharers.any());
+        }
+    }
+
+    fn to_serialize_helper(&self) -> DirectorySerdeHelper<SET> {
+        let entries = self
+            .entries
+            .iter()
+            .map(|set| set.lock().clone())
+            .collect::<Vec<_>>();
+
+        DirectorySerdeHelper { entries }
+    }
+
+    fn from_serialize_helper(helper: DirectorySerdeHelper<SET>) -> Self {
+        let entries = helper
+            .entries
+            .into_iter()
+            .map(|set| SpinMutex::new(set))
+            .collect::<Vec<_>>();
+
+        Self {
+            entries: entries.try_into().unwrap(),
+        }
+    }
+
+    pub fn serialize(&self, name: &str, numa_node_id: usize) {
+        self.run_gc();
+        let file = std::fs::File::create(format!("{}/directory-{}.json.zstd", name, numa_node_id))
+            .unwrap();
+
+        let mut file = Encoder::new(file, 0).unwrap();
+
+        let helper = self.to_serialize_helper();
+        serde_json::to_writer_pretty(&mut file, &helper).unwrap();
+
+        file.finish().unwrap();
+    }
+
+    pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        let file = std::fs::File::open(format!("{}/directory-{}.json.zstd", name, numa_node_id));
+
+        if file.is_err() {
+            println!("Cannot load the directory state. Error: {:?}", file.err());
+            return;
+        }
+
+        let file = file.unwrap();
+
+        let file = Decoder::new(file).unwrap();
+
+        let helper: DirectorySerdeHelper<SET> = serde_json::from_reader(file).unwrap();
+        *self = Self::from_serialize_helper(helper);
     }
 }
 

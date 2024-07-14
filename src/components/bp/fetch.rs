@@ -5,7 +5,8 @@ mod ras;
 mod tage;
 
 use crate::components::debug::statistics::{EventType, Statistics};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::parameter::{self, BP_RAS_COUNT};
 
@@ -19,7 +20,7 @@ pub enum BranchPredictorResult {
 }
 
 #[repr(align(64))]
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct PerCoreFetchUnit {
     btb: btb::BTB<{ parameter::BTB_SET }, { parameter::BTB_ASSO }>,
     ras: ras::ReturnAddressStacle<BP_RAS_COUNT>,
@@ -59,7 +60,10 @@ impl Default for PerCoreFetchUnit {
     }
 }
 
+#[serde_as]
+#[derive(Serialize, Deserialize)]
 pub struct FetchUnit<const CORE_COUNT: usize> {
+    #[serde_as(as = "[_; CORE_COUNT]")]
     pub private_units: [PerCoreFetchUnit; CORE_COUNT],
 }
 

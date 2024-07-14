@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::components::cache_hierarchy::util::CCell;
@@ -8,6 +9,7 @@ use spin::mutex::SpinMutex;
 
 use std::collections::HashMap;
 use std::ops::DerefMut;
+use zstd::{Decoder, Encoder};
 
 #[repr(align(64))]
 #[derive(Debug)]
@@ -22,6 +24,12 @@ pub struct HarvardPerCorePrivateCache<
     d_cache: Box<[G; D_SET]>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct HarvardPerCorePrivateCacheSerdeHelper {
+    i_cache: Vec<PrivateCacheSet>,
+    d_cache: Vec<PrivateCacheSet>,
+}
+
 impl<
         G: CCell<PrivateCacheSet> + std::fmt::Debug,
         const I_SET: usize,
@@ -34,6 +42,38 @@ impl<
         Self {
             i_cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(I_ASSO))),
             d_cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(D_ASSO))),
+        }
+    }
+
+    fn from_serialize_helper(helper: HarvardPerCorePrivateCacheSerdeHelper) -> Self {
+        let mut i_cache = Vec::with_capacity(I_SET);
+        for set in helper.i_cache {
+            i_cache.push(G::new(set));
+        }
+
+        let mut d_cache = Vec::with_capacity(D_SET);
+        for set in helper.d_cache {
+            d_cache.push(G::new(set));
+        }
+
+        Self {
+            i_cache: i_cache.into_boxed_slice().try_into().unwrap(),
+            d_cache: d_cache.into_boxed_slice().try_into().unwrap(),
+        }
+    }
+
+    fn to_serialize_helper(&self) -> HarvardPerCorePrivateCacheSerdeHelper {
+        HarvardPerCorePrivateCacheSerdeHelper {
+            i_cache: self
+                .i_cache
+                .iter()
+                .map(|entry| entry.inner().clone())
+                .collect(),
+            d_cache: self
+                .d_cache
+                .iter()
+                .map(|entry| entry.inner().clone())
+                .collect(),
         }
     }
 }
@@ -266,8 +306,46 @@ impl<
     }
 
     #[inline]
-    fn print_debug_info(&self) {
-        
+    fn print_debug_info(&self) {}
+
+    fn serialize(&self, name: &str, numa_node_id: usize) {
+        let helper = self
+            .caches
+            .iter()
+            .map(|cache| cache.to_serialize_helper())
+            .collect::<Vec<_>>();
+
+        let file =
+            std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id))
+                .unwrap();
+
+        let mut file = Encoder::new(file, 0).unwrap();
+
+        serde_json::to_writer_pretty(&mut file, &helper).unwrap();
+
+        file.finish().unwrap();
+    }
+    fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        let file =
+            std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id));
+
+        if file.is_err() {
+            println!(
+                "Cannot load the harvard private cache state. Error: {:?}",
+                file.err()
+            );
+            return;
+        }
+
+        let file = file.unwrap();
+        let file = Decoder::new(file).unwrap();
+
+        let helper: Vec<HarvardPerCorePrivateCacheSerdeHelper> =
+            serde_json::from_reader(file).unwrap();
+
+        for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
+            *cache = HarvardPerCorePrivateCache::from_serialize_helper(helper);
+        }
     }
 }
 

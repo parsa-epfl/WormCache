@@ -1,6 +1,7 @@
 use crate::components::bp::BranchResolveFlag;
 
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use super::BranchPredictorResult;
 
@@ -11,7 +12,10 @@ struct BTBEntry {
     ts: u64,
 }
 
+#[serde_as]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct BTB<const SET: usize, const ASSO: usize> {
+    #[serde_as(as = "Vec<[_; ASSO]>")]
     array: Vec<[BTBEntry; ASSO]>,
     local_ts: u64,
 }
@@ -78,23 +82,5 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         self.array[index][min_index].ts = self.local_ts;
 
         BranchPredictorResult::Mispredict
-    }
-}
-
-impl<const SET: usize, const ASSO: usize> Serialize for BTB<SET, ASSO> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("BTB", 1)?;
-        s.serialize_field(
-            "array",
-            &self
-                .array
-                .iter()
-                .map(|el| el.as_slice())
-                .collect::<Vec<_>>(),
-        )?;
-        s.end()
     }
 }

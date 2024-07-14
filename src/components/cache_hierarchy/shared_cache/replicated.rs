@@ -42,7 +42,7 @@ struct PrivateSharedCache<
     const WAY: usize,
     const EXCLUSIVE: bool,
 > {
-    blocks: Box<[SharedCacheSet<WAY,SET, EXCLUSIVE, S>; SET]>,
+    blocks: Box<[SharedCacheSet<WAY, SET, EXCLUSIVE, S>; SET]>,
 }
 
 impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
@@ -281,4 +281,12 @@ impl<
     }
 
     fn dump_access_frequency(&self, _: &str) {}
+
+    fn serialize(&self, _: &str, _: usize) {
+        unimplemented!()
+    }
+
+    fn deserialize(&mut self, _: &str, _: usize) {
+        unimplemented!()
+    }
 }

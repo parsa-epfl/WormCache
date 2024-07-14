@@ -13,6 +13,8 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
     let mut dump_state_calls = Vec::new();
     let mut on_translation_calls = Vec::new();
     let mut init_calls = Vec::new();
+    let mut serialize_calls = Vec::new();
+    let mut deserialize_calls = Vec::new();
 
     // Match against the data of the struct to access its fields
     if let Data::Struct(data) = input.data {
@@ -29,6 +31,12 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
                 });
                 init_calls.push(quote! {
                     #ty::init();
+                });
+                serialize_calls.push(quote! {
+                    #ty::serialize(name);
+                });
+                deserialize_calls.push(quote! {
+                    #ty::deserialize(name);
                 });
             }
         }
@@ -50,6 +58,16 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
             #[inline]
             pub unsafe fn init() {
                 #( #init_calls )*
+            }
+
+            #[inline]
+            pub unsafe fn serialize(name: &str) {
+                #( #serialize_calls )*
+            }
+
+            #[inline]
+            pub unsafe fn deserialize(name: &str) {
+                #( #deserialize_calls )*
             }
         }
     };

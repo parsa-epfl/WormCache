@@ -74,6 +74,9 @@ pub trait SharedCache {
     fn information() -> String;
 
     fn dump_access_frequency(&self, file_name: &str);
+
+    fn serialize(&self, name: &str, numa_node_id: usize);
+    fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
 }
 
 ////////////////////////////////////////////////////////////////////////////////

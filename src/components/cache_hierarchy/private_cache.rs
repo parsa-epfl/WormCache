@@ -60,9 +60,12 @@ pub trait PrivateCaches {
     fn information() -> String;
 
     // This function is for printing diagnose information. It is used for debugging.
-    fn print_debug_info(&self); 
+    fn print_debug_info(&self);
 
     const DIRECTORY_SET: usize;
+
+    fn serialize(&self, name: &str, numa_node_id: usize);
+    fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
 }
 
 pub use havard::ParallelHarvardPrivateCache;

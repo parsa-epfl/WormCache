@@ -7,11 +7,15 @@ use std::{
 use crate::components::cache_hierarchy::util::CCell;
 
 use super::{
-    statistics::SharedCacheSetStatistics, SerializedSharedCacheBlock,
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VtsViolationResult,
+    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
+    SerializedSharedCacheBlock, SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
+    SharedCacheSet, VtsViolationResult,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use spin::mutex::SpinMutex;
+
+use zstd::{Decoder, Encoder};
 
 pub struct SingleSharedCache<
     S: SharedCacheSetStatistics,
@@ -19,11 +23,48 @@ pub struct SingleSharedCache<
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
-    const VTS_MONITORING: bool = false,
 > {
     blocks: Box<[G; SET]>,
     warmed_sets: AtomicUsize,
     _phantom: std::marker::PhantomData<S>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
+    blocks: Vec<SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics>>,
+    warmed_sets: usize,
+}
+
+impl<
+        S: SharedCacheSetStatistics,
+        G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
+        const SET: usize,
+        const WAY: usize,
+        const EXCLUSIVE: bool,
+    > SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
+{
+    fn from_serialize_helper(helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>) -> Self {
+        let mut blocks = Vec::with_capacity(SET);
+        for block in helper.blocks {
+            blocks.push(G::new(SharedCacheSet::from_without_statistics(block)));
+        }
+        Self {
+            blocks: blocks.into_boxed_slice().try_into().unwrap(),
+            warmed_sets: AtomicUsize::new(helper.warmed_sets),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    fn to_serialize_helper(&self) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> {
+        SingleSharedCacheSerdeHelper {
+            blocks: self
+                .blocks
+                .iter()
+                .map(|entry| entry.inner().without_statistics())
+                .collect(),
+            warmed_sets: self.warmed_sets.load(Ordering::Relaxed),
+        }
+    }
 }
 
 impl<
@@ -198,6 +239,33 @@ impl<
             let entry = entry.inner();
             writeln!(file, "{},{}\n", idx, entry.statistics.render_line()).unwrap();
         }
+    }
+
+    fn serialize(&self, name: &str, numa_node_id: usize) {
+        let helper = self.to_serialize_helper();
+        let mut file =
+            std::fs::File::create(format!("{}/llc-{}.json.zstd", name, numa_node_id)).unwrap();
+
+        let mut file = Encoder::new(&mut file, 0).unwrap();
+        serde_json::to_writer_pretty(&mut file, &helper).unwrap();
+
+        file.finish().unwrap();
+    }
+
+    fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        let file = std::fs::File::open(format!("{}/llc-{}.json.zstd", name, numa_node_id));
+
+        if file.is_err() {
+            println!("Cannot load the shared cache. Error: {:?}", file.err());
+            return;
+        }
+
+        let file = file.unwrap();
+        let file = Decoder::new(file).unwrap();
+
+        let helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> =
+            serde_json::from_reader(file).unwrap();
+        *self = SingleSharedCache::from_serialize_helper(helper);
     }
 }
 

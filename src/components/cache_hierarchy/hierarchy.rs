@@ -1,6 +1,4 @@
-use crate::components::cache_hierarchy::shared_cache::{
-    SharedCache, SharedCacheLookupResult,
-};
+use crate::components::cache_hierarchy::shared_cache::{SharedCache, SharedCacheLookupResult};
 use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 
@@ -13,7 +11,6 @@ use super::{
     directory,
     private_cache::{self, PrivateCaches},
 };
-
 
 use crate::components::mmu::AbstractMMU;
 use std::cell::UnsafeCell;
@@ -435,7 +432,6 @@ impl<
         let is_store = access_type == CacheAccessType::DataWrite;
         let is_page_walk = access_type == CacheAccessType::PageWalkRead;
 
-
         if !is_prefetch && self.with_statistics {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
             if is_instruction {
@@ -740,7 +736,6 @@ impl<
         let mut acquired_sets = self
             .private_caches
             .get_set_guard_by_sharer_list(block_id, acquire_list);
-
 
         if PRECISE_COHERENCE_RECONSTRUCTION {
             // Check whether it has a write history before the eviction.
@@ -1238,5 +1233,23 @@ impl<
         //         file.write_all(&buffer).unwrap();
         //     }
         // }
+    }
+
+    pub fn serialize(&self, name: &str, numa_node_id: usize) {
+        println!("Serializing private caches.");
+        self.private_caches.serialize(name, numa_node_id);
+        println!("Serializing directory.");
+        self.directory.serialize(name, numa_node_id);
+        println!("Serializing shared cache.");
+        self.shared_cache.serialize(name, numa_node_id);
+    }
+
+    pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        println!("Deserializing private caches.");
+        self.private_caches.deserialize(name, numa_node_id);
+        println!("Deserializing directory.");
+        self.directory.deserialize(name, numa_node_id);
+        println!("Deserializing shared cache.");
+        self.shared_cache.deserialize(name, numa_node_id);
     }
 }

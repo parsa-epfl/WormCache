@@ -3,9 +3,11 @@
 // This file contains the basic TAGE branch predictor.
 // It is basically an one-to-one translation of the C++ implementation in QFlex.
 
+use super::BranchPredictorResult;
 use crate::components::bp::BranchResolveFlag;
 
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 // bits per counter in the global history tables
 const CBITS: usize = 3;
@@ -130,27 +132,26 @@ struct TAGEPredictionResultWithBank {
     pub bi: usize,
 }
 
-#[derive(Debug)]
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TAGEPredictor {
     // pwin: i32,
 
     // 4 bits to determine whether newly allocated entries should be considered as
     // valid or not for delivering  the prediction
     tick: i32,
-    // path history, 16 entries.
     phist: i32,
-    // phist_runahead: i32,
-    // phist_retired: i32,
 
     // use a path history as for the OGEHL predictor
+    #[serde_as(as = "[_; MAXHIST]")]
     ghist: History,
-    // ghist_runahead: History,
-    // ghist_retired: History,
+    #[serde_as(as = "[_; NHIST]")]
     ch_i: [FoldedHistory; NHIST],
+    #[serde_as(as = "[[_; NHIST]; 2]")]
     ch_t: [[FoldedHistory; NHIST]; 2],
-    // ch_i_runahead: [FoldedHistory; NHIST],
-    // ch_t_runahead: [[FoldedHistory; NHIST]; 2],
+    #[serde_as(as = "Box<[_; 1 << LOGB]>")]
     btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
+    #[serde_as(as = "[Box<[_; 1 << LOGG]>; NHIST]")]
     gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
 
     // the seed for pseudo-random number generator
@@ -481,26 +482,6 @@ impl TAGEPredictor {
         self.update_history(pc, taken);
 
         BranchPredictorResult::NotActive
-    }
-}
-
-use serde::ser::SerializeStruct;
-
-use super::BranchPredictorResult;
-
-impl Serialize for TAGEPredictor {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("TAGEPredictor", 9)?;
-        state.serialize_field("seed", &self.seed)?;
-        state.serialize_field("tick", &self.tick)?;
-        state.serialize_field("phist", &self.phist)?;
-        state.serialize_field("ghist", &self.ghist.as_slice())?;
-        state.serialize_field("ch_i", &self.ch_i)?;
-        state.serialize_field("ch_t", &self.ch_t)?;
-        state.serialize_field("btable", &self.btable.as_slice())?;
-        let gtable = self.gtable.iter().map(|x| x.as_slice()).collect::<Vec<_>>();
-        state.serialize_field("gtable", &gtable)?;
-        state.end()
     }
 }
 

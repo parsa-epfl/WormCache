@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PrivateCacheLine {
     block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
@@ -55,7 +55,7 @@ impl PrivateCacheLine {
 }
 
 // Migrate some functions to this struct, with lock permission.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[repr(align(64))]
 pub struct PrivateCacheSet {
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.

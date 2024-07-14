@@ -43,13 +43,14 @@ pub struct VirtualTimePlugin {}
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init() {
-
         unsafe {
             ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
         }
 
         if !param::USE_ICOUNT_MODE {
-            assert!(unsafe { qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock)) });
+            assert!(unsafe {
+                qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock))
+            });
 
             assert!(unsafe {
                 qemu_api::qemu_plugin_register_snapshot_cpu_clock_update_cb(Some(
@@ -138,9 +139,6 @@ impl super::Plugin for VirtualTimePlugin {
         println!("Virtual time plugin initialized.");
     }
 
-    #[inline]
-    fn dump_snapshot(_: &str) {}
-
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {
         let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);
         let size = qemu_api::qemu_plugin_tb_n_insns(tb);
@@ -163,4 +161,11 @@ impl super::Plugin for VirtualTimePlugin {
             );
         }
     }
+
+    #[inline]
+    fn dump_snapshot(_: &str) {}
+
+    fn serialize(_: &str) {}
+
+    fn deserialize(_: &str) {}
 }

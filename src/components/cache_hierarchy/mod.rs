@@ -28,7 +28,6 @@ pub mod shared_cache;
 
 mod parser;
 
-
 type HierarchyForPlugin = parser::HierarchyForPlugin;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
@@ -107,15 +106,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             vaddr,
         );
     } else {
-        (*PLUGIN).access_memory_with_va(
-            vcpu_idx,
-            vaddr,
-            get_monotonic_ts(),
-            false,
-            true,
-            1,
-            vaddr,
-        );
+        (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true, 1, vaddr);
     }
 }
 
@@ -129,8 +120,7 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-unsafe extern "C" fn dump_statistics() {
-}
+unsafe extern "C" fn dump_statistics() {}
 
 pub struct ParallelCacheHierarchyPlugin {}
 
@@ -211,7 +201,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         unsafe {
             (*PLUGIN).dump_snapshot(name);
         }
-        
+
         unsafe {
             (*PLUGIN).dump_diagnose_information();
         }
@@ -274,13 +264,23 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                 combined as *mut ffi::c_void,
             );
         }
+    }
 
-        // insert the translation block.
-        // qemu_api::qemu_plugin_register_vcpu_tb_exec_cb(
-        //     tb,
-        //     Some(evaluate_vtime_base),
-        //     qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-        //     std::ptr::null_mut(),
-        // )
+    fn serialize(name: &str) {
+        unsafe {
+            (*PLUGIN).serialize(name, 0);
+            if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+                (*DUMMY_PLUGIN).serialize(name, 1);
+            }
+        }
+    }
+
+    fn deserialize(name: &str) {
+        unsafe {
+            (*PLUGIN).deserialize(name, 0);
+            if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+                (*DUMMY_PLUGIN).deserialize(name, 1);
+            }
+        }
     }
 }
