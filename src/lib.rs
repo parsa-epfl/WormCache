@@ -46,8 +46,8 @@ unsafe extern "C" fn savevm_cb(_name: *const ffi::c_char) {
 
 #[no_mangle]
 unsafe extern "C" fn qemu_plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {
-    std::fs::create_dir_all("unsaved").unwrap();
-    PluginList::dump_snapshot("unsaved");
+    // std::fs::create_dir_all("unsaved").unwrap();
+    // PluginList::dump_snapshot("unsaved");
 }
 
 unsafe extern "C" fn qemu_deplete_quantum_cb() {

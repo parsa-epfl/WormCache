@@ -1183,6 +1183,11 @@ impl<
                 self.shared_cache
                     .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
+
+            if parameter::USE_ICOUNT_MODE {
+                // run GC here to clean this directory entry.
+                directory_set_guard.erase(block_id);
+            }
         }
     }
 

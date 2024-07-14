@@ -70,6 +70,11 @@ impl<const SET: usize> DirectorySet<SET> {
 
         self.entries.get_mut(&internal_id).unwrap()
     }
+
+    pub fn erase(&mut self, block_id: u64) {
+        let internal_id = block_id >> Self::LOG2_SET;
+        self.entries.remove(&internal_id);
+    }
 }
 
 // Probably the Directory should be infinitely sized.
