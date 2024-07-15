@@ -3,6 +3,7 @@ mod vtime;
 
 use core::ffi;
 use once_cell::sync::Lazy;
+use spin::mutex::SpinMutex;
 use std::{io::Write, sync::Mutex};
 
 use crate::parameter as param;
@@ -38,6 +39,19 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     (*ICOUNT_PLUGIN).increase_kernel_icount(vcpu_idx as u8, size as u64);
 }
 
+static SNAPSHOT_INFO: SpinMutex<Option<String>> = SpinMutex::new(None);
+
+unsafe extern "C" fn event_loop_callback() {
+    let mut snapshot_info = SNAPSHOT_INFO.lock();
+    if snapshot_info.is_none() {
+        return;
+    }
+
+    println!("Snapshot request: {}", snapshot_info.as_ref().unwrap());
+
+    qemu_api::qemu_plugin_savevm(snapshot_info.take().unwrap().as_ptr() as *const i8);
+}
+
 pub struct VirtualTimePlugin {}
 
 impl super::Plugin for VirtualTimePlugin {
@@ -58,6 +72,12 @@ impl super::Plugin for VirtualTimePlugin {
                 ))
             });
         }
+
+        const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 100; // every 100M.
+
+        assert!(unsafe {
+            qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(event_loop_callback))
+        });
 
         std::thread::spawn(|| {
             // open a csv file to store the icounts.
@@ -88,8 +108,11 @@ impl super::Plugin for VirtualTimePlugin {
 
             let mut accumulated_host_time: u64 = 0;
             let mut history_icount = [(0, 0); CORE_RANGE_FOR_TIME_CALCULATION];
+            let mut snapshot_id = 0;
+            let mut current_threshold = SNAPSHOT_THRESHOLD;
 
             loop {
+                let mut user_icount = 0;
                 let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
                 let mut lines = vec![];
                 lines.push(format!("{}", get_monotonic_ts()));
@@ -118,6 +141,8 @@ impl super::Plugin for VirtualTimePlugin {
                     }
 
                     history_icount[i] = (u, k);
+
+                    user_icount += u;
                 }
 
                 // if the maximum icount is not zero, we update the time scaling factor.
@@ -131,6 +156,20 @@ impl super::Plugin for VirtualTimePlugin {
 
                 if progress {
                     accumulated_host_time += 10;
+                }
+
+                println!("User icount: {}\n", user_icount);
+
+                if user_icount > current_threshold {
+                    let mut snapshot_info = SNAPSHOT_INFO.lock();
+                    if snapshot_info.is_some() {
+                        continue;
+                    }
+                    // write a snapshot request.
+                    *snapshot_info = Some(format!("snapshot_{}", snapshot_id));
+                    drop(snapshot_info);
+                    current_threshold += SNAPSHOT_THRESHOLD;
+                    snapshot_id += 1;
                 }
 
                 std::thread::sleep(std::time::Duration::from_secs(10));
