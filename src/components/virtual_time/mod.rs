@@ -78,11 +78,15 @@ unsafe extern "C" fn event_loop_callback() {
     }
 }
 
+const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 5;
+const MAXIMUM_ICOUNT_STATISTICS_TURN: u64 = 100;
+static mut ICOUNT_STATISTICS_TURN: u64 = 0;
+static mut ICOUNT_STATSTICS_NEXT_THRESHOLD: u64 = SNAPSHOT_THRESHOLD;
+
 unsafe extern "C" fn on_icount_periodic_checking() {
     // read user icount.
-    const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 5;
     let u_total_icount = (*ICOUNT_PLUGIN).total_user_icount();
-    if u_total_icount > SNAPSHOT_THRESHOLD {
+    if u_total_icount > ICOUNT_STATSTICS_NEXT_THRESHOLD {
         let (u_icount, k_icount) = (*ICOUNT_PLUGIN).total_icount();
 
         let mut statistics_u = 0;
@@ -169,10 +173,16 @@ unsafe extern "C" fn on_icount_periodic_checking() {
         });
 
         // write the result_json to a file.
-        let file = std::fs::File::create("icount_statistics.json").unwrap();
+        let file = std::fs::File::create(format!("icount_statistics_{}.json", ICOUNT_STATISTICS_TURN)).unwrap();
         serde_json::to_writer_pretty(&file, &result_json).unwrap();
 
-        std::process::exit(0);
+        ICOUNT_STATISTICS_TURN += 1;
+        if ICOUNT_STATISTICS_TURN >= MAXIMUM_ICOUNT_STATISTICS_TURN {
+            println!("The maximum statistics turn is reached. Quit.");
+            std::process::exit(0);
+        }
+
+        ICOUNT_STATSTICS_NEXT_THRESHOLD += SNAPSHOT_THRESHOLD;
     }
 }
 

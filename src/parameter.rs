@@ -20,7 +20,7 @@ pub const CORE_COUNT: usize = 128;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = false;
+pub const MEASURE_HALF_OF_CORES: bool = true;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -130,7 +130,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 60 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 64 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -234,20 +234,20 @@ pub const INIT_HOST_TIME_SCALE: usize = 1000;
  *
  * <TODO: Add more descriptions>
  */
-pub const PERIODICAL_SNAPSHOT_ENABLED: bool = true;
+pub const PERIODICAL_SNAPSHOT_ENABLED: bool = false;
 
-pub const PERIODICAL_SNAPSHOT_INTERVAL: u64 = 100 * 1000 * 1000;
+pub const PERIODICAL_SNAPSHOT_INTERVAL: u64 = 1000 * 1000 * 1000;
 
-pub const PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD: u64 = 500 * 1000 * 1000;
+pub const PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD: u64 = 6 * 1000 * 1000 * 1000;
 
-pub const PERIODICAL_SNAPSHOT_QUIT_THRESHOLD: Option<u64> = Some(30);
+pub const PERIODICAL_SNAPSHOT_QUIT_THRESHOLD: Option<u64> = Some(3);
 
 /**
  * If icount mode is on, the virtual time plugin does not count instruction anymore.
  */
 pub const USE_ICOUNT_MODE: bool = true;
 
-pub const ICOUNT_CHECKING_ENABLED: bool = false;
+pub const ICOUNT_CHECKING_ENABLED: bool = true;
 static_assertions::const_assert!(!ICOUNT_CHECKING_ENABLED || USE_ICOUNT_MODE); // icount mode must be used to enable icount checking.
 
 /**
