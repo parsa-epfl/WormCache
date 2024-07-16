@@ -186,7 +186,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
                     )
                     .unwrap();
 
-                let elapsed = now.elapsed();
+                // let elapsed = now.elapsed();
 
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }

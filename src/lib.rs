@@ -38,7 +38,25 @@ unsafe extern "C" fn vcpu_tb_trans(
 
 #[no_mangle]
 unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
-    let name = ffi::CStr::from_ptr(name).to_str().unwrap();
+    let converted_name = ffi::CStr::from_ptr(name).to_str();
+
+    if converted_name.is_err() {
+        // print the raw char and return.
+        println!("Failed to convert the name to string.");
+        // print the raw char until we saw a null character.
+        let mut i = 0;
+        loop {
+            let c = *name.offset(i);
+            if c == 0 {
+                break;
+            }
+            print!("{}", c as u8 as char);
+            i += 1;
+        }
+    }
+
+    let name = converted_name.unwrap();
+
     // create a folder for the name.
     std::fs::create_dir_all(name).unwrap();
     PluginList::serialize(name);
