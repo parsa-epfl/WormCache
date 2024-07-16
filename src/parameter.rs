@@ -20,10 +20,10 @@ pub const CORE_COUNT: usize = 128;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = true;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
-static_assertions::const_assert!(!CACHE_HIERARCHY_FOR_HALF_OF_CORES || CORE_COUNT % 2 == 0);
+static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
 
 /**
  * USE_SERIAL_CACHE_MODEL

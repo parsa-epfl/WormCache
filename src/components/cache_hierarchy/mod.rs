@@ -51,9 +51,7 @@ unsafe extern "C" fn vcpu_mem_access(
 
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
-        if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
-            && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
-        {
+        if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
             (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
                 vcpu_idx - parameter::CORE_COUNT as u32 / 2,
                 vaddr,
@@ -94,8 +92,7 @@ unsafe extern "C" fn vcpu_insn_exec(
         return;
     }
 
-    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2
-    {
+    if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
         (*DUMMY_PLUGIN).access_memory_with_va(
             vcpu_idx - parameter::CORE_COUNT as u32 / 2,
             vaddr,
@@ -133,7 +130,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(true, quantum_size)));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
-            if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+            if parameter::MEASURE_HALF_OF_CORES {
                 DUMMY_PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0)));
             }
 
@@ -191,7 +188,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
 
                 let elapsed = now.elapsed();
 
-                std::thread::sleep(std::time::Duration::from_secs(10) - elapsed);
+                std::thread::sleep(std::time::Duration::from_secs(10));
             }
         });
     }
@@ -269,7 +266,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     fn serialize(name: &str) {
         unsafe {
             (*PLUGIN).serialize(name, 0);
-            if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+            if parameter::MEASURE_HALF_OF_CORES {
                 (*DUMMY_PLUGIN).serialize(name, 1);
             }
         }
@@ -278,7 +275,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     fn deserialize(name: &str) {
         unsafe {
             (*PLUGIN).deserialize(name, 0);
-            if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+            if parameter::MEASURE_HALF_OF_CORES {
                 (*DUMMY_PLUGIN).deserialize(name, 1);
             }
         }

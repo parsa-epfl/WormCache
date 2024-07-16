@@ -22,7 +22,6 @@ unsafe extern "C" fn calculate_cpu_clock() -> i64 {
 
 unsafe extern "C" fn on_snapshot_cpu_clock_update() {
     TIME_PLUGIN.lock().unwrap().reset();
-    (*ICOUNT_PLUGIN).reset();
 }
 
 unsafe extern "C" fn user_vcpu_insn_exec(
@@ -39,17 +38,28 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     (*ICOUNT_PLUGIN).increase_kernel_icount(vcpu_idx as u8, size as u64);
 }
 
-static SNAPSHOT_INFO: SpinMutex<Option<String>> = SpinMutex::new(None);
+static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
 
 unsafe extern "C" fn event_loop_callback() {
-    let mut snapshot_info = SNAPSHOT_INFO.lock();
-    if snapshot_info.is_none() {
+    let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
+    if snapshot_info_guard.is_none() {
         return;
     }
 
-    println!("Snapshot request: {}", snapshot_info.as_ref().unwrap());
+    let mut snapshot_info_guard = snapshot_info_guard.unwrap();
 
-    qemu_api::qemu_plugin_savevm(snapshot_info.take().unwrap().as_ptr() as *const i8);
+    if snapshot_info_guard.is_none() {
+        return;
+    }
+
+    let snapshot_info = snapshot_info_guard.take().unwrap();
+
+    println!(
+        "Snapshot request: {}, User ICount: {}",
+        &snapshot_info.0, snapshot_info.1
+    );
+
+    qemu_api::qemu_plugin_savevm(snapshot_info.0.as_ptr() as *const i8);
 }
 
 pub struct VirtualTimePlugin {}
@@ -73,10 +83,33 @@ impl super::Plugin for VirtualTimePlugin {
             });
         }
 
-        const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 100; // every 100M.
+        const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 10; // every 10M.
 
         assert!(unsafe {
             qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(event_loop_callback))
+        });
+
+        // This thread monitors the icounts and triggers the snapshot.
+        std::thread::spawn(|| {
+            let mut current_threshold = SNAPSHOT_THRESHOLD;
+            let mut snapshot_id = 0;
+            loop {
+                let current_user_icount = unsafe { (*ICOUNT_PLUGIN).total_user_icount() };
+                if current_user_icount > current_threshold {
+                    let mut snapshot_info = SNAPSHOT_INFO.lock();
+                    if snapshot_info.is_none() {
+                        // write a snapshot request.
+                        *snapshot_info =
+                            Some((format!("snapshot_{}", snapshot_id), current_user_icount));
+                    }
+
+                    drop(snapshot_info);
+
+                    current_threshold += SNAPSHOT_THRESHOLD;
+                    snapshot_id += 1;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
         });
 
         std::thread::spawn(|| {
@@ -108,11 +141,8 @@ impl super::Plugin for VirtualTimePlugin {
 
             let mut accumulated_host_time: u64 = 0;
             let mut history_icount = [(0, 0); CORE_RANGE_FOR_TIME_CALCULATION];
-            let mut snapshot_id = 0;
-            let mut current_threshold = SNAPSHOT_THRESHOLD;
 
             loop {
-                let mut user_icount = 0;
                 let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
                 let mut lines = vec![];
                 lines.push(format!("{}", get_monotonic_ts()));
@@ -141,8 +171,6 @@ impl super::Plugin for VirtualTimePlugin {
                     }
 
                     history_icount[i] = (u, k);
-
-                    user_icount += u;
                 }
 
                 // if the maximum icount is not zero, we update the time scaling factor.
@@ -156,20 +184,6 @@ impl super::Plugin for VirtualTimePlugin {
 
                 if progress {
                     accumulated_host_time += 10;
-                }
-
-                println!("User icount: {}\n", user_icount);
-
-                if user_icount > current_threshold {
-                    let mut snapshot_info = SNAPSHOT_INFO.lock();
-                    if snapshot_info.is_some() {
-                        continue;
-                    }
-                    // write a snapshot request.
-                    *snapshot_info = Some(format!("snapshot_{}", snapshot_id));
-                    drop(snapshot_info);
-                    current_threshold += SNAPSHOT_THRESHOLD;
-                    snapshot_id += 1;
                 }
 
                 std::thread::sleep(std::time::Duration::from_secs(10));

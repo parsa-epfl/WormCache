@@ -53,7 +53,7 @@ use super::{
     },
 };
 
-pub const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT / 2
 } else {
     parameter::CORE_COUNT

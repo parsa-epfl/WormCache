@@ -51,9 +51,7 @@ impl BranchResolveFlag {
 static mut FETCH_UNIT: *mut fetch::FetchUnit<{ parameter::CORE_COUNT }> = std::ptr::null_mut();
 
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
-    if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES
-        && vcpu_index >= parameter::CORE_COUNT as u32 / 2
-    {
+    if parameter::MEASURE_HALF_OF_CORES && vcpu_index >= parameter::CORE_COUNT as u32 / 2 {
         return;
     }
 
