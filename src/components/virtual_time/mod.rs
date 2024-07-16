@@ -39,6 +39,7 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
 }
 
 static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
+static mut PERIODIC_SNAPSHOT_COUNT: u64 = 0;
 
 unsafe extern "C" fn event_loop_callback() {
     let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
@@ -60,6 +61,15 @@ unsafe extern "C" fn event_loop_callback() {
     );
 
     qemu_api::qemu_plugin_savevm(snapshot_info.0.as_ptr() as *const i8);
+
+    PERIODIC_SNAPSHOT_COUNT += 1;
+
+    if param::PERIODICAL_SNAPSHOT_QUIT_THRESHOLD.is_some()
+        && PERIODIC_SNAPSHOT_COUNT >= param::PERIODICAL_SNAPSHOT_QUIT_THRESHOLD.unwrap()
+    {
+        println!("Generate {} snapshots. Quit.", PERIODIC_SNAPSHOT_COUNT);
+        std::process::exit(0);
+    }
 }
 
 pub struct VirtualTimePlugin {}
@@ -83,34 +93,40 @@ impl super::Plugin for VirtualTimePlugin {
             });
         }
 
-        const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 10; // every 10M.
+        if param::PERIODICAL_SNAPSHOT_ENABLED {
+            println!("Periodical snapshot is enabled.");
+            println!(
+                "Interval: {}, Initial threshold: {}",
+                param::PERIODICAL_SNAPSHOT_INTERVAL,
+                param::PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD
+            );
+            assert!(unsafe {
+                qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(event_loop_callback))
+            });
 
-        assert!(unsafe {
-            qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(event_loop_callback))
-        });
+            // This thread monitors the icounts and triggers the snapshot.
+            std::thread::spawn(|| {
+                let mut current_threshold = param::PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD;
+                let mut snapshot_id = 0;
+                loop {
+                    let current_user_icount = unsafe { (*ICOUNT_PLUGIN).total_user_icount() };
+                    if current_user_icount > current_threshold {
+                        let mut snapshot_info = SNAPSHOT_INFO.lock();
+                        if snapshot_info.is_none() {
+                            // write a snapshot request.
+                            *snapshot_info =
+                                Some((format!("snapshot_{}", snapshot_id), current_user_icount));
+                        }
 
-        // This thread monitors the icounts and triggers the snapshot.
-        std::thread::spawn(|| {
-            let mut current_threshold = SNAPSHOT_THRESHOLD;
-            let mut snapshot_id = 0;
-            loop {
-                let current_user_icount = unsafe { (*ICOUNT_PLUGIN).total_user_icount() };
-                if current_user_icount > current_threshold {
-                    let mut snapshot_info = SNAPSHOT_INFO.lock();
-                    if snapshot_info.is_none() {
-                        // write a snapshot request.
-                        *snapshot_info =
-                            Some((format!("snapshot_{}", snapshot_id), current_user_icount));
+                        drop(snapshot_info);
+
+                        current_threshold += param::PERIODICAL_SNAPSHOT_INTERVAL;
+                        snapshot_id += 1;
                     }
-
-                    drop(snapshot_info);
-
-                    current_threshold += SNAPSHOT_THRESHOLD;
-                    snapshot_id += 1;
+                    std::thread::sleep(std::time::Duration::from_secs(1));
                 }
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
-        });
+            });
+        }
 
         std::thread::spawn(|| {
             // open a csv file to store the icounts.

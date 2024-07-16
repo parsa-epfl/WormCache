@@ -230,6 +230,19 @@ pub const BP_RAS_COUNT: usize = 32;
 pub const INIT_HOST_TIME_SCALE: usize = 1000;
 
 /**
+ * Parameters related to taking the periodic snapshot of QEMU.
+ *
+ * <TODO: Add more descriptions>
+ */
+pub const PERIODICAL_SNAPSHOT_ENABLED: bool = true;
+
+pub const PERIODICAL_SNAPSHOT_INTERVAL: u64 = 10 * 1000 * 1000;
+
+pub const PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD: u64 = 100 * 1000 * 1000;
+
+pub const PERIODICAL_SNAPSHOT_QUIT_THRESHOLD: Option<u64> = Some(30);
+
+/**
  * If icount mode is on, the virtual time plugin does not count instruction anymore.
  */
 pub const USE_ICOUNT_MODE: bool = true;
