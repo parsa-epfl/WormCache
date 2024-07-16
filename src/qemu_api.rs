@@ -1118,3 +1118,10 @@ extern "C" {
     #[doc = " qemu_plugin_register_event_loop_poll_cb() - register a callback to poll the\n\n @cb: function is called every time the event loop polls.\n\n returns true if the callback is registered successfully.\n\n Please note at currently at most one callback can be registered."]
     pub fn qemu_plugin_register_event_loop_poll_cb(cb: qemu_plugin_event_loop_poll_cb_t) -> bool;
 }
+pub type qemu_plugin_icount_periodic_checking_cb_t = ::std::option::Option<unsafe extern "C" fn()>;
+extern "C" {
+    #[doc = " qemu_plugin_register_icount_periodic_checking_cb() - register a callback for\n checking periodically when icount is increased to a specific value.\n\n @cb: function is called when the icount is increased to a specific value.\n\n returns true if the callback is registered successfully.\n\n TODO: This callback is a dirty hack. It is because we need to know the userspace\n instruction to report statistics and we cannot get the userspace instruction\n inside QEMU. It has to come from the plugin.\n\n This part should be refactored afterwards."]
+    pub fn qemu_plugin_register_icount_periodic_checking_cb(
+        cb: qemu_plugin_icount_periodic_checking_cb_t,
+    ) -> bool;
+}

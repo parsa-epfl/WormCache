@@ -3,6 +3,7 @@ mod vtime;
 
 use core::ffi;
 use once_cell::sync::Lazy;
+use serde_json::json;
 use spin::mutex::SpinMutex;
 use std::{io::Write, sync::Mutex};
 
@@ -10,6 +11,9 @@ use crate::parameter as param;
 use crate::qemu_api;
 
 use crate::util::get_monotonic_ts;
+
+use super::debug::statistics::EventType;
+use super::debug::statistics::Statistics;
 
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
@@ -29,6 +33,7 @@ unsafe extern "C" fn user_vcpu_insn_exec(
     size: *mut ffi::c_void, // the size of the basic block
 ) {
     (*ICOUNT_PLUGIN).increase_user_icount(vcpu_idx as u8, size as u64);
+    Statistics::global_record_by(vcpu_idx, EventType::Instruction, false, size as u64);
 }
 
 unsafe extern "C" fn kernel_vcpu_insn_exec(
@@ -36,6 +41,7 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     size: *mut ffi::c_void, // the size of the basic block
 ) {
     (*ICOUNT_PLUGIN).increase_kernel_icount(vcpu_idx as u8, size as u64);
+    Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
 }
 
 static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
@@ -68,6 +74,104 @@ unsafe extern "C" fn event_loop_callback() {
         && PERIODIC_SNAPSHOT_COUNT >= param::PERIODICAL_SNAPSHOT_QUIT_THRESHOLD.unwrap()
     {
         println!("Generate {} snapshots. Quit.", PERIODIC_SNAPSHOT_COUNT);
+        std::process::exit(0);
+    }
+}
+
+unsafe extern "C" fn on_icount_periodic_checking() {
+    // read user icount.
+    const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 5;
+    let u_total_icount = (*ICOUNT_PLUGIN).total_user_icount();
+    if u_total_icount > SNAPSHOT_THRESHOLD {
+        let (u_icount, k_icount) = (*ICOUNT_PLUGIN).total_icount();
+
+        let mut statistics_u = 0;
+        let mut statistics_k = 0;
+        let mut l2_miss_u = 0;
+        let mut l2_miss_k = 0;
+        let mut llc_miss_u = 0;
+        let mut llc_miss_k = 0;
+        let mut bp_miss_u = 0;
+        let mut bp_miss_k = 0;
+
+        const MEASURED_CORE_COUNT: usize = if param::MEASURE_HALF_OF_CORES {
+            param::CORE_COUNT / 2
+        } else {
+            param::CORE_COUNT
+        };
+
+        for core_id in 0..MEASURED_CORE_COUNT {
+            // Query the instruction.
+            let (_, i_u, i_k) =
+                Statistics::global_query_record(core_id as u32, EventType::Instruction);
+            statistics_u += i_u;
+            statistics_k += i_k;
+
+            // Query the L2 miss.
+            let (_, l2_u, l2_k) =
+                Statistics::global_query_record(core_id as u32, EventType::PrivateCacheMiss);
+
+            l2_miss_u += l2_u;
+            l2_miss_k += l2_k;
+
+            // Query the LLC miss.
+            let (_, llc_u, llc_k) =
+                Statistics::global_query_record(core_id as u32, EventType::SharedCacheMiss);
+
+            llc_miss_u += llc_u;
+            llc_miss_k += llc_k;
+
+            // Query the branch predictor miss.
+            let (_, bp_u, bp_k) =
+                Statistics::global_query_record(core_id as u32, EventType::BPMiss);
+
+            bp_miss_u += bp_u;
+            bp_miss_k += bp_k;
+        }
+
+        assert!(statistics_u == u_icount);
+        assert!(statistics_k == k_icount);
+
+        let i = u_icount + k_icount;
+        let l2_miss = l2_miss_u + l2_miss_k;
+        let llc_miss = llc_miss_u + llc_miss_k;
+        let bp_miss = bp_miss_u + bp_miss_k;
+
+        // You should stop the simulation.
+        println!("Total userspace instruction: {}", u_total_icount);
+        // report statistics.
+        let result_json = json!({
+            "icount": i,
+            "icount:u": u_icount,
+            "icount:k": k_icount,
+
+            "l2_miss": l2_miss,
+            "l2_miss:u": l2_miss_u,
+            "l2_miss:k": l2_miss_k,
+
+            "llc_miss": llc_miss,
+            "llc_miss:u": llc_miss_u,
+            "llc_miss:k": llc_miss_k,
+
+            "bp": bp_miss,
+            "bp:u": bp_miss_u,
+            "bp:k": bp_miss_k,
+
+            "agg": {
+                "l2_mpki": l2_miss as f64 / i as f64 * 1000.0,
+                "llc_mpki": llc_miss as f64 / i as f64 * 1000.0,
+                "bp_mpki": bp_miss as f64 / i as f64 * 1000.0,
+
+                "l2_mpki:u": l2_miss_u as f64 / u_icount as f64 * 1000.0,
+                "llc_mpki:u": llc_miss_u as f64 / u_icount as f64 * 1000.0,
+                "bp_mpki:u": bp_miss_u as f64 / u_icount as f64 * 1000.0,
+            }
+        });
+
+        // write the result_json to a file.
+        let file = std::fs::File::create("icount_statistics.json").unwrap();
+        serde_json::to_writer_pretty(&file, &result_json).unwrap();
+
         std::process::exit(0);
     }
 }
@@ -128,15 +232,18 @@ impl super::Plugin for VirtualTimePlugin {
             });
         }
 
+        if param::ICOUNT_CHECKING_ENABLED {
+            println!("Measurement is ON.");
+            assert!(unsafe {
+                qemu_api::qemu_plugin_register_icount_periodic_checking_cb(Some(
+                    on_icount_periodic_checking,
+                ))
+            })
+        }
+
         std::thread::spawn(|| {
             // open a csv file to store the icounts.
-            let mut file = std::fs::File::create("icount.csv").unwrap();
-            // write the header.
-            // file.write_fmt(format_args!("ts")).unwrap();
-            // for i in 0..CORE_COUNT {
-            //     file.write_fmt(format_args!(",core{}", i)).unwrap();
-            // }
-            // file.write_fmt(format_args!("\n")).unwrap();
+            let mut file = std::fs::File::create("icount.csv").unwrap(); // TODO: combine this log with another log.
             let mut head = vec!["ts".to_string()];
             for i in 0..param::CORE_COUNT {
                 head.push(format!("core{}", i));

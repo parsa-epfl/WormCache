@@ -38,19 +38,57 @@ impl PerCoreFetchUnit {
 
     pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64, core_id: usize) {
         let is_os = pc >> 63 == 1;
-        if self.btb.train(pc, result, target) == BranchPredictorResult::Mispredict {
+        let btb_miss = self.btb.train(pc, result, target) == BranchPredictorResult::Mispredict;
+        let tage_miss = self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict;
+        let ras_miss = self.ras.train(pc, result, target) == BranchPredictorResult::Mispredict;
+
+        if btb_miss {
             Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
         }
 
-        if self.ras.train(pc, result, target) == BranchPredictorResult::Mispredict {
+        if ras_miss {
             Statistics::global_record(core_id as u32, EventType::RASMiss, is_os);
         }
 
-        if self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict {
+        if tage_miss {
             Statistics::global_record(core_id as u32, EventType::TageMiss, is_os);
         }
 
         Statistics::global_record(core_id as u32, EventType::BranchCount, is_os);
+
+        // Determine the branch prediction result.
+        match result {
+            BranchResolveFlag::Taken => {
+                if tage_miss {
+                    // Tage report not taken, the direction is wrong.
+                    Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
+                } else if btb_miss {
+                    // Tage report taken, but the target is wrong.
+                    Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
+                }
+            }
+            BranchResolveFlag::NotTaken => {
+                // the branch is predicted to taken.
+                if tage_miss {
+                    Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
+                }
+            }
+            BranchResolveFlag::Call => {
+                if btb_miss {
+                    Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
+                }
+            }
+            BranchResolveFlag::Return => {
+                if ras_miss && btb_miss {
+                    Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
+                }
+            }
+            BranchResolveFlag::Indirect => {
+                if btb_miss {
+                    Statistics::global_record(core_id as u32, EventType::BTBMiss, is_os);
+                }
+            }
+        }
     }
 }
 

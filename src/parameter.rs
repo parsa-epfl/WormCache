@@ -236,9 +236,9 @@ pub const INIT_HOST_TIME_SCALE: usize = 1000;
  */
 pub const PERIODICAL_SNAPSHOT_ENABLED: bool = true;
 
-pub const PERIODICAL_SNAPSHOT_INTERVAL: u64 = 10 * 1000 * 1000;
+pub const PERIODICAL_SNAPSHOT_INTERVAL: u64 = 100 * 1000 * 1000;
 
-pub const PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD: u64 = 100 * 1000 * 1000;
+pub const PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD: u64 = 500 * 1000 * 1000;
 
 pub const PERIODICAL_SNAPSHOT_QUIT_THRESHOLD: Option<u64> = Some(30);
 
@@ -247,6 +247,8 @@ pub const PERIODICAL_SNAPSHOT_QUIT_THRESHOLD: Option<u64> = Some(30);
  */
 pub const USE_ICOUNT_MODE: bool = true;
 
+pub const ICOUNT_CHECKING_ENABLED: bool = false;
+static_assertions::const_assert!(!ICOUNT_CHECKING_ENABLED || USE_ICOUNT_MODE); // icount mode must be used to enable icount checking.
 
 /**
  * The list of plugins.

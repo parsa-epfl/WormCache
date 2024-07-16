@@ -9,6 +9,8 @@ use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 
 #[derive(EnumCount, EnumIter, Display, Debug, Clone, Copy)]
 pub enum EventType {
+    Instruction,
+
     MemoryAccess,
     InstructionAccess,
     DataAccess,
@@ -54,30 +56,39 @@ pub enum EventType {
     BTBMiss,
     RASMiss,
     TageMiss,
+    BPMiss, // this is different from summing the previous one.
+            // It includes the following logic to judge:
+            // - For directional branch, it is a miss if the direction prediction is wrong, or
+            // - For directional branch, it is a miss if the direction prediction is right but the target prediction is wrong.
+            // - For indirect branch, it is a miss if the target prediction is wrong.
+            // - For return, it is a miss if the target prediction (provided by the RAS) is wrong.
 }
 
 #[repr(align(64))]
 struct PerCoreStatistics {
-    counters: [u64; EventType::COUNT * 3],
+    counters: [u64; EventType::COUNT * 2],
 }
 
 impl PerCoreStatistics {
     pub fn new() -> Self {
         Self {
-            counters: [0; EventType::COUNT * 3],
+            counters: [0; EventType::COUNT * 2],
         }
     }
 
     #[inline]
     pub fn record(&mut self, event: EventType, is_os: bool) {
-        if ENABLE_STATISTICS {
-            let index = (event as usize) * 3;
-            self.counters[index as usize] += 1;
+        self.record_by(event, is_os, 1);
+    }
 
+    #[inline]
+    pub fn record_by(&mut self, event: EventType, is_os: bool, increment: u64) {
+        if ENABLE_STATISTICS {
+            let index = (event as usize) * 2;
             if is_os {
-                self.counters[index + 2] += 1;
+                self.counters[index + 1] += increment;
             } else {
-                self.counters[index + 1] += 1;
+                self.counters[index] += increment;
             }
         }
     }
@@ -86,9 +97,11 @@ impl PerCoreStatistics {
     pub fn get_line(&self, ts: u64, core_id: u32) -> String {
         let mut line = format!("{},{}", ts, core_id);
         for event in 0..EventType::COUNT {
-            line.push_str(&format!(",{}", self.counters[3 * event]));
-            line.push_str(&format!(",{}", self.counters[3 * event + 1]));
-            line.push_str(&format!(",{}", self.counters[3 * event + 2]));
+            let u = self.counters[2 * event];
+            let k = self.counters[2 * event + 1];
+            line.push_str(&format!(",{}", u + k));
+            line.push_str(&format!(",{}", u));
+            line.push_str(&format!(",{}", k));
         }
         line
     }
@@ -116,6 +129,15 @@ impl Statistics {
         if ENABLE_STATISTICS {
             unsafe {
                 (*self.per_core[core_id as usize].get()).record(event, is_os);
+            }
+        }
+    }
+
+    #[inline]
+    pub fn record_by(&self, core_id: u32, event: EventType, is_os: bool, increment: u64) {
+        if ENABLE_STATISTICS {
+            unsafe {
+                (*self.per_core[core_id as usize].get()).record_by(event, is_os, increment);
             }
         }
     }
@@ -154,9 +176,20 @@ impl Statistics {
         }
     }
 
-    pub fn global_query_record(core_id: u32, event: EventType) -> u64 {
+    #[inline]
+    pub fn global_record_by(core_id: u32, event: EventType, is_os: bool, increment: u64) {
         unsafe {
-            (*GLOBAL_STATISTICS.per_core[core_id as usize].get()).counters[event as usize * 3]
+            GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
+        }
+    }
+
+    pub fn global_query_record(core_id: u32, event: EventType) -> (u64, u64, u64) {
+        unsafe {
+            let cnt = (*GLOBAL_STATISTICS.per_core[core_id as usize].get()).counters;
+            let index = (event as usize) * 2;
+            let u = cnt[index];
+            let k = cnt[index + 1];
+            (u + k, u, k)
         }
     }
 

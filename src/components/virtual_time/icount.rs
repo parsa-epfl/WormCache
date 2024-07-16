@@ -75,4 +75,24 @@ impl ICountPlugin {
         }
         res
     }
+
+    pub fn total_icount(&self) -> (u64, u64) {
+        // (u, k)
+        let mut res = (0, 0);
+
+        const CORE_COUNT: usize = if param::MEASURE_HALF_OF_CORES {
+            param::CORE_COUNT / 2
+        } else {
+            param::CORE_COUNT
+        };
+
+        for i in 0..CORE_COUNT {
+            unsafe {
+                res.0 += (*self.data[i].get()).user_icount;
+                res.1 += (*self.data[i].get()).kernel_icount;
+            }
+        }
+
+        res
+    }
 }
