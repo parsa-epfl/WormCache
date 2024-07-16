@@ -48,7 +48,7 @@ static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
  *
  * The associativity of the private & last-level TLB.
  */
-pub const TLB_ASSO: usize = 16;
+pub const TLB_ASSO: usize = 4;
 
 /**
  * TLB_SET
@@ -74,14 +74,14 @@ pub const USE_UNIFIED_CACHE: bool = true;
  * The associativity of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_ASSO: usize = 16;
+pub const UNIFIED_PRI_CACHE_ASSO: usize = 8;
 /**
  * PRI_CACHE_SET
  *
  * The number of sets of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_SET: usize = 2048 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const UNIFIED_PRI_CACHE_SET: usize = 4096 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
 
 /**
@@ -123,7 +123,7 @@ static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
  *
  * The associativity of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_ASSO: usize = 15; // with 16 and 64, each cache set is 1KB.
+pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1KB.
 
 /**
  * SHARED_CACHE_SET
