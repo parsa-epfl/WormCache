@@ -81,7 +81,7 @@ pub const UNIFIED_PRI_CACHE_ASSO: usize = 8;
  * The number of sets of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_SET: usize = 4096 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const UNIFIED_PRI_CACHE_SET: usize = 2048 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
 
 /**
