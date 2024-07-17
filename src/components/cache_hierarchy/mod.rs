@@ -127,12 +127,18 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     fn init(_options: &FxHashMap<String, String>) {
         unsafe {
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
+            let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
 
-            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(true, quantum_size)));
+            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(
+                true,
+                quantum_size,
+                is_icount_mode,
+            )));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
             if parameter::MEASURE_HALF_OF_CORES {
-                DUMMY_PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0)));
+                DUMMY_PLUGIN =
+                    Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
             }
 
             qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));

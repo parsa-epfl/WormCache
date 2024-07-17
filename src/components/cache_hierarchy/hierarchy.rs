@@ -47,6 +47,7 @@ pub struct MemoryHierarchy<
 
     shared_cache: SCache,
     with_statistics: bool,
+    directory_run_gc: bool,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -94,13 +95,14 @@ impl<
         DIRECTORY_SHARD_COUNT,
     >
 {
-    pub fn new(with_statistics: bool, _quantum_size: u64) -> Self {
+    pub fn new(with_statistics: bool, _quantum_size: u64, directory_run_gc: bool) -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
             directory: directory::Directory::new(),
             shared_cache: SCache::new(),
             with_statistics,
+            directory_run_gc,
         }
     }
 
@@ -1182,7 +1184,7 @@ impl<
                     .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
 
-            if unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
+            if self.directory_run_gc {
                 // run GC here to clean this directory entry.
                 directory_set_guard.erase(block_id);
             }

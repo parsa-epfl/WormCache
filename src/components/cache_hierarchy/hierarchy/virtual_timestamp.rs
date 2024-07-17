@@ -34,7 +34,7 @@ type MH = MemoryHierarchy<
 #[test]
 #[ignore]
 fn read_after_read_has_no_impact() {
-    let mh = MH::new(true, 2);
+    let mh = MH::new(true, 0, false);
     let block_id = 0x1234;
     let original_value =
         Statistics::global_query_record(1, EventType::PrivateCacheVTsOrderViolation).0;
@@ -62,7 +62,7 @@ fn read_after_read_has_no_impact() {
 #[test]
 #[ignore]
 fn read_after_write_has_impact() {
-    let mh = MH::new(true, 2);
+    let mh = MH::new(true, 0, false);
     let block_id = 0x1234;
 
     let original_value =
@@ -97,7 +97,7 @@ fn read_after_write_has_impact() {
 #[test]
 #[ignore]
 fn write_after_read_has_impact() {
-    let mh = MH::new(true, 2);
+    let mh = MH::new(true, 0, false);
     let block_id = 0x1234;
 
     let original_value =
@@ -126,7 +126,7 @@ fn write_after_read_has_impact() {
 #[test]
 #[ignore]
 fn write_after_write_has_impact() {
-    let mh = MH::new(true, 2);
+    let mh = MH::new(true, 0, false);
     let block_id = 0x1234;
 
     let original_value =
