@@ -83,6 +83,7 @@ static mut MEASURE_INTERVAL: u64 = 0;
 
 static mut MEASURE_TURN: u64 = 0;
 static mut MEASURE_NEXT_THRESHOLD: u64 = 0;
+static mut MEASURE_PREFIX: String = String::new();
 
 unsafe extern "C" fn on_icount_periodic_checking() {
     // read user icount.
@@ -175,7 +176,7 @@ unsafe extern "C" fn on_icount_periodic_checking() {
 
         // write the result_json to a file.
         let file =
-            std::fs::File::create(format!("icount_statistics_{}.json", MEASURE_TURN)).unwrap();
+            std::fs::File::create(format!("{}_{}.json", MEASURE_PREFIX, MEASURE_TURN)).unwrap();
         serde_json::to_writer_pretty(&file, &result_json).unwrap();
 
         MEASURE_TURN += 1;
@@ -204,6 +205,7 @@ impl super::Plugin for VirtualTimePlugin {
         // - interval=N
         // - count=N
         // - check_duration=N
+        // - prefix="name"
 
         let vtime_is_on = options.get("vtime").map(|x| x == "on").unwrap_or(false);
 
@@ -248,6 +250,11 @@ impl super::Plugin for VirtualTimePlugin {
                 .map(|x| x.parse::<u64>().unwrap())
                 .unwrap();
 
+            let prefix = options
+                .get("prefix")
+                .unwrap_or(&"snapshot".to_string())
+                .clone();
+
             // update count
             unsafe { PERIODIC_SNAPSHOT_REQUIRED_COUNT = count };
 
@@ -270,7 +277,7 @@ impl super::Plugin for VirtualTimePlugin {
                         if snapshot_info.is_none() {
                             // write a snapshot request.
                             *snapshot_info =
-                                Some((format!("snapshot_{}", snapshot_id), current_user_icount));
+                                Some((format!("{}_{}", prefix, snapshot_id), current_user_icount));
                         }
 
                         drop(snapshot_info);
@@ -297,6 +304,11 @@ impl super::Plugin for VirtualTimePlugin {
                 .map(|x| x.parse::<u64>().unwrap())
                 .unwrap();
 
+            let prefix = options
+                .get("prefix")
+                .unwrap_or(&"icount_statistics_".to_string())
+                .clone();
+
             println!("Measurement is ON.");
             println!(
                 "Interval: {}, Initial threshold: {}, Count: {}",
@@ -307,6 +319,7 @@ impl super::Plugin for VirtualTimePlugin {
                 MEASURE_MAX_TURN = count;
                 MEASURE_INTERVAL = interval;
                 MEASURE_NEXT_THRESHOLD = init_threshold;
+                MEASURE_PREFIX = prefix;
             }
 
             assert!(unsafe {
