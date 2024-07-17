@@ -1241,7 +1241,8 @@ impl<
     }
 
     fn serialize_mmus(&self, name: &str, numa_node_id: usize) {
-        let file = std::fs::File::create(format!("{}_mmus-{}", name, numa_node_id)).unwrap();
+        let file =
+            std::fs::File::create(format!("{}/mmus-{}.json.zstd", name, numa_node_id)).unwrap();
         let mut file = Encoder::new(file, 0).unwrap();
 
         let multiple_mmus = self
@@ -1256,7 +1257,15 @@ impl<
     }
 
     fn deserialize_mmus(&self, name: &str, numa_node_id: usize) {
-        let file = std::fs::File::open(format!("{}_mmus-{}", name, numa_node_id)).unwrap();
+        let file = std::fs::File::open(format!("{}/mmus-{}.json.zstd", name, numa_node_id));
+
+        if file.is_err() {
+            println!("Cannot load the MMU state. Error: {:?}", file.err());
+            return;
+        }
+
+        let file = file.unwrap();
+
         let mut file = Decoder::new(file).unwrap();
 
         let multiple_mmus: serde_json::Value = serde_json::from_reader(&mut file).unwrap();

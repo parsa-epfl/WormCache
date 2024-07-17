@@ -100,6 +100,8 @@ unsafe extern "C" fn on_icount_periodic_checking() {
         let mut llc_miss_k = 0;
         let mut bp_miss_u = 0;
         let mut bp_miss_k = 0;
+        let mut tlb_miss_u = 0;
+        let mut tlb_miss_k = 0;
 
         const MEASURED_CORE_COUNT: usize = if param::MEASURE_HALF_OF_CORES {
             param::CORE_COUNT / 2
@@ -134,6 +136,13 @@ unsafe extern "C" fn on_icount_periodic_checking() {
 
             bp_miss_u += bp_u;
             bp_miss_k += bp_k;
+
+            // Query the TLB miss.
+            let (_, tlb_u, tlb_k) =
+                Statistics::global_query_record(core_id as u32, EventType::TLBMiss);
+
+            tlb_miss_u += tlb_u;
+            tlb_miss_k += tlb_k;
         }
 
         assert!(statistics_u == u_icount);
@@ -143,6 +152,7 @@ unsafe extern "C" fn on_icount_periodic_checking() {
         let l2_miss = l2_miss_u + l2_miss_k;
         let llc_miss = llc_miss_u + llc_miss_k;
         let bp_miss = bp_miss_u + bp_miss_k;
+        let tlb_miss = tlb_miss_u + tlb_miss_k;
 
         // You should stop the simulation.
         println!("Total userspace instruction: {}", u_total_icount);
@@ -164,14 +174,20 @@ unsafe extern "C" fn on_icount_periodic_checking() {
             "bp:u": bp_miss_u,
             "bp:k": bp_miss_k,
 
+            "tlb": tlb_miss,
+            "tlb:u": tlb_miss_u,
+            "tlb:k": tlb_miss_k,
+
             "agg": {
                 "l2_mpki": l2_miss as f64 / i as f64 * 1000.0,
                 "llc_mpki": llc_miss as f64 / i as f64 * 1000.0,
                 "bp_mpki": bp_miss as f64 / i as f64 * 1000.0,
+                "tlb:mpki": tlb_miss as f64 / i as f64 * 1000.0,
 
                 "l2_mpki:u": l2_miss_u as f64 / u_icount as f64 * 1000.0,
                 "llc_mpki:u": llc_miss_u as f64 / u_icount as f64 * 1000.0,
                 "bp_mpki:u": bp_miss_u as f64 / u_icount as f64 * 1000.0,
+                "tlb:mpki:u": tlb_miss_u as f64 / u_icount as f64 * 1000.0,
             }
         });
 

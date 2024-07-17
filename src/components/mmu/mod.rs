@@ -45,7 +45,7 @@ impl AbstractMMU for NoMMU {
     fn deserialize(&mut self, _: serde_json::Value) {}
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(align(64))]
 pub struct MemoryManagementUnit<
     ARCH: arch::ISA,
@@ -53,8 +53,8 @@ pub struct MemoryManagementUnit<
     const T_SETS: usize = 1024,
 > {
     tlb: TLB<T_SETS, T_ASSO>,
-    htbl_2mb: HashMap<(u16, u64), u64>, // Currently, we just use a simple hashmap to store the 2MB page table.
-    htlb_1gb: HashMap<(u16, u64), u64>, // Same to the 2MB page table.
+    htbl_2mb: HashMap<u64, u64>, // Currently, we just use a simple hashmap to store the 2MB page table.
+    htlb_1gb: HashMap<u64, u64>, // Same to the 2MB page table.
     last_ttbr: u64,
     arch: std::marker::PhantomData<ARCH>,
     // other MMU caches can be also added here as well.
@@ -114,14 +114,16 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
 
         // Then, we try 2MB page.
         let vpn_2mb = vpn >> 9;
-        if let Some(ppn) = self.htbl_2mb.get(&(asid, vpn_2mb)) {
+        let key_2mb = (asid as u64) << 48 | vpn_2mb;
+        if let Some(ppn) = self.htbl_2mb.get(&key_2mb) {
             let pa = ppn << 21 | (va & 0x1fffff);
             return MMUTranslationResult::Hit(pa);
         }
 
         // Then, we try 1GB page.
         let vpn_1gb = vpn >> 18;
-        if let Some(ppn) = self.htlb_1gb.get(&(asid, vpn_1gb)) {
+        let key_1gb = (asid as u64) << 48 | vpn_1gb;
+        if let Some(ppn) = self.htlb_1gb.get(&key_1gb) {
             let pa = ppn << 30 | (va & 0x3fffffff);
             return MMUTranslationResult::Hit(pa);
         }
@@ -136,12 +138,10 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         match ptw_result.page_size {
             arch::aarch64::PageSize::_4KB => self.tlb.insert(vpn, asid, ptw_result.paddr >> 12, ts),
             arch::aarch64::PageSize::_2MB => {
-                self.htbl_2mb
-                    .insert((asid, vpn_2mb), ptw_result.paddr >> 21);
+                self.htbl_2mb.insert(key_2mb, ptw_result.paddr >> 21);
             }
             arch::aarch64::PageSize::_1GB => {
-                self.htlb_1gb
-                    .insert((asid, vpn_1gb), ptw_result.paddr >> 30);
+                self.htlb_1gb.insert(key_1gb, ptw_result.paddr >> 30);
             }
         }
 
