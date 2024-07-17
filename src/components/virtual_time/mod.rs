@@ -11,6 +11,7 @@ use std::{io::Write, sync::Mutex};
 use crate::parameter as param;
 use crate::qemu_api;
 
+use crate::qemu_api::qemu_plugin_is_icount_mode;
 use crate::util::get_monotonic_ts;
 
 use super::debug::statistics::EventType;
@@ -289,6 +290,8 @@ impl super::Plugin for VirtualTimePlugin {
                 }
             });
         } else if mode == "measure" {
+            assert!(unsafe { qemu_plugin_is_icount_mode() });
+
             let init_threshold = options
                 .get("init_threshold")
                 .map(|x| x.parse::<u64>().unwrap())
