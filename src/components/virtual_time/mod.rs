@@ -3,6 +3,7 @@ mod vtime;
 
 use core::ffi;
 use once_cell::sync::Lazy;
+use rustc_hash::FxHashMap;
 use serde_json::json;
 use spin::mutex::SpinMutex;
 use std::{io::Write, sync::Mutex};
@@ -46,6 +47,7 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
 
 static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
 static mut PERIODIC_SNAPSHOT_COUNT: u64 = 0;
+static mut PERIODIC_SNAPSHOT_REQUIRED_COUNT: u64 = 0xffff_ffff_ffff_ffff;
 
 unsafe extern "C" fn event_loop_callback() {
     let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
@@ -70,23 +72,22 @@ unsafe extern "C" fn event_loop_callback() {
 
     PERIODIC_SNAPSHOT_COUNT += 1;
 
-    if param::PERIODICAL_SNAPSHOT_QUIT_THRESHOLD.is_some()
-        && PERIODIC_SNAPSHOT_COUNT >= param::PERIODICAL_SNAPSHOT_QUIT_THRESHOLD.unwrap()
-    {
+    if PERIODIC_SNAPSHOT_COUNT >= PERIODIC_SNAPSHOT_REQUIRED_COUNT {
         println!("Generate {} snapshots. Quit.", PERIODIC_SNAPSHOT_COUNT);
         std::process::exit(0);
     }
 }
 
-const SNAPSHOT_THRESHOLD: u64 = 1000 * 1000 * 5;
-const MAXIMUM_ICOUNT_STATISTICS_TURN: u64 = 100;
-static mut ICOUNT_STATISTICS_TURN: u64 = 0;
-static mut ICOUNT_STATSTICS_NEXT_THRESHOLD: u64 = SNAPSHOT_THRESHOLD;
+static mut MEASURE_MAX_TURN: u64 = 0xffff_ffff_ffff_ffff;
+static mut MEASURE_INTERVAL: u64 = 0;
+
+static mut MEASURE_TURN: u64 = 0;
+static mut MEASURE_NEXT_THRESHOLD: u64 = 0;
 
 unsafe extern "C" fn on_icount_periodic_checking() {
     // read user icount.
     let u_total_icount = (*ICOUNT_PLUGIN).total_user_icount();
-    if u_total_icount > ICOUNT_STATSTICS_NEXT_THRESHOLD {
+    if u_total_icount > MEASURE_NEXT_THRESHOLD {
         let (u_icount, k_icount) = (*ICOUNT_PLUGIN).total_icount();
 
         let mut statistics_u = 0;
@@ -173,16 +174,17 @@ unsafe extern "C" fn on_icount_periodic_checking() {
         });
 
         // write the result_json to a file.
-        let file = std::fs::File::create(format!("icount_statistics_{}.json", ICOUNT_STATISTICS_TURN)).unwrap();
+        let file =
+            std::fs::File::create(format!("icount_statistics_{}.json", MEASURE_TURN)).unwrap();
         serde_json::to_writer_pretty(&file, &result_json).unwrap();
 
-        ICOUNT_STATISTICS_TURN += 1;
-        if ICOUNT_STATISTICS_TURN >= MAXIMUM_ICOUNT_STATISTICS_TURN {
+        MEASURE_TURN += 1;
+        if MEASURE_TURN >= MEASURE_MAX_TURN {
             println!("The maximum statistics turn is reached. Quit.");
             std::process::exit(0);
         }
 
-        ICOUNT_STATSTICS_NEXT_THRESHOLD += SNAPSHOT_THRESHOLD;
+        MEASURE_NEXT_THRESHOLD += MEASURE_INTERVAL;
     }
 }
 
@@ -190,12 +192,22 @@ pub struct VirtualTimePlugin {}
 
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
-    fn init() {
+    fn init(options: &FxHashMap<String, String>) {
         unsafe {
             ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
         }
 
-        if !param::USE_ICOUNT_MODE {
+        // check the following options:
+        // - vtime=on|off
+        // - mode=normal|warm|measure
+        // - init_threshold=N
+        // - interval=N
+        // - count=N
+        // - check_duration=N
+
+        let vtime_is_on = options.get("vtime").map(|x| x == "on").unwrap_or(false);
+
+        if vtime_is_on && !unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
             assert!(unsafe {
                 qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock))
             });
@@ -205,22 +217,51 @@ impl super::Plugin for VirtualTimePlugin {
                     on_snapshot_cpu_clock_update,
                 ))
             });
+
+            println!("Virtual time calculation is on.");
+        } else if unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
+            println!("Virtual time calculation is off because icount mode is on.");
         }
 
-        if param::PERIODICAL_SNAPSHOT_ENABLED {
-            println!("Periodical snapshot is enabled.");
+        let normal = "normal".to_string();
+        let mode = options.get("mode").unwrap_or(&normal);
+
+        if mode == "warm" {
+            println!("Periodical snapshot (warm) is enabled.");
+            let init_threshold = options
+                .get("init_threshold")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
+            let interval = options
+                .get("interval")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
+            let count = options
+                .get("count")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
+            let check_duration = options
+                .get("check_duration")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
+            // update count
+            unsafe { PERIODIC_SNAPSHOT_REQUIRED_COUNT = count };
+
             println!(
-                "Interval: {}, Initial threshold: {}",
-                param::PERIODICAL_SNAPSHOT_INTERVAL,
-                param::PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD
+                "Interval: {}, Initial threshold: {}, Count: {}, Check duration: {} ms",
+                interval, init_threshold, count, check_duration
             );
             assert!(unsafe {
                 qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(event_loop_callback))
             });
 
             // This thread monitors the icounts and triggers the snapshot.
-            std::thread::spawn(|| {
-                let mut current_threshold = param::PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD;
+            std::thread::spawn(move || {
+                let mut current_threshold = init_threshold;
                 let mut snapshot_id = 0;
                 loop {
                     let current_user_icount = unsafe { (*ICOUNT_PLUGIN).total_user_icount() };
@@ -234,16 +275,40 @@ impl super::Plugin for VirtualTimePlugin {
 
                         drop(snapshot_info);
 
-                        current_threshold += param::PERIODICAL_SNAPSHOT_INTERVAL;
+                        current_threshold += interval;
                         snapshot_id += 1;
                     }
-                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    std::thread::sleep(std::time::Duration::from_millis(check_duration));
                 }
             });
-        }
+        } else if mode == "measure" {
+            let init_threshold = options
+                .get("init_threshold")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
 
-        if param::ICOUNT_CHECKING_ENABLED {
+            let interval = options
+                .get("interval")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
+            let count = options
+                .get("count")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
             println!("Measurement is ON.");
+            println!(
+                "Interval: {}, Initial threshold: {}, Count: {}",
+                interval, init_threshold, count
+            );
+
+            unsafe {
+                MEASURE_MAX_TURN = count;
+                MEASURE_INTERVAL = interval;
+                MEASURE_NEXT_THRESHOLD = init_threshold;
+            }
+
             assert!(unsafe {
                 qemu_api::qemu_plugin_register_icount_periodic_checking_cb(Some(
                     on_icount_periodic_checking,
@@ -322,7 +387,6 @@ impl super::Plugin for VirtualTimePlugin {
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
         });
-        println!("Virtual time plugin initialized.");
     }
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {

@@ -7,6 +7,7 @@ use std::io::Write;
 use super::Plugin;
 use crate::{parameter, qemu_api};
 
+use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
 use zstd::{Decoder, Encoder};
@@ -62,7 +63,7 @@ unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, f
 pub struct BranchPredictorPlugin {}
 
 impl Plugin for BranchPredictorPlugin {
-    fn init() {
+    fn init(_options: &FxHashMap<String, String>) {
         println!("BranchPredictorPlugin initialized.");
 
         assert!(unsafe {

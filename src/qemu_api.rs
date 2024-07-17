@@ -1125,3 +1125,7 @@ extern "C" {
         cb: qemu_plugin_icount_periodic_checking_cb_t,
     ) -> bool;
 }
+extern "C" {
+    #[doc = " qemu_plugin_is_icount_mode - return whether the icount mode is enabled.\n\n Returns true if the icount mode is enabled."]
+    pub fn qemu_plugin_is_icount_mode() -> bool;
+}

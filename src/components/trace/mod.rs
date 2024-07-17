@@ -1,5 +1,6 @@
 use std::{ffi, fs::File, io::Write, process::exit};
 
+use rustc_hash::FxHashMap;
 use zstd::Encoder;
 
 static mut TRACE_FILE: *mut Encoder<File> = std::ptr::null_mut();
@@ -57,7 +58,7 @@ pub struct TracePlugin {}
 
 impl super::Plugin for TracePlugin {
     #[inline]
-    fn init() {
+    fn init(_options: &FxHashMap<String, String>) {
         unsafe {
             TRACE_FILE = Box::into_raw(Box::new(
                 Encoder::new(File::create("worm_cache.c0.trace.zst").unwrap(), 3).unwrap(),

@@ -1,13 +1,14 @@
 /// This file contains the parameters for the whole plugin.
 /// All of them are compilation constants that the the compiler can propagate them during compilation.
 use plugin_helper::PluginHelper;
+use rustc_hash::FxHashMap;
 
 /**
  * CORE_COUNT
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 128;
+pub const CORE_COUNT: usize = 2;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -230,27 +231,6 @@ pub const BP_RAS_COUNT: usize = 32;
 pub const INIT_HOST_TIME_SCALE: usize = 1000;
 
 /**
- * Parameters related to taking the periodic snapshot of QEMU.
- *
- * <TODO: Add more descriptions>
- */
-pub const PERIODICAL_SNAPSHOT_ENABLED: bool = false;
-
-pub const PERIODICAL_SNAPSHOT_INTERVAL: u64 = 1000 * 1000 * 1000;
-
-pub const PERIODICAL_SNAPSHOT_INITIAL_THRESHOLD: u64 = 6 * 1000 * 1000 * 1000;
-
-pub const PERIODICAL_SNAPSHOT_QUIT_THRESHOLD: Option<u64> = Some(3);
-
-/**
- * If icount mode is on, the virtual time plugin does not count instruction anymore.
- */
-pub const USE_ICOUNT_MODE: bool = true;
-
-pub const ICOUNT_CHECKING_ENABLED: bool = true;
-static_assertions::const_assert!(!ICOUNT_CHECKING_ENABLED || USE_ICOUNT_MODE); // icount mode must be used to enable icount checking.
-
-/**
  * The list of plugins.
  */
 use crate::components::Plugin;
@@ -302,4 +282,3 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
  * This option is only effective when the parallel cache model is used.
  */
 pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
-

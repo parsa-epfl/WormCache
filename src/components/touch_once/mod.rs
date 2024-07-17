@@ -10,6 +10,7 @@ use crate::qemu_api;
 use once_cell::sync::Lazy;
 
 mod touched_cache;
+use rustc_hash::FxHashMap;
 use touched_cache::TouchedCache;
 
 use crate::util::get_monotonic_ts;
@@ -95,7 +96,7 @@ pub struct TouchOnePlugin {}
 
 impl super::Plugin for TouchOnePlugin {
     #[inline]
-    fn init() {
+    fn init(_options: &FxHashMap<String, String>) {
         println!("Touch once plugin initialized.");
 
         // all files should be initialized and write the first line.

@@ -6,6 +6,7 @@
 // - Shared caches, with set locks.
 
 use l0i::L0InstructionCache;
+use rustc_hash::FxHashMap;
 
 use crate::util::get_monotonic_ts;
 use std::io::prelude::*;
@@ -123,7 +124,7 @@ pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
-    fn init() {
+    fn init(_options: &FxHashMap<String, String>) {
         unsafe {
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
 

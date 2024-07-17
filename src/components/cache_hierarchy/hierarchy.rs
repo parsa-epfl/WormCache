@@ -1,8 +1,8 @@
 use zstd::{Decoder, Encoder};
 
 use crate::components::cache_hierarchy::shared_cache::{SharedCache, SharedCacheLookupResult};
-use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
+use crate::{parameter, qemu_api};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
@@ -1182,7 +1182,7 @@ impl<
                     .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
 
-            if parameter::USE_ICOUNT_MODE {
+            if unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
                 // run GC here to clean this directory entry.
                 directory_set_guard.erase(block_id);
             }

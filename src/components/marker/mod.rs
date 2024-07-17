@@ -1,5 +1,7 @@
 // This plugin capture the hint instruction in ARM and print debug information.
 
+use rustc_hash::FxHashMap;
+
 use crate::qemu_api;
 use std::ffi;
 
@@ -19,7 +21,7 @@ unsafe extern "C" fn on_hint_executed(vcpu_index: u32, hint_value: *mut ffi::c_v
 }
 
 impl super::Plugin for MarkerPlugin {
-    fn init() {
+    fn init(_options: &FxHashMap<String, String>) {
         println!("MarkerPlugin init. This plugin targets the hint instruction in aarch64.");
     }
 

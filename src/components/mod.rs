@@ -1,7 +1,8 @@
 use crate::qemu_api;
+use rustc_hash::FxHashMap; // this is exposed to the crate so that executable binary can use it.
 
 pub trait Plugin: Send + Sync {
-    fn init();
+    fn init(options: &FxHashMap<String, String>);
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb);
 
@@ -12,7 +13,7 @@ pub trait Plugin: Send + Sync {
 }
 
 mod mmu; // this is only used by other components, not exposed to the crate.
-pub use mmu::NoMMU; // this is exposed to the crate so that executable binary can use it.
+pub use mmu::NoMMU;
 pub mod bp;
 pub mod cache_hierarchy;
 pub mod debug;

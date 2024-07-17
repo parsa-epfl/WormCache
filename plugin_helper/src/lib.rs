@@ -30,7 +30,7 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
                     #ty::on_translation(tb);
                 });
                 init_calls.push(quote! {
-                    #ty::init();
+                    #ty::init(options);
                 });
                 serialize_calls.push(quote! {
                     #ty::serialize(name);
@@ -56,7 +56,7 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
             }
 
             #[inline]
-            pub unsafe fn init() {
+            pub unsafe fn init(options: &FxHashMap<String, String>) {
                 #( #init_calls )*
             }
 
