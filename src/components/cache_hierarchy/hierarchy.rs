@@ -1,8 +1,8 @@
 use zstd::{Decoder, Encoder};
 
 use crate::components::cache_hierarchy::shared_cache::{SharedCache, SharedCacheLookupResult};
+use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
-use crate::{parameter, qemu_api};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 

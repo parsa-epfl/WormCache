@@ -179,8 +179,6 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
 
                 // get the duration of the following function.
 
-                let now = std::time::Instant::now();
-
                 warmed_rate
                     .write_all(
                         format!(
