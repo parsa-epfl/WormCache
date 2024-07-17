@@ -1,3 +1,5 @@
+use zstd::{Decoder, Encoder};
+
 use crate::components::cache_hierarchy::shared_cache::{SharedCache, SharedCacheLookupResult};
 use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
@@ -1236,6 +1238,37 @@ impl<
         // }
     }
 
+    fn serialize_mmus(&self, name: &str, numa_node_id: usize) {
+        let file = std::fs::File::create(format!("{}_mmus-{}", name, numa_node_id)).unwrap();
+        let mut file = Encoder::new(file, 0).unwrap();
+
+        let multiple_mmus = self
+            .mmus
+            .iter()
+            .map(|x| unsafe { (*x.get()).serialize() })
+            .collect::<Vec<_>>();
+
+        serde_json::to_writer(&mut file, &serde_json::Value::Array(multiple_mmus)).unwrap();
+
+        file.finish().unwrap();
+    }
+
+    fn deserialize_mmus(&self, name: &str, numa_node_id: usize) {
+        let file = std::fs::File::open(format!("{}_mmus-{}", name, numa_node_id)).unwrap();
+        let mut file = Decoder::new(file).unwrap();
+
+        let multiple_mmus: serde_json::Value = serde_json::from_reader(&mut file).unwrap();
+
+        match multiple_mmus {
+            serde_json::Value::Array(mmus) => {
+                for (i, mmu) in mmus.into_iter().enumerate() {
+                    unsafe { (*self.mmus[i].get()).deserialize(mmu) };
+                }
+            }
+            _ => panic!("Invalid format."),
+        };
+    }
+
     pub fn serialize(&self, name: &str, numa_node_id: usize) {
         println!("Serializing private caches.");
         self.private_caches.serialize(name, numa_node_id);
@@ -1243,6 +1276,8 @@ impl<
         self.directory.serialize(name, numa_node_id);
         println!("Serializing shared cache.");
         self.shared_cache.serialize(name, numa_node_id);
+        println!("Serialize MMUs");
+        self.serialize_mmus(name, numa_node_id);
     }
 
     pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
@@ -1252,5 +1287,7 @@ impl<
         self.directory.deserialize(name, numa_node_id);
         println!("Deserializing shared cache.");
         self.shared_cache.deserialize(name, numa_node_id);
+        println!("Deserialize MMUs");
+        self.deserialize_mmus(name, numa_node_id);
     }
 }

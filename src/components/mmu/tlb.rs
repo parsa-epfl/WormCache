@@ -1,4 +1,7 @@
-#[derive(Debug)]
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TLBEntry {
     valid: bool,
     ts: u64,
@@ -7,8 +10,10 @@ pub struct TLBEntry {
     ppn: u64,
 }
 
-#[derive(Debug)]
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
 struct TLBSet<const ASSO: usize> {
+    #[serde_as(as = "[_; ASSO]")]
     entries: [TLBEntry; ASSO],
     current_pointer: usize,
 }
@@ -89,7 +94,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
     // }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TLB<const SET_COUNT: usize, const ASSO: usize> {
     entries: Vec<TLBSet<ASSO>>,
 }

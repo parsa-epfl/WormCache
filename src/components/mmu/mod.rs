@@ -8,6 +8,7 @@ use crate::arch::aarch64::ptw;
 use crate::qemu_api;
 
 use rustc_hash::FxHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
 use tlb::TLB;
 
@@ -18,6 +19,9 @@ pub trait AbstractMMU {
     // Currently, this interface is for debugging. It reuses QEMU's PTW result.
     fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64);
     fn lookup(&mut self, vpn: u64, ts: u64) -> Option<u64>;
+
+    fn serialize(&self) -> serde_json::Value;
+    fn deserialize(&mut self, value: serde_json::Value);
 }
 
 pub struct NoMMU {}
@@ -33,9 +37,15 @@ impl AbstractMMU for NoMMU {
     fn lookup(&mut self, _: u64, _: u64) -> Option<u64> {
         None
     }
+
+    fn serialize(&self) -> serde_json::Value {
+        serde_json::json!({})
+    }
+
+    fn deserialize(&mut self, _: serde_json::Value) {}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 #[repr(align(64))]
 pub struct MemoryManagementUnit<
     ARCH: arch::ISA,
@@ -176,5 +186,13 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         };
 
         self.tlb.lookup(vpn, asid, ts)
+    }
+
+    fn serialize(&self) -> serde_json::Value {
+        return serde_json::to_value(self).unwrap();
+    }
+
+    fn deserialize(&mut self, value: serde_json::Value) {
+        *self = serde_json::from_value(value).unwrap();
     }
 }
