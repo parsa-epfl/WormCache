@@ -96,6 +96,10 @@ unsafe extern "C" fn on_icount_periodic_checking() {
         let mut statistics_k = 0;
         let mut l2_miss_u = 0;
         let mut l2_miss_k = 0;
+        let mut coherence_miss_u = 0;
+        let mut coherence_miss_k = 0;
+        let mut coherence_inv_u = 0;
+        let mut coherence_inv_k = 0;
         let mut llc_miss_u = 0;
         let mut llc_miss_k = 0;
         let mut bp_miss_u = 0;
@@ -122,6 +126,28 @@ unsafe extern "C" fn on_icount_periodic_checking() {
 
             l2_miss_u += l2_u;
             l2_miss_k += l2_k;
+
+            // Query the coherence miss.
+            for t in [
+                EventType::PrivateCacheMissTriggerCoherenceDueToFetch,
+                EventType::PrivateCacheMissTriggerCoherenceDueToWrite,
+                EventType::PrivateCacheMissTriggerCoherenceDueToRead,
+            ] {
+                let (_, coherence_u, coherence_k) =
+                    Statistics::global_query_record(core_id as u32, t);
+
+                coherence_miss_u += coherence_u;
+                coherence_miss_k += coherence_k;
+            }
+
+            // Query the coherence invalidation.
+            let (_, inv_u, inv_k) = Statistics::global_query_record(
+                core_id as u32,
+                EventType::PrivateCacheMissTriggerInvalidation,
+            );
+
+            coherence_inv_u += inv_u;
+            coherence_inv_k += inv_k;
 
             // Query the LLC miss.
             let (_, llc_u, llc_k) =
@@ -150,6 +176,8 @@ unsafe extern "C" fn on_icount_periodic_checking() {
 
         let i = u_icount + k_icount;
         let l2_miss = l2_miss_u + l2_miss_k;
+        let coherence_miss = coherence_miss_u + coherence_miss_k;
+        let coherence_inv = coherence_inv_u + coherence_inv_k;
         let llc_miss = llc_miss_u + llc_miss_k;
         let bp_miss = bp_miss_u + bp_miss_k;
         let tlb_miss = tlb_miss_u + tlb_miss_k;
@@ -166,6 +194,14 @@ unsafe extern "C" fn on_icount_periodic_checking() {
             "l2_miss:u": l2_miss_u,
             "l2_miss:k": l2_miss_k,
 
+            "coherence_miss": coherence_miss,
+            "coherence_miss:u": coherence_miss_u,
+            "coherence_miss:k": coherence_miss_k,
+
+            "coherence_inv": coherence_inv,
+            "coherence_inv:u": coherence_inv_u,
+            "coherence_inv:k": coherence_inv_k,
+
             "llc_miss": llc_miss,
             "llc_miss:u": llc_miss_u,
             "llc_miss:k": llc_miss_k,
@@ -180,11 +216,15 @@ unsafe extern "C" fn on_icount_periodic_checking() {
 
             "agg": {
                 "l2_mpki": l2_miss as f64 / i as f64 * 1000.0,
+                "coherence_mpki": coherence_miss as f64 / i as f64 * 1000.0,
+                "coherence_inv_mpki": coherence_inv as f64 / i as f64 * 1000.0,
                 "llc_mpki": llc_miss as f64 / i as f64 * 1000.0,
                 "bp_mpki": bp_miss as f64 / i as f64 * 1000.0,
                 "tlb:mpki": tlb_miss as f64 / i as f64 * 1000.0,
 
                 "l2_mpki:u": l2_miss_u as f64 / u_icount as f64 * 1000.0,
+                "coherence_mpki:u": coherence_miss_u as f64 / u_icount as f64 * 1000.0,
+                "coherence_inv_mpki:u": coherence_inv_u as f64 / u_icount as f64 * 1000.0,
                 "llc_mpki:u": llc_miss_u as f64 / u_icount as f64 * 1000.0,
                 "bp_mpki:u": bp_miss_u as f64 / u_icount as f64 * 1000.0,
                 "tlb:mpki:u": tlb_miss_u as f64 / u_icount as f64 * 1000.0,
@@ -325,7 +365,7 @@ impl super::Plugin for VirtualTimePlugin {
 
             let prefix = options
                 .get("prefix")
-                .unwrap_or(&"icount_statistics_".to_string())
+                .unwrap_or(&"icount_statistics".to_string())
                 .clone();
 
             println!("Measurement is ON.");
