@@ -128,7 +128,7 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
     qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(qemu_deplete_quantum_cb));
 
-    PluginList::init(&options);
+    PluginList::init(id, &options);
 
     0
 }

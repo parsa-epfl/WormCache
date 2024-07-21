@@ -63,7 +63,7 @@ unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, f
 pub struct BranchPredictorPlugin {}
 
 impl Plugin for BranchPredictorPlugin {
-    fn init(_options: &FxHashMap<String, String>) {
+    fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
         println!("BranchPredictorPlugin initialized.");
 
         assert!(unsafe {

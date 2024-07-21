@@ -96,7 +96,7 @@ pub struct TouchOnePlugin {}
 
 impl super::Plugin for TouchOnePlugin {
     #[inline]
-    fn init(_options: &FxHashMap<String, String>) {
+    fn init(_plugin: u64, _options: &FxHashMap<String, String>) {
         println!("Touch once plugin initialized.");
 
         // all files should be initialized and write the first line.

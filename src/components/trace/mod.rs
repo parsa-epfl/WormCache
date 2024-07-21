@@ -58,7 +58,7 @@ pub struct TracePlugin {}
 
 impl super::Plugin for TracePlugin {
     #[inline]
-    fn init(_options: &FxHashMap<String, String>) {
+    fn init(_plugin: u64, _options: &FxHashMap<String, String>) {
         unsafe {
             TRACE_FILE = Box::into_raw(Box::new(
                 Encoder::new(File::create("worm_cache.c0.trace.zst").unwrap(), 3).unwrap(),

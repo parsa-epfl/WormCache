@@ -21,7 +21,7 @@ unsafe extern "C" fn on_hint_executed(vcpu_index: u32, hint_value: *mut ffi::c_v
 }
 
 impl super::Plugin for MarkerPlugin {
-    fn init(_options: &FxHashMap<String, String>) {
+    fn init(_plugin: u64, _options: &FxHashMap<String, String>) {
         println!("MarkerPlugin init. This plugin targets the hint instruction in aarch64.");
     }
 

@@ -2,7 +2,7 @@ use crate::qemu_api;
 use rustc_hash::FxHashMap; // this is exposed to the crate so that executable binary can use it.
 
 pub trait Plugin: Send + Sync {
-    fn init(options: &FxHashMap<String, String>);
+    fn init(plugin_id: u64, options: &FxHashMap<String, String>);
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb);
 

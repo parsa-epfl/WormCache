@@ -1,4 +1,5 @@
 mod icount;
+mod sleeping_table;
 mod vtime;
 
 use core::ffi;
@@ -6,6 +7,8 @@ use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
 use serde_json::json;
 use spin::mutex::SpinMutex;
+use std::thread;
+use std::time::Duration;
 use std::{io::Write, sync::Mutex};
 
 use crate::parameter as param;
@@ -19,6 +22,13 @@ use super::debug::statistics::Statistics;
 
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
+
+static mut SLEEPING_TABLE: *mut sleeping_table::SleepingTable<{ param::CORE_COUNT }> =
+    std::ptr::null_mut();
+
+unsafe extern "C" fn set_sleeping(_id: u64, core_id: u32) {
+    (*SLEEPING_TABLE).set_sleeping(core_id as usize, true);
+}
 
 static mut ICOUNT_PLUGIN: *mut icount::ICountPlugin = std::ptr::null_mut();
 
@@ -252,7 +262,7 @@ pub struct VirtualTimePlugin {}
 
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
-    fn init(options: &FxHashMap<String, String>) {
+    fn init(plugin_id: u64, options: &FxHashMap<String, String>) {
         unsafe {
             ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
         }
@@ -277,6 +287,79 @@ impl super::Plugin for VirtualTimePlugin {
                 qemu_api::qemu_plugin_register_snapshot_cpu_clock_update_cb(Some(
                     on_snapshot_cpu_clock_update,
                 ))
+            });
+
+            unsafe {
+                SLEEPING_TABLE = Box::into_raw(Box::new(sleeping_table::SleepingTable::new()));
+            }
+
+            unsafe {
+                qemu_api::qemu_plugin_register_vcpu_idle_cb(plugin_id, Some(set_sleeping));
+            }
+
+            // register threads to profile the icount and calculate the host time scaling factor.
+            thread::spawn(|| {
+                let mut history_icount = [(0, 0); param::CORE_COUNT];
+
+                let mut loop_count = 0;
+                let mut acc_active_core_count = 0;
+                loop {
+                    // read the current icount.
+                    let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
+                    let mut accumulated_icount_diff = 0;
+                    let mut awaking_cores = 0;
+                    // check the icount difference for cores that are not sleeping.
+                    for i in 0..param::CORE_COUNT {
+                        let (u, k) = icounts[i];
+
+                        if !unsafe { (*SLEEPING_TABLE).has_slept(i) } {
+                            let (last_u, last_k) = history_icount[i];
+                            let diff = (u + k) - (last_u + last_k);
+
+                            if diff != 0 {
+                                accumulated_icount_diff += diff;
+                                awaking_cores += 1;
+
+                                acc_active_core_count += 1;
+                            }
+                        }
+
+                        // copy the icounts.
+                        history_icount[i] = (u, k);
+                    }
+
+                    if awaking_cores != 0 {
+                        // set the time scaling factor.
+                        let average_icount = accumulated_icount_diff as f64 / awaking_cores as f64;
+                        let scaling_factor = (param::HOST_TIME_SCALING_PROFILING_PERIOD as f64
+                            * 1e6)
+                            / average_icount;
+
+                        TIME_PLUGIN
+                            .lock()
+                            .unwrap()
+                            .update_scaling_factor(scaling_factor);
+                    }
+
+                    // clean the sleeping table.
+                    unsafe { (*SLEEPING_TABLE).clean_sleeping() };
+
+                    loop_count += 1;
+
+                    if loop_count % 100 == 0 {
+                        println!(
+                            "Average non-sleeping core count: {}",
+                            acc_active_core_count as f64 / 100 as f64,
+                        );
+
+                        acc_active_core_count = 0;
+                    }
+
+                    // wait for a period.
+                    thread::sleep(Duration::from_millis(
+                        param::HOST_TIME_SCALING_PROFILING_PERIOD as u64,
+                    ));
+                }
             });
 
             println!("Virtual time calculation is on.");
@@ -326,7 +409,7 @@ impl super::Plugin for VirtualTimePlugin {
             });
 
             // This thread monitors the icounts and triggers the snapshot.
-            std::thread::spawn(move || {
+            thread::spawn(move || {
                 let mut current_threshold = init_threshold;
                 let mut snapshot_id = 0;
                 loop {
@@ -344,7 +427,7 @@ impl super::Plugin for VirtualTimePlugin {
                         current_threshold += interval;
                         snapshot_id += 1;
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(check_duration));
+                    thread::sleep(Duration::from_millis(check_duration));
                 }
             });
         } else if mode == "measure" {
@@ -390,7 +473,7 @@ impl super::Plugin for VirtualTimePlugin {
             })
         }
 
-        std::thread::spawn(|| {
+        thread::spawn(|| {
             // open a csv file to store the icounts.
             let mut file = std::fs::File::create("icount.csv").unwrap(); // TODO: combine this log with another log.
             let mut head = vec!["ts".to_string()];
@@ -402,17 +485,6 @@ impl super::Plugin for VirtualTimePlugin {
 
             file.write_fmt(format_args!("{}\n", head.join(",")))
                 .unwrap();
-
-            const CORE_RANGE_FOR_TIME_CALCULATION: usize =
-                // if param::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
-                if false {
-                    param::CORE_COUNT / 2
-                } else {
-                    param::CORE_COUNT
-                };
-
-            let mut accumulated_host_time: u64 = 0;
-            let mut history_icount = [(0, 0); CORE_RANGE_FOR_TIME_CALCULATION];
 
             loop {
                 let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
@@ -428,37 +500,7 @@ impl super::Plugin for VirtualTimePlugin {
                 file.write_fmt(format_args!("{}\n", lines.join(",")))
                     .unwrap();
 
-                // do a copy
-                let mut maximum_icount = 0;
-                let mut progress = false;
-                for i in 0..CORE_RANGE_FOR_TIME_CALCULATION {
-                    let (u, k) = icounts[i];
-                    let this_core_icount = u + k;
-                    if this_core_icount > maximum_icount {
-                        maximum_icount = this_core_icount;
-                    }
-
-                    if (u, k) != history_icount[i] {
-                        progress = true;
-                    }
-
-                    history_icount[i] = (u, k);
-                }
-
-                // if the maximum icount is not zero, we update the time scaling factor.
-                if maximum_icount > 0 && accumulated_host_time > 0 {
-                    let mut time_plugin = TIME_PLUGIN.lock().unwrap();
-                    let factor =
-                        (accumulated_host_time * 1e9 as u64) as f64 / maximum_icount as f64;
-
-                    time_plugin.update_scaling_factor(factor);
-                }
-
-                if progress {
-                    accumulated_host_time += 10;
-                }
-
-                std::thread::sleep(std::time::Duration::from_secs(10));
+                thread::sleep(Duration::from_secs(10));
             }
         });
     }

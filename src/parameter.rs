@@ -21,7 +21,7 @@ pub const CORE_COUNT: usize = 2;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = true;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -229,6 +229,15 @@ pub const BP_RAS_COUNT: usize = 32;
  *
  */
 pub const INIT_HOST_TIME_SCALE: usize = 1000;
+
+/**
+ * HOST_TIME_SCALING_PROFILING_PERIOD
+ *
+ * The period of profiling the host time scaling, in milliseconds.
+ *
+ * The VirtualTime plugin will profile the icount and determine host time scaling every this number of instructions.
+ */
+pub const HOST_TIME_SCALING_PROFILING_PERIOD: usize = 100;
 
 /**
  * The list of plugins.

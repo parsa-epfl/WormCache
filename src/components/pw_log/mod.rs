@@ -86,7 +86,7 @@ unsafe extern "C" fn vcpu_insn_exec(
 pub struct PageWalkLoggerPlugin {}
 
 impl Plugin for PageWalkLoggerPlugin {
-    fn init(_options: &FxHashMap<String, String>) {
+    fn init(_plugin: u64, _options: &FxHashMap<String, String>) {
         println!("PageWalkLoggerPlugin initialized.");
     }
 
