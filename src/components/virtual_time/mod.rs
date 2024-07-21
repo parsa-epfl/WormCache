@@ -269,12 +269,13 @@ impl super::Plugin for VirtualTimePlugin {
 
         // check the following options:
         // - vtime=on|off
-        // - mode=normal|warm|measure
+        // - mode=normal|warm|measure|deadline
         // - init_threshold=N
         // - interval=N
         // - count=N
         // - check_duration=N
         // - prefix="name"
+        // - deadline=N (seconds)
 
         let vtime_is_on = options.get("vtime").map(|x| x == "on").unwrap_or(false);
 
@@ -471,6 +472,19 @@ impl super::Plugin for VirtualTimePlugin {
                     on_icount_periodic_checking,
                 ))
             })
+        } else if mode == "deadline" {
+            println!("Deadline mode is enabled.");
+            // kill the process after a certain time.
+            let deadline = options
+                .get("deadline")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
+            thread::spawn(move || {
+                thread::sleep(Duration::from_secs(deadline));
+                println!("The deadline is reached. Quit.");
+                std::process::exit(0);
+            });
         }
 
         thread::spawn(|| {
