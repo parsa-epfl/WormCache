@@ -275,7 +275,7 @@ impl super::Plugin for VirtualTimePlugin {
         // - count=N
         // - check_duration=N
         // - prefix="name"
-        // - deadline=N (seconds)
+        // - deadline=N
 
         let vtime_is_on = options.get("vtime").map(|x| x == "on").unwrap_or(false);
 
@@ -480,10 +480,18 @@ impl super::Plugin for VirtualTimePlugin {
                 .map(|x| x.parse::<u64>().unwrap())
                 .unwrap();
 
-            thread::spawn(move || {
-                thread::sleep(Duration::from_secs(deadline));
-                println!("The deadline is reached. Quit.");
-                std::process::exit(0);
+            let check_duration = options
+                .get("check_duration")
+                .map(|x| x.parse::<u64>().unwrap())
+                .unwrap();
+
+            thread::spawn(move || loop {
+                let current_user_icount = unsafe { (*ICOUNT_PLUGIN).total_user_icount() };
+                if current_user_icount > deadline {
+                    println!("Deadline is reached. Quit.");
+                    std::process::exit(0);
+                }
+                thread::sleep(Duration::from_millis(check_duration));
             });
         }
 
