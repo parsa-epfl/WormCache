@@ -203,10 +203,6 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
         unsafe {
             (*PLUGIN).dump_snapshot(name);
         }
-
-        unsafe {
-            (*PLUGIN).dump_diagnose_information();
-        }
     }
 
     #[inline]
