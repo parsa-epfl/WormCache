@@ -6,11 +6,14 @@ mod tage;
 
 use crate::components::debug::statistics::{EventType, Statistics};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use serde_with::serde_as;
 
 use crate::parameter::{self, BP_RAS_COUNT};
 
-use super::BranchResolveFlag;
+use super::{BranchResolutionResult, BranchType};
+
+use crate::components::FlexusCompatibleSerializer;
 
 #[derive(PartialEq)]
 pub enum BranchPredictorResult {
@@ -36,7 +39,7 @@ impl PerCoreFetchUnit {
         }
     }
 
-    pub fn train(&mut self, pc: u64, result: BranchResolveFlag, target: u64, core_id: usize) {
+    pub fn train(&mut self, pc: u64, result: BranchResolutionResult, target: u64, core_id: usize) {
         let is_os = pc >> 63 == 1;
         let btb_miss = self.btb.train(pc, result, target) == BranchPredictorResult::Mispredict;
         let tage_miss = self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict;
@@ -57,38 +60,35 @@ impl PerCoreFetchUnit {
         Statistics::global_record(core_id as u32, EventType::BranchCount, is_os);
 
         // Determine the branch prediction result.
-        match result {
-            BranchResolveFlag::Taken => {
-                if tage_miss {
-                    // Tage report not taken, the direction is wrong.
-                    Statistics::global_record(core_id as u32, EventType::BPMiss, is_os);
-                } else if btb_miss {
-                    // Tage report taken, but the target is wrong.
+        match result.branch_type.clone() {
+            BranchType::NonBranch => unreachable!(),
+            BranchType::Conditional => {
+                if tage_miss || btb_miss {
                     Statistics::global_record(core_id as u32, EventType::BPMiss, is_os);
                 }
             }
-            BranchResolveFlag::NotTaken => {
-                // the branch is predicted to taken.
-                if tage_miss {
-                    Statistics::global_record(core_id as u32, EventType::BPMiss, is_os);
-                }
-            }
-            BranchResolveFlag::Call => {
-                if btb_miss {
-                    Statistics::global_record(core_id as u32, EventType::BPMiss, is_os);
-                }
-            }
-            BranchResolveFlag::Return => {
+            BranchType::Return => {
                 if ras_miss && btb_miss {
                     Statistics::global_record(core_id as u32, EventType::BPMiss, is_os);
                 }
             }
-            BranchResolveFlag::Indirect => {
+            _ => {
                 if btb_miss {
                     Statistics::global_record(core_id as u32, EventType::BPMiss, is_os);
                 }
             }
         }
+    }
+
+    pub fn get_flexus_checkpoint(&self) -> serde_json::Value {
+        let serialized_btb = self.btb.get_serialize_helper();
+
+        let serialized_tage = self.tage.get_serialize_helper();
+
+        json!({
+            "btb": serialized_btb,
+            "tage": serialized_tage,
+        })
     }
 }
 
@@ -112,7 +112,7 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
         }
     }
 
-    pub fn train(&mut self, core_id: usize, pc: u64, result: BranchResolveFlag, target: u64) {
+    pub fn train(&mut self, core_id: usize, pc: u64, result: BranchResolutionResult, target: u64) {
         self.private_units[core_id].train(pc, result, target, core_id);
     }
 }

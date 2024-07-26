@@ -1,4 +1,4 @@
-use crate::components::bp::BranchResolveFlag;
+use crate::components::bp::{BranchResolutionResult, BranchType};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -10,6 +10,7 @@ struct BTBEntry {
     tag_and_valid: u64, // the upper 63 bits are the tag, and the lowest bit is the valid bit
     target: u64,
     ts: u64,
+    branch_type: BranchType,
 }
 
 #[serde_as]
@@ -28,6 +29,7 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
                     tag_and_valid: 0,
                     target: 0,
                     ts: 0,
+                    branch_type: BranchType::NonBranch,
                 })
             })),
             local_ts: 0,
@@ -38,12 +40,9 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
     pub fn train(
         &mut self,
         pc: u64,
-        result: BranchResolveFlag,
+        result: BranchResolutionResult,
         target: u64,
     ) -> BranchPredictorResult {
-        if result == BranchResolveFlag::NotTaken {
-            return BranchPredictorResult::NotActive;
-        }
         self.local_ts += 1;
 
         let index = (pc % SET as u64) as usize;
@@ -80,7 +79,48 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         self.array[index][min_index].tag_and_valid = pc;
         self.array[index][min_index].target = target;
         self.array[index][min_index].ts = self.local_ts;
+        self.array[index][min_index].branch_type = result.branch_type;
 
         BranchPredictorResult::Mispredict
+    }
+}
+
+///// Serialization and Deserialization for QFlex.
+
+#[derive(Serialize, Deserialize)]
+pub struct BTBEntrySerializeHelper {
+    #[serde(rename = "PC")]
+    pc: u64,
+    target: u64,
+    #[serde(rename = "type")]
+    type_: u64,
+}
+
+use crate::components::FlexusCompatibleSerializer;
+
+impl FlexusCompatibleSerializer for BTBEntry {
+    type HelperType = BTBEntrySerializeHelper;
+
+    fn get_serialize_helper(&self) -> Self::HelperType {
+        BTBEntrySerializeHelper {
+            pc: self.tag_and_valid >> 1,
+            target: self.target,
+            type_: self.branch_type as u64,
+        }
+    }
+}
+
+impl<const SET: usize, const ASSO: usize> FlexusCompatibleSerializer for BTB<SET, ASSO> {
+    type HelperType = Vec<Vec<BTBEntrySerializeHelper>>;
+
+    fn get_serialize_helper(&self) -> Self::HelperType {
+        self.array
+            .iter()
+            .map(|set| {
+                set.iter()
+                    .map(|entry| entry.get_serialize_helper())
+                    .collect()
+            })
+            .collect()
     }
 }

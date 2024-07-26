@@ -12,8 +12,15 @@ pub trait Plugin: Send + Sync {
     fn deserialize(name: &str);
 }
 
+pub trait FlexusCompatibleSerializer {
+    type HelperType: Serialize; // the helper type must be directly serializable.
+
+    fn get_serialize_helper(&self) -> Self::HelperType;
+}
+
 mod mmu; // this is only used by other components, not exposed to the crate.
 pub use mmu::NoMMU;
+use serde::Serialize;
 pub mod bp;
 pub mod cache_hierarchy;
 pub mod debug;

@@ -8,46 +8,82 @@ use super::Plugin;
 use crate::{parameter, qemu_api};
 
 use rustc_hash::FxHashMap;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use zstd::{Decoder, Encoder};
 
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub enum BranchResolveFlag {
-    Taken = 0,
-    NotTaken = 1,
-    Call = 2,
-    Return = 3,
-    Indirect = 4,
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum BranchType {
+    NonBranch = 0,
+    Conditional = 1,
+    Unconditional = 2,
+    DirectCall = 3,
+    IndirectBranch = 4,
+    IndirectCall = 5,
+    Return = 6,
 }
 
-impl BranchResolveFlag {
-    fn from_u32(value: u32) -> Option<BranchResolveFlag> {
-        match value {
-            0 => Some(BranchResolveFlag::Taken),
-            1 => Some(BranchResolveFlag::NotTaken),
-            2 => Some(BranchResolveFlag::Call),
-            3 => Some(BranchResolveFlag::Return),
-            4 => Some(BranchResolveFlag::Indirect),
-            _ => unreachable!(),
+impl BranchType {
+    pub fn is_call(&self) -> bool {
+        match self {
+            BranchType::DirectCall => true,
+            BranchType::IndirectCall => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_return(&self) -> bool {
+        match self {
+            BranchType::Return => true,
+            _ => false,
         }
     }
 }
 
-// const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
-//     parameter::CORE_COUNT / 2
-// } else {
-//     parameter::CORE_COUNT
-// };
+#[derive(Debug, Clone, Copy)]
+pub struct BranchResolutionResult {
+    pub branch_type: BranchType,
+    pub is_taken: bool,
+}
 
-// static mut FETCH_UNIT: Lazy<UnsafeCell<fetch::FetchUnit<{ ALLOCATED_CORE_COUNT }>>> =
-//     Lazy::new(|| {
-//         let fetch_unit = fetch::FetchUnit::new();
-//         UnsafeCell::new(fetch_unit)
-//     });
+impl BranchResolutionResult {
+    fn from_u32(value: u32) -> BranchResolutionResult {
+        let is_taken = value & 1 == 1;
+        let result_value = value >> 1;
+
+        return BranchResolutionResult {
+            is_taken,
+            branch_type: match result_value {
+                0 => BranchType::NonBranch,
+                1 => BranchType::Conditional,
+                2 => {
+                    assert!(is_taken);
+                    BranchType::Unconditional
+                }
+                3 => {
+                    assert!(is_taken);
+                    BranchType::DirectCall
+                }
+                4 => {
+                    assert!(is_taken);
+                    BranchType::IndirectBranch
+                }
+                5 => {
+                    assert!(is_taken);
+                    BranchType::IndirectCall
+                }
+                6 => {
+                    assert!(is_taken);
+                    BranchType::Return
+                }
+                _ => unreachable!(),
+            },
+        };
+    }
+}
 
 static mut FETCH_UNIT: *mut fetch::FetchUnit<{ parameter::CORE_COUNT }> = std::ptr::null_mut();
 
@@ -56,7 +92,7 @@ unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, f
         return;
     }
 
-    let result = BranchResolveFlag::from_u32(flags).unwrap();
+    let result = BranchResolutionResult::from_u32(flags);
     (*FETCH_UNIT).train(vcpu_index as usize, pc, result, target)
 }
 
@@ -81,10 +117,11 @@ impl Plugin for BranchPredictorPlugin {
 
     fn dump_snapshot(name: &str) {
         for (core_id, f) in unsafe { &(*FETCH_UNIT).private_units }.iter().enumerate() {
-            let mut file =
+            let file =
                 std::fs::File::create(format!("{}/fetch_unit_{}.json", name, core_id)).unwrap();
-            let json = serde_json::to_string_pretty(f).unwrap();
-            file.write_all(json.as_bytes()).unwrap();
+            // let json = serde_json::to_string_pretty(f).unwrap();
+            // file.write_all(json.as_bytes()).unwrap();
+            serde_json::to_writer_pretty(file, &f.get_flexus_checkpoint()).unwrap();
         }
     }
 

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::components::bp::BranchResolveFlag;
+use crate::components::bp::{BranchResolutionResult, BranchType};
 
 use serde::{Deserialize, Serialize};
 
@@ -42,21 +42,22 @@ impl<const S: usize> BimodalPredictor<S> {
     pub fn train(
         &mut self,
         pc: u64,
-        result: BranchResolveFlag,
+        result: BranchResolutionResult,
         _target: u64,
     ) -> BranchPredictorResult {
-        if result != BranchResolveFlag::Taken && result != BranchResolveFlag::NotTaken {
+        if result.branch_type != BranchType::Conditional {
             return BranchPredictorResult::NotActive;
         }
+
         let index = (pc % S as u64) as usize;
         let prediction = self.get_prediction(index);
-        if result == BranchResolveFlag::Taken {
+        if result.is_taken {
             self.saturaing_add(index);
         } else {
             self.saturating_sub(index)
         }
 
-        if prediction == (result == BranchResolveFlag::Taken) {
+        if prediction == result.is_taken {
             BranchPredictorResult::Match
         } else {
             BranchPredictorResult::Mispredict

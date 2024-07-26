@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::components::bp::BranchResolveFlag;
+use crate::components::bp::{BranchResolutionResult, BranchType};
 
 use serde::{Deserialize, Serialize};
 
@@ -24,14 +24,14 @@ impl<const S: usize> GShare<S> {
     pub fn train(
         &mut self,
         pc: u64,
-        result: BranchResolveFlag,
+        result: BranchResolutionResult,
         _target: u64,
     ) -> BranchPredictorResult {
-        if result != BranchResolveFlag::Taken && result != BranchResolveFlag::NotTaken {
+        if result.branch_type != BranchType::Conditional {
             self.history = (self.history << 1) | 1;
             return BranchPredictorResult::NotActive;
         }
-        let taken = result == BranchResolveFlag::Taken;
+        let taken = result.is_taken;
         let index = ((pc ^ self.history) % S as u64) as usize;
         let prediction = self.get_prediction(index);
         if taken {

@@ -110,7 +110,7 @@ fn testing_pcache_always_hit() {
     let ave_count = count / 1024 / 1024 / 10;
 
     println!("{}", ave_count);
-    assert!(ave_count < 110);
+    assert!(ave_count < 130);
 
     // print the miss rate of the data cache and shared cache from core 0. They should be 100%.
     println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);

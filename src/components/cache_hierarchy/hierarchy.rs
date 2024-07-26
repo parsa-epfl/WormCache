@@ -1198,7 +1198,7 @@ impl<
     pub fn dump_snapshot(&self, snapshot_folder: &str) {
         self.private_caches.dump_snapshot(snapshot_folder);
         self.directory.dump_snapshot(snapshot_folder);
-        // self.shared_cache.dump_snapshot(snapshot_folder);
+        self.shared_cache.dump_snapshot(snapshot_folder);
     }
 
     pub fn get_scache_warmed_set_count(&self) -> usize {

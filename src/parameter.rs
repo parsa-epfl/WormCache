@@ -67,7 +67,7 @@ static_assertions::const_assert!(TLB_SET.is_power_of_two());
  * If true, the private instruction cache and the private data cache are unified.
  * If false, the private instruction cache and the private data cache are separated, i.e., the Harvard architecture.
  */
-pub const USE_UNIFIED_CACHE: bool = true;
+pub const USE_UNIFIED_CACHE: bool = false;
 
 /**
  * PRI_CACHE_ASSO
@@ -291,3 +291,10 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
  * This option is only effective when the parallel cache model is used.
  */
 pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
+
+/**
+ * Whether to dump the flexus-compatible checkpoint.
+ *
+ * By turning on this option, we dump a flexus-compatible checkpoint at the end of the simulation.
+ */
+pub const DUMP_FLEXUS_CHECKPOINT: bool = true;
