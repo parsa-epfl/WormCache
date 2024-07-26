@@ -119,9 +119,9 @@ impl Plugin for BranchPredictorPlugin {
         for (core_id, f) in unsafe { &(*FETCH_UNIT).private_units }.iter().enumerate() {
             let file =
                 std::fs::File::create(format!("{}/fetch_unit_{}.json", name, core_id)).unwrap();
-            // let json = serde_json::to_string_pretty(f).unwrap();
+            // let json = serde_json::to_string(f).unwrap();
             // file.write_all(json.as_bytes()).unwrap();
-            serde_json::to_writer_pretty(file, &f.get_flexus_checkpoint()).unwrap();
+            serde_json::to_writer(file, &f.get_flexus_checkpoint()).unwrap();
         }
     }
 
@@ -132,7 +132,7 @@ impl Plugin for BranchPredictorPlugin {
         let mut file = Encoder::new(&mut file, 0).unwrap();
 
         // write the content
-        let json = serde_json::to_string_pretty(unsafe { &(*FETCH_UNIT) }).unwrap();
+        let json = serde_json::to_string(unsafe { &(*FETCH_UNIT) }).unwrap();
         file.write_all(json.as_bytes()).unwrap();
 
         file.finish().unwrap();

@@ -247,7 +247,7 @@ impl<
             let icache_path = format!("{}/core{}_l1i.json", snapshot_folder, core_id);
             std::fs::write(
                 icache_path,
-                serde_json::to_string_pretty(&json!({
+                serde_json::to_string(&json!({
                     "associativity": I_ASSO,
                     "tags": serialized_icache
                 }))
@@ -267,7 +267,7 @@ impl<
             let dcache_path = format!("{}/core{}_l1d.json", snapshot_folder, core_id);
             std::fs::write(
                 dcache_path,
-                serde_json::to_string_pretty(&json!({
+                serde_json::to_string(&json!({
                     "associativity": D_ASSO,
                     "tags": serialized_dcache
                 }))
@@ -321,7 +321,7 @@ impl<
 
         let mut file = Encoder::new(file, 0).unwrap();
 
-        serde_json::to_writer_pretty(&mut file, &helper).unwrap();
+        serde_json::to_writer(&mut file, &helper).unwrap();
 
         file.finish().unwrap();
     }

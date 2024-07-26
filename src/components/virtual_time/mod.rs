@@ -246,7 +246,7 @@ unsafe extern "C" fn on_icount_periodic_checking() {
         // write the result_json to a file.
         let file =
             std::fs::File::create(format!("{}_{}.json", MEASURE_PREFIX, MEASURE_TURN)).unwrap();
-        serde_json::to_writer_pretty(&file, &result_json).unwrap();
+        serde_json::to_writer(&file, &result_json).unwrap();
 
         MEASURE_TURN += 1;
         if MEASURE_TURN >= MEASURE_MAX_TURN {

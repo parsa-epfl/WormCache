@@ -9,6 +9,7 @@ use serde::Serialize;
 use zstd::{Decoder, Encoder};
 
 use crate::parameter;
+use crate::parameter::CORE_COUNT;
 use crate::util;
 
 const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
@@ -171,7 +172,7 @@ impl<const SET: usize> Directory<SET> {
         let mut file = Encoder::new(file, 0).unwrap();
 
         let helper = self.to_serialize_helper();
-        serde_json::to_writer_pretty(&mut file, &helper).unwrap();
+        serde_json::to_writer(&mut file, &helper).unwrap();
 
         file.finish().unwrap();
     }
@@ -210,13 +211,25 @@ impl Serialize for SerializedDirectoryEntry {
     {
         let mut state = serializer.serialize_struct("SerializedDirectoryEntry", 2)?;
         state.serialize_field("tag", &self.tag)?;
+
+        let mut sharer_info = vec![];
+        for core_id in 0..parameter::CORE_COUNT {
+            if parameter::USE_UNIFIED_CACHE {
+                sharer_info.push(self.sharers[core_id]);
+            } else {
+                // it is a hack.
+                sharer_info.push(self.sharers[core_id * 2] || self.sharers[core_id * 2 + 1]);
+            }
+        }
+
+        assert!(sharer_info.len() == CORE_COUNT);
+
         state.serialize_field(
             "sharers",
-            &self
-                .sharers
-                .iter()
+            &sharer_info
+                .into_iter()
                 .rev()
-                .map(|b| if *b { "1" } else { "0" })
+                .map(|b| if b { "1" } else { "0" })
                 .collect::<Vec<_>>(),
         )?;
         state.end()
@@ -247,6 +260,6 @@ impl<const SET: usize> Directory<SET> {
             })
             .collect::<Vec<_>>();
 
-        serde_json::to_writer_pretty(&file, &entries).unwrap();
+        serde_json::to_writer(&file, &entries).unwrap();
     }
 }

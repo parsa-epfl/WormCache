@@ -215,7 +215,7 @@ impl<
             })
             .collect::<Vec<_>>();
 
-        serde_json::to_writer_pretty(
+        serde_json::to_writer(
             &mut file,
             &json!({
                 "associativity": WAY,
@@ -247,7 +247,7 @@ impl<
             std::fs::File::create(format!("{}/llc-{}.json.zstd", name, numa_node_id)).unwrap();
 
         let mut file = Encoder::new(&mut file, 0).unwrap();
-        serde_json::to_writer_pretty(&mut file, &helper).unwrap();
+        serde_json::to_writer(&mut file, &helper).unwrap();
 
         file.finish().unwrap();
     }

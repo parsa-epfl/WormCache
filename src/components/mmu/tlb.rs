@@ -8,6 +8,7 @@ pub struct TLBEntry {
     asid: u16,
     vpn: u64,
     ppn: u64,
+    is_instruction: bool,
 }
 
 #[serde_as]
@@ -27,12 +28,13 @@ impl<const ASSO: usize> TLBSet<ASSO> {
                 asid: 0,
                 vpn: 0,
                 ppn: 0,
+                is_instruction: false,
             }),
             current_pointer: 0,
         }
     }
 
-    pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
+    pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64, is_instruction: bool) -> Option<u64> {
         // TODO: This function is badly implemented. Currently its algorithm complexity is O(n).
         for entry in self.entries.iter_mut() {
             if entry.valid && entry.vpn == vpn && entry.asid == asid {
@@ -40,6 +42,8 @@ impl<const ASSO: usize> TLBSet<ASSO> {
                     entry.ts <= ts,
                     "TLB entry is older than the current timestamp.",
                 );
+                // assert!(entry.is_instruction == is_instruction);
+                entry.is_instruction = is_instruction;
                 entry.ts = ts;
                 return Some(entry.ppn);
             }
@@ -47,13 +51,14 @@ impl<const ASSO: usize> TLBSet<ASSO> {
         None
     }
 
-    pub fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64) {
+    pub fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64, is_instruction: bool) {
         if self.current_pointer < ASSO {
             self.entries[self.current_pointer].valid = true;
             self.entries[self.current_pointer].ts = ts;
             self.entries[self.current_pointer].asid = asid;
             self.entries[self.current_pointer].vpn = vpn;
             self.entries[self.current_pointer].ppn = ppn;
+            self.entries[self.current_pointer].is_instruction = is_instruction;
             self.current_pointer += 1;
         } else {
             // find a victim.
@@ -68,30 +73,9 @@ impl<const ASSO: usize> TLBSet<ASSO> {
             self.entries[victim_idx].asid = asid;
             self.entries[victim_idx].vpn = vpn;
             self.entries[victim_idx].ppn = ppn;
+            self.entries[victim_idx].is_instruction = is_instruction;
         }
     }
-
-    // fn invalidate_by_vpn(&mut self, _vpn: u64, _asid: u16) {
-    //     unimplemented!();
-    //     // for entry in self.entries.iter_mut() {
-    //     //     if entry.valid && entry.vpn == vpn && entry.asid == asid {
-    //     //         entry.valid = false;
-    //     //     }
-    //     // }
-    // }
-
-    // fn invalidate_by_asid(&mut self, _asid: u16) {
-    //     unimplemented!();
-    //     // for entry in self.entries.iter_mut() {
-    //     //     if entry.valid && entry.asid == asid {
-    //     //         entry.valid = false;
-    //     //     }
-    //     // }
-    // }
-
-    // fn is_warm(&self) -> bool {
-    //     self.current_pointer == ASSO
-    // }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -106,16 +90,16 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
         }
     }
 
-    pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
+    pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64, is_instruction: bool) -> Option<u64> {
         let set_index = vpn % SET_COUNT as u64;
         let set = &mut self.entries[set_index as usize];
-        set.lookup(vpn, asid, ts)
+        set.lookup(vpn, asid, ts, is_instruction)
     }
 
-    pub fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64) {
+    pub fn insert(&mut self, vpn: u64, asid: u16, ppn: u64, ts: u64, is_instruction: bool) {
         let set_index = vpn % SET_COUNT as u64;
         let set = &mut self.entries[set_index as usize];
-        set.insert(vpn, asid, ppn, ts);
+        set.insert(vpn, asid, ppn, ts, is_instruction);
     }
 
     // pub fn _invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
@@ -145,8 +129,8 @@ mod tests {
     #[test]
     fn test_tlbset_insert_and_lookup() {
         let mut tlbset: TLBSet<4> = TLBSet::new();
-        tlbset.insert(1, 1, 1, 1);
-        assert_eq!(tlbset.lookup(1, 1, 2), Some(1));
+        tlbset.insert(1, 1, 1, 1, false);
+        assert_eq!(tlbset.lookup(1, 1, 2, false), Some(1));
     }
 
     #[test]
@@ -158,21 +142,21 @@ mod tests {
     #[test]
     fn test_tlb_insert_and_lookup() {
         let mut tlb: TLB<4, 4> = TLB::new();
-        tlb.insert(1, 1, 1, 1);
-        assert_eq!(tlb.lookup(1, 1, 2), Some(1));
+        tlb.insert(1, 1, 1, 1, false);
+        assert_eq!(tlb.lookup(1, 1, 2, false), Some(1));
     }
 
     #[test]
     fn test_tlbset_replacement_policy() {
         let mut tlbset: TLBSet<4> = TLBSet::new();
-        tlbset.insert(1, 1, 1, 1);
-        tlbset.insert(2, 2, 2, 2);
-        tlbset.insert(3, 3, 3, 3);
-        tlbset.insert(4, 4, 4, 4);
-        tlbset.insert(5, 5, 5, 5); // This should replace the first entry
+        tlbset.insert(1, 1, 1, 1, false);
+        tlbset.insert(2, 2, 2, 2, false);
+        tlbset.insert(3, 3, 3, 3, false);
+        tlbset.insert(4, 4, 4, 4, false);
+        tlbset.insert(5, 5, 5, 5, false); // This should replace the first entry
 
         // The first entry should be replaced, so the lookup should return None
-        assert_eq!(tlbset.lookup(1, 1, 2), None);
+        assert_eq!(tlbset.lookup(1, 1, 2, false), None);
     }
 
     #[test]
@@ -181,17 +165,17 @@ mod tests {
 
         // Insert 16 entries, causing multiple replacements
         for i in 0..16 {
-            tlb.insert(i, i as u16, i, i);
+            tlb.insert(i, i as u16, i, i, false);
         }
 
         // The first 4 entries should have been replaced in each set, so their lookups should return None
         for i in 0..4 {
-            assert_eq!(tlb.lookup(i, i as u16, 100 + 1), None);
+            assert_eq!(tlb.lookup(i, i as u16, 100 + 1, false), None);
         }
 
         // The last 4 entries in each set should still be in the TLB, so their lookups should return their values
         for i in 12..16 {
-            assert_eq!(tlb.lookup(i, i as u16, 200 + i), Some(i));
+            assert_eq!(tlb.lookup(i, i as u16, 200 + i, false), Some(i));
         }
     }
 }

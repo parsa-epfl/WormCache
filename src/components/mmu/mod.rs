@@ -14,11 +14,11 @@ use tlb::TLB;
 
 pub trait AbstractMMU {
     fn new() -> Self;
-    fn translate_and_refill(&mut self, va: u64, ts: u64) -> MMUTranslationResult;
+    fn translate_and_refill(&mut self, va: u64, ts: u64, is_instruction: bool) -> MMUTranslationResult;
 
     // Currently, this interface is for debugging. It reuses QEMU's PTW result.
-    fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64);
-    fn lookup(&mut self, vpn: u64, ts: u64) -> Option<u64>;
+    fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64, is_instruction: bool);
+    fn lookup(&mut self, vpn: u64, ts: u64, is_instruction: bool) -> Option<u64>;
 
     fn serialize(&self) -> serde_json::Value;
     fn deserialize(&mut self, value: serde_json::Value);
@@ -30,11 +30,11 @@ impl AbstractMMU for NoMMU {
     fn new() -> Self {
         Self {}
     }
-    fn translate_and_refill(&mut self, va: u64, _: u64) -> MMUTranslationResult {
+    fn translate_and_refill(&mut self, va: u64, _: u64, _: bool) -> MMUTranslationResult {
         MMUTranslationResult::Hit(va)
     }
-    fn refill_4k_tlb(&mut self, _: u64, _: u64, _: u64) {}
-    fn lookup(&mut self, _: u64, _: u64) -> Option<u64> {
+    fn refill_4k_tlb(&mut self, _: u64, _: u64, _: u64, _: bool) {}
+    fn lookup(&mut self, _: u64, _: u64, _: bool) -> Option<u64> {
         None
     }
 
@@ -89,7 +89,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         }
     }
 
-    fn translate_and_refill(&mut self, va: u64, ts: u64) -> MMUTranslationResult {
+    fn translate_and_refill(&mut self, va: u64, ts: u64, is_instruction: bool) -> MMUTranslationResult {
         let is_kernel = (va >> 63) != 0;
 
         if is_kernel {
@@ -107,7 +107,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         // First, we try 4KB page.
         let vpn = va >> 12;
 
-        if let Some(ppn) = self.tlb.lookup(vpn, asid, ts) {
+        if let Some(ppn) = self.tlb.lookup(vpn, asid, ts, is_instruction) {
             let pa = ppn << 12 | (va & 0xfff);
             return MMUTranslationResult::Hit(pa);
         }
@@ -136,7 +136,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
 
         // based on the ptw_result, we refill each TLB correspondingly.
         match ptw_result.page_size {
-            arch::aarch64::PageSize::_4KB => self.tlb.insert(vpn, asid, ptw_result.paddr >> 12, ts),
+            arch::aarch64::PageSize::_4KB => self.tlb.insert(vpn, asid, ptw_result.paddr >> 12, ts, is_instruction),
             arch::aarch64::PageSize::_2MB => {
                 self.htbl_2mb.insert(key_2mb, ptw_result.paddr >> 21);
             }
@@ -152,7 +152,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         }
     }
 
-    fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64) {
+    fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64, is_instruction: bool) {
         let is_kernel = (vpn >> 51) == 1;
 
         if is_kernel {
@@ -167,10 +167,10 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
             (self.last_ttbr >> 48) as u16
         };
 
-        self.tlb.insert(vpn, asid, ppn, ts)
+        self.tlb.insert(vpn, asid, ppn, ts, is_instruction)
     }
 
-    fn lookup(&mut self, vpn: u64, ts: u64) -> Option<u64> {
+    fn lookup(&mut self, vpn: u64, ts: u64, is_instruction: bool) -> Option<u64> {
         let is_kernel = (vpn >> 51) == 1;
 
         if is_kernel {
@@ -185,7 +185,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
             (self.last_ttbr >> 48) as u16
         };
 
-        self.tlb.lookup(vpn, asid, ts)
+        self.tlb.lookup(vpn, asid, ts, is_instruction)
     }
 
     fn serialize(&self) -> serde_json::Value {

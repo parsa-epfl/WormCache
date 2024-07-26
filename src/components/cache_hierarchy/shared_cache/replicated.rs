@@ -146,7 +146,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             })
             .collect::<Vec<_>>();
 
-        serde_json::to_writer_pretty(
+        serde_json::to_writer(
             &mut file,
             &json!({
                 "associativity": WAY,

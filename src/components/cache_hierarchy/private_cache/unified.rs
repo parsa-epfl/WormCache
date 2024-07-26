@@ -182,7 +182,7 @@ impl<
             let private_cache_path = format!("{}/core_{}_private.json", snapshot_folder, core_id);
             std::fs::write(
                 private_cache_path,
-                serde_json::to_string_pretty(&json!(
+                serde_json::to_string(&json!(
                     {
                         "associativity": ASSO,
                         "tags": serialized_cache
@@ -256,7 +256,7 @@ impl<
 
         let mut file = Encoder::new(file, 0).unwrap();
 
-        serde_json::to_writer_pretty(&mut file, &helper).unwrap();
+        serde_json::to_writer(&mut file, &helper).unwrap();
 
         file.finish().unwrap();
     }

@@ -144,7 +144,7 @@ impl<
                 .get()
                 .as_mut()
                 .unwrap()
-                .translate_and_refill(va, ts)
+                .translate_and_refill(va, ts, is_instruction)
         };
 
         match translation {
@@ -294,7 +294,7 @@ impl<
                 .get()
                 .as_mut()
                 .unwrap()
-                .translate_and_refill(va, ts)
+                .translate_and_refill(va, ts, is_instruction)
         };
 
         match translation {
