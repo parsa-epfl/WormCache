@@ -209,8 +209,16 @@ impl Serialize for SerializedDirectoryEntry {
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("SerializedDirectoryEntry", 2)?;
-        state.serialize_field("ts", &self.tag)?;
-        state.serialize_field("sharers", &self.sharers.as_raw_slice())?;
+        state.serialize_field("tag", &self.tag)?;
+        state.serialize_field(
+            "sharers",
+            &self
+                .sharers
+                .iter()
+                .rev()
+                .map(|b| if *b { "1" } else { "0" })
+                .collect::<Vec<_>>(),
+        )?;
         state.end()
     }
 }
