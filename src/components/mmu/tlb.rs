@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use serde_with::serde_as;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -177,5 +178,90 @@ mod tests {
         for i in 12..16 {
             assert_eq!(tlb.lookup(i, i as u16, 200 + i, false), Some(i));
         }
+    }
+}
+
+// Serializer to flexus checkpoint unit.
+
+#[derive(Serialize)]
+pub struct TLBEntryFlexusSerHelper {
+    vpn: u64,
+    ppn: u64
+}
+
+impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
+    pub fn get_flexus_checkpoint(&self, i_capacity: usize, d_capacity: usize) -> [serde_json::Value; 2] {
+        let mut i_tlb_entries = Vec::new();
+
+        let mut d_tlb_entries = Vec::new();
+
+        // iterate all possible TLB entries
+        for set in self.entries.iter() {
+            for entry in set.entries.iter() {
+                if entry.valid {
+                    if entry.is_instruction {
+                        // we plan to put this in the instruction TLB
+                        if i_tlb_entries.len() < i_capacity {
+                            i_tlb_entries.push(entry.clone());
+                        } else {
+                            // replace the entry with the smallest timestamp.
+                            let mut victim_idx = 0;
+                            for i in 0..i_capacity {
+                                if i_tlb_entries[i].ts < i_tlb_entries[victim_idx].ts {
+                                    victim_idx = i;
+                                }
+                            }
+                            i_tlb_entries[victim_idx] = entry.clone();
+                        }
+                    } else {
+                        // Data TLB
+                        if d_tlb_entries.len() < d_capacity {
+                            d_tlb_entries.push(entry.clone());
+                        } else {
+                            // replace the entry with the smallest timestamp.
+                            let mut victim_idx = 0;
+                            for i in 0..d_capacity {
+                                if d_tlb_entries[i].ts < d_tlb_entries[victim_idx].ts {
+                                    victim_idx = i;
+                                }
+                            }
+                            d_tlb_entries[victim_idx] = entry.clone();
+                        }
+                    }
+                }
+            }
+        }
+
+        // sort the i_tlb_entries and d_tlb_entries by their timestamp.
+        // smaller timesttamp first.
+        i_tlb_entries.sort_by(|a, b| a.ts.cmp(&b.ts));
+        d_tlb_entries.sort_by(|a, b| a.ts.cmp(&b.ts));
+
+        let i_tlb_entries = i_tlb_entries.into_iter().map(|entry| {
+            TLBEntryFlexusSerHelper {
+                vpn: entry.vpn,
+                ppn: entry.ppn
+            }
+        }).collect::<Vec<_>>();
+
+        let d_tlb_entries = d_tlb_entries.into_iter().map(|entry| {
+            TLBEntryFlexusSerHelper {
+                vpn: entry.vpn,
+                ppn: entry.ppn
+            }
+        }).collect::<Vec<_>>();
+        
+        // alright. Now, construct the result.
+        return [
+            json!({
+                "capacity": i_capacity,
+                "entries": i_tlb_entries
+            }),
+            json!({
+                "capacity": d_capacity,
+                "entries": d_tlb_entries
+            })
+        ]
+
     }
 }

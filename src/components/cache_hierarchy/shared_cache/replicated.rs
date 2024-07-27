@@ -253,7 +253,7 @@ impl<
         )
     }
 
-    fn dump_snapshot(&self, snapshot_name: &str) {
+    fn dump_flexus_checkpoint(&self, snapshot_name: &str) {
         // combine the result from all cores
         let f = self
             .blocks

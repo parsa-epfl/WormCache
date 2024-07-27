@@ -69,7 +69,7 @@ pub trait SharedCache {
 
     fn warmed_slots_count(&self) -> usize;
 
-    fn dump_snapshot(&self, snapshot_name: &str);
+    fn dump_flexus_checkpoint(&self, snapshot_name: &str);
 
     fn information() -> String;
 

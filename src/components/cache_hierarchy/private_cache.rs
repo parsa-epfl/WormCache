@@ -55,7 +55,7 @@ pub trait PrivateCaches {
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize;
 
     // This function is for saving the snapshot of the private cache.
-    fn dump_snapshot(&self, snapshot_folder: &str);
+    fn dump_flexus_checkpoint(&self, snapshot_folder: &str);
 
     fn information() -> String;
 

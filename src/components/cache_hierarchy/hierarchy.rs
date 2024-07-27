@@ -1195,10 +1195,14 @@ impl<
         // self.shared_cache.dump_access_counter();
     }
 
-    pub fn dump_snapshot(&self, snapshot_folder: &str) {
-        self.private_caches.dump_snapshot(snapshot_folder);
-        self.directory.dump_snapshot(snapshot_folder);
-        self.shared_cache.dump_snapshot(snapshot_folder);
+    pub fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
+        self.private_caches.dump_flexus_checkpoint(snapshot_folder);
+        self.directory.dump_flexus_checkpoint(snapshot_folder);
+        self.shared_cache.dump_flexus_checkpoint(snapshot_folder);
+        // now, it is the TLB.
+        for (i, mmu) in self.mmus.iter().enumerate() {
+            unsafe { (*mmu.get()).dump_flexus_checkpoint(snapshot_folder, &format!("core-{}", i)) };
+        }
     }
 
     pub fn get_scache_warmed_set_count(&self) -> usize {

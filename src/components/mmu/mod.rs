@@ -9,7 +9,7 @@ use crate::qemu_api;
 
 use rustc_hash::FxHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::ffi::c_void;
+use std::{ffi::c_void, io::Write};
 use tlb::TLB;
 
 pub trait AbstractMMU {
@@ -22,6 +22,8 @@ pub trait AbstractMMU {
 
     fn serialize(&self) -> serde_json::Value;
     fn deserialize(&mut self, value: serde_json::Value);
+
+    fn dump_flexus_checkpoint(&self, filename: &str, suffix: &str);
 }
 
 pub struct NoMMU {}
@@ -43,6 +45,8 @@ impl AbstractMMU for NoMMU {
     }
 
     fn deserialize(&mut self, _: serde_json::Value) {}
+
+    fn dump_flexus_checkpoint(&self, _: &str, _: &str) {}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,4 +199,23 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
     fn deserialize(&mut self, value: serde_json::Value) {
         *self = serde_json::from_value(value).unwrap();
     }
+    
+    fn dump_flexus_checkpoint(&self, folder_name: &str, suffix: &str) {
+        // there are two data structures to dump: iTLB and dTLB. 
+        const FLEXUS_ITLB_CAPACITY: usize = 64;
+        const FLEXUS_DTLB_CAPACITY: usize = 64;
+
+        let to_dump = self.tlb.get_flexus_checkpoint(
+            FLEXUS_ITLB_CAPACITY, 
+            FLEXUS_DTLB_CAPACITY
+        );
+
+        let mut file = std::fs::File::create(format!("{}/itlb_{}.json", folder_name, suffix)).unwrap();
+        file.write_all(serde_json::to_string(&to_dump[0]).unwrap().as_bytes()).unwrap();
+
+        let mut file = std::fs::File::create(format!("{}/dtlb_{}.json", folder_name, suffix)).unwrap();
+        file.write_all(serde_json::to_string(&to_dump[1]).unwrap().as_bytes()).unwrap();
+    }
+
+    
 }

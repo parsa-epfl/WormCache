@@ -117,9 +117,22 @@ impl<const SET: usize, const ASSO: usize> FlexusCompatibleSerializer for BTB<SET
         self.array
             .iter()
             .map(|set| {
-                set.iter()
-                    .map(|entry| entry.get_serialize_helper())
-                    .collect()
+                // set.iter()
+                //     .map(|entry| entry.get_serialize_helper())
+                //     .collect()
+                let mut res = vec![];
+
+                // filter and only keep the valid bit.
+                for entry in set.iter() {
+                    if entry.tag_and_valid & 1 == 1 {
+                        res.push(entry);
+                    }
+                }
+
+                // sort by the timestamp. Small ts first.
+                res.sort_by_key(|entry| entry.ts);
+
+                res.into_iter().map(|entry| entry.get_serialize_helper()).collect()
             })
             .collect()
     }

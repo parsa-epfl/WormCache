@@ -201,7 +201,7 @@ impl super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
     fn dump_snapshot(name: &str) {
         unsafe {
-            (*PLUGIN).dump_snapshot(name);
+            (*PLUGIN).dump_flexus_checkpoint(name);
         }
     }
 

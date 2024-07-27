@@ -231,7 +231,7 @@ impl<
     }
 
     #[inline]
-    fn dump_snapshot(&self, snapshot_folder: &str) {
+    fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
         for core_id in 0..CORE_COUNT {
             // instruction cache is stored in <core_id>_l1i.json
             // data cache is stored in <core_id>_l1d.json

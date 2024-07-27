@@ -171,7 +171,7 @@ impl<
     }
 
     #[inline]
-    fn dump_snapshot(&self, snapshot_folder: &str) {
+    fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
         for core_id in 0..CORE_COUNT {
             let serialized_cache = self.caches[core_id]
                 .cache

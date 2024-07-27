@@ -185,7 +185,7 @@ impl<
             .sum()
     }
 
-    fn dump_snapshot(&self, snapshot_name: &str) {
+    fn dump_flexus_checkpoint(&self, snapshot_name: &str) {
         let mut file =
             std::fs::File::create(format!("{}/shared_cache.json", snapshot_name)).unwrap();
 
