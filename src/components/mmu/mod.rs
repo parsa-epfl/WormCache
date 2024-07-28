@@ -210,10 +210,10 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
             FLEXUS_DTLB_CAPACITY
         );
 
-        let mut file = std::fs::File::create(format!("{}/itlb_{}.json", folder_name, suffix)).unwrap();
+        let mut file = std::fs::File::create(format!("{}/{}_itlb.json", folder_name, suffix)).unwrap();
         file.write_all(serde_json::to_string(&to_dump[0]).unwrap().as_bytes()).unwrap();
 
-        let mut file = std::fs::File::create(format!("{}/dtlb_{}.json", folder_name, suffix)).unwrap();
+        let mut file = std::fs::File::create(format!("{}/{}_dtlb.json", folder_name, suffix)).unwrap();
         file.write_all(serde_json::to_string(&to_dump[1]).unwrap().as_bytes()).unwrap();
     }
 

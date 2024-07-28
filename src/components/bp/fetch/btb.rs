@@ -7,9 +7,9 @@ use super::BranchPredictorResult;
 
 #[derive(Deserialize, Serialize)]
 struct BTBEntry {
-    tag_and_valid: u64, // the upper 63 bits are the tag, and the lowest bit is the valid bit
+    tag: u64, 
     target: u64,
-    ts: u64,
+    ts: u64, // zero means invalid.
     branch_type: BranchType,
 }
 
@@ -26,7 +26,7 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         BTB {
             array: Vec::from_iter((0..SET).map(|_| {
                 std::array::from_fn(|_| BTBEntry {
-                    tag_and_valid: 0,
+                    tag: 0,
                     target: 0,
                     ts: 0,
                     branch_type: BranchType::NonBranch,
@@ -50,7 +50,7 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         // We need to check if the entry is already in the BTB. If yes, we update the timestamp and return.
         // This should be the common case.
         for entry in self.array[index].iter_mut() {
-            if entry.tag_and_valid == pc {
+            if entry.tag == pc {
                 entry.ts = self.local_ts;
 
                 let miss = entry.target != target;
@@ -76,7 +76,7 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         }
 
         // always replace the entry with the minimum timestamp
-        self.array[index][min_index].tag_and_valid = pc;
+        self.array[index][min_index].tag = pc;
         self.array[index][min_index].target = target;
         self.array[index][min_index].ts = self.local_ts;
         self.array[index][min_index].branch_type = result.branch_type;
@@ -103,7 +103,7 @@ impl FlexusCompatibleSerializer for BTBEntry {
 
     fn get_serialize_helper(&self) -> Self::HelperType {
         BTBEntrySerializeHelper {
-            pc: self.tag_and_valid >> 1,
+            pc: self.tag,
             target: self.target,
             type_: self.branch_type as u64,
         }
@@ -124,7 +124,7 @@ impl<const SET: usize, const ASSO: usize> FlexusCompatibleSerializer for BTB<SET
 
                 // filter and only keep the valid bit.
                 for entry in set.iter() {
-                    if entry.tag_and_valid & 1 == 1 {
+                    if entry.ts != 0 {
                         res.push(entry);
                     }
                 }
