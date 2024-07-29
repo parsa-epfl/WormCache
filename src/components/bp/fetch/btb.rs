@@ -7,7 +7,7 @@ use super::BranchPredictorResult;
 
 #[derive(Deserialize, Serialize)]
 struct BTBEntry {
-    tag: u64, 
+    tag: u64,
     target: u64,
     ts: u64, // zero means invalid.
     branch_type: BranchType,
@@ -132,7 +132,9 @@ impl<const SET: usize, const ASSO: usize> FlexusCompatibleSerializer for BTB<SET
                 // sort by the timestamp. Small ts first.
                 res.sort_by_key(|entry| entry.ts);
 
-                res.into_iter().map(|entry| entry.get_serialize_helper()).collect()
+                res.into_iter()
+                    .map(|entry| entry.get_serialize_helper())
+                    .collect()
             })
             .collect()
     }

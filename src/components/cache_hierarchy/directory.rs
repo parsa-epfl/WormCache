@@ -230,7 +230,7 @@ impl Serialize for SerializedDirectoryEntry {
                 .into_iter()
                 .rev()
                 .map(|b| if b { "1" } else { "0" })
-                .collect::<Vec<_>>(),
+                .collect::<String>(),
         )?;
         state.end()
     }

@@ -14,7 +14,12 @@ use tlb::TLB;
 
 pub trait AbstractMMU {
     fn new() -> Self;
-    fn translate_and_refill(&mut self, va: u64, ts: u64, is_instruction: bool) -> MMUTranslationResult;
+    fn translate_and_refill(
+        &mut self,
+        va: u64,
+        ts: u64,
+        is_instruction: bool,
+    ) -> MMUTranslationResult;
 
     // Currently, this interface is for debugging. It reuses QEMU's PTW result.
     fn refill_4k_tlb(&mut self, vpn: u64, ppn: u64, ts: u64, is_instruction: bool);
@@ -93,7 +98,12 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
         }
     }
 
-    fn translate_and_refill(&mut self, va: u64, ts: u64, is_instruction: bool) -> MMUTranslationResult {
+    fn translate_and_refill(
+        &mut self,
+        va: u64,
+        ts: u64,
+        is_instruction: bool,
+    ) -> MMUTranslationResult {
         let is_kernel = (va >> 63) != 0;
 
         if is_kernel {
@@ -140,7 +150,10 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
 
         // based on the ptw_result, we refill each TLB correspondingly.
         match ptw_result.page_size {
-            arch::aarch64::PageSize::_4KB => self.tlb.insert(vpn, asid, ptw_result.paddr >> 12, ts, is_instruction),
+            arch::aarch64::PageSize::_4KB => {
+                self.tlb
+                    .insert(vpn, asid, ptw_result.paddr >> 12, ts, is_instruction)
+            }
             arch::aarch64::PageSize::_2MB => {
                 self.htbl_2mb.insert(key_2mb, ptw_result.paddr >> 21);
             }
@@ -199,23 +212,24 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
     fn deserialize(&mut self, value: serde_json::Value) {
         *self = serde_json::from_value(value).unwrap();
     }
-    
+
     fn dump_flexus_checkpoint(&self, folder_name: &str, suffix: &str) {
-        // there are two data structures to dump: iTLB and dTLB. 
+        // there are two data structures to dump: iTLB and dTLB.
         const FLEXUS_ITLB_CAPACITY: usize = 64;
         const FLEXUS_DTLB_CAPACITY: usize = 64;
 
-        let to_dump = self.tlb.get_flexus_checkpoint(
-            FLEXUS_ITLB_CAPACITY, 
-            FLEXUS_DTLB_CAPACITY
-        );
+        let to_dump = self
+            .tlb
+            .get_flexus_checkpoint(FLEXUS_ITLB_CAPACITY, FLEXUS_DTLB_CAPACITY);
 
-        let mut file = std::fs::File::create(format!("{}/{}_itlb.json", folder_name, suffix)).unwrap();
-        file.write_all(serde_json::to_string(&to_dump[0]).unwrap().as_bytes()).unwrap();
+        let mut file =
+            std::fs::File::create(format!("{}/{}_itlb.json", folder_name, suffix)).unwrap();
+        file.write_all(serde_json::to_string(&to_dump[0]).unwrap().as_bytes())
+            .unwrap();
 
-        let mut file = std::fs::File::create(format!("{}/{}_dtlb.json", folder_name, suffix)).unwrap();
-        file.write_all(serde_json::to_string(&to_dump[1]).unwrap().as_bytes()).unwrap();
+        let mut file =
+            std::fs::File::create(format!("{}/{}_dtlb.json", folder_name, suffix)).unwrap();
+        file.write_all(serde_json::to_string(&to_dump[1]).unwrap().as_bytes())
+            .unwrap();
     }
-
-    
 }

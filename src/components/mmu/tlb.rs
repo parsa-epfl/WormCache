@@ -186,11 +186,15 @@ mod tests {
 #[derive(Serialize)]
 pub struct TLBEntryFlexusSerHelper {
     vpn: u64,
-    ppn: u64
+    ppn: u64,
 }
 
 impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
-    pub fn get_flexus_checkpoint(&self, i_capacity: usize, d_capacity: usize) -> [serde_json::Value; 2] {
+    pub fn get_flexus_checkpoint(
+        &self,
+        i_capacity: usize,
+        d_capacity: usize,
+    ) -> [serde_json::Value; 2] {
         let mut i_tlb_entries = Vec::new();
 
         let mut d_tlb_entries = Vec::new();
@@ -237,20 +241,22 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
         i_tlb_entries.sort_by(|a, b| a.ts.cmp(&b.ts));
         d_tlb_entries.sort_by(|a, b| a.ts.cmp(&b.ts));
 
-        let i_tlb_entries = i_tlb_entries.into_iter().map(|entry| {
-            TLBEntryFlexusSerHelper {
+        let i_tlb_entries = i_tlb_entries
+            .into_iter()
+            .map(|entry| TLBEntryFlexusSerHelper {
                 vpn: entry.vpn,
-                ppn: entry.ppn
-            }
-        }).collect::<Vec<_>>();
+                ppn: entry.ppn,
+            })
+            .collect::<Vec<_>>();
 
-        let d_tlb_entries = d_tlb_entries.into_iter().map(|entry| {
-            TLBEntryFlexusSerHelper {
+        let d_tlb_entries = d_tlb_entries
+            .into_iter()
+            .map(|entry| TLBEntryFlexusSerHelper {
                 vpn: entry.vpn,
-                ppn: entry.ppn
-            }
-        }).collect::<Vec<_>>();
-        
+                ppn: entry.ppn,
+            })
+            .collect::<Vec<_>>();
+
         // alright. Now, construct the result.
         return [
             json!({
@@ -260,8 +266,7 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
             json!({
                 "capacity": d_capacity,
                 "entries": d_tlb_entries
-            })
-        ]
-
+            }),
+        ];
     }
 }
