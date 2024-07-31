@@ -223,12 +223,12 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
             .get_flexus_checkpoint(FLEXUS_ITLB_CAPACITY, FLEXUS_DTLB_CAPACITY);
 
         let mut file =
-            std::fs::File::create(format!("{}/{:03}-itlb.json", folder_name, suffix)).unwrap();
+            std::fs::File::create(format!("{}/{:03}-mmu-itlb.json", folder_name, suffix)).unwrap();
         file.write_all(serde_json::to_string(&to_dump[0]).unwrap().as_bytes())
             .unwrap();
 
         let mut file =
-            std::fs::File::create(format!("{}/{:03}-dtlb.json", folder_name, suffix)).unwrap();
+            std::fs::File::create(format!("{}/{:03}-mmu-dtlb.json", folder_name, suffix)).unwrap();
         file.write_all(serde_json::to_string(&to_dump[1]).unwrap().as_bytes())
             .unwrap();
     }
