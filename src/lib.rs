@@ -61,6 +61,12 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
     // create a folder for the name.
     std::fs::create_dir_all(name).unwrap();
     PluginList::serialize(name);
+
+    if parameter::DUMP_FLEXUS_CHECKPOINT {
+        let flexus_checkpoint_name = format!("{}-flexus", name);
+        std::fs::create_dir_all(&flexus_checkpoint_name).unwrap();
+        PluginList::dump_snapshot(&flexus_checkpoint_name);
+    }
 }
 
 #[no_mangle]

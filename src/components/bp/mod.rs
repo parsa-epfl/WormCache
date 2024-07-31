@@ -118,7 +118,7 @@ impl Plugin for BranchPredictorPlugin {
     fn dump_snapshot(name: &str) {
         for (core_id, f) in unsafe { &(*FETCH_UNIT).private_units }.iter().enumerate() {
             let file =
-                std::fs::File::create(format!("{}/fetch_unit_{}.json", name, core_id)).unwrap();
+                std::fs::File::create(format!("{}/{:03}-bpred.json", name, core_id)).unwrap();
             // let json = serde_json::to_string(f).unwrap();
             // file.write_all(json.as_bytes()).unwrap();
             serde_json::to_writer(file, &f.get_flexus_checkpoint()).unwrap();

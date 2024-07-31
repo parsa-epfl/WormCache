@@ -244,7 +244,7 @@ impl<
                 .collect::<Vec<_>>();
 
             // dump the instruction cache
-            let icache_path = format!("{}/core{}_l1i.json", snapshot_folder, core_id);
+            let icache_path = format!("{}/{:03}-L1i.json", snapshot_folder, core_id);
             std::fs::write(
                 icache_path,
                 serde_json::to_string(&json!({
@@ -264,7 +264,7 @@ impl<
                 .collect::<Vec<_>>();
 
             // dump the data cache
-            let dcache_path = format!("{}/core{}_l1d.json", snapshot_folder, core_id);
+            let dcache_path = format!("{}/{:03}-L1d.json", snapshot_folder, core_id);
             std::fs::write(
                 dcache_path,
                 serde_json::to_string(&json!({

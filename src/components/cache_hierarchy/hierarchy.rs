@@ -1199,9 +1199,9 @@ impl<
         self.private_caches.dump_flexus_checkpoint(snapshot_folder);
         self.directory.dump_flexus_checkpoint(snapshot_folder);
         self.shared_cache.dump_flexus_checkpoint(snapshot_folder);
-        // now, it is the TLB.
+        // now, it is the TLB.format!("core{}", i))
         for (i, mmu) in self.mmus.iter().enumerate() {
-            unsafe { (*mmu.get()).dump_flexus_checkpoint(snapshot_folder, &format!("core{}", i)) };
+            unsafe { (*mmu.get()).dump_flexus_checkpoint(snapshot_folder, &format!("{:03}", i)) };
         }
     }
 

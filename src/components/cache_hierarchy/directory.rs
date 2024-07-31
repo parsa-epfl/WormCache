@@ -238,7 +238,7 @@ impl Serialize for SerializedDirectoryEntry {
 
 impl<const SET: usize> Directory<SET> {
     pub fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
-        let file = std::fs::File::create(format!("{}/directory.json", snapshot_folder)).unwrap();
+        let file = std::fs::File::create(format!("{}/L2-dir.json", snapshot_folder)).unwrap();
 
         let entries = self
             .entries

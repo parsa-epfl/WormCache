@@ -186,8 +186,7 @@ impl<
     }
 
     fn dump_flexus_checkpoint(&self, snapshot_name: &str) {
-        let mut file =
-            std::fs::File::create(format!("{}/shared_cache.json", snapshot_name)).unwrap();
+        let mut file = std::fs::File::create(format!("{}/L2-cache.json", snapshot_name)).unwrap();
 
         let log2_set = SET.trailing_zeros();
 
