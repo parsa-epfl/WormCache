@@ -849,6 +849,15 @@ impl<
                         incoming_sharer.set(*replica_cache_id, false);
                         // invalid the private cache entry.
                         set.invalidate(*index);
+
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::PrivateCacheInvalidation,
+                                is_os,
+                            );
+                        }
+
                         if ENABLE_CACHE_LINE_HISTORY {
                             CacheLineCoherenceHistory::global_record_history(
                                 block_id,

@@ -24,6 +24,7 @@ pub enum EventType {
     PrivateCacheMissTriggerCoherenceDueToRead, // All misses that involve the coherence activity (GetS, GetX)
     PrivateCacheMissTriggerCoherenceDueToWrite, // All misses that involve the coherence activity (GetS, GetX)
     PrivateCacheMissTriggerInvalidation,        // All misses that invalid other copies (GetX)
+    PrivateCacheInvalidation, // All invalidations that invalidate other copies (GetX)
 
     SharedCacheAccess,
     SharedCacheMiss,
