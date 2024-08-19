@@ -11,6 +11,8 @@ use components::bp::BranchPredictorPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
+use components::cache_hierarchy::SingleCacheHierarchyPlugin;
+#[allow(unused_imports)]
 use components::marker::MarkerPlugin;
 #[allow(unused_imports)]
 use components::pw_log::PageWalkLoggerPlugin;

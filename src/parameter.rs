@@ -250,7 +250,8 @@ pub struct PluginList {
     _pb: crate::BranchPredictorPlugin,
     _vt: crate::VirtualTimePlugin,
     // _mk: crate::MarkerPlugin,
-    _lm: crate::ParallelCacheHierarchyPlugin,
+    // _lm: crate::ParallelCacheHierarchyPlugin,
+    _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }
 

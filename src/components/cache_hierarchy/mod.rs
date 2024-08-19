@@ -7,6 +7,9 @@
 
 pub mod common;
 mod parallel_hierarchy;
+mod single_cache_hierarchy;
 
 pub use parallel_hierarchy::hierarchy;
 pub use parallel_hierarchy::ParallelCacheHierarchyPlugin;
+
+pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
