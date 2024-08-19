@@ -1,12 +1,14 @@
-use crate::components::cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics;
+use crate::components::cache_hierarchy::common::PrivateCaches;
+use crate::components::NoMMU;
+use crate::parameter;
 use crate::util::get_monotonic_ts;
 
-use crate::components::NoMMU;
-
-use self::private_cache::ParallelHarvardPrivateCache;
-use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
-
-use super::*;
+use super::super::super::common::{
+    statistics::ZeroSharedCacheSetStatistics, ParallelHarvardPrivateCache,
+    ParallelSingleSharedCache,
+};
+use super::MemoryHierarchy;
+use super::{CacheAccessType, CacheHierarchyAccessResult};
 
 const PCACHE_SET: usize = 64;
 

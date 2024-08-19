@@ -1,6 +1,5 @@
 use zstd::{Decoder, Encoder};
 
-use crate::components::cache_hierarchy::shared_cache::{SharedCache, SharedCacheLookupResult};
 use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
 
@@ -8,10 +7,9 @@ use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::directory::DirectorySet;
-use super::{
-    directory,
-    private_cache::{self, PrivateCaches},
+use super::super::common::{
+    CacheAccessType, CacheHierarchyAccessResult, Directory, DirectorySet, PrivateCacheEvictedSlot,
+    PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
 };
 
 use crate::components::mmu::AbstractMMU;
@@ -43,35 +41,11 @@ pub struct MemoryHierarchy<
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
-    directory: directory::Directory<DIRECTORY_SHARD_COUNT>,
+    directory: Directory<DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
     with_statistics: bool,
     directory_run_gc: bool,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum CacheAccessType {
-    InstructionFetch,
-
-    DataRead,
-    DataWrite,
-
-    PageWalkRead,
-
-    PrefetchRead,
-    PrefetchWrite,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum CacheHierarchyAccessResult {
-    HitInSelfPrivateCache,
-    MissDueToPermission,
-    HitInOtherPrivateCache,
-    MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
-    HitInSharedCache,
-    Miss,
-    Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
 }
 
 impl<
@@ -99,7 +73,7 @@ impl<
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
-            directory: directory::Directory::new(),
+            directory: Directory::new(),
             shared_cache: SCache::new(),
             with_statistics,
             directory_run_gc,
@@ -456,22 +430,22 @@ impl<
             is_store,
         );
 
-        if private_hit == private_cache::PrivateCachePokeResult::Hit {
+        if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
         let evicted_slot = match private_hit {
-            private_cache::PrivateCachePokeResult::Hit => unreachable!(),
-            private_cache::PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
-            private_cache::PrivateCachePokeResult::PermissionViolation(ref slot) => slot.clone(),
+            PrivateCachePokeResult::Hit => unreachable!(),
+            PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
+            PrivateCachePokeResult::PermissionViolation(ref slot) => slot.clone(),
         };
 
         // Alright, we may need to get another directory entry of the eviction.
         // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
         let (mut miss_directory_set_guard, evict_directory) = {
             match evicted_slot {
-                private_cache::EvictedSlot::Valid(_, potential_evicted_id) => {
+                PrivateCacheEvictedSlot::Valid(_, potential_evicted_id) => {
                     let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);

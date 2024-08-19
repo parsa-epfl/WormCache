@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::components::cache_hierarchy::util::CCell;
+use super::super::CCell;
 
 use super::PrivateCaches;
 use super::{PrivateCachePokeResult, PrivateCacheSet};
@@ -131,7 +131,7 @@ impl<
     fn get_set_guard_by_sharer_list(
         &self,
         block_id: u64,
-        sharers: crate::components::cache_hierarchy::directory::SharerList,
+        sharers: super::super::SharerList,
     ) -> Vec<(
         usize,
         impl DerefMut<Target = PrivateCacheSet>,

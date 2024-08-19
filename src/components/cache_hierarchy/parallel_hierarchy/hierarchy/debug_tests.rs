@@ -1,13 +1,16 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
-use crate::components::cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics;
 use crate::components::NoMMU;
+use crate::parameter;
 use crate::util::get_monotonic_ts;
 
-use self::private_cache::ParallelUnifiedPrivateCache;
-use super::*;
-use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
+use super::super::super::common::{
+    statistics::ZeroSharedCacheSetStatistics, ParallelSingleSharedCache,
+    ParallelUnifiedPrivateCache,
+};
+use super::MemoryHierarchy;
+use super::{CacheAccessType, CacheHierarchyAccessResult};
 
 const PCACHE_SET: usize = 1024;
 

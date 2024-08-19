@@ -1,4 +1,4 @@
-use crate::components::cache_hierarchy::hierarchy::CacheAccessType;
+use super::super::CacheAccessType;
 
 use super::{
     statistics::SharedCacheSetStatistics, SerializedSharedCacheBlock, SharedCache,

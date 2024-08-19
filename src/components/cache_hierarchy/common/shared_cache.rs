@@ -103,7 +103,7 @@ pub use single::ParallelSingleSharedCache;
 pub use single::SerialSingleSharedCache;
 pub use single::SingleSharedCache;
 
-use super::hierarchy::CacheAccessType;
+use super::CacheAccessType;
 
 #[cfg(test)]
 mod warm_counter_test;

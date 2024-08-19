@@ -1,9 +1,7 @@
 use crate::{
     components::{
-        cache_hierarchy::{
-            hierarchy::CacheHierarchyAccessResult,
-            private_cache::ParallelUnifiedPrivateCache,
-            shared_cache::{statistics::ZeroSharedCacheSetStatistics, ParallelSingleSharedCache},
+        cache_hierarchy::common::{
+            statistics::ZeroSharedCacheSetStatistics, CacheHierarchyAccessResult, ParallelSingleSharedCache, ParallelUnifiedPrivateCache
         },
         debug::statistics::{EventType, Statistics},
         NoMMU,

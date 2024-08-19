@@ -42,15 +42,12 @@ pub type SharedCacheStatisticsWithPlugin =
     <DummyParser as SharedCacheStatisticsParser<{ parameter::ENABLE_STATISTICS }>>::Output;
 
 use super::{
-    hierarchy,
-    private_cache::{
-        ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache, SerialHarvardPrivateCache,
-        SerialUnifiedPrivateCache,
-    },
-    shared_cache::{
+    super::common::{
         statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
-        ParallelSingleSharedCache, SerialSingleSharedCache,
+        ParallelHarvardPrivateCache, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
+        SerialHarvardPrivateCache, SerialSingleSharedCache, SerialUnifiedPrivateCache,
     },
+    hierarchy,
 };
 
 pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {

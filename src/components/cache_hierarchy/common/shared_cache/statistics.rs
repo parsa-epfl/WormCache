@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{components::cache_hierarchy::hierarchy::CacheAccessType, parameter};
+use super::super::CacheAccessType;
+use crate::parameter;
 use std::fmt::Debug;
 
 pub trait SharedCacheSetStatistics: Default + Debug + Clone + Serialize {

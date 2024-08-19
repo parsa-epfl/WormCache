@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 
-use crate::components::{
-    cache_hierarchy::shared_cache::statistics::ZeroSharedCacheSetStatistics, NoMMU,
+use crate::{
+    components::{
+        cache_hierarchy::common::{
+            statistics::ZeroSharedCacheSetStatistics, CacheAccessType, CacheHierarchyAccessResult,
+            ParallelSingleSharedCache, ParallelUnifiedPrivateCache, PrivateCaches, SharedCache,
+            SharedCacheLookupResult,
+        },
+        NoMMU,
+    },
+    parameter,
 };
 
-use self::private_cache::ParallelUnifiedPrivateCache;
-use crate::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
-
-use super::*;
+use super::MemoryHierarchy;
 
 const PCACHE_SET: usize = 64;
 

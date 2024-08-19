@@ -5,7 +5,9 @@ mod havard;
 mod set_and_line;
 mod unified;
 
-pub use set_and_line::{EvictedSlot, PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
+pub use set_and_line::{
+    PrivateCacheEvictedSlot, PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet,
+};
 
 pub trait PrivateCaches {
     // This function is for creating all new private caches.

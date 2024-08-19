@@ -4,7 +4,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::components::cache_hierarchy::util::CCell;
+use super::super::CCell;
 
 use super::{
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},

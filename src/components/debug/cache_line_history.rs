@@ -2,7 +2,7 @@ use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 
-use crate::components::cache_hierarchy::directory::SharerList;
+use crate::components::cache_hierarchy::common::SharerList;
 
 #[derive(Debug)]
 pub enum CacheOperationType {
