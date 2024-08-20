@@ -155,11 +155,7 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
     }
 
     #[inline]
-    fn dump_snapshot(name: &str) {
-        unsafe {
-            // (*PLUGIN).dump_flexus_checkpoint(name);
-        }
-    }
+    fn dump_snapshot(_name: &str) {}
 
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {

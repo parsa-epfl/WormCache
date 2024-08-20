@@ -8,7 +8,6 @@ use crate::{
             CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult,
         },
         debug::statistics::{EventType, Statistics},
-        mmu::AbstractMMU,
     },
     parameter::{self, ADJACENT_LINE_PREFETCHING},
 };
