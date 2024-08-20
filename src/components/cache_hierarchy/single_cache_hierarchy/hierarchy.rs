@@ -361,7 +361,8 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
             match res {
                 SharedCacheLookupResult::Hit(_) => EventType::SharedCacheAccess,
                 SharedCacheLookupResult::Miss => EventType::SharedCacheMiss,
-                SharedCacheLookupResult::Unknown(_) => EventType::SharedCacheVTsOrderViolation,
+                SharedCacheLookupResult::ColdMiss => EventType::SharedCacheColdMiss,
+                SharedCacheLookupResult::Unknown(_) => EventType::UnknownSharedCacheMisses,
             },
             is_os,
         );
@@ -385,6 +386,7 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
         let cache_hierarchy_access_result = match res {
             SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
+            SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::Unknown(_) => CacheHierarchyAccessResult::Unknown,
         };
 

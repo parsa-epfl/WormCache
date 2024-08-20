@@ -38,6 +38,9 @@ pub enum EventType {
     UnknownPrivateCacheMisses,
     UnknownSharedCacheMisses,
 
+    // PrivateCacheColdMiss
+    SharedCacheColdMiss, // The cache miss is caused due to the cold start of the shared cache.
+
     PrivateCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the coherence state information.
     SharedCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the LRU information in the shared cache.
 

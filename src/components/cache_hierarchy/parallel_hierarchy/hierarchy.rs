@@ -527,6 +527,16 @@ impl<
                 match lookup_result.0 {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::ColdMiss => {
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheColdMiss,
+                                is_os,
+                            );
+                        }
+                        None
+                    }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -552,6 +562,16 @@ impl<
                 match lookup_result.0 {
                     SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
                     SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::ColdMiss => {
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheColdMiss,
+                                is_os,
+                            );
+                        }
+                        None
+                    }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
                             Statistics::global_record(

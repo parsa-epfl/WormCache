@@ -11,6 +11,7 @@ use serde::Serialize;
 pub enum SharedCacheLookupResult {
     Hit(bool), // (is_dirty)
     Miss,
+    ColdMiss,
     Unknown(u32), // timestamp difference
 }
 
