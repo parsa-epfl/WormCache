@@ -325,17 +325,6 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
         }
     }
 
-    // This function is only for debugging.
-    pub fn access_memory_pblock_id_with_the_same_ts_and_vts(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        access_type: CacheAccessType,
-    ) -> CacheHierarchyAccessResult {
-        self.access_memory_pblock_id(core_id, block_id, ts, ts, access_type, false, 0)
-    }
-
     pub fn access_memory_pblock_id(
         &self,
         core_id: u32,
@@ -347,6 +336,11 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
         _instruction_va_pc: u64,
     ) -> CacheHierarchyAccessResult {
         let is_store = access_type == CacheAccessType::DataWrite;
+        let is_ptw = access_type == CacheAccessType::PageWalkRead;
+        let is_fetch = access_type == CacheAccessType::InstructionFetch;
+
+        Statistics::global_record(core_id, EventType::DataAccess, is_os);
+        Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
 
         let res = self
             .shared_cache
@@ -363,11 +357,38 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
             )
             .0;
 
+        Statistics::global_record(
+            core_id,
+            match res {
+                SharedCacheLookupResult::Hit(_) => EventType::SharedCacheAccess,
+                SharedCacheLookupResult::Miss => EventType::SharedCacheMiss,
+                SharedCacheLookupResult::Unknown(_) => EventType::SharedCacheVTsOrderViolation,
+            },
+            is_os,
+        );
+
+        if matches!(res, SharedCacheLookupResult::Miss) {
+            if is_store {
+                Statistics::global_record(core_id, EventType::SharedCacheMissDueToDataWrite, is_os);
+            } else if is_fetch {
+                Statistics::global_record(
+                    core_id,
+                    EventType::SharedCacheMissDueToInstructionFetch,
+                    is_os,
+                );
+            } else if is_ptw {
+                Statistics::global_record(core_id, EventType::SharedCacheMissDueToPTW, is_os);
+            } else {
+                Statistics::global_record(core_id, EventType::SharedCacheMissDueToDataRead, is_os);
+            }
+        }
+
         let cache_hierarchy_access_result = match res {
             SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::Unknown(_) => CacheHierarchyAccessResult::Unknown,
         };
+
         cache_hierarchy_access_result
     }
 
@@ -423,6 +444,14 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
         self.shared_cache.deserialize(name, numa_node_id);
         println!("Deserialize MMUs");
         self.deserialize_mmus(name, numa_node_id);
+    }
+
+    pub fn get_scache_warmed_set_count(&self) -> usize {
+        self.shared_cache.warmed_sets_count()
+    }
+
+    pub fn get_scache_warmed_slots_count(&self) -> usize {
+        self.shared_cache.warmed_slots_count()
     }
 }
 

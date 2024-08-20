@@ -90,8 +90,10 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
     #[inline]
     fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
         unsafe {
-            let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
+            // let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
             let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
+
+            assert!(is_icount_mode);
 
             PLUGIN = Box::into_raw(Box::new(PluginSingleCacheHierarchy::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
@@ -99,7 +101,13 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
             qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
         }
 
-        println!("Memory plugin [SingleCache] initialized.");
+        println!("Memory plugin [SingleCache, Serial] initialized.");
+        println!(
+            "Set: {}, Associativity: {}, Exclusive: {}",
+            parameter::SHARED_CACHE_SET,
+            parameter::SHARED_CACHE_ASSO,
+            parameter::SHARED_CACHE_EXCLUSIVE
+        );
 
         // this thread peridocally dumps the statistics.
         std::thread::spawn(|| {
@@ -127,17 +135,17 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
 
                 // get the duration of the following function.
 
-                // warmed_rate
-                //     .write_all(
-                //         format!(
-                //             "{},{},{}\n",
-                //             get_monotonic_ts(),
-                //             unsafe { (*PLUGIN).get_scache_warmed_set_count() },
-                //             unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
-                //         )
-                //         .as_bytes(),
-                //     )
-                //     .unwrap();
+                warmed_rate
+                    .write_all(
+                        format!(
+                            "{},{},{}\n",
+                            get_monotonic_ts(),
+                            unsafe { (*PLUGIN).get_scache_warmed_set_count() },
+                            unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
+                        )
+                        .as_bytes(),
+                    )
+                    .unwrap();
 
                 // let elapsed = now.elapsed();
 
