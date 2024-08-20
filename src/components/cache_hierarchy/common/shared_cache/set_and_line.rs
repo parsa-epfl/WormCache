@@ -350,3 +350,34 @@ fn minimum_can_find_invalid() {
         }
     )
 }
+
+#[test]
+fn cold_miss_exist() {
+    use super::statistics::ZeroSharedCacheSetStatistics;
+
+    let mut set = SharedCacheSet::<8, 1, false, ZeroSharedCacheSetStatistics>::new();
+
+    let mut ts = 1;
+
+    // do one lookup. It will return the cold.
+    assert_eq!(
+        set.lookup(10, ts, ts, false, super::CacheAccessType::DataRead, false)
+            .0,
+        SharedCacheLookupResult::ColdMiss,
+    );
+
+    ts += 1;
+
+    // fill the cache.
+    for i in 0..8 {
+        assert_eq!(set.insert(i + 10, ts, ts, false, true), i == 7);
+        ts += 1;
+    }
+
+    // do a lookup that triggers a miss. Now it should be a miss instead of a cold miss.
+    assert_eq!(
+        set.lookup(20, ts, ts, false, super::CacheAccessType::DataRead, false)
+            .0,
+        SharedCacheLookupResult::Miss,
+    );
+}
