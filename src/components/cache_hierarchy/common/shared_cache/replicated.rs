@@ -110,7 +110,10 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
                 (SharedCacheLookupResult::Hit(is_dirty), res.1)
             }
-            SharedCacheLookupAndInsertResult::Inserted(_) => (SharedCacheLookupResult::Miss, res.1),
+            SharedCacheLookupAndInsertResult::InsertedAndCold(_) => {
+                (SharedCacheLookupResult::ColdMiss, res.1)
+            }
+            SharedCacheLookupAndInsertResult::Inserted => (SharedCacheLookupResult::Miss, res.1),
             SharedCacheLookupAndInsertResult::Unknown(unknown) => {
                 (SharedCacheLookupResult::Unknown(unknown), res.1)
             }

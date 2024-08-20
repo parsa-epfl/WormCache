@@ -157,12 +157,13 @@ impl<
                 SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
                     SharedCacheLookupResult::Hit(is_dirty)
                 }
-                SharedCacheLookupAndInsertResult::Inserted(just_warmed) => {
+                SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
                     if just_warmed {
                         self.warmed_sets.fetch_add(1, Ordering::Relaxed);
                     }
-                    SharedCacheLookupResult::Miss
+                    SharedCacheLookupResult::ColdMiss
                 }
+                SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
                 SharedCacheLookupAndInsertResult::Unknown(diff) => {
                     SharedCacheLookupResult::Unknown(diff)
                 }

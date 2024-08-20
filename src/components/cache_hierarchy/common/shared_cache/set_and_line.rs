@@ -168,7 +168,11 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                     SharedCacheLookupResult::Unknown((self.recent_evict_ts - ts) as u32)
                 } else {
                     self.statistics.record(access_type, is_os, false);
-                    SharedCacheLookupResult::Miss
+                    if self.touched_count < WAY {
+                        SharedCacheLookupResult::ColdMiss
+                    } else {
+                        SharedCacheLookupResult::Miss
+                    }
                 };
 
                 let violation = if v_ts < self.recent_evict_vts {
@@ -286,7 +290,12 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             }
             SharedCacheLookupResult::Miss => {
                 let just_warmed = self.insert(block_id, ts, v_ts, is_store, increase_touched_count);
-                SharedCacheLookupAndInsertResult::Inserted(just_warmed)
+                assert!(just_warmed == false);
+                SharedCacheLookupAndInsertResult::Inserted
+            }
+            SharedCacheLookupResult::ColdMiss => {
+                let just_warmed = self.insert(block_id, ts, v_ts, is_store, increase_touched_count);
+                SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
             }
             SharedCacheLookupResult::Unknown(diff) => {
                 SharedCacheLookupAndInsertResult::Unknown(diff)

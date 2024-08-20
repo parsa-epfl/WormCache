@@ -17,9 +17,10 @@ pub enum SharedCacheLookupResult {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupAndInsertResult {
-    Hit(bool),      // (is_dirty)
-    Inserted(bool), // (just_warmed)
-    Unknown(u32),   // timestamp difference
+    Hit(bool),             // (is_dirty)
+    InsertedAndCold(bool), // (just_warmed)
+    Inserted,
+    Unknown(u32), // timestamp difference
 }
 
 pub enum VtsViolationResult {
