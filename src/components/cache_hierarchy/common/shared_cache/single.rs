@@ -91,7 +91,7 @@ impl<
 
     fn lookup(
         &self,
-        _core_id: u32,
+        core_id: u32,
         block_id: u64,
         ts: u64,
         v_ts: u64,
@@ -101,14 +101,20 @@ impl<
     ) -> (SharedCacheLookupResult, VtsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
 
-        self.blocks[set_idx]
-            .inner()
-            .lookup(block_id, ts, v_ts, abandon_dirty, access_type, is_os)
+        self.blocks[set_idx].inner().lookup(
+            block_id,
+            core_id,
+            ts,
+            v_ts,
+            abandon_dirty,
+            access_type,
+            is_os,
+        )
     }
 
     fn insert(
         &self,
-        _core_id: u32,
+        core_id: u32,
         block_id: u64,
         ts: u64,
         v_ts: u64,
@@ -118,6 +124,7 @@ impl<
         let set_idx = (block_id % SET as u64) as usize;
         let just_warmed = self.blocks[set_idx].inner().insert(
             block_id,
+            core_id,
             ts,
             v_ts,
             is_modified,
@@ -130,7 +137,7 @@ impl<
 
     fn lookup_and_insert_on_miss(
         &self,
-        _core_id: u32,
+        core_id: u32,
         block_id: u64,
         ts: u64,
         v_ts: u64,
@@ -143,6 +150,7 @@ impl<
         let set_idx = (block_id % SET as u64) as usize;
         let result = self.blocks[set_idx].inner().lookup_and_insert(
             block_id,
+            core_id,
             ts,
             v_ts,
             abandon_dirty,

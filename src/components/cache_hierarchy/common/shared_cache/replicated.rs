@@ -62,6 +62,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
     fn lookup(
         &mut self,
         block_id: u64,
+        core_id: u32,
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
@@ -69,24 +70,41 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         is_os: bool,
     ) -> (SharedCacheLookupResult, VtsViolationResult) {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].lookup(block_id, ts, v_ts, abandon_dirty, access_type, is_os)
+        self.blocks[set_idx].lookup(
+            block_id,
+            core_id,
+            ts,
+            v_ts,
+            abandon_dirty,
+            access_type,
+            is_os,
+        )
     }
 
     fn insert(
         &mut self,
         block_id: u64,
+        core_id: u32,
         ts: u64,
         v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].insert(block_id, ts, v_ts, is_modified, increase_touched_count);
+        self.blocks[set_idx].insert(
+            block_id,
+            core_id,
+            ts,
+            v_ts,
+            is_modified,
+            increase_touched_count,
+        );
     }
 
     fn lookup_and_insert(
         &mut self,
         block_id: u64,
+        core_id: u32,
         ts: u64,
         v_ts: u64,
         abandon_dirty: bool,
@@ -98,6 +116,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         let set_idx = (block_id % SET as u64) as usize;
         let res = self.blocks[set_idx].lookup_and_insert(
             block_id,
+            core_id,
             ts,
             v_ts,
             abandon_dirty,
@@ -214,7 +233,15 @@ impl<
         is_os: bool,
     ) -> (SharedCacheLookupResult, VtsViolationResult) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        pcache.lookup(block_id, ts, v_ts, abandon_dirty, access_type, is_os)
+        pcache.lookup(
+            block_id,
+            core_id,
+            ts,
+            v_ts,
+            abandon_dirty,
+            access_type,
+            is_os,
+        )
     }
 
     fn insert(
@@ -227,7 +254,14 @@ impl<
         increase_touched_count: bool,
     ) {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        pcache.insert(block_id, ts, v_ts, is_modified, increase_touched_count);
+        pcache.insert(
+            block_id,
+            core_id,
+            ts,
+            v_ts,
+            is_modified,
+            increase_touched_count,
+        );
     }
 
     fn lookup_and_insert_on_miss(
@@ -246,6 +280,7 @@ impl<
 
         pcache.lookup_and_insert(
             block_id,
+            core_id,
             ts,
             v_ts,
             abandon_dirty,
