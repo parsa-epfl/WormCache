@@ -1,3 +1,5 @@
+use rustc_hash::FxHashMap;
+
 use super::Plugin;
 use crate::arch::aarch64;
 use crate::qemu_api;
@@ -84,7 +86,7 @@ unsafe extern "C" fn vcpu_insn_exec(
 pub struct PageWalkLoggerPlugin {}
 
 impl Plugin for PageWalkLoggerPlugin {
-    fn init() {
+    fn init(_plugin: u64, _options: &FxHashMap<String, String>) {
         println!("PageWalkLoggerPlugin initialized.");
     }
 
@@ -131,4 +133,8 @@ impl Plugin for PageWalkLoggerPlugin {
     }
 
     fn dump_snapshot(_: &str) {}
+
+    fn serialize(_: &str) {}
+
+    fn deserialize(_: &str) {}
 }

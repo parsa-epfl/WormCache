@@ -112,6 +112,6 @@ fn main() {
     // };
 
     // let cache_hierarchy = mh.render_cache_hierarchy(&mtr, &cache_param);
-    // let exported_json = serde_json::to_string_pretty(&cache_hierarchy).unwrap();
+    // let exported_json = serde_json::to_string(&cache_hierarchy).unwrap();
     // output_file.write_all(exported_json.as_bytes()).unwrap();
 }

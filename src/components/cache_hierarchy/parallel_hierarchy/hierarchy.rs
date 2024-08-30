@@ -1,15 +1,15 @@
-use crate::components::cache_hierarchy::shared_cache::SharedCache;
+use zstd::{Decoder, Encoder};
+
+use crate::parameter;
 use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_CACHE_LINE_HISTORY};
-use crate::{components::cache_hierarchy::directory::SharerList, parameter};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::directory::DirectorySet;
-use super::{
-    directory,
-    private_cache::{self, PrivateCaches},
+use super::super::common::{
+    CacheAccessType, CacheHierarchyAccessResult, Directory, DirectorySet, PrivateCacheEvictedSlot,
+    PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
 };
 
 use crate::components::mmu::AbstractMMU;
@@ -25,6 +25,9 @@ mod harvard_tests;
 #[cfg(test)]
 mod reverse_order_tests;
 
+#[cfg(test)]
+mod virtual_timestamp;
+
 pub struct MemoryHierarchy<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
@@ -38,59 +41,11 @@ pub struct MemoryHierarchy<
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 
     private_caches: PCache,
-    directory: directory::Directory<DIRECTORY_SHARD_COUNT>,
+    directory: Directory<DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum CacheAccessType {
-    InstructionFetch,
-
-    DataRead,
-    DataWrite,
-
-    PageWalkRead,
-
-    PrefetchRead,
-    PrefetchWrite,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum CacheHierarchyAccessResult {
-    HitInSelfPrivateCache,
-    MissDueToPermission,
-    HitInOtherPrivateCache,
-    MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
-    HitInSharedCache,
-    Miss,
-    Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
-}
-
-impl<
-        MMU: AbstractMMU,
-        PCache: PrivateCaches,
-        SCache: SharedCache,
-        const PRECISE_COHERENCE_RECONSTRUCTION: bool,
-        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-        const DIRECTORY_SHARD_COUNT: usize,
-    > Default
-    for MemoryHierarchy<
-        MMU,
-        PCache,
-        SCache,
-        PRECISE_COHERENCE_RECONSTRUCTION,
-        FILL_SCACHE_ON_FILLING_PCACHE,
-        FILL_SCACLE_ON_PCACHE_EVICTION,
-        FILL_SCACHE_ON_PCACHE_WRITEBACK,
-        DIRECTORY_SHARD_COUNT,
-    >
-{
-    fn default() -> Self {
-        Self::new()
-    }
+    with_statistics: bool,
+    directory_run_gc: bool,
 }
 
 impl<
@@ -114,12 +69,14 @@ impl<
         DIRECTORY_SHARD_COUNT,
     >
 {
-    pub fn new() -> Self {
+    pub fn new(with_statistics: bool, _quantum_size: u64, directory_run_gc: bool) -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
-            directory: directory::Directory::new(),
+            directory: Directory::new(),
             shared_cache: SCache::new(),
+            with_statistics,
+            directory_run_gc,
         }
     }
 
@@ -130,7 +87,9 @@ impl<
         ts: u64,
         is_store: bool,
         is_instruction: bool,
-    ) {
+        v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
+        instruction_va_pc: u64,
+    ) -> CacheHierarchyAccessResult {
         assert!(
             !(is_instruction && is_store),
             "Instruction and store permission cannot be used at the same time."
@@ -152,21 +111,40 @@ impl<
             CacheAccessType::PrefetchRead
         };
 
+        let is_os = (va >> 63) == 1;
+
         let translation = unsafe {
             self.mmus[core_id as usize]
                 .get()
                 .as_mut()
                 .unwrap()
-                .translate_and_refill(va, ts)
+                .translate_and_refill(va, ts, is_instruction)
         };
 
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                let res = self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
-                }
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                        is_os,
+                        instruction_va_pc,
+                    );
+                };
+                res
             }
             crate::components::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
                 // replay the trace.
@@ -179,23 +157,74 @@ impl<
                         core_id,
                         pte_block_id,
                         ts,
+                        v_ts,
                         CacheAccessType::PageWalkRead,
+                        false, // Page walk is not OS.
+                        instruction_va_pc,
                     );
                 }
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                let res = self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                        is_os,
+                        instruction_va_pc,
+                    );
                 }
 
-                Statistics::global_record(core_id, EventType::TLBMiss);
+                if self.with_statistics {
+                    Statistics::global_record(core_id, EventType::TLBMiss, is_os);
+                    if is_instruction {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::TLBMissDueToInstruction,
+                            is_os,
+                        );
+                    } else {
+                        Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
+                    }
+                }
+
+                res
             }
+
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
                 let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                let res = self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                        is_os,
+                        instruction_va_pc,
+                    );
                 }
+
+                res
             }
         }
     }
@@ -208,7 +237,9 @@ impl<
         ts: u64,
         is_store: bool,
         is_instruction: bool,
-    ) {
+        v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
+        instruction_va_pc: u64,
+    ) -> CacheHierarchyAccessResult {
         assert!(
             !(is_instruction && is_store),
             "Instruction and store permission cannot be used at the same time."
@@ -230,22 +261,42 @@ impl<
             CacheAccessType::PrefetchRead
         };
 
+        let is_os = (va >> 63) == 1;
+
         let translation = unsafe {
             self.mmus[core_id as usize]
                 .get()
                 .as_mut()
                 .unwrap()
-                .translate_and_refill(va, ts)
+                .translate_and_refill(va, ts, is_instruction)
         };
 
         match translation {
             crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
                 // assert!(pa == reference_pa);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                let res = self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                        is_os,
+                        instruction_va_pc,
+                    );
                 }
+
+                res
             }
             crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
                 // replay the trace.
@@ -258,27 +309,89 @@ impl<
                         core_id,
                         pte_block_id,
                         ts,
+                        v_ts,
                         CacheAccessType::PageWalkRead,
+                        false,
+                        instruction_va_pc,
                     );
                 }
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                let res = self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                        is_os,
+                        instruction_va_pc,
+                    );
                 }
 
-                Statistics::global_record(core_id, EventType::TLBMiss);
+                if self.with_statistics {
+                    Statistics::global_record(core_id, EventType::TLBMiss, is_os);
+
+                    if is_instruction {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::TLBMissDueToInstruction,
+                            is_os,
+                        );
+                    } else {
+                        Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
+                    }
+                }
+
+                res
             }
             crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
                 // assert!(pa == reference_pa as u64);
                 let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                self.access_memory_pblock_id(core_id, block_id, ts, access_type);
+                let res = self.access_memory_pblock_id(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    access_type,
+                    is_os,
+                    instruction_va_pc,
+                );
                 if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(core_id, block_id + 1, ts, prefetch_access_type);
+                    self.access_memory_pblock_id(
+                        core_id,
+                        block_id + 1,
+                        ts,
+                        v_ts,
+                        prefetch_access_type,
+                        is_os,
+                        instruction_va_pc,
+                    );
                 }
+
+                res
             }
         }
+    }
+
+    // This function is only for debugging.
+    pub fn access_memory_pblock_id_with_the_same_ts_and_vts(
+        &self,
+        core_id: u32,
+        block_id: u64,
+        ts: u64,
+        access_type: CacheAccessType,
+    ) -> CacheHierarchyAccessResult {
+        self.access_memory_pblock_id(core_id, block_id, ts, ts, access_type, false, 0)
     }
 
     pub fn access_memory_pblock_id(
@@ -286,7 +399,10 @@ impl<
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         access_type: CacheAccessType,
+        is_os: bool,
+        _instruction_va_pc: u64,
     ) -> CacheHierarchyAccessResult {
         let is_prefetch = access_type == CacheAccessType::PrefetchRead
             || access_type == CacheAccessType::PrefetchWrite;
@@ -295,36 +411,41 @@ impl<
         let is_store = access_type == CacheAccessType::DataWrite;
         let is_page_walk = access_type == CacheAccessType::PageWalkRead;
 
-        if !is_prefetch {
-            Statistics::global_record(core_id, EventType::MemoryAccess);
+        if !is_prefetch && self.with_statistics {
+            Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
             if is_instruction {
-                Statistics::global_record(core_id, EventType::InstructionAccess);
+                Statistics::global_record(core_id, EventType::InstructionAccess, is_os);
             } else {
-                Statistics::global_record(core_id, EventType::DataAccess);
+                Statistics::global_record(core_id, EventType::DataAccess, is_os);
             }
         }
 
         // first, we need to check the private cache.
-        let private_hit =
-            self.private_caches
-                .poke_and_update(core_id, block_id, ts, is_instruction, is_store);
+        let private_hit = self.private_caches.poke_and_update(
+            core_id,
+            block_id,
+            ts,
+            v_ts,
+            is_instruction,
+            is_store,
+        );
 
-        if private_hit == private_cache::PrivateCachePokeResult::Hit {
+        if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
         let evicted_slot = match private_hit {
-            private_cache::PrivateCachePokeResult::Hit => unreachable!(),
-            private_cache::PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
-            private_cache::PrivateCachePokeResult::PermissionViolation(ref slot) => slot.clone(),
+            PrivateCachePokeResult::Hit => unreachable!(),
+            PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
+            PrivateCachePokeResult::PermissionViolation(ref slot) => slot.clone(),
         };
 
         // Alright, we may need to get another directory entry of the eviction.
         // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
         let (mut miss_directory_set_guard, evict_directory) = {
             match evicted_slot {
-                private_cache::EvictedSlot::Valid(_, potential_evicted_id) => {
+                PrivateCacheEvictedSlot::Valid(_, potential_evicted_id) => {
                     let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);
@@ -350,7 +471,18 @@ impl<
             CacheOperationType::GetR
         };
 
-        if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.recent_writer_ts > ts {
+        if sharers.count_ones() == 0
+            && miss_directory_guard.recent_writer_vts > v_ts
+            && self.with_statistics
+        {
+            // this cache line is evicted and previously is written. This is definitely a order violation.
+            Statistics::global_record(core_id, EventType::PrivateCacheVTsOrderViolation, is_os);
+        }
+
+        if PRECISE_COHERENCE_RECONSTRUCTION
+            && sharers.count_ones() == 0
+            && miss_directory_guard.recent_writer_ts > ts
+        {
             // This means that the current operation is not ordered. (even later than the first writer)
             // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
             CacheLineCoherenceHistory::global_record_history(
@@ -365,8 +497,10 @@ impl<
 
             // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit,
             // because the history has been cleaned up by an earlier writer.
-            if !is_prefetch {
-                Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+            if !is_prefetch && self.with_statistics {
+                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
+                // accordingly, we don't know whether this access would have cause a shared cache miss.
+                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
             }
 
             return CacheHierarchyAccessResult::Unknown;
@@ -378,10 +512,77 @@ impl<
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
-                self.shared_cache
-                    .lookup_and_insert_on_miss(core_id, block_id, ts, true, false, true)
+                let lookup_result = self.shared_cache.lookup_and_insert_on_miss(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    true,
+                    false,
+                    true,
+                    access_type.clone(),
+                    is_os,
+                );
+
+                match lookup_result.0 {
+                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
+                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::ColdMiss => {
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheColdMiss,
+                                is_os,
+                            );
+                        }
+                        None
+                    }
+                    SharedCacheLookupResult::Unknown(_) => {
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::UnknownSharedCacheMisses,
+                                is_os,
+                            );
+                        }
+                        None
+                    }
+                }
             } else {
-                self.shared_cache.lookup(core_id, block_id, ts, true)
+                let lookup_result = self.shared_cache.lookup(
+                    core_id,
+                    block_id,
+                    ts,
+                    v_ts,
+                    true,
+                    access_type.clone(),
+                    is_os,
+                );
+
+                match lookup_result.0 {
+                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
+                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::ColdMiss => {
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheColdMiss,
+                                is_os,
+                            );
+                        }
+                        None
+                    }
+                    SharedCacheLookupResult::Unknown(_) => {
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::UnknownSharedCacheMisses,
+                                is_os,
+                            );
+                        }
+                        None
+                    }
+                }
             };
 
             miss_directory_guard.update_lru_ts(ts);
@@ -390,6 +591,7 @@ impl<
 
             if is_store {
                 miss_directory_guard.recent_writer_ts = ts;
+                miss_directory_guard.recent_writer_vts = v_ts;
             }
 
             let modified = is_store;
@@ -397,7 +599,7 @@ impl<
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
             } else {
-                !is_instruction
+                !is_instruction && !is_page_walk
             };
 
             CacheLineCoherenceHistory::global_record_history(
@@ -421,6 +623,7 @@ impl<
                 evicted_slot,
                 block_id,
                 ts,
+                v_ts,
                 is_instruction,
                 writable,
                 modified,
@@ -434,41 +637,87 @@ impl<
                     p_cache_id,
                     evicted_block_id,
                     ts,
+                    v_ts,
                     evicted_line_is_modified,
                 );
             }
 
-            if !is_prefetch {
+            if !is_prefetch && self.with_statistics {
                 // Here it is a miss in the private cache.
-                Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+                Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
                 if is_instruction {
-                    Statistics::global_record(core_id, EventType::PrivateICacheMiss);
+                    Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
                 } else if is_page_walk {
-                    Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
+                    Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
                 } else {
-                    Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+                    Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
                 }
 
-                Statistics::global_record(core_id, EventType::SharedCacheAccess);
+                Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
             if shared_cache_result.is_some() {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
-                if !is_prefetch {
+                if !is_prefetch && self.with_statistics {
                     if is_page_walk {
-                        Statistics::global_record(core_id, EventType::SharedCacheMissDueToPTW);
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToPTW,
+                            is_os,
+                        );
+                    } else if is_instruction {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToInstructionFetch,
+                            is_os,
+                        );
+                    } else if is_store {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToDataWrite,
+                            is_os,
+                        );
                     } else {
-                        Statistics::global_record(core_id, EventType::SharedCacheMiss);
+                        Statistics::global_record(
+                            core_id,
+                            EventType::SharedCacheMissDueToDataRead,
+                            is_os,
+                        );
                     }
+
+                    Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
                 }
+
                 return CacheHierarchyAccessResult::Miss;
             }
         }
 
         if is_prefetch {
             return CacheHierarchyAccessResult::Miss;
+        }
+
+        if self.with_statistics {
+            if is_instruction {
+                Statistics::global_record(
+                    core_id,
+                    EventType::PrivateCacheMissTriggerCoherenceDueToFetch,
+                    is_os,
+                );
+            } else if is_store {
+                Statistics::global_record(
+                    core_id,
+                    EventType::PrivateCacheMissTriggerCoherenceDueToWrite,
+                    is_os,
+                );
+            } else {
+                Statistics::global_record(
+                    core_id,
+                    EventType::PrivateCacheMissTriggerCoherenceDueToRead,
+                    is_os,
+                );
+            }
         }
 
         let mut acquire_list = sharers;
@@ -488,6 +737,22 @@ impl<
             .get_set_guard_by_sharer_list(block_id, acquire_list);
 
         if PRECISE_COHERENCE_RECONSTRUCTION {
+            // Check whether it has a write history before the eviction.
+            if miss_directory_guard.recent_writer_ts > ts {
+                // well, this is an order violation.
+                // Now, release the lock of the private cache.
+                drop(acquired_sets);
+
+                if self.with_statistics {
+                    // The truth is that we don't know whether this is a miss or hit, because a previous write operation has cleaned the history.
+                    Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
+                    // Accordingly, we don't know whether this access would have cause a shared cache miss.
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
+                }
+
+                return CacheHierarchyAccessResult::Unknown;
+            }
+
             // Here for MESI, there are two cases that we need to consider:
             // - Another core has written the cache line with a larger timestamp.
             //   In this case, we need to only keep the latest writer, and ignore this operation.
@@ -502,16 +767,14 @@ impl<
             // Do we have another sharer that has a write permission with a larger timestamp?
             let mut other_has_written_with_large_ts = false;
             let mut other_write_ts = 0;
-            let mut other_sharer_id = 0;
             for (replica_cache_id, set, index) in acquired_sets.iter() {
                 if let Some(index) = index {
                     let line = &set.lines[*index];
                     assert_eq!(line.block_id(), block_id);
-                    if line.is_modified() && line.write_ts() > ts {
+                    if line.write_ts() > ts {
                         other_has_written_with_large_ts = true;
                         if line.write_ts() > other_write_ts {
                             other_write_ts = line.write_ts();
-                            other_sharer_id = *replica_cache_id;
                         }
                     }
                 } else {
@@ -533,23 +796,9 @@ impl<
                 // Only that core should be kept.
 
                 // Update the directory.
-                let mut incoming_sharer = SharerList::ZERO;
-                incoming_sharer.set(other_sharer_id, true);
                 miss_directory_guard.update_lru_ts(ts);
-                miss_directory_guard.sharers = incoming_sharer;
                 assert!(miss_directory_guard.recent_writer_ts <= other_write_ts);
                 miss_directory_guard.recent_writer_ts = other_write_ts; // The writer timestamp can be updated as well.
-
-                for (replica_cache_id, set, idx) in acquired_sets.iter_mut() {
-                    if *replica_cache_id != other_sharer_id {
-                        if idx.is_some() {
-                            assert_eq!(set.lines[idx.unwrap()].block_id(), block_id);
-                            set.invalidate(idx.unwrap());
-                        } else {
-                            assert_eq!(*replica_cache_id, p_cache_id);
-                        }
-                    }
-                }
 
                 CacheLineCoherenceHistory::global_record_history(
                     block_id,
@@ -564,8 +813,12 @@ impl<
                 // Now, release the lock of the private cache.
                 drop(acquired_sets);
 
-                // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit.
-                Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+                if self.with_statistics {
+                    // The truth is that we don't know whether this is a miss or hit, because a previous write operation has cleaned the history.
+                    Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
+                    // Accordingly, we don't know whether this access would have cause a shared cache miss.
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
+                }
 
                 return CacheHierarchyAccessResult::Unknown;
             }
@@ -590,6 +843,15 @@ impl<
                         incoming_sharer.set(*replica_cache_id, false);
                         // invalid the private cache entry.
                         set.invalidate(*index);
+
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::PrivateCacheInvalidation,
+                                is_os,
+                            );
+                        }
+
                         if ENABLE_CACHE_LINE_HISTORY {
                             CacheLineCoherenceHistory::global_record_history(
                                 block_id,
@@ -628,6 +890,7 @@ impl<
                     evicted_slot,
                     block_id,
                     ts,
+                    v_ts,
                     is_instruction,
                     true,
                     true,
@@ -638,6 +901,7 @@ impl<
                     evicted_slot,
                     block_id,
                     ts,
+                    v_ts,
                     is_instruction,
                     false,
                     false,
@@ -653,9 +917,16 @@ impl<
                     // We extend the life time of this directory by considering this access.
                     miss_directory_guard.insertion_ts = ts;
 
-                    // So, this makes the LLC miss rate not precise, because we don't know whether this access is a hit or miss.
-                    // This can bring uncertainty to the LLC miss rate.
-                    Statistics::global_record(core_id, EventType::UnknownSharedCacheAccessResult);
+                    // This memory access is supposed to access the shared cache, but now it is served by other private cache.
+                    // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
+                    // This might have triggered a shared cache miss.
+                    if self.with_statistics {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::UnknownSharedCacheMisses,
+                            is_os,
+                        );
+                    }
                 }
             } else {
                 // This memory access is definitely not the first one to this cache line.
@@ -718,9 +989,21 @@ impl<
 
                             drop(acquired_sets);
 
-                            // This read happens after a early arrival write operation, so
-                            // we don't know the state of this cache line for this specific case.
-                            Statistics::global_record(core_id, EventType::UnknownCacheAccessResult);
+                            if self.with_statistics {
+                                // This read happens after a early arrival write operation, so
+                                // we don't know the state of this cache line for this specific case.
+                                Statistics::global_record(
+                                    core_id,
+                                    EventType::UnknownPrivateCacheMisses,
+                                    is_os,
+                                );
+                                // Accordingly, we don't know whether this access would have cause a shared cache miss.
+                                Statistics::global_record(
+                                    core_id,
+                                    EventType::UnknownSharedCacheMisses,
+                                    is_os,
+                                );
+                            }
 
                             return CacheHierarchyAccessResult::Unknown;
                         }
@@ -749,13 +1032,20 @@ impl<
                     // We decide to create a replica for this cache line, so we expand this directory life time.
                     miss_directory_guard.insertion_ts = ts;
 
-                    // So, this makes the LLC miss rate not precise, because we don't know whether this access is a hit or miss.
-                    // This can bring uncertainty to the LLC miss rate.
-                    Statistics::global_record(core_id, EventType::UnknownSharedCacheAccessResult);
+                    if self.with_statistics {
+                        // This memory access is supposed to access the shared cache, but now it is served by other private cache.
+                        // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
+                        // This might have triggered a shared cache miss.
+                        Statistics::global_record(
+                            core_id,
+                            EventType::UnknownSharedCacheMisses,
+                            is_os,
+                        );
+                    }
                 }
             } else {
                 // read should never see a permission violation.
-                assert!(false);
+                panic!("Permission violation should not be seen by a read operation.");
             }
 
             // We can insert the block to the private cache now.
@@ -765,6 +1055,7 @@ impl<
                 evicted_slot,
                 block_id,
                 ts,
+                v_ts,
                 is_instruction,
                 false,
                 false,
@@ -794,18 +1085,29 @@ impl<
                 p_cache_id,
                 evicted_block_id,
                 ts,
+                v_ts,
                 is_modified,
             );
         }
 
-        Statistics::global_record(core_id, EventType::PrivateCacheMiss);
+        if self.with_statistics {
+            Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
-        if is_instruction {
-            Statistics::global_record(core_id, EventType::PrivateICacheMiss);
-        } else if is_page_walk {
-            Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW);
-        } else {
-            Statistics::global_record(core_id, EventType::PrivateDCacheMiss);
+            if is_instruction {
+                Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
+            } else if is_page_walk {
+                Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
+            } else {
+                Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
+            }
+
+            if matches!(res, CacheHierarchyAccessResult::HitInOtherPrivateCache) && is_store {
+                Statistics::global_record(
+                    core_id,
+                    EventType::PrivateCacheMissTriggerInvalidation,
+                    is_os,
+                );
+            }
         }
 
         res
@@ -817,6 +1119,7 @@ impl<
         cache_id: usize,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         modified: (bool, u64),
     ) {
         let directory_entry = directory_set_guard.get_or_create(block_id);
@@ -864,21 +1167,29 @@ impl<
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if directory_entry.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
-            Statistics::global_record(
-                PCache::find_cache_info_by_cache_id(cache_id).0,
-                EventType::SharedCacheAccess,
-            );
+            if self.with_statistics {
+                Statistics::global_record(
+                    PCache::find_cache_info_by_cache_id(cache_id).0,
+                    EventType::SharedCacheAccess,
+                    false,
+                );
+            }
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
             if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
+                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
             }
 
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
                 self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
+                    .insert(core_id, block_id, ts, v_ts, modified.0, true);
+            }
+
+            if self.directory_run_gc {
+                // run GC here to clean this directory entry.
+                directory_set_guard.erase(block_id);
             }
         }
     }
@@ -887,10 +1198,14 @@ impl<
         // self.shared_cache.dump_access_counter();
     }
 
-    pub fn dump_snapshot(&self, snapshot_folder: &str) {
-        self.private_caches.dump_snapshot(snapshot_folder);
-        self.directory.dump_snapshot(snapshot_folder);
-        // self.shared_cache.dump_snapshot(snapshot_folder);
+    pub fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
+        self.private_caches.dump_flexus_checkpoint(snapshot_folder);
+        self.directory.dump_flexus_checkpoint(snapshot_folder);
+        self.shared_cache.dump_flexus_checkpoint(snapshot_folder);
+        // now, it is the TLB.format!("core{}", i))
+        for (i, mmu) in self.mmus.iter().enumerate() {
+            unsafe { (*mmu.get()).dump_flexus_checkpoint(snapshot_folder, &format!("{:03}", i)) };
+        }
     }
 
     pub fn get_scache_warmed_set_count(&self) -> usize {
@@ -911,5 +1226,86 @@ impl<
             FILL_SCACLE_ON_PCACHE_EVICTION,
             FILL_SCACHE_ON_PCACHE_WRITEBACK
         )
+    }
+
+    pub fn dump_diagnose_information(&self) {
+        self.private_caches.print_debug_info();
+
+        // self.shared_cache
+        //     .dump_access_frequency("shared_cache_access_frequency.csv");
+
+        // if let Some(hist) = self.vts_violation_distribution.as_ref() {
+        //     // we need to dump the distribution.
+        //     for core_id in 0..parameter::CORE_COUNT {
+        //         let hist = unsafe { &mut *hist[core_id].get() };
+        //         let mut serializer = hdrhistogram::serialization::V2Serializer::new();
+        //         let mut buffer = Vec::new();
+        //         serializer.serialize(hist, &mut buffer).unwrap();
+        //         let mut file = File::create(format!("vts_violation_{}.hist", core_id)).unwrap();
+        //         file.write_all(&buffer).unwrap();
+        //     }
+        // }
+    }
+
+    fn serialize_mmus(&self, name: &str, numa_node_id: usize) {
+        let file =
+            std::fs::File::create(format!("{}/mmus-{}.json.zstd", name, numa_node_id)).unwrap();
+        let mut file = Encoder::new(file, 0).unwrap();
+
+        let multiple_mmus = self
+            .mmus
+            .iter()
+            .map(|x| unsafe { (*x.get()).serialize() })
+            .collect::<Vec<_>>();
+
+        serde_json::to_writer(&mut file, &serde_json::Value::Array(multiple_mmus)).unwrap();
+
+        file.finish().unwrap();
+    }
+
+    fn deserialize_mmus(&self, name: &str, numa_node_id: usize) {
+        let file = std::fs::File::open(format!("{}/mmus-{}.json.zstd", name, numa_node_id));
+
+        if file.is_err() {
+            println!("Cannot load the MMU state. Error: {:?}", file.err());
+            return;
+        }
+
+        let file = file.unwrap();
+
+        let mut file = Decoder::new(file).unwrap();
+
+        let multiple_mmus: serde_json::Value = serde_json::from_reader(&mut file).unwrap();
+
+        match multiple_mmus {
+            serde_json::Value::Array(mmus) => {
+                for (i, mmu) in mmus.into_iter().enumerate() {
+                    unsafe { (*self.mmus[i].get()).deserialize(mmu) };
+                }
+            }
+            _ => panic!("Invalid format."),
+        };
+    }
+
+    pub fn serialize(&self, name: &str, numa_node_id: usize) {
+        println!("Serializing private caches.");
+        self.private_caches.serialize(name, numa_node_id);
+        println!("Serializing directory.");
+        self.directory.serialize(name, numa_node_id);
+        println!("Serializing shared cache.");
+        self.shared_cache.serialize(name, numa_node_id);
+        println!("Serialize MMUs");
+        self.serialize_mmus(name, numa_node_id);
+    }
+
+    pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        println!("Deserializing private caches.");
+        self.private_caches.deserialize(name, numa_node_id);
+        println!("Deserializing directory.");
+        self.directory.deserialize(name, numa_node_id);
+        println!("Deserializing shared cache.");
+        self.shared_cache.deserialize(name, numa_node_id);
+        println!("Deserialize MMUs");
+        self.deserialize_mmus(name, numa_node_id);
     }
 }

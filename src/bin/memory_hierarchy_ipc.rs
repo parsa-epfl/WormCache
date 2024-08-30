@@ -1,8 +1,9 @@
 use perf_event::Builder;
-use worm_cache::components::cache_hierarchy::hierarchy::CacheAccessType;
+use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
+use worm_cache::components::cache_hierarchy::common::CacheAccessType;
+use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
+use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
 use worm_cache::components::cache_hierarchy::hierarchy::MemoryHierarchy;
-use worm_cache::components::cache_hierarchy::private_cache::ParallelUnifiedPrivateCache;
-use worm_cache::components::cache_hierarchy::shared_cache::ParallelSingleSharedCache;
 use worm_cache::components::debug::statistics::Statistics;
 use worm_cache::components::NoMMU;
 
@@ -16,6 +17,7 @@ type MH = MemoryHierarchy<
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
+        ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -29,11 +31,11 @@ type MH = MemoryHierarchy<
 
 #[allow(dead_code)]
 fn test_hit_last() {
-    let mh = MH::new();
+    let mh = MH::new(true, 0, false);
 
     let set_idx = 1;
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        mh.access_memory_pblock_id(
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
             0,
             (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
             1 + i as u64,
@@ -50,14 +52,14 @@ fn test_hit_last() {
 
     let mut ts = 0;
     loop {
-        mh.access_memory_pblock_id(0, addr, ts, CacheAccessType::DataRead);
+        mh.access_memory_pblock_id_with_the_same_ts_and_vts(0, addr, ts, CacheAccessType::DataRead);
         ts += 1;
     }
 }
 
 #[allow(dead_code)]
 fn testing_pcache_always_miss() {
-    let mh = MH::new();
+    let mh = MH::new(true, 0, false);
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:
@@ -68,7 +70,12 @@ fn testing_pcache_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                0,
+                block_id,
+                ts,
+                CacheAccessType::DataRead,
+            );
             ts += 1;
             block_id += parameter::UNIFIED_PRI_CACHE_SET as u64;
         }
@@ -85,7 +92,7 @@ fn testing_pcache_always_miss() {
 
 #[allow(dead_code)]
 fn testing_always_miss() {
-    let mh = MH::new();
+    let mh = MH::new(true, 0, false);
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:
@@ -96,7 +103,12 @@ fn testing_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id(0, block_id, ts, CacheAccessType::DataRead);
+            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+                0,
+                block_id,
+                ts,
+                CacheAccessType::DataRead,
+            );
             ts += 1;
             block_id += parameter::SHARED_CACHE_SET as u64;
         }

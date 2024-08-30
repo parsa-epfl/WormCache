@@ -1,13 +1,14 @@
 /// This file contains the parameters for the whole plugin.
 /// All of them are compilation constants that the the compiler can propagate them during compilation.
 use plugin_helper::PluginHelper;
+use rustc_hash::FxHashMap;
 
 /**
  * CORE_COUNT
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 8;
+pub const CORE_COUNT: usize = 2;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -20,10 +21,10 @@ pub const CORE_COUNT: usize = 8;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const CACHE_HIERARCHY_FOR_HALF_OF_CORES: bool = false;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
-static_assertions::const_assert!(!CACHE_HIERARCHY_FOR_HALF_OF_CORES || CORE_COUNT % 2 == 0);
+static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
 
 /**
  * USE_SERIAL_CACHE_MODEL
@@ -48,7 +49,7 @@ static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
  *
  * The associativity of the private & last-level TLB.
  */
-pub const TLB_ASSO: usize = 16;
+pub const TLB_ASSO: usize = 4;
 
 /**
  * TLB_SET
@@ -74,14 +75,14 @@ pub const USE_UNIFIED_CACHE: bool = false;
  * The associativity of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_ASSO: usize = 16;
+pub const UNIFIED_PRI_CACHE_ASSO: usize = 8;
 /**
  * PRI_CACHE_SET
  *
  * The number of sets of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_SET: usize = 2048;
+pub const UNIFIED_PRI_CACHE_SET: usize = 2048 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
 
 /**
@@ -98,7 +99,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 64;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -115,7 +116,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 64;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -130,7 +131,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 1024 * 1024; // 1GB shared cache.
+pub const SHARED_CACHE_SET: usize = 64 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -149,7 +150,7 @@ pub const SHARED_CACHE_EXCLUSIVE: bool = false;
  *
  * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
-pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = true;
+pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = false;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_WITH_PRIVATE_CACHE));
 
 /**
@@ -230,6 +231,15 @@ pub const BP_RAS_COUNT: usize = 32;
 pub const INIT_HOST_TIME_SCALE: usize = 1000;
 
 /**
+ * HOST_TIME_SCALING_PROFILING_PERIOD
+ *
+ * The period of profiling the host time scaling, in milliseconds.
+ *
+ * The VirtualTime plugin will profile the icount and determine host time scaling every this number of instructions.
+ */
+pub const HOST_TIME_SCALING_PROFILING_PERIOD: usize = 100;
+
+/**
  * The list of plugins.
  */
 use crate::components::Plugin;
@@ -239,14 +249,23 @@ pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
     _pb: crate::BranchPredictorPlugin,
     _vt: crate::VirtualTimePlugin,
-    _mk: crate::MarkerPlugin,
-    _lm: crate::ParallelCacheHierarchyPlugin,
+    // _mk: crate::MarkerPlugin,
+    // _lm: crate::ParallelCacheHierarchyPlugin,
+    _lm: crate::SingleCacheHierarchyPlugin,
+    // _t: crate::TracePlugin,
 }
 
 /**
  * Whether to enable the statistics collection.
  */
 pub const ENABLE_STATISTICS: bool = true;
+
+/**
+ * Whether to enable the shared cache statistics.
+ *
+ * Turning on this option can influence the memory consumption. It adds 128 bytes to each cache set.
+ */
+pub const ENABLE_SHARED_CACHE_STATISTICS: bool = false;
 
 /**
  * Whether to enable the exclusive cache state and its coherence protocol.
@@ -275,16 +294,8 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
 pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
 
 /**
- * USE_QEMU_HW_ADDR_AS_PC
+ * Whether to dump the flexus-compatible checkpoint.
  *
- * Whether to use `qemu_plugin_insn_haddr` to calculate the physical address of the instruction.
- *
- * This option is for alignment with QEMU Cache simulator and QFlex KeenKraken.
- *
- * Please note that `qemu_plugin_insn_haddr` does not return the target physical address of the instruction.
- * Instead, it returns the host virtual address of the instruction.
- * By dereferencing this address, you can get the instruction itself.
- *
- * You should not enable this option unless you are sure that you need it.
+ * By turning on this option, we dump a flexus-compatible checkpoint at the end of the simulation.
  */
-pub const USE_QEMU_HW_ADDR_AS_PHYSICAL_PC: bool = false;
+pub const DUMP_FLEXUS_CHECKPOINT: bool = true;

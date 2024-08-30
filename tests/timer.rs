@@ -17,6 +17,7 @@ fn normal_time_function() -> u64 {
 
 // This function is only available on x86 and x86_64 platform.
 #[cfg(target_arch = "x86_64")]
+#[inline]
 fn retsc_time_function() -> u64 {
     let time: u64;
     unsafe {

@@ -5,7 +5,9 @@ mod havard;
 mod set_and_line;
 mod unified;
 
-pub use set_and_line::{EvictedSlot, PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet};
+pub use set_and_line::{
+    PrivateCacheEvictedSlot, PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet,
+};
 
 pub trait PrivateCaches {
     // This function is for creating all new private caches.
@@ -17,6 +19,7 @@ pub trait PrivateCaches {
         core_id: u32,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_instruction: bool,
         is_store: bool,
     ) -> PrivateCachePokeResult;
@@ -54,11 +57,17 @@ pub trait PrivateCaches {
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize;
 
     // This function is for saving the snapshot of the private cache.
-    fn dump_snapshot(&self, snapshot_folder: &str);
+    fn dump_flexus_checkpoint(&self, snapshot_folder: &str);
 
     fn information() -> String;
 
+    // This function is for printing diagnose information. It is used for debugging.
+    fn print_debug_info(&self);
+
     const DIRECTORY_SET: usize;
+
+    fn serialize(&self, name: &str, numa_node_id: usize);
+    fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
 }
 
 pub use havard::ParallelHarvardPrivateCache;

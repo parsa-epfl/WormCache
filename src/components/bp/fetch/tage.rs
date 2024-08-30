@@ -3,9 +3,11 @@
 // This file contains the basic TAGE branch predictor.
 // It is basically an one-to-one translation of the C++ implementation in QFlex.
 
-use crate::components::bp::BranchResolveFlag;
+use super::BranchPredictorResult;
+use crate::components::bp::{BranchResolutionResult, BranchType};
 
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 // bits per counter in the global history tables
 const CBITS: usize = 3;
@@ -48,8 +50,8 @@ type Address = u64;
 
 type History = [bool; MAXHIST];
 
-#[derive(Debug, Serialize, Deserialize)]
-struct FoldedHistory {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FoldedHistory {
     comp: u32,
     c_length: u32,
     o_length: u32,
@@ -85,8 +87,8 @@ impl FoldedHistory {
 }
 
 // bimodal table entry
-#[derive(Debug, Serialize, Deserialize)]
-struct TAGEBiModalEntry {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TAGEBiModalEntry {
     hyst: i8,
     pred: i8,
 }
@@ -98,8 +100,8 @@ impl TAGEBiModalEntry {
 }
 
 // global table entry
-#[derive(Debug, Serialize, Deserialize)]
-struct TAGEGlobalTableEntry {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TAGEGlobalTableEntry {
     ctr: i8,
     tag: u16,
     ubit: i8,
@@ -130,27 +132,26 @@ struct TAGEPredictionResultWithBank {
     pub bi: usize,
 }
 
-#[derive(Debug)]
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TAGEPredictor {
     // pwin: i32,
 
     // 4 bits to determine whether newly allocated entries should be considered as
     // valid or not for delivering  the prediction
     tick: i32,
-    // path history, 16 entries.
     phist: i32,
-    // phist_runahead: i32,
-    // phist_retired: i32,
 
     // use a path history as for the OGEHL predictor
+    #[serde_as(as = "[_; MAXHIST]")]
     ghist: History,
-    // ghist_runahead: History,
-    // ghist_retired: History,
+    #[serde_as(as = "[_; NHIST]")]
     ch_i: [FoldedHistory; NHIST],
+    #[serde_as(as = "[[_; NHIST]; 2]")]
     ch_t: [[FoldedHistory; NHIST]; 2],
-    // ch_i_runahead: [FoldedHistory; NHIST],
-    // ch_t_runahead: [[FoldedHistory; NHIST]; 2],
+    #[serde_as(as = "Box<[_; 1 << LOGB]>")]
     btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
+    #[serde_as(as = "[Box<[_; 1 << LOGG]>; NHIST]")]
     gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
 
     // the seed for pseudo-random number generator
@@ -369,13 +370,12 @@ impl TAGEPredictor {
     pub fn train(
         &mut self,
         pc: u64,
-        result: BranchResolveFlag,
+        result: BranchResolutionResult,
         _target: u64,
     ) -> BranchPredictorResult {
         // we only update the predictor when the branch is conditional, but we update the history all the time.
-        let is_conditional =
-            result == BranchResolveFlag::Taken || result == BranchResolveFlag::NotTaken;
-        let taken = result == BranchResolveFlag::Taken;
+        let is_conditional = result.branch_type == BranchType::Conditional;
+        let taken = result.is_taken;
         if is_conditional {
             let prediction_result = self.is_cond_taken(pc);
             let allocation = prediction_result.result != taken;
@@ -484,27 +484,85 @@ impl TAGEPredictor {
     }
 }
 
-use serde::ser::SerializeStruct;
+////// Serialization for QFlex
+#[derive(Serialize, Deserialize)]
+pub struct TAGEPredictorSerHelper {
+    #[serde(rename = "PWIN")]
+    pub pwin: i32,
+    #[serde(rename = "TICK")]
+    pub tick: i32,
+    #[serde(rename = "SEED")]
+    pub seed: i32,
+    #[serde(rename = "PHIST")]
+    pub phist: i32,
+    #[serde(rename = "GHIST")]
+    pub ghist: String,
 
-use super::BranchPredictorResult;
+    #[serde(rename = "LOGB")]
+    pub logb: usize,
+    #[serde(rename = "NHIST")]
+    pub nhist: usize,
+    #[serde(rename = "LOGG")]
+    pub logg: usize,
+    #[serde(rename = "TBITS")]
+    pub tbits: usize,
+    #[serde(rename = "MAXHIST")]
+    pub maxhist: usize,
+    #[serde(rename = "MINHIST")]
+    pub minhist: usize,
+    #[serde(rename = "CBITS")]
+    pub cbits: usize,
 
-impl Serialize for TAGEPredictor {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("TAGEPredictor", 9)?;
-        state.serialize_field("seed", &self.seed)?;
-        state.serialize_field("tick", &self.tick)?;
-        state.serialize_field("phist", &self.phist)?;
-        state.serialize_field("ghist", &self.ghist.as_slice())?;
-        state.serialize_field("ch_i", &self.ch_i)?;
-        state.serialize_field("ch_t", &self.ch_t)?;
-        state.serialize_field("btable", &self.btable.as_slice())?;
-        let gtable = self.gtable.iter().map(|x| x.as_slice()).collect::<Vec<_>>();
-        state.serialize_field("gtable", &gtable)?;
-        state.end()
-    }
+    pub btable: Vec<TAGEBiModalEntry>,
+    pub gtable: Vec<Vec<TAGEGlobalTableEntry>>,
+
+    pub ch_i: Vec<FoldedHistory>,
+    pub ch_t: Vec<Vec<FoldedHistory>>,
+
+    pub m: Vec<usize>,
 }
 
-#[test]
-fn test_tage_init() {
-    let mut _tage = TAGEPredictor::new();
+use crate::components::FlexusCompatibleSerializer;
+
+impl FlexusCompatibleSerializer for TAGEPredictor {
+    type HelperType = TAGEPredictorSerHelper;
+
+    fn get_serialize_helper(&self) -> Self::HelperType {
+        TAGEPredictorSerHelper {
+            pwin: 0,
+            tick: self.tick,
+            seed: self.seed,
+            phist: self.phist,
+            ghist: self
+                .ghist
+                .iter()
+                .rev()
+                .map(|x| if *x { '1' } else { '0' })
+                .collect(),
+
+            logb: LOGB,
+            nhist: NHIST,
+            logg: LOGG,
+            tbits: TBITS,
+            maxhist: MAXHIST,
+            minhist: MINHIST,
+            cbits: CBITS,
+
+            btable: self.btable.iter().map(|x| x.clone()).collect(),
+            gtable: self
+                .gtable
+                .iter()
+                .map(|x| x.iter().map(|y| y.clone()).collect())
+                .collect(),
+
+            ch_i: self.ch_i.iter().map(|x| x.clone()).collect(),
+            ch_t: self
+                .ch_t
+                .iter()
+                .map(|x| x.iter().map(|y| y.clone()).collect())
+                .collect(),
+
+            m: HISTORIES.iter().map(|x| *x).collect(),
+        }
+    }
 }

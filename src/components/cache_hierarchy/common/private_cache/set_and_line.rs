@@ -1,13 +1,15 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PrivateCacheLine {
     block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
     write_ts: u64,
     is_instruction: bool,
     writeable: bool,
-    modified: bool, // TODO: modified can be combined with write_ts.
+    modified: bool,   // TODO: modified can be combined with write_ts.
+    access_v_ts: u64, // The timestamp is generated assuming all instructions take exactly 1ns.
+    write_v_ts: u64,
 }
 
 impl PrivateCacheLine {
@@ -40,30 +42,43 @@ impl PrivateCacheLine {
     pub fn is_instruction(&self) -> bool {
         self.is_instruction
     }
+
+    #[inline]
+    pub fn access_virtual_timestamp(&self) -> u64 {
+        self.access_v_ts
+    }
+
+    #[inline]
+    pub fn write_virtual_timestamp(&self) -> u64 {
+        self.write_v_ts
+    }
 }
 
 // Migrate some functions to this struct, with lock permission.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[repr(align(64))]
 pub struct PrivateCacheSet {
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.
     pub touched_count: usize,
     pub recent_invalid_slot_index: Option<usize>,
+
+    pub hit_time: usize,
+    pub hit_index_acc: usize,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub enum EvictedSlot {
+pub enum PrivateCacheEvictedSlot {
     Invalid(usize),
     Valid(usize, u64),
     Same(usize), // The same hit slot is used for the eviction. This only happens when there is a permission violation.
 }
 
-impl EvictedSlot {
+impl PrivateCacheEvictedSlot {
     pub fn get_slot_index(&self) -> usize {
         match self {
-            EvictedSlot::Invalid(idx) => *idx,
-            EvictedSlot::Valid(idx, _) => *idx,
-            EvictedSlot::Same(idx) => *idx,
+            PrivateCacheEvictedSlot::Invalid(idx) => *idx,
+            PrivateCacheEvictedSlot::Valid(idx, _) => *idx,
+            PrivateCacheEvictedSlot::Same(idx) => *idx,
         }
     }
 }
@@ -71,8 +86,8 @@ impl EvictedSlot {
 #[derive(PartialEq, Eq)]
 pub enum PrivateCachePokeResult {
     Hit,
-    Miss(EvictedSlot), // the potential element for eviction
-    PermissionViolation(EvictedSlot),
+    Miss(PrivateCacheEvictedSlot), // the potential element for eviction
+    PermissionViolation(PrivateCacheEvictedSlot),
 }
 
 impl PrivateCachePokeResult {
@@ -92,11 +107,16 @@ impl PrivateCacheSet {
                     is_instruction: false,
                     writeable: false,
                     modified: false,
+                    access_v_ts: 0,
+                    write_v_ts: 0,
                 })
                 .take(asso),
             ),
             touched_count: 0,
             recent_invalid_slot_index: None,
+
+            hit_time: 0,
+            hit_index_acc: 0,
         }
     }
 
@@ -119,7 +139,7 @@ impl PrivateCacheSet {
     }
 
     #[inline]
-    pub fn find_eviction_index(&self) -> EvictedSlot {
+    pub fn find_eviction_index(&self) -> PrivateCacheEvictedSlot {
         // TODO: This part can be accelerated using SIMD instructions.
         let mut minimal_ts = u64::MAX;
         let mut minimal_index = 0;
@@ -133,9 +153,9 @@ impl PrivateCacheSet {
 
         if minimal_ts == 0 {
             // there is one invalid slot.
-            EvictedSlot::Invalid(minimal_index)
+            PrivateCacheEvictedSlot::Invalid(minimal_index)
         } else {
-            EvictedSlot::Valid(minimal_index, self.lines[minimal_index].block_id())
+            PrivateCacheEvictedSlot::Valid(minimal_index, self.lines[minimal_index].block_id())
         }
     }
 
@@ -158,6 +178,7 @@ impl PrivateCacheSet {
         &mut self,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_store: bool,
         is_instruction_fetch: bool,
     ) -> PrivateCachePokeResult {
@@ -173,14 +194,23 @@ impl PrivateCacheSet {
                     line.ts = ts;
                     line.write_ts = ts;
                     line.modified = true;
+                    line.access_v_ts = v_ts;
+                    line.write_v_ts = v_ts;
                     return PrivateCachePokeResult::Hit;
                 } else {
-                    return PrivateCachePokeResult::PermissionViolation(EvictedSlot::Same(idx));
+                    return PrivateCachePokeResult::PermissionViolation(
+                        PrivateCacheEvictedSlot::Same(idx),
+                    );
                 }
             }
             assert!(line.ts <= ts); // This is a strong assumption. (The cache line should be updated with the latest timestamp.
             line.ts = ts;
+            line.access_v_ts = v_ts;
             line.is_instruction = is_instruction_fetch;
+
+            self.hit_index_acc += idx;
+            self.hit_time += 1;
+
             PrivateCachePokeResult::Hit
         } else {
             PrivateCachePokeResult::Miss(self.find_eviction_index())
@@ -193,9 +223,10 @@ impl PrivateCacheSet {
     #[inline]
     pub fn fill_with_potential_eviction_slot(
         &mut self,
-        potential_slot: EvictedSlot,
+        potential_slot: PrivateCacheEvictedSlot,
         block_id: u64,
         ts: u64,
+        v_ts: u64,
         is_instruction: bool,
         writable: bool,
         modified: bool,
@@ -206,21 +237,22 @@ impl PrivateCacheSet {
         assert!(self.index_of(block_id).is_none());
 
         // increase the touched count.
-        if !matches!(potential_slot, EvictedSlot::Same(_)) && self.touched_count < self.lines.len()
+        if !matches!(potential_slot, PrivateCacheEvictedSlot::Same(_))
+            && self.touched_count < self.lines.len()
         {
             self.touched_count += 1;
         }
 
         let (res, idx_of_slot_to_fill) = match potential_slot {
-            EvictedSlot::Invalid(idx) => (None, idx),
-            EvictedSlot::Valid(idx, _) => match self.recent_invalid_slot_index {
+            PrivateCacheEvictedSlot::Invalid(idx) => (None, idx),
+            PrivateCacheEvictedSlot::Valid(idx, _) => match self.recent_invalid_slot_index {
                 Some(idx) => (None, idx),
                 None => (
                     Some((self.lines[idx].modified, self.lines[idx].write_ts)),
                     idx,
                 ),
             },
-            EvictedSlot::Same(idx) => {
+            PrivateCacheEvictedSlot::Same(idx) => {
                 // This is actually an upgrade, not a cache fill.
                 assert!(self.recent_invalid_slot_index.is_some());
 
@@ -265,10 +297,13 @@ impl PrivateCacheSet {
         self.lines[idx_of_slot_to_fill].is_instruction = is_instruction;
         self.lines[idx_of_slot_to_fill].writeable = writable;
         self.lines[idx_of_slot_to_fill].modified = modified;
+        self.lines[idx_of_slot_to_fill].access_v_ts = v_ts;
         if modified {
             self.lines[idx_of_slot_to_fill].write_ts = ts;
+            self.lines[idx_of_slot_to_fill].write_v_ts = v_ts;
         } else {
             self.lines[idx_of_slot_to_fill].write_ts = 0; // no one has written this cache line, so its timestamp should be zero.
+            self.lines[idx_of_slot_to_fill].write_v_ts = 0;
         }
 
         res
@@ -278,6 +313,7 @@ impl PrivateCacheSet {
     pub fn invalidate(&mut self, index: usize) {
         self.lines[index].block_id_with_v = 0;
         self.lines[index].ts = 0; // set ts to 0 so that this place will be find by the minimal ts. Good for replacement.
+        self.lines[index].access_v_ts = 0;
         self.recent_invalid_slot_index = Some(index);
     }
 
@@ -286,7 +322,6 @@ impl PrivateCacheSet {
         // This function should not upgrade the timestamp of the cache line, because it can change the eviction target here.
         let line = &mut self.lines[index];
         line.writeable = false;
-        line.write_ts = 0; // also clean the writing time.
         let res = line.modified;
         line.modified = false;
         Some(res)
@@ -338,8 +373,9 @@ fn minimum_can_find_invalid() {
     // push 8 elements inside.
     for i in 0..8 {
         set.fill_with_potential_eviction_slot(
-            EvictedSlot::Invalid(i),
+            PrivateCacheEvictedSlot::Invalid(i),
             i as u64,
+            ts,
             ts,
             false,
             false,
@@ -357,7 +393,9 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 1,
             ts: 1,
+            access_v_ts: 1,
             write_ts: 0,
+            write_v_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -368,8 +406,8 @@ fn minimum_can_find_invalid() {
 
     // Now if we refill, we will hit the first place.
     let evict_slot = set.find_eviction_index();
-    assert_eq!(evict_slot, EvictedSlot::Invalid(0));
-    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, false, false, false);
+    assert_eq!(evict_slot, PrivateCacheEvictedSlot::Invalid(0));
+    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, ts, false, false, false);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -377,7 +415,9 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 9 << 1 | 1,
             ts: ts,
+            access_v_ts: ts,
             write_ts: 0,
+            write_v_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -388,6 +428,6 @@ fn minimum_can_find_invalid() {
 
     // If we now insert another one, line[1] will be replaced.
     let evict_slot = set.find_eviction_index();
-    assert_eq!(evict_slot, EvictedSlot::Valid(1, 1));
-    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, false, false, false);
+    assert_eq!(evict_slot, PrivateCacheEvictedSlot::Valid(1, 1));
+    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, ts, false, false, false);
 }

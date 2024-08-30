@@ -26,16 +26,31 @@ pub trait CacheModelParser<const SERIAL_CACHE_MODEL: bool, const UNIFIED_CACHE_M
 
 pub struct DummyParser;
 
+pub trait SharedCacheStatisticsParser<const ENABLE_STATISTICS: bool> {
+    type Output;
+}
+
+impl SharedCacheStatisticsParser<true> for DummyParser {
+    type Output = SharedCacheSetMissStatistics;
+}
+
+impl SharedCacheStatisticsParser<false> for DummyParser {
+    type Output = ZeroSharedCacheSetStatistics;
+}
+
+pub type SharedCacheStatisticsWithPlugin =
+    <DummyParser as SharedCacheStatisticsParser<{ parameter::ENABLE_STATISTICS }>>::Output;
+
 use super::{
-    hierarchy,
-    private_cache::{
-        ParallelHarvardPrivateCache, ParallelUnifiedPrivateCache, SerialHarvardPrivateCache,
-        SerialUnifiedPrivateCache,
+    super::common::{
+        statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
+        ParallelHarvardPrivateCache, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
+        SerialHarvardPrivateCache, SerialSingleSharedCache, SerialUnifiedPrivateCache,
     },
-    shared_cache::{ParallelSingleSharedCache, SerialSingleSharedCache},
+    hierarchy,
 };
 
-pub const ALLOCATED_CORE_COUNT: usize = if parameter::CACHE_HIERARCHY_FOR_HALF_OF_CORES {
+pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT / 2
 } else {
     parameter::CORE_COUNT
@@ -56,6 +71,7 @@ type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
+        SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -78,6 +94,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     ParallelSingleSharedCache<
+        SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -98,6 +115,7 @@ type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
     SerialSingleSharedCache<
+        SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
@@ -120,6 +138,7 @@ type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     SerialSingleSharedCache<
+        SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },

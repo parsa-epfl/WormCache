@@ -1,12 +1,15 @@
 use rustc_hash::FxHashMap as HashMap;
+use serde::Deserialize;
 use spin::mutex::SpinMutex;
 use spin::mutex::SpinMutexGuard;
 
 use bitvec::prelude::*;
 use bitvec::BitArr;
 use serde::Serialize;
+use zstd::{Decoder, Encoder};
 
 use crate::parameter;
+use crate::parameter::CORE_COUNT;
 use crate::util;
 
 const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
@@ -22,11 +25,12 @@ pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 //     sharers: SharerList,
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DirectoryEntry {
     pub lru_ts: u64,
     pub sharers: SharerList,
     pub recent_writer_ts: u64, // This field is to avoid the eviction causes the write history to be lost.
+    pub recent_writer_vts: u64,
     pub insertion_ts: u64,
 }
 
@@ -39,7 +43,7 @@ impl DirectoryEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[repr(align(64))]
 pub struct DirectorySet<const SET: usize> {
     entries: HashMap<u64, DirectoryEntry>,
@@ -64,15 +68,26 @@ impl<const SET: usize> DirectorySet<SET> {
             sharers: SharerList::ZERO,
             recent_writer_ts: 0,
             insertion_ts: 0,
+            recent_writer_vts: 0,
         });
 
         self.entries.get_mut(&internal_id).unwrap()
+    }
+
+    pub fn erase(&mut self, block_id: u64) {
+        let internal_id = block_id >> Self::LOG2_SET;
+        self.entries.remove(&internal_id);
     }
 }
 
 // Probably the Directory should be infinitely sized.
 pub struct Directory<const SET: usize> {
     entries: Box<[SpinMutex<DirectorySet<SET>>; SET]>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct DirectorySerdeHelper<const SET: usize> {
+    entries: Vec<DirectorySet<SET>>,
 }
 
 impl<const SET: usize> Default for Directory<SET> {
@@ -118,6 +133,65 @@ impl<const SET: usize> Directory<SET> {
             }
         }
     }
+
+    pub fn run_gc(&self) {
+        // clean all entries that has zero sharers.
+        for set in self.entries.iter() {
+            let mut set = set.lock();
+            set.entries.retain(|_, entry| entry.sharers.any());
+        }
+    }
+
+    fn to_serialize_helper(&self) -> DirectorySerdeHelper<SET> {
+        let entries = self
+            .entries
+            .iter()
+            .map(|set| set.lock().clone())
+            .collect::<Vec<_>>();
+
+        DirectorySerdeHelper { entries }
+    }
+
+    fn from_serialize_helper(helper: DirectorySerdeHelper<SET>) -> Self {
+        let entries = helper
+            .entries
+            .into_iter()
+            .map(|set| SpinMutex::new(set))
+            .collect::<Vec<_>>();
+
+        Self {
+            entries: entries.try_into().unwrap(),
+        }
+    }
+
+    pub fn serialize(&self, name: &str, numa_node_id: usize) {
+        self.run_gc();
+        let file = std::fs::File::create(format!("{}/directory-{}.json.zstd", name, numa_node_id))
+            .unwrap();
+
+        let mut file = Encoder::new(file, 0).unwrap();
+
+        let helper = self.to_serialize_helper();
+        serde_json::to_writer(&mut file, &helper).unwrap();
+
+        file.finish().unwrap();
+    }
+
+    pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        let file = std::fs::File::open(format!("{}/directory-{}.json.zstd", name, numa_node_id));
+
+        if file.is_err() {
+            println!("Cannot load the directory state. Error: {:?}", file.err());
+            return;
+        }
+
+        let file = file.unwrap();
+
+        let file = Decoder::new(file).unwrap();
+
+        let helper: DirectorySerdeHelper<SET> = serde_json::from_reader(file).unwrap();
+        *self = Self::from_serialize_helper(helper);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -136,15 +210,35 @@ impl Serialize for SerializedDirectoryEntry {
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("SerializedDirectoryEntry", 2)?;
-        state.serialize_field("ts", &self.tag)?;
-        state.serialize_field("sharers", &self.sharers.as_raw_slice())?;
+        state.serialize_field("tag", &self.tag)?;
+
+        let mut sharer_info = vec![];
+        for core_id in 0..parameter::CORE_COUNT {
+            if parameter::USE_UNIFIED_CACHE {
+                sharer_info.push(self.sharers[core_id]);
+            } else {
+                // it is a hack.
+                sharer_info.push(self.sharers[core_id * 2] || self.sharers[core_id * 2 + 1]);
+            }
+        }
+
+        assert!(sharer_info.len() == CORE_COUNT);
+
+        state.serialize_field(
+            "sharers",
+            &sharer_info
+                .into_iter()
+                .rev()
+                .map(|b| if b { "1" } else { "0" })
+                .collect::<String>(),
+        )?;
         state.end()
     }
 }
 
 impl<const SET: usize> Directory<SET> {
-    pub fn dump_snapshot(&self, snapshot_folder: &str) {
-        let file = std::fs::File::create(format!("{}/directory.json", snapshot_folder)).unwrap();
+    pub fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
+        let file = std::fs::File::create(format!("{}/sys-L2-dir.json", snapshot_folder)).unwrap();
 
         let entries = self
             .entries
@@ -166,6 +260,6 @@ impl<const SET: usize> Directory<SET> {
             })
             .collect::<Vec<_>>();
 
-        serde_json::to_writer_pretty(&file, &entries).unwrap();
+        serde_json::to_writer(&file, &entries).unwrap();
     }
 }

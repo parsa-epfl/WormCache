@@ -17,11 +17,6 @@ impl PerCoreICount {
             kernel_icount: 0,
         }
     }
-
-    pub fn reset(&mut self) {
-        self.user_icount = 0;
-        self.kernel_icount = 0;
-    }
 }
 
 #[derive(Debug)]
@@ -64,12 +59,40 @@ impl ICountPlugin {
         }
     }
 
-    pub fn reset(&self) {
-        // Still dirty. You must make sure that when doing reset, there is no other threads.
-        unsafe {
-            for i in 0..CORE_COUNT {
-                (*self.data[i].get()).reset();
+    pub fn total_user_icount(&self) -> u64 {
+        let mut res = 0;
+
+        const CORE_COUNT: usize = if param::MEASURE_HALF_OF_CORES {
+            param::CORE_COUNT / 2
+        } else {
+            param::CORE_COUNT
+        };
+
+        for i in 0..CORE_COUNT {
+            unsafe {
+                res += (*self.data[i].get()).user_icount;
             }
         }
+        res
+    }
+
+    pub fn total_icount(&self) -> (u64, u64) {
+        // (u, k)
+        let mut res = (0, 0);
+
+        const CORE_COUNT: usize = if param::MEASURE_HALF_OF_CORES {
+            param::CORE_COUNT / 2
+        } else {
+            param::CORE_COUNT
+        };
+
+        for i in 0..CORE_COUNT {
+            unsafe {
+                res.0 += (*self.data[i].get()).user_icount;
+                res.1 += (*self.data[i].get()).kernel_icount;
+            }
+        }
+
+        res
     }
 }
