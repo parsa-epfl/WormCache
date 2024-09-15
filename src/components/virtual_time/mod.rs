@@ -587,4 +587,6 @@ impl super::Plugin for VirtualTimePlugin {
     fn serialize(_: &str) {}
 
     fn deserialize(_: &str) {}
+
+    unsafe fn on_quit() {}
 }

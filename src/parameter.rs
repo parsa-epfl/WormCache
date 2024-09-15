@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 2;
+pub const CORE_COUNT: usize = 1;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -123,6 +123,7 @@ static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
  * This parameter is only used when the unified private cache is disabled.
  */
 pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
+pub const HARVARD_PRI_I_CACHE_SIZE: usize = 64 * 1024;
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -130,7 +131,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 64;
+pub const HARVARD_PRI_I_CACHE_SET: usize = HARVARD_PRI_I_CACHE_SIZE / (HARVARD_PRI_I_CACHE_ASSO * CACHE_LINE_SIZE);
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -140,6 +141,7 @@ static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
  * This parameter is only used when the unified private cache is disabled.
  */
 pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
+pub const HARVARD_PRI_D_CACHE_SIZE: usize = 64 * 1024;
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -147,7 +149,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 64;
+pub const HARVARD_PRI_D_CACHE_SET: usize = HARVARD_PRI_D_CACHE_SIZE / (HARVARD_PRI_D_CACHE_ASSO * CACHE_LINE_SIZE);
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -156,13 +158,14 @@ static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
  * The associativity of the shared cache for traffic recording.
  */
 pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1KB.
+pub const SHARED_CACHE_SIZE: usize = 8 * 1024 * 1024;
 
 /**
  * SHARED_CACHE_SET
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 64 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = SHARED_CACHE_SIZE / (SHARED_CACHE_ASSO * CACHE_LINE_SIZE);
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -278,11 +281,12 @@ use crate::components::Plugin;
 #[derive(PluginHelper)]
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
-    _pb: crate::BranchPredictorPlugin,
+    // _pb: crate::BranchPredictorPlugin,
     _vt: crate::VirtualTimePlugin,
     // _mk: crate::MarkerPlugin,
     // _lm: crate::ParallelCacheHierarchyPlugin,
-    _lm: crate::SingleCacheHierarchyPlugin,
+    _im: crate::IdealCachePlugin,
+    // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }
 
@@ -296,7 +300,7 @@ pub const ENABLE_STATISTICS: bool = true;
  *
  * Turning on this option can influence the memory consumption. It adds 128 bytes to each cache set.
  */
-pub const ENABLE_SHARED_CACHE_STATISTICS: bool = false;
+pub const ENABLE_SHARED_CACHE_STATISTICS: bool = true;
 
 /**
  * Whether to enable the exclusive cache state and its coherence protocol.
@@ -329,4 +333,4 @@ pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
  *
  * By turning on this option, we dump a flexus-compatible checkpoint at the end of the simulation.
  */
-pub const DUMP_FLEXUS_CHECKPOINT: bool = true;
+pub const DUMP_FLEXUS_CHECKPOINT: bool = false;

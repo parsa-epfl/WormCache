@@ -41,6 +41,8 @@ pub trait Plugin: Send + Sync {
 
     fn serialize(name: &str);
     fn deserialize(name: &str);
+
+    unsafe fn on_quit();
 }
 
 pub trait FlexusCompatibleSerializer {

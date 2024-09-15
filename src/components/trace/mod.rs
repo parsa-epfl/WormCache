@@ -130,4 +130,6 @@ impl super::Plugin for TracePlugin {
     fn serialize(_: &str) {}
 
     fn deserialize(_: &str) {}
+
+    unsafe fn on_quit() {}
 }

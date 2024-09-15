@@ -32,7 +32,7 @@
 use core::ffi;
 use std::io::Write;
 
-use hierarchy::PluginSingleCacheHierarchy;
+use hierarchy::PluginIdealCache;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -46,7 +46,7 @@ use super::common::L0InstructionCache;
 
 mod hierarchy;
 
-static mut PLUGIN: *mut PluginSingleCacheHierarchy = std::ptr::null_mut();
+static mut PLUGIN: *mut PluginIdealCache = std::ptr::null_mut();
 
 // TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
@@ -113,11 +113,10 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-unsafe extern "C" fn dump_statistics() {}
 
-pub struct SingleCacheHierarchyPlugin {}
+pub struct IdealCachePlugin {}
 
-impl super::super::Plugin for SingleCacheHierarchyPlugin {
+impl super::super::Plugin for IdealCachePlugin {
     #[inline]
     fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
         unsafe {
@@ -126,10 +125,9 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
 
             assert!(is_icount_mode);
 
-            PLUGIN = Box::into_raw(Box::new(PluginSingleCacheHierarchy::new()));
+            PLUGIN = Box::into_raw(Box::new(PluginIdealCache::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
-            qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
         }
 
         println!("Memory plugin [SingleCache, Serial] initialized.");
@@ -169,10 +167,8 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
                 warmed_rate
                     .write_all(
                         format!(
-                            "{},{},{}\n",
+                            "{}\n",
                             get_monotonic_ts(),
-                            unsafe { (*PLUGIN).get_scache_warmed_set_count() },
-                            unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
                         )
                         .as_bytes(),
                     )
@@ -186,7 +182,9 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
     }
 
     #[inline]
-    fn dump_snapshot(_name: &str) {}
+    fn dump_snapshot(_name: &str) {
+
+    }
 
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
@@ -259,5 +257,7 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
         }
     }
 
-    unsafe fn on_quit() {}
+    unsafe fn on_quit() {
+        (*PLUGIN).dump_map();
+    }
 }

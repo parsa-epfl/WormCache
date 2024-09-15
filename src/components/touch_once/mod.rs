@@ -194,4 +194,6 @@ impl super::Plugin for TouchOnePlugin {
     fn serialize(_: &str) {}
 
     fn deserialize(_: &str) {}
+
+    unsafe fn on_quit() {}
 }

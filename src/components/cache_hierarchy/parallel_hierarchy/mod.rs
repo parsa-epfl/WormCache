@@ -298,4 +298,6 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             }
         }
     }
+
+    unsafe fn on_quit() {}
 }

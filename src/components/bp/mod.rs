@@ -190,4 +190,6 @@ impl Plugin for BranchPredictorPlugin {
 
         Deserialize::deserialize_in_place(&mut reader, unsafe { &mut (*FETCH_UNIT) }).unwrap();
     }
+
+    unsafe fn on_quit() {}
 }

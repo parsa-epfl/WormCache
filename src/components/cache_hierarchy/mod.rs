@@ -39,8 +39,10 @@
 pub mod common;
 mod parallel_hierarchy;
 mod single_cache_hierarchy;
+mod ideal_cache;
 
 pub use parallel_hierarchy::hierarchy;
 pub use parallel_hierarchy::ParallelCacheHierarchyPlugin;
 
 pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
+pub use ideal_cache::IdealCachePlugin;

@@ -44,6 +44,8 @@ use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::SingleCacheHierarchyPlugin;
 #[allow(unused_imports)]
+use components::cache_hierarchy::IdealCachePlugin;
+#[allow(unused_imports)]
 use components::marker::MarkerPlugin;
 #[allow(unused_imports)]
 use components::pw_log::PageWalkLoggerPlugin;
@@ -114,6 +116,8 @@ unsafe extern "C" fn qemu_plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi
         std::fs::create_dir_all("unsaved").unwrap();
         PluginList::dump_snapshot("unsaved");
     }
+
+    PluginList::on_quit();
 }
 
 #[no_mangle]

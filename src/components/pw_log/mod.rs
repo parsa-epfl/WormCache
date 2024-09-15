@@ -168,4 +168,6 @@ impl Plugin for PageWalkLoggerPlugin {
     fn serialize(_: &str) {}
 
     fn deserialize(_: &str) {}
+
+    unsafe fn on_quit() {}
 }

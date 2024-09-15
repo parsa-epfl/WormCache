@@ -87,4 +87,6 @@ impl super::Plugin for MarkerPlugin {
     fn serialize(_: &str) {}
 
     fn deserialize(_: &str) {}
+
+    unsafe fn on_quit() {}
 }
