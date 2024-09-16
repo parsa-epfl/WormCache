@@ -147,23 +147,13 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
             }
 
             // open a csv file.
-            let mut miss_file = std::fs::File::create("cache-misses.csv").unwrap();
             let mut warmed_rate = std::fs::File::create("shared_cache_warm_count.csv").unwrap();
-
-            miss_file
-                .write_fmt(format_args!("{}\n", Statistics::get_header()))
-                .unwrap();
 
             warmed_rate
                 .write_all(b"ts,warm_set_count,warm_slot_count\n")
                 .unwrap();
 
             loop {
-                for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                    miss_file.write_all(stat.as_bytes()).unwrap();
-                    miss_file.write_all(b"\n").unwrap();
-                }
-
                 // get the duration of the following function.
 
                 warmed_rate
