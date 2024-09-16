@@ -135,40 +135,40 @@ unsafe extern "C" fn on_icount_periodic_checking() {
     if u_total_icount > MEASURE_NEXT_THRESHOLD {
         let (u_icount, k_icount) = (*ICOUNT_PLUGIN).total_icount();
 
-        let mut statistics_u = 0;
-        let mut statistics_k = 0;
-        let mut l2_miss_u = 0;
-        let mut l2_miss_k = 0;
-        let mut coherence_miss_u = 0;
-        let mut coherence_miss_k = 0;
-        let mut coherence_inv_u = 0;
-        let mut coherence_inv_k = 0;
-        let mut llc_miss_u = 0;
-        let mut llc_miss_k = 0;
-        let mut bp_miss_u = 0;
-        let mut bp_miss_k = 0;
-        let mut tlb_miss_u = 0;
-        let mut tlb_miss_k = 0;
-
         const MEASURED_CORE_COUNT: usize = if param::MEASURE_HALF_OF_CORES {
             param::CORE_COUNT / 2
         } else {
             param::CORE_COUNT
         };
 
+        let mut statistics_u = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut statistics_k = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut l2_miss_u = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut l2_miss_k = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut coherence_miss_u = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut coherence_miss_k = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut coherence_inv_u = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut coherence_inv_k = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut llc_miss_u = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut llc_miss_k = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut bp_miss_u = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut bp_miss_k = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut tlb_miss_u = Vec::with_capacity(MEASURED_CORE_COUNT);
+        let mut tlb_miss_k = Vec::with_capacity(MEASURED_CORE_COUNT);
+
         for core_id in 0..MEASURED_CORE_COUNT {
             // Query the instruction.
             let (_, i_u, i_k) =
                 Statistics::global_query_record(core_id as u32, EventType::Instruction);
-            statistics_u += i_u;
-            statistics_k += i_k;
+            statistics_u.push(i_u);
+            statistics_k.push(i_k);
 
             // Query the L2 miss.
             let (_, l2_u, l2_k) =
                 Statistics::global_query_record(core_id as u32, EventType::PrivateCacheMiss);
 
-            l2_miss_u += l2_u;
-            l2_miss_k += l2_k;
+            l2_miss_u.push(l2_u);
+            l2_miss_k.push(l2_k);
 
             // Query the coherence miss.
             for t in [
@@ -179,8 +179,8 @@ unsafe extern "C" fn on_icount_periodic_checking() {
                 let (_, coherence_u, coherence_k) =
                     Statistics::global_query_record(core_id as u32, t);
 
-                coherence_miss_u += coherence_u;
-                coherence_miss_k += coherence_k;
+                coherence_miss_u.push(coherence_u);
+                coherence_miss_k.push(coherence_k);
             }
 
             // Query the coherence invalidation.
@@ -189,89 +189,59 @@ unsafe extern "C" fn on_icount_periodic_checking() {
                 EventType::PrivateCacheMissTriggerInvalidation,
             );
 
-            coherence_inv_u += inv_u;
-            coherence_inv_k += inv_k;
+            coherence_inv_u.push(inv_u);
+            coherence_inv_k.push(inv_k);
 
             // Query the LLC miss.
             let (_, llc_u, llc_k) =
                 Statistics::global_query_record(core_id as u32, EventType::SharedCacheMiss);
 
-            llc_miss_u += llc_u;
-            llc_miss_k += llc_k;
+            llc_miss_u.push(llc_u);
+            llc_miss_k.push(llc_k);
 
             // Query the branch predictor miss.
             let (_, bp_u, bp_k) =
                 Statistics::global_query_record(core_id as u32, EventType::BPMiss);
 
-            bp_miss_u += bp_u;
-            bp_miss_k += bp_k;
+            bp_miss_u.push(bp_u);
+            bp_miss_k.push(bp_k);
 
             // Query the TLB miss.
             let (_, tlb_u, tlb_k) =
                 Statistics::global_query_record(core_id as u32, EventType::TLBMiss);
 
-            tlb_miss_u += tlb_u;
-            tlb_miss_k += tlb_k;
+            tlb_miss_u.push(tlb_u);
+            tlb_miss_k.push(tlb_k);
         }
 
-        assert!(statistics_u == u_icount);
-        assert!(statistics_k == k_icount);
-
-        let i = u_icount + k_icount;
-        let l2_miss = l2_miss_u + l2_miss_k;
-        let coherence_miss = coherence_miss_u + coherence_miss_k;
-        let coherence_inv = coherence_inv_u + coherence_inv_k;
-        let llc_miss = llc_miss_u + llc_miss_k;
-        let bp_miss = bp_miss_u + bp_miss_k;
-        let tlb_miss = tlb_miss_u + tlb_miss_k;
+        assert!(statistics_u.iter().map(|d| *d).sum::<u64>() == u_icount);
+        assert!(statistics_k.iter().map(|d| *d).sum::<u64>() == k_icount);
 
         // You should stop the simulation.
         println!("Total userspace instruction: {}", u_total_icount);
         // report statistics.
         let result_json = json!({
-            "icount": i,
-            "icount:u": u_icount,
-            "icount:k": k_icount,
+            // "icount": i,
+            "icount:u": statistics_u,
+            "icount:k": statistics_k,
 
-            "l2_miss": l2_miss,
             "l2_miss:u": l2_miss_u,
             "l2_miss:k": l2_miss_k,
 
-            "coherence_miss": coherence_miss,
             "coherence_miss:u": coherence_miss_u,
             "coherence_miss:k": coherence_miss_k,
 
-            "coherence_inv": coherence_inv,
             "coherence_inv:u": coherence_inv_u,
             "coherence_inv:k": coherence_inv_k,
 
-            "llc_miss": llc_miss,
             "llc_miss:u": llc_miss_u,
             "llc_miss:k": llc_miss_k,
 
-            "bp": bp_miss,
             "bp:u": bp_miss_u,
             "bp:k": bp_miss_k,
 
-            "tlb": tlb_miss,
             "tlb:u": tlb_miss_u,
             "tlb:k": tlb_miss_k,
-
-            "agg": {
-                "l2_mpki": l2_miss as f64 / i as f64 * 1000.0,
-                "coherence_mpki": coherence_miss as f64 / i as f64 * 1000.0,
-                "coherence_inv_mpki": coherence_inv as f64 / i as f64 * 1000.0,
-                "llc_mpki": llc_miss as f64 / i as f64 * 1000.0,
-                "bp_mpki": bp_miss as f64 / i as f64 * 1000.0,
-                "tlb:mpki": tlb_miss as f64 / i as f64 * 1000.0,
-
-                "l2_mpki:u": l2_miss_u as f64 / u_icount as f64 * 1000.0,
-                "coherence_mpki:u": coherence_miss_u as f64 / u_icount as f64 * 1000.0,
-                "coherence_inv_mpki:u": coherence_inv_u as f64 / u_icount as f64 * 1000.0,
-                "llc_mpki:u": llc_miss_u as f64 / u_icount as f64 * 1000.0,
-                "bp_mpki:u": bp_miss_u as f64 / u_icount as f64 * 1000.0,
-                "tlb:mpki:u": tlb_miss_u as f64 / u_icount as f64 * 1000.0,
-            }
         });
 
         // write the result_json to a file.
