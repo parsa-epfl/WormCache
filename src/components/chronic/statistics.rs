@@ -29,64 +29,27 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cell::UnsafeCell;
+use crate::components::debug::statistics::Statistics;
+use crate::util::get_monotonic_ts;
+use std::thread;
 
-use crate::parameter as param;
-use param::CORE_COUNT;
+use std::io::prelude::*;
 
-#[repr(align(64))]
-#[derive(Debug, Clone, Copy)]
-pub struct PerCoreICount {
-    user_icount: u64,
-    kernel_icount: u64,
-}
+pub fn init() {
+    thread::spawn(move || {
+        let mut miss_file = std::fs::File::create("statistics.csv").unwrap();
 
-impl PerCoreICount {
-    pub fn new() -> PerCoreICount {
-        PerCoreICount {
-            user_icount: 0,
-            kernel_icount: 0,
-        }
-    }
-}
+        miss_file
+            .write_fmt(format_args!("{}\n", Statistics::get_header()))
+            .unwrap();
 
-#[derive(Debug)]
-pub struct ICountPlugin {
-    data: [UnsafeCell<PerCoreICount>; CORE_COUNT],
-}
-
-impl ICountPlugin {
-    pub fn get_icounts(&self) -> [(u64, u64); CORE_COUNT] {
-        // (user_icount, kernel_icount)
-        let mut res = [(0, 0); CORE_COUNT];
-        for i in 0..CORE_COUNT {
-            unsafe {
-                res[i] = (
-                    (*self.data[i].get()).user_icount,
-                    (*self.data[i].get()).kernel_icount,
-                );
+        loop {
+            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+                miss_file.write_all(stat.as_bytes()).unwrap();
+                miss_file.write_all(b"\n").unwrap();
             }
-        }
-        res
-    }
 
-    pub fn increase_user_icount(&self, core_id: u8, icount: u64) {
-        unsafe {
-            let core_id = core_id as usize;
-            (*self.data[core_id].get()).user_icount += icount;
+            std::thread::sleep(std::time::Duration::from_secs(10));
         }
-    }
-
-    pub fn increase_kernel_icount(&self, core_id: u8, icount: u64) {
-        unsafe {
-            let core_id = core_id as usize;
-            (*self.data[core_id].get()).kernel_icount += icount;
-        }
-    }
-
-    pub fn new() -> ICountPlugin {
-        ICountPlugin {
-            data: std::array::from_fn(|_| UnsafeCell::new(PerCoreICount::new())),
-        }
-    }
+    });
 }

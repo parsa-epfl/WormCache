@@ -54,6 +54,7 @@ pub use mmu::NoMMU;
 use serde::Serialize;
 pub mod bp;
 pub mod cache_hierarchy;
+pub mod chronic;
 pub mod debug;
 pub mod marker;
 pub mod pw_log;
