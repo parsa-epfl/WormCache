@@ -47,7 +47,7 @@ static mut MEASURE_PREFIX: String = String::new();
 unsafe extern "C" fn on_icount_periodic_checking(diff: u64) {
     CURRENT_CYCLE_COUNT += diff;
     // read user icount.
-    if CURRENT_CYCLE_COUNT > MEASURE_NEXT_THRESHOLD {
+    if CURRENT_CYCLE_COUNT >= MEASURE_NEXT_THRESHOLD {
         const MEASURED_CORE_COUNT: usize = if param::MEASURE_HALF_OF_CORES {
             param::CORE_COUNT / 2
         } else {

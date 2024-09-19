@@ -36,7 +36,6 @@ use hierarchy::PluginSingleCacheHierarchy;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    components::debug::statistics::Statistics,
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
     util::get_monotonic_ts,
