@@ -112,8 +112,6 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-unsafe extern "C" fn dump_statistics() {}
-
 pub struct SingleCacheHierarchyPlugin {}
 
 impl super::super::Plugin for SingleCacheHierarchyPlugin {

@@ -30,7 +30,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 // This file contains the basic TAGE branch predictor.
 // It is basically an one-to-one translation of the C++ implementation in QFlex.
 
@@ -579,21 +578,21 @@ impl FlexusCompatibleSerializer for TAGEPredictor {
             minhist: MINHIST,
             cbits: CBITS,
 
-            btable: self.btable.iter().map(|x| x.clone()).collect(),
+            btable: self.btable.iter().cloned().collect(),
             gtable: self
                 .gtable
                 .iter()
-                .map(|x| x.iter().map(|y| y.clone()).collect())
+                .map(|x| x.iter().cloned().collect())
                 .collect(),
 
-            ch_i: self.ch_i.iter().map(|x| x.clone()).collect(),
+            ch_i: self.ch_i.iter().cloned().collect(),
             ch_t: self
                 .ch_t
                 .iter()
-                .map(|x| x.iter().map(|y| y.clone()).collect())
+                .map(|x| x.iter().cloned().collect())
                 .collect(),
 
-            m: HISTORIES.iter().map(|x| *x).collect(),
+            m: HISTORIES.iter().copied().collect(),
         }
     }
 }

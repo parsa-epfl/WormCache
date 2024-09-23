@@ -59,18 +59,11 @@ pub enum BranchType {
 
 impl BranchType {
     pub fn is_call(&self) -> bool {
-        match self {
-            BranchType::DirectCall => true,
-            BranchType::IndirectCall => true,
-            _ => false,
-        }
+        matches!(self, BranchType::DirectCall | BranchType::IndirectCall)
     }
 
     pub fn is_return(&self) -> bool {
-        match self {
-            BranchType::Return => true,
-            _ => false,
-        }
+        matches!(self, BranchType::Return)
     }
 }
 
@@ -85,7 +78,7 @@ impl BranchResolutionResult {
         let is_taken = value & 1 == 1;
         let result_value = value >> 1;
 
-        return BranchResolutionResult {
+        BranchResolutionResult {
             is_taken,
             branch_type: match result_value {
                 0 => BranchType::NonBranch,
@@ -112,7 +105,7 @@ impl BranchResolutionResult {
                 }
                 _ => unreachable!(),
             },
-        };
+        }
     }
 }
 

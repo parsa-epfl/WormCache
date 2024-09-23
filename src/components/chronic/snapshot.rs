@@ -104,13 +104,12 @@ pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, pref
     SNAPSHOT_PREFIX = prefix;
 
     unsafe {
-        assert!(
-            qemu_api::qemu_plugin_register_periodic_check_cb(Some(quantum_checking_callback))
-                == true
-        );
+        assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
+            quantum_checking_callback
+        )));
 
-        assert!(
-            qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(event_loop_callback)) == true
-        );
+        assert!(qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(
+            event_loop_callback
+        )));
     }
 }

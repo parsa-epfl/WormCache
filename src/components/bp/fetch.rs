@@ -91,7 +91,7 @@ impl PerCoreFetchUnit {
         Statistics::global_record(core_id as u32, EventType::BranchCount, is_os);
 
         // Determine the branch prediction result.
-        match result.branch_type.clone() {
+        match result.branch_type {
             BranchType::NonBranch => unreachable!(),
             BranchType::Conditional => {
                 if tage_miss || btb_miss {
