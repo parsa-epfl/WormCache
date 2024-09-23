@@ -43,6 +43,7 @@ use components::bp::BranchPredictorPlugin;
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::SingleCacheHierarchyPlugin;
+use components::chronic::chronic_behavior_init;
 #[allow(unused_imports)]
 use components::marker::MarkerPlugin;
 #[allow(unused_imports)]
@@ -164,6 +165,8 @@ unsafe extern "C" fn qemu_plugin_install(
     qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
 
     PluginList::init(id, &options);
+
+    chronic_behavior_init(&options);
 
     0
 }
