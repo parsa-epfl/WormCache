@@ -414,14 +414,12 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
             }
         }
 
-        let cache_hierarchy_access_result = match res {
+        match res {
             SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::Unknown(_) => CacheHierarchyAccessResult::Unknown,
-        };
-
-        cache_hierarchy_access_result
+        }
     }
 
     fn serialize_mmus(&self, name: &str, numa_node_id: usize) {

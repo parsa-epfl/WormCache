@@ -166,7 +166,7 @@ impl super::Plugin for VirtualTimePlugin {
                     if loop_count % 100 == 0 {
                         println!(
                             "Average non-sleeping core count: {}",
-                            acc_active_core_count as f64 / 100 as f64,
+                            acc_active_core_count as f64 / 100_f64,
                         );
 
                         acc_active_core_count = 0;

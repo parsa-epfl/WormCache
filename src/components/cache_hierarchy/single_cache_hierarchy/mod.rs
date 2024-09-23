@@ -112,8 +112,6 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-unsafe extern "C" fn dump_statistics() {}
-
 pub struct SingleCacheHierarchyPlugin {}
 
 impl super::super::Plugin for SingleCacheHierarchyPlugin {
@@ -128,7 +126,7 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
             PLUGIN = Box::into_raw(Box::new(PluginSingleCacheHierarchy::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
-            qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
+            // qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
         }
 
         println!("Memory plugin [SingleCache, Serial] initialized.");

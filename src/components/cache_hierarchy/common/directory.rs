@@ -187,7 +187,7 @@ impl<const SET: usize> Directory<SET> {
         let entries = helper
             .entries
             .into_iter()
-            .map(|set| SpinMutex::new(set))
+            .map(SpinMutex::new)
             .collect::<Vec<_>>();
 
         Self {

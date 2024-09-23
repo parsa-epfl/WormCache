@@ -289,7 +289,7 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
             .collect::<Vec<_>>();
 
         // alright. Now, construct the result.
-        return [
+        [
             json!({
                 "capacity": i_capacity,
                 "entries": i_tlb_entries
@@ -298,6 +298,6 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
                 "capacity": d_capacity,
                 "entries": d_tlb_entries
             }),
-        ];
+        ]
     }
 }

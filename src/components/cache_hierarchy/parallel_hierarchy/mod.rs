@@ -134,8 +134,6 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-unsafe extern "C" fn dump_statistics() {}
-
 pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::super::Plugin for ParallelCacheHierarchyPlugin {
@@ -157,7 +155,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                     Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
             }
 
-            qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
+            // qemu_api::qemu_plugin_register_periodic_check_cb(Some(dump_statistics));
         }
 
         if parameter::USE_UNIFIED_CACHE {

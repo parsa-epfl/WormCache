@@ -44,14 +44,8 @@ pub trait SharedCacheSetStatistics: Default + Debug + Clone + Serialize {
     fn record(&mut self, access_type: CacheAccessType, is_os: bool, is_hit: bool);
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ZeroSharedCacheSetStatistics {}
-
-impl Default for ZeroSharedCacheSetStatistics {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 impl SharedCacheSetStatistics for ZeroSharedCacheSetStatistics {
     fn get_header() -> String {
@@ -65,7 +59,7 @@ impl SharedCacheSetStatistics for ZeroSharedCacheSetStatistics {
     fn record(&mut self, _access_type: CacheAccessType, _is_os: bool, _is_hit: bool) {}
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct SharedCacheSetMissStatistics {
     // statistics
     pub miss_count: u64,
@@ -87,32 +81,6 @@ pub struct SharedCacheSetMissStatistics {
     pub ptw_miss_count: u64,
     pub ptw_miss_count_u: u64,
     pub ptw_miss_count_k: u64,
-}
-
-impl Default for SharedCacheSetMissStatistics {
-    fn default() -> Self {
-        Self {
-            miss_count: 0,
-            miss_count_u: 0,
-            miss_count_k: 0,
-
-            fetch_miss_count: 0,
-            fetch_miss_count_u: 0,
-            fetch_miss_count_k: 0,
-
-            read_miss_count: 0,
-            read_miss_count_u: 0,
-            read_miss_count_k: 0,
-
-            write_miss_count: 0,
-            write_miss_count_u: 0,
-            write_miss_count_k: 0,
-
-            ptw_miss_count: 0,
-            ptw_miss_count_u: 0,
-            ptw_miss_count_k: 0,
-        }
-    }
 }
 
 impl SharedCacheSetStatistics for SharedCacheSetMissStatistics {

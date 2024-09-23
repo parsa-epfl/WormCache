@@ -948,10 +948,6 @@ extern "C" {
     #[doc = " qemu_plugin_register_loadvm_cb() - register a loadvm callback\n @cb: callback function\n\n The @cb function is called after the VM state is loaded.\n\n returns true if the callback is registered successfully. Please note at\n currently at most one callback can be registered."]
     pub fn qemu_plugin_register_loadvm_cb(cb: qemu_plugin_snapshot_cb_t) -> bool;
 }
-pub type qemu_plugin_quantum_deplete_cb_t = ::std::option::Option<unsafe extern "C" fn()>;
-extern "C" {
-    pub fn qemu_plugin_register_quantum_deplete_cb(cb: qemu_plugin_quantum_deplete_cb_t) -> bool;
-}
 extern "C" {
     #[doc = " qemu_plugin_read_vts_base - return the base virtual time calculated from the\n quantum budget and quantum generation.\n\n The return value does not contain the current translation block.\n You need to add the bias by yourself to get the accurate virtual timestamp.\n"]
     pub fn qemu_plugin_read_local_virtual_time_base() -> u64;
@@ -969,15 +965,13 @@ extern "C" {
     #[doc = " qemu_plugin_register_event_loop_poll_cb() - register a callback to poll the\n\n @cb: function is called every time the event loop polls.\n\n returns true if the callback is registered successfully.\n\n Please note at currently at most one callback can be registered."]
     pub fn qemu_plugin_register_event_loop_poll_cb(cb: qemu_plugin_event_loop_poll_cb_t) -> bool;
 }
-pub type qemu_plugin_icount_periodic_checking_cb_t =
-    ::std::option::Option<unsafe extern "C" fn(consumed_icount: u64)>;
-extern "C" {
-    #[doc = " qemu_plugin_register_icount_periodic_checking_cb() - register a callback for\n checking periodically when icount is increased to a specific value.\n\n @cb: function is called when the icount is increased to a specific value.\n\n returns true if the callback is registered successfully.\n\n TODO: This callback is a dirty hack. It is because we need to know the userspace\n instruction to report statistics and we cannot get the userspace instruction\n inside QEMU. It has to come from the plugin.\n\n This part should be refactored afterwards."]
-    pub fn qemu_plugin_register_icount_periodic_checking_cb(
-        cb: qemu_plugin_icount_periodic_checking_cb_t,
-    ) -> bool;
-}
 extern "C" {
     #[doc = " qemu_plugin_is_icount_mode - return whether the icount mode is enabled.\n\n Returns true if the icount mode is enabled."]
     pub fn qemu_plugin_is_icount_mode() -> bool;
+}
+pub type qemu_plugin_periodic_check_cb_t =
+    ::std::option::Option<unsafe extern "C" fn(passed_cycles: u64)>;
+extern "C" {
+    #[doc = " qemu_plugin_register_periodic_check_cb() - register a callback for periodic checking.\n\n @cb: function is called every time the periodic checking is triggered.\n\n There are two scenario when the periodic checking is triggered:\n - When icount mode is on, and the `icount_checking_period` is set to non-zero.\n - When quantum mode is on, and the `quantum_checking_period` is set to non-zero.\n\n Without these options, the periodic checking will not be triggered.\n\n The periodic checking is triggered every `icount_checking_period` or `quantum_checking_period` cycles.\n Cycles are calculated from the provided IPC and the instruction count."]
+    pub fn qemu_plugin_register_periodic_check_cb(cb: qemu_plugin_periodic_check_cb_t) -> bool;
 }

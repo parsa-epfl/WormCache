@@ -237,7 +237,7 @@ impl<const T_A: usize, const T_S: usize> AbstractMMU
     }
 
     fn serialize(&self) -> serde_json::Value {
-        return serde_json::to_value(self).unwrap();
+        serde_json::to_value(self).unwrap()
     }
 
     fn deserialize(&mut self, value: serde_json::Value) {

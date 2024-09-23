@@ -346,7 +346,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                     is_store,
                     increase_touched_count,
                 );
-                assert!(just_warmed == false);
+                assert!(!just_warmed);
                 SharedCacheLookupAndInsertResult::Inserted
             }
             SharedCacheLookupResult::ColdMiss => {
@@ -365,7 +365,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             }
         };
 
-        return (cache_access_result, result.1);
+        (cache_access_result, result.1)
     }
 }
 
