@@ -128,7 +128,7 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
             PLUGIN = Box::into_raw(Box::new(PluginSingleCacheHierarchy::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
-            qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
+            // qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
         }
 
         println!("Memory plugin [SingleCache, Serial] initialized.");

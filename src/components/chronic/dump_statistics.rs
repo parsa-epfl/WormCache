@@ -175,8 +175,6 @@ pub unsafe fn init(init_threshold: u64, interval: u64, count: u64, prefix: Strin
     MEASURE_PREFIX = prefix;
 
     assert!(
-        qemu_api::qemu_plugin_register_icount_periodic_checking_cb(Some(
-            on_icount_periodic_checking
-        )) == true
+        qemu_api::qemu_plugin_register_periodic_check_cb(Some(on_icount_periodic_checking)) == true
     );
 }

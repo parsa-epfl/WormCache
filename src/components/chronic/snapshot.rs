@@ -105,9 +105,8 @@ pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, pref
 
     unsafe {
         assert!(
-            qemu_api::qemu_plugin_register_icount_periodic_checking_cb(Some(
-                quantum_checking_callback
-            )) == true
+            qemu_api::qemu_plugin_register_periodic_check_cb(Some(quantum_checking_callback))
+                == true
         );
 
         assert!(

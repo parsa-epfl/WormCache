@@ -49,7 +49,7 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
     if mode == "warm" {
         println!("Periodical snapshot (warm) is enabled.");
 
-        assert!(unsafe { qemu_plugin_is_icount_mode() });
+        // assert!(unsafe { qemu_plugin_is_icount_mode() });
 
         let init_threshold = options
             .get("init_threshold")
@@ -75,7 +75,7 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
             snapshot::init(init_threshold, interval, count, prefix);
         }
     } else if mode == "measure" {
-        assert!(unsafe { qemu_plugin_is_icount_mode() });
+        // assert!(unsafe { qemu_plugin_is_icount_mode() });
 
         let init_threshold = options
             .get("init_threshold")
