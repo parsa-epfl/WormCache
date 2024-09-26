@@ -31,9 +31,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::parameter::CACHE_SET_SIMD_SEARCH_LANE;
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PrivateCacheLine {
-    block_id_with_v: u64, // the last bit is the valid bit.
     ts: u64,
     write_ts: u64,
     is_instruction: bool,
@@ -44,11 +45,6 @@ pub struct PrivateCacheLine {
 }
 
 impl PrivateCacheLine {
-    #[inline]
-    pub fn block_id(&self) -> u64 {
-        self.block_id_with_v >> 1
-    }
-
     #[inline]
     pub fn is_modified(&self) -> bool {
         self.modified
@@ -89,6 +85,7 @@ impl PrivateCacheLine {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[repr(align(64))]
 pub struct PrivateCacheSet {
+    pub tags: Vec<u64>, // The tag of the cache line. The valid bit is included the tag, which is the least significant bit.
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.
     pub touched_count: usize,
     pub recent_invalid_slot_index: Option<usize>,
@@ -130,9 +127,9 @@ impl PrivateCachePokeResult {
 impl PrivateCacheSet {
     pub fn new(asso: usize) -> Self {
         Self {
+            tags: Vec::from_iter(std::iter::repeat(0).take(asso)),
             lines: Vec::from_iter(
                 std::iter::repeat(PrivateCacheLine {
-                    block_id_with_v: 0,
                     ts: 0,
                     write_ts: 0,
                     is_instruction: false,
@@ -153,6 +150,38 @@ impl PrivateCacheSet {
 
     #[inline]
     pub fn index_of(&self, block_id: u64) -> Option<usize> {
+        use std::simd::*;
+        use std::simd::prelude::*;
+
+        if CACHE_SET_SIMD_SEARCH_LANE == 1 {
+            return self.index_of_scalar(block_id);
+        }
+
+        let target = block_id << 1 | 1;
+
+        let simd_target = Simd::<u64,CACHE_SET_SIMD_SEARCH_LANE>::splat(target);
+    
+        // Check in chunks of 4 elements (since we use Simd<u64, 4>)
+        for (i, chunk) in self.tags.chunks_exact(CACHE_SET_SIMD_SEARCH_LANE).enumerate() {
+            let simd_chunk = Simd::from_slice(chunk);
+    
+            // Compare chunk with the target
+            let mask = simd_chunk.simd_eq(simd_target);
+
+            let mask = mask.to_bitmask();
+
+            let index = mask.trailing_zeros();    
+            // Check if any lane matches
+            if (index as usize) < CACHE_SET_SIMD_SEARCH_LANE {
+                return Some(i * CACHE_SET_SIMD_SEARCH_LANE + index as usize);
+            }
+        }
+    
+        None
+    }
+
+    #[inline]
+    pub fn index_of_scalar(&self, block_id: u64) -> Option<usize> {
         // TODO: Replace this function with SIMD instructions.
         // This requires the following changes:
         // - Aligned data layout for the tags and the ts.
@@ -162,9 +191,9 @@ impl PrivateCacheSet {
 
         // find from the cache set with block id.
         let hit_element = self
-            .lines
+            .tags
             .iter()
-            .position(|p| p.block_id_with_v == block_id_to_find);
+            .position(|p| *p == block_id_to_find);
 
         hit_element
     }
@@ -186,21 +215,13 @@ impl PrivateCacheSet {
             // there is one invalid slot.
             PrivateCacheEvictedSlot::Invalid(minimal_index)
         } else {
-            PrivateCacheEvictedSlot::Valid(minimal_index, self.lines[minimal_index].block_id())
+            PrivateCacheEvictedSlot::Valid(minimal_index, self.tags[minimal_index] >> 1)
         }
     }
 
     #[inline]
-    pub fn poke(&self, block_id: u64) -> Option<PrivateCacheLine> {
-        let block_id_to_find = (block_id << 1) | 1;
-
-        // find from the cache set with block id.
-        let hit_element = self
-            .lines
-            .iter()
-            .find(|p| p.block_id_with_v == block_id_to_find);
-
-        hit_element.cloned()
+    pub fn poke(&self, block_id: u64) -> Option<(u64, PrivateCacheLine)> {
+        self.index_of(block_id).map(|idx| (block_id, self.lines[idx].clone()))
     }
 
     #[inline]
@@ -306,7 +327,7 @@ impl PrivateCacheSet {
                 // As a result, if recent_invalid_slot_index is not equal to the idx, the idx must be invalid.
 
                 if self.recent_invalid_slot_index.unwrap() != idx {
-                    assert_eq!(self.lines[idx].block_id_with_v & 0x1, 0);
+                    assert_eq!(self.tags[idx] & 0x1, 0);
                     assert_eq!(self.lines[idx].ts, 0);
                 }
 
@@ -324,7 +345,7 @@ impl PrivateCacheSet {
 
         // Replace.
         self.lines[idx_of_slot_to_fill].ts = ts;
-        self.lines[idx_of_slot_to_fill].block_id_with_v = block_id_with_v;
+        self.tags[idx_of_slot_to_fill] = block_id_with_v;
         self.lines[idx_of_slot_to_fill].is_instruction = is_instruction;
         self.lines[idx_of_slot_to_fill].writeable = writable;
         self.lines[idx_of_slot_to_fill].modified = modified;
@@ -342,7 +363,7 @@ impl PrivateCacheSet {
 
     #[inline]
     pub fn invalidate(&mut self, index: usize) {
-        self.lines[index].block_id_with_v = 0;
+        self.tags[index] = 0;
         self.lines[index].ts = 0; // set ts to 0 so that this place will be find by the minimal ts. Good for replacement.
         self.lines[index].access_v_ts = 0;
         self.recent_invalid_slot_index = Some(index);
@@ -379,20 +400,44 @@ impl PrivateCacheSet {
         // 2. filter out the invalid lines.
         // 3. tag should be removed with the valid bit and the index bit.
 
-        let mut sorted_lines = self.lines.clone();
-        sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
+        let mut sorted_lines = self.tags.iter().zip(self.lines.iter()).collect::<Vec<_>>();
+        sorted_lines.sort_by(|a, b| a.1.ts.cmp(&b.1.ts));
 
         let set_bits = (number_of_set as u64).trailing_zeros();
 
         return sorted_lines
             .iter()
-            .filter(|line| line.block_id_with_v & 0x1 == 1)
+            .filter(|line| line.0 & 0x1 == 1)
             .map(|line| SerializedCacheLine {
-                tag: (line.block_id_with_v >> 1) >> set_bits,
-                writable: line.modified,
-                dirty: line.modified,
+                tag: (line.0 >> 1) >> set_bits,
+                writable: line.1.modified,
+                dirty: line.1.modified,
             })
             .collect();
+    }
+}
+
+#[test]
+fn test_index_of() {
+    let mut set = PrivateCacheSet::new(8);
+    let mut ts = 1;
+
+    // push 8 elements inside.
+    for i in 0..8 {
+        set.fill_with_potential_eviction_slot(
+            PrivateCacheEvictedSlot::Invalid(i),
+            i as u64,
+            ts,
+            ts,
+            false,
+            false,
+            false,
+        );
+        ts += 1;
+    }
+
+    for i in 0..8 {
+        assert_eq!(set.index_of(i), Some(i as usize));
     }
 }
 
@@ -422,7 +467,6 @@ fn minimum_can_find_invalid() {
     assert_eq!(
         set.lines[idx],
         PrivateCacheLine {
-            block_id_with_v: 1,
             ts: 1,
             access_v_ts: 1,
             write_ts: 0,
@@ -432,6 +476,8 @@ fn minimum_can_find_invalid() {
             modified: false,
         }
     );
+
+    assert_eq!(set.tags[idx], 1);
 
     set.invalidate(idx);
 
@@ -444,7 +490,6 @@ fn minimum_can_find_invalid() {
     assert_eq!(
         set.lines[0],
         PrivateCacheLine {
-            block_id_with_v: 9 << 1 | 1,
             ts: ts,
             access_v_ts: ts,
             write_ts: 0,
@@ -454,6 +499,8 @@ fn minimum_can_find_invalid() {
             modified: false,
         }
     );
+
+    assert_eq!(set.tags[0], 9 << 1 | 1);
 
     ts += 1;
 

@@ -34,7 +34,7 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::{components::debug::cache_line_history::CacheLineCoherenceHistory, parameter::CACHE_SET_SIMD_SEARCH_LANE};
 
 use super::{
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
@@ -43,7 +43,6 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SharedCacheBlock {
-    pub block_id_with_v: u64, // the last bit is the valid bit.
     pub ts: u64,
     pub modified: bool,
     pub last_accessor: u32, // the last accessor of this cache line.
@@ -57,6 +56,8 @@ pub struct SharedCacheSet<
     const EXCLUSIVE: bool,
     S: SharedCacheSetStatistics,
 > {
+    #[serde_as(as = "[_; WAY]")]
+    pub tags: [u64; WAY],
     #[serde_as(as = "[_; WAY]")]
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
@@ -81,8 +82,9 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 {
     pub fn new() -> Self {
         Self {
+            tags: [0; WAY],
+
             blocks: std::array::from_fn(|_| SharedCacheBlock {
-                block_id_with_v: 0,
                 ts: 0,
                 modified: false,
                 last_accessor: 0,
@@ -102,6 +104,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         other: SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics>,
     ) -> Self {
         Self {
+            tags: other.tags,
             blocks: other.blocks,
             touched_count: other.touched_count,
             recent_evict_ts: other.recent_evict_ts,
@@ -115,6 +118,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         &self,
     ) -> SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics> {
         SharedCacheSet {
+            tags: self.tags.clone(),
             blocks: self.blocks.clone(),
             touched_count: self.touched_count,
             recent_evict_ts: self.recent_evict_ts,
@@ -126,10 +130,41 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
     #[inline]
     fn index_of(&self, block_id: u64) -> Option<usize> {
+        use std::simd::*;
+        use std::simd::prelude::*;
+
+        if CACHE_SET_SIMD_SEARCH_LANE == 1 {
+            return self.index_of_scalar(block_id);
+        }
+
+        let target = block_id << 1 | 1;
+
+        let simd_target = Simd::<u64,CACHE_SET_SIMD_SEARCH_LANE>::splat(target);
+    
+        for (i, chunk) in self.tags.chunks_exact(CACHE_SET_SIMD_SEARCH_LANE).enumerate() {
+            let simd_chunk = Simd::from_slice(chunk);
+    
+            // Compare chunk with the target
+            let mask = simd_chunk.simd_eq(simd_target);
+
+            let mask = mask.to_bitmask();
+
+            let index = mask.trailing_zeros();    
+            // Check if any lane matches
+            if (index as usize) < CACHE_SET_SIMD_SEARCH_LANE {
+                return Some(i * CACHE_SET_SIMD_SEARCH_LANE + index as usize);
+            }
+        }
+    
+        None
+    }
+
+    #[inline]
+    fn index_of_scalar(&self, block_id: u64) -> Option<usize> {
         let internal_block_id = block_id << 1 | 1;
-        self.blocks
+        self.tags
             .iter()
-            .position(|p| p.block_id_with_v == internal_block_id)
+            .position(|p| *p == internal_block_id)
     }
 
     fn peek(&mut self, block_id: u64, core_id: u32, ts: u64, abandon_dirty: bool) -> Option<bool> {
@@ -157,10 +192,10 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
     pub fn invalidate(&mut self, block_id: u64, ts: u64) -> Option<bool> {
         // if it is a hit, we remove this block from the cache
-        if let Some(hit_block) = self.index_of(block_id) {
-            let hit_block = &mut self.blocks[hit_block];
+        if let Some(hit_block_idx) = self.index_of(block_id) {
+            let hit_block = &mut self.blocks[hit_block_idx];
             let res = Some(hit_block.modified);
-            hit_block.block_id_with_v = 0;
+            self.tags[hit_block_idx] = 0;
             hit_block.ts = 0;
 
             if self.recent_evict_ts < ts {
@@ -291,7 +326,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         }
 
         // otherwise, we replace the oldest block.
-        oldest_block.block_id_with_v = block_id_with_v;
+        self.tags[minimal_index] = block_id_with_v;
         oldest_block.modified = is_modified;
         oldest_block.ts = ts;
         oldest_block.last_accessor = core_id;
@@ -393,11 +428,15 @@ fn minimum_can_find_invalid() {
     assert_eq!(
         set.blocks[0],
         SharedCacheBlock {
-            block_id_with_v: 9 << 1 | 1,
             ts: ts,
             modified: false,
             last_accessor: 0
         }
+    );
+
+    assert_eq!(
+        set.tags[0],
+        9 << 1 | 1
     );
 
     ts += 1;
@@ -408,12 +447,16 @@ fn minimum_can_find_invalid() {
     assert_eq!(
         set.blocks[1],
         SharedCacheBlock {
-            block_id_with_v: 10 << 1 | 1,
             ts: ts,
             modified: false,
             last_accessor: 0
         }
-    )
+    );
+
+    assert_eq!(
+        set.tags[1],
+        10 << 1 | 1
+    );
 }
 
 #[test]

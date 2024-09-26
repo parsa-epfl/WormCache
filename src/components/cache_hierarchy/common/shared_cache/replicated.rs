@@ -44,17 +44,19 @@ impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCL
 {
     fn fold(&self, other: &Self) -> Self {
         // take the two arrays, combine them, and sort them by the timestamp. Only keel the elements with highest timestamp.
-        let mut imm: Vec<_> = self.blocks.iter().chain(other.blocks.iter()).collect();
-
+        let mut imm: Vec<_> = 
+            self.tags.iter().zip(self.blocks.iter()).chain(other.tags.iter().zip(other.blocks.iter())).collect();
+        
         // keep the elements with the highest timestamp.
-        imm.sort_by(|a, b| b.ts.cmp(&a.ts));
+        imm.sort_by(|a, b| b.1.ts.cmp(&a.1.ts));
 
         // keep the first WAY elements.
         imm.truncate(WAY);
 
         // keep the first WAY elements.
         Self {
-            blocks: std::array::from_fn(|i| (*imm[i]).clone()),
+            tags: std::array::from_fn(|i| *imm[i].0),
+            blocks: std::array::from_fn(|i| (imm[i].1).clone()),
             touched_count: usize::min(self.touched_count + other.touched_count, WAY),
             recent_evict_ts: 0,
             recent_evict_vts: 0,
@@ -180,18 +182,18 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             .blocks
             .iter()
             .map(|entry| {
-                let mut sorted_lines: Vec<_> = entry.blocks.iter().collect();
-                sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
+                let mut sorted_lines: Vec<_> = entry.tags.iter().zip(entry.blocks.iter()).collect();
+                sorted_lines.sort_by(|a, b| a.1.ts.cmp(&b.1.ts));
 
                 sorted_lines
                     .iter()
                     .filter_map(|block| {
-                        if block.block_id_with_v & 1 == 0 {
+                        if block.0 & 1 == 0 {
                             return None;
                         }
                         Some(SerializedSharedCacheBlock {
-                            tag: (block.block_id_with_v >> 1) >> log2_set,
-                            dirty: block.modified,
+                            tag: (block.0 >> 1) >> log2_set,
+                            dirty: block.1.modified,
                             writable: true,
                         })
                     })

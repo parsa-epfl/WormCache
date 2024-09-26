@@ -227,22 +227,22 @@ impl<
                 .poke(block_id);
 
             if let Some(i_line) = is_i {
-                assert!(i_line.block_id() == block_id);
-                assert!(i_line.is_instruction());
-                assert!(!i_line.is_modified());
+                assert!(i_line.0 == block_id);
+                assert!(i_line.1.is_instruction());
+                assert!(!i_line.1.is_modified());
 
                 // alright, we check the data cache and make sure there is no modified copy.
                 if let Some(d_line) = is_d {
-                    assert!(d_line.block_id() == block_id);
-                    assert!(!d_line.is_instruction());
-                    assert!(!d_line.is_modified());
+                    assert!(d_line.0 == block_id);
+                    assert!(!d_line.1.is_instruction());
+                    assert!(!d_line.1.is_modified());
                 }
 
                 res.insert(core_id as u32, false);
             } else if let Some(d_line) = is_d {
-                assert!(d_line.block_id() == block_id);
-                assert!(!d_line.is_instruction());
-                res.insert(core_id as u32, d_line.is_modified());
+                assert!(d_line.0 == block_id);
+                assert!(!d_line.1.is_instruction());
+                res.insert(core_id as u32, d_line.1.is_modified());
 
                 continue;
             }

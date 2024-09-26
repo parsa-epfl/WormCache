@@ -76,11 +76,20 @@ pub const CACHE_LINE_SIZE: usize = 64;
 static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
 
 /**
+ * CACHE_SET_SIMD_SEARCH_LANE
+ * 
+ * The number of SIMD lanes for searching in the cache set.
+ * Please note that all caches' associativity should be a multiple of this number.
+ */
+pub const CACHE_SET_SIMD_SEARCH_LANE: usize = 4;
+
+/**
  * TLB_ASSO
  *
  * The associativity of the private & last-level TLB.
  */
 pub const TLB_ASSO: usize = 4;
+static_assertions::const_assert!(TLB_ASSO % CACHE_SET_SIMD_SEARCH_LANE == 0);
 
 /**
  * TLB_SET
@@ -107,6 +116,8 @@ pub const USE_UNIFIED_CACHE: bool = false;
  * This parameter is only used when the unified private cache is enabled.
  */
 pub const UNIFIED_PRI_CACHE_ASSO: usize = 8;
+static_assertions::const_assert!(UNIFIED_PRI_CACHE_ASSO % CACHE_SET_SIMD_SEARCH_LANE == 0);
+
 /**
  * PRI_CACHE_SET
  *
@@ -123,6 +134,7 @@ static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
  * This parameter is only used when the unified private cache is disabled.
  */
 pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
+static_assertions::const_assert!(HARVARD_PRI_I_CACHE_ASSO % CACHE_SET_SIMD_SEARCH_LANE == 0);
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -140,6 +152,7 @@ static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
  * This parameter is only used when the unified private cache is disabled.
  */
 pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
+static_assertions::const_assert!(HARVARD_PRI_D_CACHE_ASSO % CACHE_SET_SIMD_SEARCH_LANE == 0);
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -156,6 +169,7 @@ static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
  * The associativity of the shared cache for traffic recording.
  */
 pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1KB.
+static_assertions::const_assert!(SHARED_CACHE_ASSO % CACHE_SET_SIMD_SEARCH_LANE == 0);
 
 /**
  * SHARED_CACHE_SET

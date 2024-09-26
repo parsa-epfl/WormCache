@@ -236,18 +236,18 @@ impl<
             .iter()
             .map(|entry| {
                 let entry = entry.inner();
-                let mut sorted_lines: Vec<_> = entry.blocks.iter().collect();
-                sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
+                let mut sorted_lines: Vec<_> = entry.tags.iter().zip(entry.blocks.iter()).collect();
+                sorted_lines.sort_by(|a, b| a.1.ts.cmp(&b.1.ts));
 
                 sorted_lines
                     .iter()
                     .filter_map(|block| {
-                        if block.block_id_with_v & 1 == 0 {
+                        if block.0 & 1 == 0 {
                             return None;
                         }
                         Some(SerializedSharedCacheBlock {
-                            tag: (block.block_id_with_v >> 1) >> log2_set,
-                            dirty: block.modified,
+                            tag: (block.0 >> 1) >> log2_set,
+                            dirty: block.1.modified,
                             writable: true,
                         })
                     })

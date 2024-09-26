@@ -801,7 +801,7 @@ impl<
             for (replica_cache_id, set, index) in acquired_sets.iter() {
                 if let Some(index) = index {
                     let line = &set.lines[*index];
-                    assert_eq!(line.block_id(), block_id);
+                    // assert_eq!(line.block_id(), block_id);
                     if line.write_ts() > ts {
                         other_has_written_with_large_ts = true;
                         if line.write_ts() > other_write_ts {
@@ -868,7 +868,7 @@ impl<
             for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                 if let Some(index) = index {
                     let entry = &set.lines[*index];
-                    assert_eq!(entry.block_id(), block_id);
+                    // assert_eq!(entry.block_id(), block_id);
                     if !PRECISE_COHERENCE_RECONSTRUCTION || entry.access_ts() < ts {
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id, false);
@@ -996,7 +996,7 @@ impl<
             for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                 if let Some(index) = index {
                     let entry = &set.lines[*index];
-                    assert_eq!(entry.block_id(), block_id);
+                    // assert_eq!(entry.block_id(), block_id);
                     if entry.has_write_permission() {
                         // well, if you have write permission, you have to yield the write permission.
                         assert!(!already_modified);

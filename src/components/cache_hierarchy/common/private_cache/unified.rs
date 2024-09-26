@@ -181,8 +181,8 @@ impl<
                 .poke(block_id);
 
             if let Some(d_line) = is_d {
-                assert!(d_line.block_id() == block_id);
-                res.insert(core_id as u32, d_line.is_modified());
+                assert!(d_line.0 == block_id);
+                res.insert(core_id as u32, d_line.1.is_modified());
             }
         }
 
