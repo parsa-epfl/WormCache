@@ -192,6 +192,8 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                         .as_bytes(),
                     )
                     .unwrap();
+
+                std::thread::sleep(std::time::Duration::from_secs(10));
             }
         });
     }
