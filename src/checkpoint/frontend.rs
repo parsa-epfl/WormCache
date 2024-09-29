@@ -155,8 +155,8 @@ struct FlexusFetchUnit {
 impl FlexusFetchUnit {
     pub fn export(self, folder_name: &String, flexus_configuration: &FlexusParameter) {
         for (core_id, unit) in self.private_units.into_iter().enumerate() {
-            let file = std::fs::File::create(format!("{}/{:03}-bpred.json", folder_name, core_id))
-                .unwrap();
+            let file_name = format!("{}/{:03}-bpred.json", folder_name, core_id);
+            let file = std::fs::File::create(&file_name).unwrap();
             serde_json::to_writer(
                 file,
                 &json!({
@@ -165,6 +165,7 @@ impl FlexusFetchUnit {
                 }),
             )
             .unwrap();
+            println!("Core {}'s fetch unit is exported to {}", core_id, file_name);
         }
     }
 }
@@ -188,6 +189,10 @@ pub fn process_frontend(
         .collect::<Vec<String>>();
 
     assert_eq!(frontend_checkpoint.len(), 1);
+    println!(
+        "Frontend checkpoint is detected. Filename: {}",
+        frontend_checkpoint[0]
+    );
 
     let file =
         std::fs::File::open(format!("{}/{}", checkpoint_folder, frontend_checkpoint[0])).unwrap();

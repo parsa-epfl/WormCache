@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    checkpoint::FlexusParameter,
+    checkpoint::{FlexusDirectoryType, FlexusParameter},
     components::cache_hierarchy::common::{
         HarvardPerCorePrivateCacheSerdeHelper, PrivateCacheLine, PrivateCacheSet,
         UnifiedPerCorePrivateCacheSerdeHelper,
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub struct BackReferencedEntry {
-    sharers: [bool; 256],
+    sharers: [bool; 128],
     ts: u64,
     anti_reference: Vec<(usize, usize, usize, usize)>,
 }
@@ -65,18 +65,20 @@ fn resize_private_cache(
     (new_cache, evicted_lines)
 }
 
+#[allow(dead_code)]
 pub fn resize_directory(
     infinite_directory: FxHashMap<u64, BackReferencedEntry>,
-    flexus: &FlexusParameter,
+    directory_set: usize,
+    directory_associativity: usize,
     harvard: &mut Vec<HarvardPerCorePrivateCacheSerdeHelper>,
     evicted_cache_line: &mut FxHashMap<u64, (PrivateCacheLine, u32)>,
 ) -> Vec<Vec<ExportedDirectoryEntry>> {
     let mut res: Vec<Vec<(u64, BackReferencedEntry)>> =
-        (0..flexus.directory_sets).map(|_| vec![]).collect();
+        (0..directory_set).map(|_| vec![]).collect();
 
     // Step 1: collect the directory entries.
     for (tag, entry) in infinite_directory {
-        let directory_set_idx = tag as usize % flexus.directory_sets;
+        let directory_set_idx = tag as usize % directory_set;
         let directory_set = &mut res[directory_set_idx];
         directory_set.push((tag, entry));
     }
@@ -86,58 +88,61 @@ pub fn resize_directory(
         .map(|mut set| {
             set.sort_by(|a, b| b.1.ts.cmp(&a.1.ts));
 
-            for evicted_entry in set.drain(flexus.directory_associativity..) {
-                let mut line_to_evict = PrivateCacheLine {
-                    block_id_with_v: (evicted_entry.0 << 1 | 1),
-                    ts: 0,
-                    write_ts: 0,
-                    is_instruction: false,
-                    writeable: false,
-                    modified: false,
-                    access_v_ts: 0,
-                    write_v_ts: 0,
-                };
-                let mut owner = 0;
-
-                for (owner_id, cache_id, set_idx, way_idx) in evicted_entry.1.anti_reference {
-                    let cache = if cache_id == 0 {
-                        &mut harvard[owner_id].i_cache
-                    } else {
-                        &mut harvard[owner_id].d_cache
+            if directory_associativity <= set.len() {
+                for evicted_entry in set.drain(directory_associativity..) {
+                    let mut line_to_evict = PrivateCacheLine {
+                        block_id_with_v: (evicted_entry.0 << 1 | 1),
+                        ts: 0,
+                        write_ts: 0,
+                        is_instruction: false,
+                        writeable: false,
+                        modified: false,
+                        access_v_ts: 0,
+                        write_v_ts: 0,
                     };
+                    let mut owner = 0;
 
-                    let line = &mut cache[set_idx].lines[way_idx];
+                    for (owner_id, cache_id, set_idx, way_idx) in evicted_entry.1.anti_reference {
+                        let cache = if cache_id == 0 {
+                            &mut harvard[owner_id].i_cache
+                        } else {
+                            &mut harvard[owner_id].d_cache
+                        };
 
-                    // aggregate the line information to the evicted_line.
-                    assert!(line_to_evict.block_id() == evicted_entry.0);
-                    assert!(line_to_evict.block_id() == line.block_id());
+                        let line = &mut cache[set_idx].lines[way_idx];
 
-                    if line.ts > line_to_evict.ts {
-                        owner = owner_id as u32;
-                    }
+                        // aggregate the line information to the evicted_line.
+                        assert!(line_to_evict.block_id() == evicted_entry.0);
+                        assert!(line_to_evict.block_id() == line.block_id());
 
-                    line_to_evict.ts = line_to_evict.ts.max(line.ts);
-                    line_to_evict.write_ts = line_to_evict.write_ts.max(line.write_ts);
-                    line_to_evict.writeable |= line.writeable;
-                    line_to_evict.modified |= line.modified;
-                    line_to_evict.access_v_ts = line_to_evict.access_v_ts.max(line.ts);
-                    line_to_evict.write_v_ts = line_to_evict.write_v_ts.max(line.write_ts);
-
-                    // invalid the line
-                    line.ts = 0;
-                    line.write_ts = 0;
-                    line.block_id_with_v = 0;
-                }
-
-                match evicted_cache_line.get_mut(&line_to_evict.block_id()) {
-                    Some(line) => {
-                        // keep the one that has the latest ts.
-                        if line.0.ts < line_to_evict.ts {
-                            *line = (line_to_evict, owner);
+                        if line.ts > line_to_evict.ts {
+                            owner = owner_id as u32;
                         }
+
+                        line_to_evict.ts = line_to_evict.ts.max(line.ts);
+                        line_to_evict.write_ts = line_to_evict.write_ts.max(line.write_ts);
+                        line_to_evict.writeable |= line.writeable;
+                        line_to_evict.modified |= line.modified;
+                        line_to_evict.access_v_ts = line_to_evict.access_v_ts.max(line.ts);
+                        line_to_evict.write_v_ts = line_to_evict.write_v_ts.max(line.write_ts);
+
+                        // invalid the line
+                        line.ts = 0;
+                        line.write_ts = 0;
+                        line.block_id_with_v = 0;
                     }
-                    None => {
-                        evicted_cache_line.insert(line_to_evict.block_id(), (line_to_evict, owner));
+
+                    match evicted_cache_line.get_mut(&line_to_evict.block_id()) {
+                        Some(line) => {
+                            // keep the one that has the latest ts.
+                            if line.0.ts < line_to_evict.ts {
+                                *line = (line_to_evict, owner);
+                            }
+                        }
+                        None => {
+                            evicted_cache_line
+                                .insert(line_to_evict.block_id(), (line_to_evict, owner));
+                        }
                     }
                 }
             }
@@ -148,6 +153,18 @@ pub fn resize_directory(
                     sharers: entry.1.sharers.to_vec(),
                 })
                 .collect()
+        })
+        .collect()
+}
+
+fn render_infinite_directory(
+    infinite_directory: FxHashMap<u64, BackReferencedEntry>,
+) -> Vec<ExportedDirectoryEntry> {
+    infinite_directory
+        .into_iter()
+        .map(|(tag, entry)| ExportedDirectoryEntry {
+            tag,
+            sharers: entry.sharers.to_vec(),
         })
         .collect()
 }
@@ -197,7 +214,7 @@ impl FlexusPrivateCacheCheckpointHelper {
                             let directory_entry = infinite_directory
                                 .entry(line.block_id())
                                 .or_insert_with(|| BackReferencedEntry {
-                                    sharers: [false; 256],
+                                    sharers: [false; 128],
                                     ts: line.ts,
                                     anti_reference: vec![],
                                 });
@@ -241,15 +258,19 @@ impl FlexusPrivateCacheCheckpointHelper {
             }
         }
 
-        // Now, resize the directory.
-        let directory = resize_directory(
-            infinite_directory,
-            &flexus_configuration,
-            &mut result.caches,
-            &mut result.evicted_cache_lines,
-        );
-
-        result.directory = directory;
+        result.directory = match flexus_configuration.directory {
+            FlexusDirectoryType::Infinite => vec![render_infinite_directory(infinite_directory)],
+            FlexusDirectoryType::Standard {
+                sets,
+                associativity,
+            } => resize_directory(
+                infinite_directory,
+                sets,
+                associativity,
+                &mut result.caches,
+                &mut result.evicted_cache_lines,
+            ),
+        };
 
         result
     }
@@ -377,16 +398,31 @@ impl ExportedDirectoryEntry {
 
 fn serialize_a_directory(
     directory: &Vec<Vec<ExportedDirectoryEntry>>,
-    asso: usize,
+    directory_type: FlexusDirectoryType,
 ) -> serde_json::Value {
-    json!({
-        "associativity": asso,
-        "tags": directory
-            .into_iter()
-            .map(|set| set.iter().map(|entry| entry.to_flexus_directory_entry()).collect::<Vec<_>>())
-            .collect::<Vec<_>>()
-        }
-    )
+    match directory_type {
+        FlexusDirectoryType::Infinite => serde_json::to_value(
+            directory[0]
+                .iter()
+                .map(|entry| entry.to_flexus_directory_entry())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap(),
+        FlexusDirectoryType::Standard {
+            sets: _,
+            associativity: _,
+        } => serde_json::to_value(
+            directory
+                .iter()
+                .map(|set| {
+                    set.iter()
+                        .map(|entry| entry.to_flexus_directory_entry())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>(),
+        )
+        .unwrap(),
+    }
 }
 
 impl FlexusPrivateCacheCheckpointHelper {
@@ -395,7 +431,7 @@ impl FlexusPrivateCacheCheckpointHelper {
         for (core_id, cache) in self.caches.iter().enumerate() {
             let icache_path = format!("{}/{:03}-L1i.json", folder_name, core_id);
             std::fs::write(
-                icache_path,
+                &icache_path,
                 serde_json::to_string(&serialize_a_cache(
                     &cache.i_cache,
                     self.flexus_configuration.l1i_sets,
@@ -404,10 +440,14 @@ impl FlexusPrivateCacheCheckpointHelper {
                 .unwrap(),
             )
             .unwrap();
+            println!(
+                "Core {}'s L1i cache is exported to {}",
+                core_id, icache_path
+            );
 
             let dcache_path = format!("{}/{:03}-L1d.json", folder_name, core_id);
             std::fs::write(
-                dcache_path,
+                &dcache_path,
                 serde_json::to_string(&serialize_a_cache(
                     &cache.d_cache,
                     self.flexus_configuration.l1d_sets,
@@ -415,19 +455,22 @@ impl FlexusPrivateCacheCheckpointHelper {
                 ))
                 .unwrap(),
             )
-            .unwrap()
+            .unwrap();
+            println!("Core {}'s L1d is exported to {}", core_id, dcache_path);
         }
 
         // Export the directory.
         let directory_path = format!("{}/sys-L2-dir.json", folder_name);
         std::fs::write(
-            directory_path,
+            &directory_path,
             serde_json::to_string(&serialize_a_directory(
                 &self.directory,
-                self.flexus_configuration.directory_associativity,
+                self.flexus_configuration.directory.clone(),
             ))
             .unwrap(),
         )
         .unwrap();
+
+        println!("Directory is exported to {}", directory_path);
     }
 }

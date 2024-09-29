@@ -8,6 +8,13 @@ pub use mmu::process_mmus;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum FlexusDirectoryType {
+    Infinite,
+    Standard { sets: usize, associativity: usize },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FlexusParameter {
     pub l1i_sets: usize,
     pub l1i_associativity: usize,
@@ -24,8 +31,7 @@ pub struct FlexusParameter {
     pub l2_sets: usize,
     pub l2_associativity: usize,
 
-    pub directory_sets: usize,
-    pub directory_associativity: usize,
+    pub directory: FlexusDirectoryType,
 
     pub btb_sets: usize,
     pub btb_associativity: usize,

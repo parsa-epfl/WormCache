@@ -128,5 +128,10 @@ impl SingleSharedCacheSerdeHelper {
             }),
         )
         .unwrap();
+
+        println!(
+            "Shared cache is exported to {}/sys-L2-cache.json",
+            folder_name
+        );
     }
 }

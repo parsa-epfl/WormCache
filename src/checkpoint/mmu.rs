@@ -149,9 +149,8 @@ impl FlexusMMU {
         assert_eq!(self.configuration.dtlb_sets, 1);
 
         for (core_id, itlb) in self.itlbs.iter().enumerate() {
-            let mut file =
-                std::fs::File::create(format!("{}/{:03}-mmu-itlb.json", folder_name, core_id))
-                    .unwrap();
+            let file_name = format!("{}/{:03}-mmu-itlb.json", folder_name, core_id);
+            let mut file = std::fs::File::create(&file_name).unwrap();
 
             serde_json::to_writer(
                 &mut file,
@@ -162,9 +161,10 @@ impl FlexusMMU {
             )
             .unwrap();
 
-            let mut file =
-                std::fs::File::create(format!("{}/{:03}-mmu-dtlb.json", folder_name, core_id))
-                    .unwrap();
+            println!("Core {}'s ITLB is exported to {}", core_id, file_name);
+
+            let file_name = format!("{}/{:03}-mmu-dtlb.json", folder_name, core_id);
+            let mut file = std::fs::File::create(&file_name).unwrap();
 
             serde_json::to_writer(
                 &mut file,
@@ -174,6 +174,8 @@ impl FlexusMMU {
                 }),
             )
             .unwrap();
+
+            println!("Core {}'s DTLB is exported to {}", core_id, file_name);
         }
     }
 }
@@ -201,6 +203,10 @@ pub fn process_mmus(
         .collect::<Vec<String>>();
 
     assert_eq!(mmu_checkpoint.len(), 1);
+    println!(
+        "MMU checkpoint is detected. Filename: {}",
+        mmu_checkpoint[0]
+    );
 
     let file = std::fs::File::open(format!("{}/{}", checkpoint_folder, mmu_checkpoint[0])).unwrap();
 

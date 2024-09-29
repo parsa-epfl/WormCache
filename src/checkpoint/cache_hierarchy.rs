@@ -20,7 +20,7 @@ pub fn process_cache_hierarchy(
         .filter_map(|entry| {
             let entry = entry.unwrap();
             let file_name = entry.file_name().into_string().unwrap();
-            if file_name.contains("harvard.json.zstd") {
+            if file_name.contains("harvard") && file_name.ends_with(".json.zstd") {
                 Some(file_name)
             } else {
                 None
@@ -33,7 +33,7 @@ pub fn process_cache_hierarchy(
         .filter_map(|entry| {
             let entry = entry.unwrap();
             let file_name = entry.file_name().into_string().unwrap();
-            if file_name.contains("unified.json.zstd") {
+            if file_name.contains("unified") && file_name.ends_with(".json.zstd") {
                 Some(file_name)
             } else {
                 None
@@ -108,6 +108,10 @@ pub fn process_cache_hierarchy(
         .collect::<Vec<String>>();
 
     assert!(shared_cache_checkpoints.len() == 1); // only one shared cache is reserved.
+    println!(
+        "Shared cache is detected. Filename: {}",
+        shared_cache_checkpoints[0]
+    );
 
     let file = std::fs::File::open(format!(
         "{}/{}",
