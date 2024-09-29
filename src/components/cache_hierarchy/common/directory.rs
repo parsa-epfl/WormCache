@@ -40,7 +40,6 @@ use serde::Serialize;
 use zstd::{Decoder, Encoder};
 
 use crate::parameter;
-use crate::parameter::CORE_COUNT;
 use crate::util;
 
 const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
@@ -222,75 +221,5 @@ impl<const SET: usize> Directory<SET> {
 
         let helper: DirectorySerdeHelper<SET> = serde_json::from_reader(file).unwrap();
         *self = Self::from_serialize_helper(helper);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug)]
-pub struct SerializedDirectoryEntry {
-    pub tag: u64,
-    pub sharers: SharerList,
-}
-
-use serde::ser::{SerializeStruct, Serializer};
-
-impl Serialize for SerializedDirectoryEntry {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("SerializedDirectoryEntry", 2)?;
-        state.serialize_field("tag", &self.tag)?;
-
-        let mut sharer_info = vec![];
-        for core_id in 0..parameter::CORE_COUNT {
-            if parameter::USE_UNIFIED_CACHE {
-                sharer_info.push(self.sharers[core_id]);
-            } else {
-                // it is a hack.
-                sharer_info.push(self.sharers[core_id * 2] || self.sharers[core_id * 2 + 1]);
-            }
-        }
-
-        assert!(sharer_info.len() == CORE_COUNT);
-
-        state.serialize_field(
-            "sharers",
-            &sharer_info
-                .into_iter()
-                .rev()
-                .map(|b| if b { "1" } else { "0" })
-                .collect::<String>(),
-        )?;
-        state.end()
-    }
-}
-
-impl<const SET: usize> Directory<SET> {
-    pub fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
-        let file = std::fs::File::create(format!("{}/sys-L2-dir.json", snapshot_folder)).unwrap();
-
-        let entries = self
-            .entries
-            .iter()
-            .flat_map(|set| {
-                let set = set.lock();
-                set.entries
-                    .iter()
-                    .filter_map(|(tag, entry)| {
-                        if entry.sharers.not_any() {
-                            return None;
-                        }
-                        Some(SerializedDirectoryEntry {
-                            tag: (*tag) * (SET as u64) + set.index as u64,
-                            sharers: entry.sharers,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-
-        serde_json::to_writer(&file, &entries).unwrap();
     }
 }

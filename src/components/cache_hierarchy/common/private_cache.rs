@@ -87,9 +87,6 @@ pub trait PrivateCaches {
     fn find_cache_info_by_cache_id(id: usize) -> (u32, bool); // (core_id, is_instruction_cache)
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize;
 
-    // This function is for saving the snapshot of the private cache.
-    fn dump_flexus_checkpoint(&self, snapshot_folder: &str);
-
     fn information() -> String;
 
     // This function is for printing diagnose information. It is used for debugging.
@@ -101,10 +98,12 @@ pub trait PrivateCaches {
     fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
 }
 
+pub use havard::HarvardPerCorePrivateCacheSerdeHelper;
 pub use havard::ParallelHarvardPrivateCache;
 pub use havard::SerialHarvardPrivateCache;
 
 pub use unified::ParallelUnifiedPrivateCache;
 pub use unified::SerialUnifiedPrivateCache;
+pub use unified::UnifiedPerCorePrivateCacheSerdeHelper;
 
 use super::directory::SharerList;

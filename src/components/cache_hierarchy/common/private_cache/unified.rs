@@ -30,7 +30,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use super::super::CCell;
 
@@ -53,8 +52,8 @@ pub struct UnifiedPerCorePrivateCache<
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct UnifiedPerCorePrivateCacheSerdeHelper<const SET: usize, const ASSO: usize> {
-    cache: Vec<PrivateCacheSet>,
+pub struct UnifiedPerCorePrivateCacheSerdeHelper {
+    pub cache: Vec<PrivateCacheSet>,
 }
 
 impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: usize>
@@ -71,7 +70,7 @@ impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: 
         &self.cache[set_id]
     }
 
-    fn to_serialize_helper(&self) -> UnifiedPerCorePrivateCacheSerdeHelper<SET, ASSO> {
+    fn to_serialize_helper(&self) -> UnifiedPerCorePrivateCacheSerdeHelper {
         let cache = self
             .cache
             .iter()
@@ -81,7 +80,7 @@ impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: 
         UnifiedPerCorePrivateCacheSerdeHelper { cache }
     }
 
-    fn from_serialize_helper(helper: UnifiedPerCorePrivateCacheSerdeHelper<SET, ASSO>) -> Self {
+    fn from_serialize_helper(helper: UnifiedPerCorePrivateCacheSerdeHelper) -> Self {
         let cache = helper
             .cache
             .into_iter()
@@ -201,30 +200,6 @@ impl<
         core_id as usize
     }
 
-    #[inline]
-    fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
-        for core_id in 0..CORE_COUNT {
-            let serialized_cache = self.caches[core_id]
-                .cache
-                .iter()
-                .map(|set| set.inner().serialize(SET))
-                .collect::<Vec<_>>();
-
-            let private_cache_path = format!("{}/core_{}_private.json", snapshot_folder, core_id);
-            std::fs::write(
-                private_cache_path,
-                serde_json::to_string(&json!(
-                    {
-                        "associativity": ASSO,
-                        "tags": serialized_cache
-                    }
-                ))
-                .unwrap(),
-            )
-            .unwrap();
-        }
-    }
-
     fn information() -> String {
         format!(
             "Type: UnifiedPrivateCache, Core Count: {}, Set: {}, Associativity: {}, Is Parallel: {}",
@@ -307,7 +282,7 @@ impl<
         let file = file.unwrap();
         let file = Decoder::new(file).unwrap();
 
-        let helper: Vec<UnifiedPerCorePrivateCacheSerdeHelper<SET, ASSO>> =
+        let helper: Vec<UnifiedPerCorePrivateCacheSerdeHelper> =
             serde_json::from_reader(file).unwrap();
 
         for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {

@@ -102,8 +102,6 @@ pub trait SharedCache {
 
     fn warmed_slots_count(&self) -> usize;
 
-    fn dump_flexus_checkpoint(&self, snapshot_name: &str);
-
     fn information() -> String;
 
     fn dump_access_frequency(&self, file_name: &str);
@@ -135,6 +133,7 @@ pub use replicated::ReplicatedSharedCache;
 pub use single::ParallelSingleSharedCache;
 pub use single::SerialSingleSharedCache;
 pub use single::SingleSharedCache;
+pub use single::SingleSharedCacheSerdeHelper;
 
 use super::CacheAccessType;
 

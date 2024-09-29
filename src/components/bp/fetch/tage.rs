@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 // bits per counter in the global history tables
-const CBITS: usize = 3;
+pub const CBITS: usize = 3;
 
 // the default predictor
 // by default a 63.5  Kbits predictor, featuring 7 tagged components and a base bimodal component:
@@ -51,13 +51,13 @@ const CBITS: usize = 3;
 // 7.5 Kbits for T3 and T4
 // 7 Kbits for T5 and T6
 
-const LOGB: usize = 13;
-const NHIST: usize = 7;
+pub const LOGB: usize = 13;
+pub const NHIST: usize = 7;
 // base 2 logarithm of number of entries  on each tagged component
-const LOGG: usize = LOGB - 4;
+pub const LOGG: usize = LOGB - 4;
 
 // Total width of an entry in the tagged table with the longest history length
-const TBITS: usize = 12;
+pub const TBITS: usize = 12;
 
 // AS: we use Geometric history length
 // AS: maximum global history length used and minimum history length
@@ -72,9 +72,9 @@ const TBITS: usize = 12;
 // print(HISTORIES)
 // ```
 // This logic should be able to purely implemented in Rust after constant floating point arithmetic is stabilized.
-const MAXHIST: usize = 131;
-const MINHIST: usize = 5;
-const HISTORIES: [usize; NHIST] = [130, 76, 44, 26, 15, 9, 5];
+pub const MAXHIST: usize = 131;
+pub const MINHIST: usize = 5;
+pub const HISTORIES: [usize; NHIST] = [130, 76, 44, 26, 15, 9, 5];
 
 type Address = u64;
 
@@ -169,23 +169,23 @@ pub struct TAGEPredictor {
 
     // 4 bits to determine whether newly allocated entries should be considered as
     // valid or not for delivering  the prediction
-    tick: i32,
-    phist: i32,
+    pub tick: i32,
+    pub phist: i32,
 
     // use a path history as for the OGEHL predictor
     #[serde_as(as = "[_; MAXHIST]")]
-    ghist: History,
+    pub ghist: History,
     #[serde_as(as = "[_; NHIST]")]
-    ch_i: [FoldedHistory; NHIST],
+    pub ch_i: [FoldedHistory; NHIST],
     #[serde_as(as = "[[_; NHIST]; 2]")]
-    ch_t: [[FoldedHistory; NHIST]; 2],
+    pub ch_t: [[FoldedHistory; NHIST]; 2],
     #[serde_as(as = "Box<[_; 1 << LOGB]>")]
-    btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
+    pub btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
     #[serde_as(as = "[Box<[_; 1 << LOGG]>; NHIST]")]
-    gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
+    pub gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
 
     // the seed for pseudo-random number generator
-    seed: i32,
+    pub seed: i32,
 }
 
 impl TAGEPredictor {
@@ -511,88 +511,5 @@ impl TAGEPredictor {
         self.update_history(pc, taken);
 
         BranchPredictorResult::NotActive
-    }
-}
-
-////// Serialization for QFlex
-#[derive(Serialize, Deserialize)]
-pub struct TAGEPredictorSerHelper {
-    #[serde(rename = "PWIN")]
-    pub pwin: i32,
-    #[serde(rename = "TICK")]
-    pub tick: i32,
-    #[serde(rename = "SEED")]
-    pub seed: i32,
-    #[serde(rename = "PHIST")]
-    pub phist: i32,
-    #[serde(rename = "GHIST")]
-    pub ghist: String,
-
-    #[serde(rename = "LOGB")]
-    pub logb: usize,
-    #[serde(rename = "NHIST")]
-    pub nhist: usize,
-    #[serde(rename = "LOGG")]
-    pub logg: usize,
-    #[serde(rename = "TBITS")]
-    pub tbits: usize,
-    #[serde(rename = "MAXHIST")]
-    pub maxhist: usize,
-    #[serde(rename = "MINHIST")]
-    pub minhist: usize,
-    #[serde(rename = "CBITS")]
-    pub cbits: usize,
-
-    pub btable: Vec<TAGEBiModalEntry>,
-    pub gtable: Vec<Vec<TAGEGlobalTableEntry>>,
-
-    pub ch_i: Vec<FoldedHistory>,
-    pub ch_t: Vec<Vec<FoldedHistory>>,
-
-    pub m: Vec<usize>,
-}
-
-use crate::components::FlexusCompatibleSerializer;
-
-impl FlexusCompatibleSerializer for TAGEPredictor {
-    type HelperType = TAGEPredictorSerHelper;
-
-    fn get_serialize_helper(&self) -> Self::HelperType {
-        TAGEPredictorSerHelper {
-            pwin: 0,
-            tick: self.tick,
-            seed: self.seed,
-            phist: self.phist,
-            ghist: self
-                .ghist
-                .iter()
-                .rev()
-                .map(|x| if *x { '1' } else { '0' })
-                .collect(),
-
-            logb: LOGB,
-            nhist: NHIST,
-            logg: LOGG,
-            tbits: TBITS,
-            maxhist: MAXHIST,
-            minhist: MINHIST,
-            cbits: CBITS,
-
-            btable: self.btable.iter().cloned().collect(),
-            gtable: self
-                .gtable
-                .iter()
-                .map(|x| x.iter().cloned().collect())
-                .collect(),
-
-            ch_i: self.ch_i.iter().cloned().collect(),
-            ch_t: self
-                .ch_t
-                .iter()
-                .map(|x| x.iter().cloned().collect())
-                .collect(),
-
-            m: HISTORIES.iter().copied().collect(),
-        }
     }
 }

@@ -33,14 +33,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PrivateCacheLine {
-    block_id_with_v: u64, // the last bit is the valid bit.
-    ts: u64,
-    write_ts: u64,
-    is_instruction: bool,
-    writeable: bool,
-    modified: bool,   // TODO: modified can be combined with write_ts.
-    access_v_ts: u64, // The timestamp is generated assuming all instructions take exactly 1ns.
-    write_v_ts: u64,
+    pub block_id_with_v: u64, // the last bit is the valid bit.
+    pub ts: u64,
+    pub write_ts: u64,
+    pub is_instruction: bool,
+    pub writeable: bool,
+    pub modified: bool,   // TODO: modified can be combined with write_ts.
+    pub access_v_ts: u64, // The timestamp is generated assuming all instructions take exactly 1ns.
+    pub write_v_ts: u64,
 }
 
 impl PrivateCacheLine {
@@ -82,6 +82,11 @@ impl PrivateCacheLine {
     #[inline]
     pub fn write_virtual_timestamp(&self) -> u64 {
         self.write_v_ts
+    }
+
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        self.block_id_with_v & 0x1 == 1
     }
 }
 
@@ -361,38 +366,6 @@ impl PrivateCacheSet {
     #[inline]
     pub fn is_fully_touched(&self) -> bool {
         self.touched_count == self.lines.len()
-    }
-}
-
-// Serialization function of the cache line.
-
-#[derive(Serialize)]
-pub struct SerializedCacheLine {
-    tag: u64,
-    writable: bool,
-    dirty: bool,
-}
-
-impl PrivateCacheSet {
-    pub fn serialize(&self, number_of_set: usize) -> Vec<SerializedCacheLine> {
-        // 1. sort the line by its timestamp. smaller timestamp goes first
-        // 2. filter out the invalid lines.
-        // 3. tag should be removed with the valid bit and the index bit.
-
-        let mut sorted_lines = self.lines.clone();
-        sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
-
-        let set_bits = (number_of_set as u64).trailing_zeros();
-
-        return sorted_lines
-            .iter()
-            .filter(|line| line.block_id_with_v & 0x1 == 1)
-            .map(|line| SerializedCacheLine {
-                tag: (line.block_id_with_v >> 1) >> set_bits,
-                writable: line.modified,
-                dirty: line.modified,
-            })
-            .collect();
     }
 }
 

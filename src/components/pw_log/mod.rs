@@ -163,8 +163,6 @@ impl Plugin for PageWalkLoggerPlugin {
         }
     }
 
-    fn dump_snapshot(_: &str) {}
-
     fn serialize(_: &str) {}
 
     fn deserialize(_: &str) {}

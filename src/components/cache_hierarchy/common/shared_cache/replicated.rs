@@ -32,17 +32,16 @@
 use super::super::CacheAccessType;
 
 use super::{
-    statistics::SharedCacheSetStatistics, SerializedSharedCacheBlock, SharedCache,
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VtsViolationResult,
+    statistics::SharedCacheSetStatistics, SharedCache, SharedCacheLookupAndInsertResult,
+    SharedCacheLookupResult, SharedCacheSet, VtsViolationResult,
 };
 
-use serde_json::json;
 use std::cell::UnsafeCell;
 
 impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCLUSIVE: bool>
     SharedCacheSet<WAY, SET, EXCLUSIVE, S>
 {
-    fn fold(&self, other: &Self) -> Self {
+    fn _fold(&self, other: &Self) -> Self {
         // take the two arrays, combine them, and sort them by the timestamp. Only keel the elements with highest timestamp.
         let mut imm: Vec<_> = self.blocks.iter().chain(other.blocks.iter()).collect();
 
@@ -170,52 +169,52 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         }
     }
 
-    fn dump_snapshot(&self, snapshot_name: &str) {
-        let mut file =
-            std::fs::File::create(format!("{}/shared_cache.json", snapshot_name)).unwrap();
+    // fn dump_snapshot(&self, snapshot_name: &str) {
+    //     let mut file =
+    //         std::fs::File::create(format!("{}/shared_cache.json", snapshot_name)).unwrap();
 
-        let log2_set = SET.trailing_zeros();
+    //     let log2_set = SET.trailing_zeros();
 
-        let entries = self
-            .blocks
-            .iter()
-            .map(|entry| {
-                let mut sorted_lines: Vec<_> = entry.blocks.iter().collect();
-                sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
+    //     let entries = self
+    //         .blocks
+    //         .iter()
+    //         .map(|entry| {
+    //             let mut sorted_lines: Vec<_> = entry.blocks.iter().collect();
+    //             sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
 
-                sorted_lines
-                    .iter()
-                    .filter_map(|block| {
-                        if block.block_id_with_v & 1 == 0 {
-                            return None;
-                        }
-                        Some(SerializedSharedCacheBlock {
-                            tag: (block.block_id_with_v >> 1) >> log2_set,
-                            dirty: block.modified,
-                            writable: true,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
+    //             sorted_lines
+    //                 .iter()
+    //                 .filter_map(|block| {
+    //                     if block.block_id_with_v & 1 == 0 {
+    //                         return None;
+    //                     }
+    //                     Some(SerializedSharedCacheBlock {
+    //                         tag: (block.block_id_with_v >> 1) >> log2_set,
+    //                         dirty: block.modified,
+    //                         writable: true,
+    //                     })
+    //                 })
+    //                 .collect::<Vec<_>>()
+    //         })
+    //         .collect::<Vec<_>>();
 
-        serde_json::to_writer(
-            &mut file,
-            &json!({
-                "associativity": WAY,
-                "tags": entries,
-            }),
-        )
-        .unwrap();
-    }
+    //     serde_json::to_writer(
+    //         &mut file,
+    //         &json!({
+    //             "associativity": WAY,
+    //             "tags": entries,
+    //         }),
+    //     )
+    //     .unwrap();
+    // }
 
-    fn fold(&self, other: &Self) -> Self {
+    fn _fold(&self, other: &Self) -> Self {
         return Self {
             blocks: self
                 .blocks
                 .iter()
                 .zip(other.blocks.iter())
-                .map(|(a, b)| a.fold(b))
+                .map(|(a, b)| a._fold(b))
                 .collect::<Vec<_>>()
                 .into_boxed_slice()
                 .try_into()
@@ -320,18 +319,6 @@ impl<
             access_type,
             is_os,
         )
-    }
-
-    fn dump_flexus_checkpoint(&self, snapshot_name: &str) {
-        // combine the result from all cores
-        let f = self
-            .blocks
-            .iter()
-            .fold(PrivateSharedCache::new(), |acc, x| {
-                acc.fold(unsafe { &*x.get() })
-            });
-
-        f.dump_snapshot(snapshot_name)
     }
 
     fn warmed_sets_count(&self) -> usize {

@@ -39,11 +39,9 @@ use super::super::CCell;
 
 use super::{
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
-    SerializedSharedCacheBlock, SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
-    SharedCacheSet, VtsViolationResult,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VtsViolationResult,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use spin::mutex::SpinMutex;
 
 use zstd::{Decoder, Encoder};
@@ -61,7 +59,7 @@ pub struct SingleSharedCache<
 }
 
 #[derive(Serialize, Deserialize)]
-struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
+pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
     blocks: Vec<SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics>>,
     warmed_sets: usize,
 }
@@ -223,46 +221,6 @@ impl<
                 entry.touched_count
             })
             .sum()
-    }
-
-    fn dump_flexus_checkpoint(&self, snapshot_name: &str) {
-        let mut file =
-            std::fs::File::create(format!("{}/sys-L2-cache.json", snapshot_name)).unwrap();
-
-        let log2_set = SET.trailing_zeros();
-
-        let entries = self
-            .blocks
-            .iter()
-            .map(|entry| {
-                let entry = entry.inner();
-                let mut sorted_lines: Vec<_> = entry.blocks.iter().collect();
-                sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
-
-                sorted_lines
-                    .iter()
-                    .filter_map(|block| {
-                        if block.block_id_with_v & 1 == 0 {
-                            return None;
-                        }
-                        Some(SerializedSharedCacheBlock {
-                            tag: (block.block_id_with_v >> 1) >> log2_set,
-                            dirty: block.modified,
-                            writable: true,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-
-        serde_json::to_writer(
-            &mut file,
-            &json!({
-                "associativity": WAY,
-                "tags": entries,
-            }),
-        )
-        .unwrap();
     }
 
     fn information() -> String {

@@ -199,13 +199,6 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
     }
 
     #[inline]
-    fn dump_snapshot(name: &str) {
-        unsafe {
-            (*PLUGIN).dump_flexus_checkpoint(name);
-        }
-    }
-
-    #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
         let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
 
