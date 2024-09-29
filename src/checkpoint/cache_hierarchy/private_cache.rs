@@ -47,7 +47,9 @@ fn resize_private_cache(
     // Step 2: Keep the first asso lines in each set.
     for set in new_cache.iter_mut() {
         set.sort_by(|a, b| b.ts.cmp(&a.ts));
-        evicted_lines.append(&mut set.drain(asso..).collect::<Vec<_>>());
+        if set.len() > asso {
+            evicted_lines.append(&mut set.drain(asso..).collect::<Vec<_>>());
+        }
     }
 
     // Step 3: Compose the new cache.
@@ -429,7 +431,7 @@ impl FlexusPrivateCacheCheckpointHelper {
     pub fn export(&self, folder_name: String) {
         // Export the caches.
         for (core_id, cache) in self.caches.iter().enumerate() {
-            let icache_path = format!("{}/{:03}-L1i.json", folder_name, core_id);
+            let icache_path = format!("{}/{:03}-ufetch-L1i.json", folder_name, core_id);
             std::fs::write(
                 &icache_path,
                 serde_json::to_string(&serialize_a_cache(
