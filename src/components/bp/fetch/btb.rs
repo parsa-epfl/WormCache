@@ -36,12 +36,12 @@ use serde_with::serde_as;
 
 use super::BranchPredictorResult;
 
-#[derive(Deserialize, Serialize)]
-struct BTBEntry {
-    tag: u64,
-    target: u64,
-    ts: u64, // zero means invalid.
-    branch_type: BranchType,
+#[derive(Deserialize, Serialize, Clone)]
+pub struct BTBEntry {
+    pub tag: u64,
+    pub target: u64,
+    pub ts: u64, // zero means invalid.
+    pub branch_type: BranchType,
 }
 
 #[serde_as]
@@ -113,60 +113,5 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         self.array[index][min_index].branch_type = result.branch_type;
 
         BranchPredictorResult::Mispredict
-    }
-}
-
-///// Serialization and Deserialization for QFlex.
-
-#[derive(Serialize, Deserialize)]
-pub struct BTBEntrySerializeHelper {
-    #[serde(rename = "PC")]
-    pc: u64,
-    target: u64,
-    #[serde(rename = "type")]
-    type_: u64,
-}
-
-use crate::components::FlexusCompatibleSerializer;
-
-impl FlexusCompatibleSerializer for BTBEntry {
-    type HelperType = BTBEntrySerializeHelper;
-
-    fn get_serialize_helper(&self) -> Self::HelperType {
-        BTBEntrySerializeHelper {
-            pc: self.tag,
-            target: self.target,
-            type_: self.branch_type as u64,
-        }
-    }
-}
-
-impl<const SET: usize, const ASSO: usize> FlexusCompatibleSerializer for BTB<SET, ASSO> {
-    type HelperType = Vec<Vec<BTBEntrySerializeHelper>>;
-
-    fn get_serialize_helper(&self) -> Self::HelperType {
-        self.array
-            .iter()
-            .map(|set| {
-                // set.iter()
-                //     .map(|entry| entry.get_serialize_helper())
-                //     .collect()
-                let mut res = vec![];
-
-                // filter and only keep the valid bit.
-                for entry in set.iter() {
-                    if entry.ts != 0 {
-                        res.push(entry);
-                    }
-                }
-
-                // sort by the timestamp. Small ts first.
-                res.sort_by_key(|entry| entry.ts);
-
-                res.into_iter()
-                    .map(|entry| entry.get_serialize_helper())
-                    .collect()
-            })
-            .collect()
     }
 }

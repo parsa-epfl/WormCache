@@ -30,7 +30,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use super::super::CCell;
 
@@ -56,9 +55,9 @@ pub struct HarvardPerCorePrivateCache<
 }
 
 #[derive(Serialize, Deserialize)]
-struct HarvardPerCorePrivateCacheSerdeHelper {
-    i_cache: Vec<PrivateCacheSet>,
-    d_cache: Vec<PrivateCacheSet>,
+pub struct HarvardPerCorePrivateCacheSerdeHelper {
+    pub i_cache: Vec<PrivateCacheSet>,
+    pub d_cache: Vec<PrivateCacheSet>,
 }
 
 impl<
@@ -259,53 +258,6 @@ impl<
     #[inline]
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize {
         core_id as usize * 2 + if is_instruction_cache { 0 } else { 1 }
-    }
-
-    #[inline]
-    fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
-        for core_id in 0..CORE_COUNT {
-            // instruction cache is stored in <core_id>_l1i.json
-            // data cache is stored in <core_id>_l1d.json
-
-            // serialize the instruction cache
-            let serialized_icache = self.caches[core_id]
-                .i_cache
-                .iter()
-                .map(|set| set.inner().serialize(I_SET))
-                .collect::<Vec<_>>();
-
-            // dump the instruction cache
-            let icache_path = format!("{}/{:03}-L1i.json", snapshot_folder, core_id);
-            std::fs::write(
-                icache_path,
-                serde_json::to_string(&json!({
-                    "associativity": I_ASSO,
-                    "tags": serialized_icache
-                }))
-                .unwrap(),
-            )
-            .unwrap();
-
-            // serialize the data cache
-
-            let serialized_dcache = self.caches[core_id]
-                .d_cache
-                .iter()
-                .map(|set| set.inner().serialize(D_SET))
-                .collect::<Vec<_>>();
-
-            // dump the data cache
-            let dcache_path = format!("{}/{:03}-L1d.json", snapshot_folder, core_id);
-            std::fs::write(
-                dcache_path,
-                serde_json::to_string(&json!({
-                    "associativity": D_ASSO,
-                    "tags": serialized_dcache
-                }))
-                .unwrap(),
-            )
-            .unwrap();
-        }
     }
 
     fn information() -> String {

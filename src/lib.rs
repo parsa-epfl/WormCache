@@ -32,6 +32,7 @@
 pub mod arch;
 pub mod parameter;
 
+pub mod checkpoint;
 pub mod components;
 mod qemu_api;
 mod util;
@@ -95,12 +96,6 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
     // create a folder for the name.
     std::fs::create_dir_all(name).unwrap();
     PluginList::serialize(name);
-
-    if parameter::DUMP_FLEXUS_CHECKPOINT {
-        let flexus_checkpoint_name = format!("{}-flexus", name);
-        std::fs::create_dir_all(&flexus_checkpoint_name).unwrap();
-        PluginList::dump_snapshot(&flexus_checkpoint_name);
-    }
 }
 
 #[no_mangle]
@@ -110,12 +105,7 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
 }
 
 #[no_mangle]
-unsafe extern "C" fn qemu_plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {
-    if parameter::DUMP_FLEXUS_CHECKPOINT {
-        std::fs::create_dir_all("unsaved").unwrap();
-        PluginList::dump_snapshot("unsaved");
-    }
-}
+unsafe extern "C" fn qemu_plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {}
 
 #[no_mangle]
 unsafe extern "C" fn qemu_plugin_install(

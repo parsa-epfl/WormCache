@@ -208,9 +208,6 @@ impl super::Plugin for VirtualTimePlugin {
         }
     }
 
-    #[inline]
-    fn dump_snapshot(_: &str) {}
-
     fn serialize(_: &str) {}
 
     fn deserialize(_: &str) {}

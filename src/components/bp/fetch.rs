@@ -30,21 +30,18 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod bimodal;
-mod btb;
+pub mod btb;
 mod gshare;
 mod ras;
-mod tage;
+pub mod tage;
 
 use crate::components::debug::statistics::{EventType, Statistics};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use serde_with::serde_as;
 
 use crate::parameter::{self, BP_RAS_COUNT};
 
 use super::{BranchResolutionResult, BranchType};
-
-use crate::components::FlexusCompatibleSerializer;
 
 #[derive(PartialEq)]
 pub enum BranchPredictorResult {
@@ -112,14 +109,16 @@ impl PerCoreFetchUnit {
     }
 
     pub fn get_flexus_checkpoint(&self) -> serde_json::Value {
-        let serialized_btb = self.btb.get_serialize_helper();
+        unimplemented!();
 
-        let serialized_tage = self.tage.get_serialize_helper();
+        // let serialized_btb = self.btb.get_serialize_helper();
 
-        json!({
-            "btb": serialized_btb,
-            "tage": serialized_tage,
-        })
+        // let serialized_tage = self.tage.get_serialize_helper();
+
+        // json!({
+        //     "btb": serialized_btb,
+        //     "tage": serialized_tage,
+        // })
     }
 }
 

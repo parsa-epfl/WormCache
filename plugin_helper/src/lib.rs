@@ -41,7 +41,6 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
     let name = input.ident;
 
     // Initialize a variable to hold generated code for each field's dd call
-    let mut dump_state_calls = Vec::new();
     let mut on_translation_calls = Vec::new();
     let mut init_calls = Vec::new();
     let mut serialize_calls = Vec::new();
@@ -54,9 +53,6 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
             for field in fields.named {
                 let ty = &field.ty;
                 // Assuming the field type implements DD, generate a dd call
-                dump_state_calls.push(quote! {
-                    #ty::dump_snapshot(name);
-                });
                 on_translation_calls.push(quote! {
                     #ty::on_translation(tb);
                 });
@@ -76,11 +72,6 @@ pub fn plugin_helper(input: TokenStream) -> TokenStream {
     // Generate the implementation of the dd function for the struct
     let expanded = quote! {
         impl #name {
-            #[inline]
-            pub unsafe fn dump_snapshot(name: &str) {
-                #( #dump_state_calls )*
-            }
-
             #[inline]
             pub unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
                 #( #on_translation_calls )*
