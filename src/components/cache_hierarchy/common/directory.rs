@@ -58,7 +58,7 @@ pub struct DirectoryEntry {
     pub insertion_ts: u64,
 
     pub recent_writer_ts: u64,
-    pub writable: bool,
+    pub shared: bool,
 }
 
 impl DirectoryEntry {
@@ -96,7 +96,7 @@ impl<const SET: usize> DirectorySet<SET> {
             recent_writer_ts: 0,
             in_shared_cache: false,
             insertion_ts: 0,
-            writable: todo!("This should be set by the coherence protocol."),
+            shared: false,
         });
 
         self.entries.get_mut(&internal_id).unwrap()
