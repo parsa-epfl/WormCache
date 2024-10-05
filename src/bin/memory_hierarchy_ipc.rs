@@ -34,13 +34,15 @@ use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCache
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
 use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
 use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
-use worm_cache::components::cache_hierarchy::hierarchy::MemoryHierarchy;
+use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
+use worm_cache::components::cache_hierarchy::CacheBlockRequest;
+use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::debug::statistics::Statistics;
 use worm_cache::components::NoMMU;
 
 use worm_cache::parameter;
 
-type MH = MemoryHierarchy<
+type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<
         1,
@@ -66,11 +68,14 @@ fn test_hit_last() {
 
     let set_idx = 1;
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
-            1 + i as u64,
-            CacheAccessType::DataRead,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id: (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
+            i as u64,
         );
     }
 
@@ -81,9 +86,17 @@ fn test_hit_last() {
         * (parameter::UNIFIED_PRI_CACHE_SET as u64)
         + set_idx;
 
-    let mut ts = 0;
+    let mut ts = parameter::UNIFIED_PRI_CACHE_ASSO as u64;
     loop {
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(0, addr, ts, CacheAccessType::DataRead);
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id: addr,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
+            ts,
+        );
         ts += 1;
     }
 }
@@ -101,11 +114,14 @@ fn testing_pcache_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                0,
-                block_id,
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    instruction_pc_in_va: 0,
+                },
                 ts,
-                CacheAccessType::DataRead,
             );
             ts += 1;
             block_id += parameter::UNIFIED_PRI_CACHE_SET as u64;
@@ -134,11 +150,14 @@ fn testing_always_miss() {
 
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                0,
-                block_id,
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    instruction_pc_in_va: 0,
+                },
                 ts,
-                CacheAccessType::DataRead,
             );
             ts += 1;
             block_id += parameter::SHARED_CACHE_SET as u64;

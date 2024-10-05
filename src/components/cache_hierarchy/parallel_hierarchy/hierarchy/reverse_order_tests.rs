@@ -33,21 +33,24 @@ use std::collections::HashMap;
 
 use crate::{
     components::{
-        cache_hierarchy::common::{
-            statistics::ZeroSharedCacheSetStatistics, CacheAccessType, CacheHierarchyAccessResult,
-            ParallelSingleSharedCache, ParallelUnifiedPrivateCache, PrivateCaches, SharedCache,
-            SharedCacheLookupResult,
+        cache_hierarchy::{
+            common::{
+                statistics::ZeroSharedCacheSetStatistics, CacheAccessType,
+                CacheHierarchyAccessResult, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
+                PrivateCaches, SharedCache, SharedCacheLookupResult,
+            },
+            CacheBlockRequest, MemoryHierarchy,
         },
         NoMMU,
     },
     parameter,
 };
 
-use super::MemoryHierarchy;
+use super::ParallelMemoryHierarchy;
 
 const PCACHE_SET: usize = 64;
 
-type MH = MemoryHierarchy<
+type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
     ParallelSingleSharedCache<
@@ -76,8 +79,6 @@ enum BlockState {
     Modified,
 }
 
-impl MH {}
-
 impl MH {
     fn where_is_the_block(&mut self, block_id: u64) -> BlockPosition {
         let private_owner = self.private_caches.in_which_cores(block_id);
@@ -87,9 +88,19 @@ impl MH {
         }
 
         if matches!(
-            self.shared_cache
-                .lookup(0, block_id, 0, 0, false, CacheAccessType::DataRead, false)
-                .0,
+            // self.shared_cache
+            //     .lookup(0, block_id, 0, 0, false, CacheAccessType::DataRead, false)
+            //     .0,
+            self.shared_cache.lookup(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    instruction_pc_in_va: 0,
+                },
+                0,
+                false,
+            ),
             SharedCacheLookupResult::Hit(_)
         ) {
             return BlockPosition::InSharedCache;
@@ -118,16 +129,21 @@ impl MH {
 #[test]
 #[should_panic(expected = "assertion failed: self.lines[idx_of_slot_to_fill].ts <= ts")]
 fn reversed_timestamp_from_the_same_core() {
+    // let mh = MH::new(true, 0, false);
     let mh = MH::new(true, 0, false);
+    // Fill one cache set with some data.
     let mut ts = 100;
     // Fill one cache set with some data.
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (l * PCACHE_SET) as u64;
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             l as u64 + ts + 1,
-            CacheAccessType::DataRead,
         );
     }
 
@@ -137,11 +153,14 @@ fn reversed_timestamp_from_the_same_core() {
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (l * PCACHE_SET) as u64;
         assert_eq!(
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                0,
-                block_id,
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    instruction_pc_in_va: 0,
+                },
                 l as u64 + ts + 1,
-                CacheAccessType::DataRead
             ),
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         );
@@ -151,11 +170,14 @@ fn reversed_timestamp_from_the_same_core() {
     let eval_block_id = (128 * PCACHE_SET) as u64;
     // The following line should trigger an assertion failure.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            eval_block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id: eval_block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             1,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Miss
     );
@@ -168,31 +190,40 @@ fn write_invalidation_coherence() {
     let block_id = 1024;
     // Core 0 gets a read permission at 1.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             1,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 50.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            2,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             50,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
@@ -203,11 +234,14 @@ fn write_invalidation_coherence() {
 
     // Now core 0 gets a read permission at 100.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             100,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
@@ -222,33 +256,42 @@ fn raw_and_war() {
     let mut mh = MH::new(true, 0, false);
 
     let block_id = 1024;
-    // Core 0 gets a read permission at 1.
+    // Core 0 gets a read permission at 0.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             1,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 5.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            2,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             5,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
@@ -266,21 +309,27 @@ fn rarw() {
     let block_id = 1024;
     // Core 0 gets a read permission at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Miss
     );
     // Core 0 get a write permission at 20.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             20,
-            CacheAccessType::DataWrite
         ),
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
@@ -291,11 +340,14 @@ fn rarw() {
 
     // Core 1 get a read permission at 1.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             1,
-            block_id,
-            1,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Unknown
     );
@@ -312,22 +364,28 @@ fn waw() {
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 1 gets a write permission at timestamp 5.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             5,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Unknown
     );
@@ -344,33 +402,42 @@ fn wwaw() {
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 0 gets a write permission at timestamp 20. It should be a bit and no broadcast to the directory.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             20,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // Core 1 gets a write permission at timestamp 15.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             15,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Unknown
     );
@@ -387,11 +454,14 @@ fn rae() {
     let block_id = 1024;
     // Core 0 writes to this block at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            10,
-            CacheAccessType::DataWrite
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
+            10
         ),
         CacheHierarchyAccessResult::Miss
     );
@@ -399,11 +469,14 @@ fn rae() {
     // This block is evicted due to contention.
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (10 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             (100 + i) as u64,
-            CacheAccessType::DataRead,
         );
     }
 
@@ -413,11 +486,14 @@ fn rae() {
 
     // Then, there is a reader replica which is created before core 0 writes to the position.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             5,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Unknown
     );
@@ -433,22 +509,28 @@ fn eae() {
     // Core 0 accesses the core at 200 and evicts the block at 216 with the dirty permission.
     let block_id = 1024;
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             200,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             (200 + i) as u64,
-            CacheAccessType::DataRead,
         );
     }
 
@@ -458,22 +540,28 @@ fn eae() {
 
     // Core 1 accesses the core at 10 and evict the block
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Unknown
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (255 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             (10 + i) as u64,
-            CacheAccessType::DataRead,
         );
     }
 
@@ -494,22 +582,28 @@ fn wae() {
     let block_id = 1024;
     // Core 0 writes the block at 200 and evicts from the 217.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             200,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             (200 + i) as u64,
-            CacheAccessType::DataRead,
         );
     }
 
@@ -519,11 +613,14 @@ fn wae() {
 
     // Core 1 writes to the block at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Unknown
     );
@@ -546,33 +643,42 @@ fn eaw() {
 
     // Core 0 writes to the block at 200.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             200,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 1 evicts the block at 100 with the dirty permission. the write happens at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::Unknown
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             (10 + i) as u64,
-            CacheAccessType::DataRead,
         );
     }
 
@@ -588,33 +694,42 @@ fn ear() {
 
     // Core 0 reads the block at 100.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             100,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Then, core 1 evicts the block before 50. It creates a write access at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataWrite
         ),
         CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = (100 * (i + 1) * PCACHE_SET + block_id as usize) as u64;
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             (10 + i) as u64,
-            CacheAccessType::DataRead,
         );
     }
 
@@ -631,22 +746,28 @@ fn rar() {
 
     // Core 0 reads the block at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             10,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 1 reads the block at 5.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
             5,
-            CacheAccessType::DataRead
         ),
         CacheHierarchyAccessResult::MissInPrivateCache
     );

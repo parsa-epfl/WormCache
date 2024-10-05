@@ -31,6 +31,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::components::cache_hierarchy::CacheBlockRequest;
+
 use super::super::CCell;
 
 use super::PrivateCaches;
@@ -137,23 +139,19 @@ impl<
     }
 
     #[inline]
-    fn poke_and_update(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        v_ts: u64,
-        is_instruction: bool,
-        is_store: bool,
-    ) -> PrivateCachePokeResult {
+    fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> PrivateCachePokeResult {
+        let is_instruction = request.is_instruction();
+        let core_id = request.core_id;
+        let block_id = request.block_id;
+        let is_store = request.is_store();
         if is_instruction {
             self.caches[core_id as usize].i_cache[block_id as usize % I_SET]
                 .inner()
-                .poke_and_update(block_id, ts, v_ts, is_store, is_instruction)
+                .poke_and_update(block_id, ts, is_store, is_instruction)
         } else {
             self.caches[core_id as usize].d_cache[block_id as usize % D_SET]
                 .inner()
-                .poke_and_update(block_id, ts, v_ts, is_store, is_instruction)
+                .poke_and_update(block_id, ts, is_store, is_instruction)
         }
     }
 
@@ -277,10 +275,12 @@ impl<
 
     fn get_set_for_fill(
         &self,
-        core_id: u32,
-        block_id: u64,
-        is_instruction: bool,
+        request: &CacheBlockRequest,
     ) -> impl DerefMut<Target = PrivateCacheSet> {
+        let core_id = request.core_id;
+        let block_id = request.block_id;
+        let is_instruction = request.is_instruction();
+
         if is_instruction {
             self.caches[core_id as usize].i_cache[block_id as usize % I_SET].inner()
         } else {

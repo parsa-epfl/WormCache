@@ -34,11 +34,13 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::components::{
+    cache_hierarchy::CacheBlockRequest, debug::cache_line_history::CacheLineCoherenceHistory,
+};
 
 use super::{
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, VtsViolationResult,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,7 +63,6 @@ pub struct SharedCacheSet<
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.
-    pub recent_evict_vts: u64,
 
     pub access_count: u64,
 
@@ -90,7 +91,6 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
             touched_count: 0,
             recent_evict_ts: 0,
-            recent_evict_vts: 0,
 
             access_count: 0,
 
@@ -105,7 +105,6 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             blocks: other.blocks,
             touched_count: other.touched_count,
             recent_evict_ts: other.recent_evict_ts,
-            recent_evict_vts: other.recent_evict_vts,
             access_count: other.access_count,
             statistics: S::default(),
         }
@@ -118,7 +117,6 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             blocks: self.blocks.clone(),
             touched_count: self.touched_count,
             recent_evict_ts: self.recent_evict_ts,
-            recent_evict_vts: self.recent_evict_vts,
             access_count: self.access_count,
             statistics: ZeroSharedCacheSetStatistics {},
         }
@@ -177,15 +175,16 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
     #[inline]
     pub fn lookup(
         &mut self,
-        block_id: u64,
-        core_id: u32,
+        r: &CacheBlockRequest,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
-        access_type: super::CacheAccessType,
-        is_os: bool,
-    ) -> (SharedCacheLookupResult, VtsViolationResult) {
+    ) -> SharedCacheLookupResult {
         self.access_count += 1;
+
+        let block_id = r.block_id;
+        let core_id = r.core_id;
+        let access_type = r.access_type.clone();
+        let is_os = r.is_os();
 
         match if EXCLUSIVE {
             self.invalidate(block_id, ts)
@@ -194,10 +193,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         } {
             Some(is_dirty) => {
                 self.statistics.record(access_type, is_os, true);
-                (
-                    SharedCacheLookupResult::Hit(is_dirty),
-                    VtsViolationResult::NotViolated,
-                )
+                SharedCacheLookupResult::Hit(is_dirty)
             }
             None => {
                 let cache_access_res = if ts < self.recent_evict_ts {
@@ -211,14 +207,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                     }
                 };
 
-                let violation = if v_ts < self.recent_evict_vts {
-                    // check the evicted cache line.
-                    VtsViolationResult::NotViolated
-                } else {
-                    VtsViolationResult::NotViolated
-                };
-
-                (cache_access_res, violation)
+                cache_access_res
             }
         }
     }
@@ -230,7 +219,6 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         block_id: u64,
         core_id: u32,
         ts: u64,
-        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) -> bool {
@@ -301,10 +289,6 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             self.recent_evict_ts = ts;
         }
 
-        if self.recent_evict_vts < v_ts {
-            self.recent_evict_vts = v_ts;
-        }
-
         // push the evicted line to the history.
         result
     }
@@ -312,52 +296,31 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
     #[inline]
     pub fn lookup_and_insert(
         &mut self,
-        block_id: u64,
-        core_id: u32,
+        r: &CacheBlockRequest,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
-        is_store: bool,
         increase_touched_count: bool,
-        access_type: super::CacheAccessType,
-        is_os: bool,
-    ) -> (SharedCacheLookupAndInsertResult, VtsViolationResult) {
+    ) -> SharedCacheLookupAndInsertResult {
         // (is_hit, dirty/just_warmed)
-        let result = self.lookup(
-            block_id,
-            core_id,
-            ts,
-            v_ts,
-            abandon_dirty,
-            access_type,
-            is_os,
-        );
+        let result = self.lookup(r, ts, abandon_dirty);
 
-        let cache_access_result = match result.0 {
+        let block_id = r.block_id;
+        let core_id = r.core_id;
+        let is_store = r.is_store();
+
+        let cache_access_result = match result {
             SharedCacheLookupResult::Hit(is_dirty) => {
                 SharedCacheLookupAndInsertResult::Hit(is_dirty)
             }
             SharedCacheLookupResult::Miss => {
-                let just_warmed = self.insert(
-                    block_id,
-                    core_id,
-                    ts,
-                    v_ts,
-                    is_store,
-                    increase_touched_count,
-                );
+                let just_warmed =
+                    self.insert(block_id, core_id, ts, is_store, increase_touched_count);
                 assert!(!just_warmed);
                 SharedCacheLookupAndInsertResult::Inserted
             }
             SharedCacheLookupResult::ColdMiss => {
-                let just_warmed = self.insert(
-                    block_id,
-                    core_id,
-                    ts,
-                    v_ts,
-                    is_store,
-                    increase_touched_count,
-                );
+                let just_warmed =
+                    self.insert(block_id, core_id, ts, is_store, increase_touched_count);
                 SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
             }
             SharedCacheLookupResult::Unknown(diff) => {
@@ -365,7 +328,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             }
         };
 
-        (cache_access_result, result.1)
+        cache_access_result
     }
 }
 
@@ -378,7 +341,7 @@ fn minimum_can_find_invalid() {
 
     // push 8 elements inside.
     for i in 0..8 {
-        assert_eq!(set.insert(i, 0, ts, ts, false, true), i == 7);
+        assert_eq!(set.insert(i, 0, ts, false, true), i == 7);
         ts += 1;
     }
 
@@ -387,7 +350,7 @@ fn minimum_can_find_invalid() {
     ts += 1;
 
     // Now if we refill, we will hit the first place.
-    set.insert(9, 0, ts, ts, false, true);
+    set.insert(9, 0, ts, false, true);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -403,7 +366,7 @@ fn minimum_can_find_invalid() {
     ts += 1;
 
     // If we now insert another one, line[1] will be replaced.
-    assert_eq!(set.insert(10, 0, ts, ts, false, true), false);
+    assert_eq!(set.insert(10, 0, ts, false, true), false);
 
     assert_eq!(
         set.blocks[1],
@@ -419,6 +382,7 @@ fn minimum_can_find_invalid() {
 #[test]
 fn cold_miss_exist() {
     use super::statistics::ZeroSharedCacheSetStatistics;
+    use crate::components::cache_hierarchy::common::CacheAccessType;
 
     let mut set = SharedCacheSet::<8, 1, false, ZeroSharedCacheSetStatistics>::new();
 
@@ -427,15 +391,15 @@ fn cold_miss_exist() {
     // do one lookup. It will return the cold.
     assert_eq!(
         set.lookup(
-            10,
-            0,
+            &CacheBlockRequest {
+                block_id: 10,
+                core_id: 0,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0
+            },
             ts,
-            ts,
-            false,
-            super::CacheAccessType::DataRead,
             false
-        )
-        .0,
+        ),
         SharedCacheLookupResult::ColdMiss,
     );
 
@@ -443,22 +407,22 @@ fn cold_miss_exist() {
 
     // fill the cache.
     for i in 0..8 {
-        assert_eq!(set.insert(i + 10, 0, ts, ts, false, true), i == 7);
+        assert_eq!(set.insert(i + 10, 0, ts, false, true), i == 7);
         ts += 1;
     }
 
     // do a lookup that triggers a miss. Now it should be a miss instead of a cold miss.
     assert_eq!(
         set.lookup(
-            20,
-            0,
+            &CacheBlockRequest {
+                block_id: 20,
+                core_id: 0,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0
+            },
             ts,
-            ts,
-            false,
-            super::CacheAccessType::DataRead,
             false
-        )
-        .0,
+        ),
         SharedCacheLookupResult::Miss,
     );
 }

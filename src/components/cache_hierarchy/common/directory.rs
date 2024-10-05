@@ -50,18 +50,15 @@ const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
 
 pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 
-// pub struct DirectoryEntry {
-//     owner: Option<CoreId>,
-//     sharers: SharerList,
-// }
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DirectoryEntry {
     pub lru_ts: u64,
     pub sharers: SharerList,
-    pub recent_writer_ts: u64, // This field is to avoid the eviction causes the write history to be lost.
-    pub recent_writer_vts: u64,
+    pub in_shared_cache: bool,
     pub insertion_ts: u64,
+
+    pub recent_writer_ts: u64,
+    pub writable: bool,
 }
 
 impl DirectoryEntry {
@@ -97,8 +94,9 @@ impl<const SET: usize> DirectorySet<SET> {
             lru_ts: 0,
             sharers: SharerList::ZERO,
             recent_writer_ts: 0,
+            in_shared_cache: false,
             insertion_ts: 0,
-            recent_writer_vts: 0,
+            writable: todo!("This should be set by the coherence protocol."),
         });
 
         self.entries.get_mut(&internal_id).unwrap()

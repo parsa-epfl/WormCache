@@ -37,13 +37,15 @@ use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCache
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
 use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
 use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
-use worm_cache::components::cache_hierarchy::hierarchy::MemoryHierarchy;
+use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
+use worm_cache::components::cache_hierarchy::CacheBlockRequest;
+use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::debug::statistics::Statistics;
 use worm_cache::components::NoMMU;
 
 use worm_cache::parameter;
 
-type MH = MemoryHierarchy<
+type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<
         1,
@@ -79,11 +81,14 @@ fn testing_pcache_always_miss() {
     counter.enable().unwrap();
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                0,
-                block_id,
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    instruction_pc_in_va: 0,
+                },
                 ts,
-                CacheAccessType::DataRead,
             );
             ts += 1;
             block_id += parameter::UNIFIED_PRI_CACHE_SET as u64;
@@ -122,11 +127,14 @@ fn testing_pcache_always_hit() {
     counter.enable().unwrap();
     loop {
         for _ in 0..64 {
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                0,
-                block_id,
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    instruction_pc_in_va: 0,
+                },
                 ts,
-                CacheAccessType::DataRead,
             );
             ts += 1;
         }

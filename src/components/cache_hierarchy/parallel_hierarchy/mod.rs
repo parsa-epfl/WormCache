@@ -41,6 +41,7 @@ use crate::{
 };
 
 use super::common::L0InstructionCache;
+use super::{common::CacheAccessType, MemoryAccessRequest, MemoryHierarchy};
 
 pub mod hierarchy;
 pub mod parser;
@@ -69,27 +70,45 @@ unsafe extern "C" fn vcpu_mem_access(
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
         if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
+            // (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
+            //     vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+            //     vaddr,
+            //     pa,
+            //     get_monotonic_ts(),
+            //     is_store,
+            //     false,
+            //     1,
+            //     0,
+            // );
             (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
-                vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-                vaddr,
-                pa,
+                &MemoryAccessRequest {
+                    core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+                    va: vaddr,
+                    access_type: if is_store {
+                        CacheAccessType::DataWrite
+                    } else {
+                        CacheAccessType::DataRead
+                    },
+                    instruction_pc_in_va: 0,
+                },
+                Some(pa),
                 get_monotonic_ts(),
-                is_store,
-                false,
-                1,
-                0,
-            );
+            )
         } else {
             (*PLUGIN).access_memory_with_va_and_pa(
-                vcpu_idx,
-                vaddr,
-                pa,
+                &MemoryAccessRequest {
+                    core_id: vcpu_idx,
+                    va: vaddr,
+                    access_type: if is_store {
+                        CacheAccessType::DataWrite
+                    } else {
+                        CacheAccessType::DataRead
+                    },
+                    instruction_pc_in_va: 0,
+                },
+                Some(pa),
                 get_monotonic_ts(),
-                is_store,
-                false,
-                1,
-                0,
-            );
+            )
         };
     } else {
         // TODO: check the I/O event
@@ -111,16 +130,24 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
         (*DUMMY_PLUGIN).access_memory_with_va(
-            vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-            vaddr,
+            &MemoryAccessRequest {
+                core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+                va: vaddr,
+                access_type: CacheAccessType::InstructionFetch,
+                instruction_pc_in_va: 0,
+            },
             get_monotonic_ts(),
-            false,
-            true,
-            1,
-            vaddr,
         );
     } else {
-        (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true, 1, vaddr);
+        (*PLUGIN).access_memory_with_va(
+            &MemoryAccessRequest {
+                core_id: vcpu_idx,
+                va: vaddr,
+                access_type: CacheAccessType::InstructionFetch,
+                instruction_pc_in_va: 0,
+            },
+            get_monotonic_ts(),
+        );
     }
 }
 

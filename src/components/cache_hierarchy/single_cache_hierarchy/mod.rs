@@ -32,10 +32,12 @@
 use core::ffi;
 use std::io::Write;
 
+use super::{MemoryAccessRequest, MemoryHierarchy};
 use hierarchy::PluginSingleCacheHierarchy;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    components::cache_hierarchy::common::CacheAccessType,
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
     util::get_monotonic_ts,
@@ -68,14 +70,18 @@ unsafe extern "C" fn vcpu_mem_access(
         if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
         } else {
             (*PLUGIN).access_memory_with_va_and_pa(
-                vcpu_idx,
-                vaddr,
-                pa,
+                &MemoryAccessRequest {
+                    core_id: vcpu_idx,
+                    va: vaddr,
+                    access_type: if is_store {
+                        CacheAccessType::DataWrite
+                    } else {
+                        CacheAccessType::DataRead
+                    },
+                    instruction_pc_in_va: 0,
+                },
+                Some(pa),
                 get_monotonic_ts(),
-                is_store,
-                false,
-                1,
-                0,
             );
         };
     } else {
@@ -98,7 +104,15 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
     } else {
-        (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true, 1, vaddr);
+        (*PLUGIN).access_memory_with_va(
+            &MemoryAccessRequest {
+                core_id: vcpu_idx,
+                va: vaddr,
+                access_type: CacheAccessType::InstructionFetch,
+                instruction_pc_in_va: 0,
+            },
+            get_monotonic_ts(),
+        );
     }
 }
 

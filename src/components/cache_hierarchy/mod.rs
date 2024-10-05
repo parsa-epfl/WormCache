@@ -40,7 +40,168 @@ pub mod common;
 mod parallel_hierarchy;
 mod single_cache_hierarchy;
 
+use common::CacheAccessType;
+use common::CacheHierarchyAccessResult;
 pub use parallel_hierarchy::hierarchy;
 pub use parallel_hierarchy::ParallelCacheHierarchyPlugin;
 
 pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
+
+use crate::parameter;
+use crate::parameter::ADJACENT_LINE_PREFETCHING;
+
+use super::mmu::MMUTranslationResult;
+
+#[derive(Clone)]
+pub struct MemoryAccessRequest {
+    pub core_id: u32,
+    pub va: u64,
+    pub access_type: CacheAccessType,
+    pub instruction_pc_in_va: u64,
+}
+
+impl MemoryAccessRequest {
+    pub fn is_instruction(&self) -> bool {
+        self.access_type == CacheAccessType::InstructionFetch
+    }
+
+    pub fn is_store(&self) -> bool {
+        self.access_type == CacheAccessType::DataWrite
+    }
+
+    pub fn is_prefetch(&self) -> bool {
+        self.access_type == CacheAccessType::PrefetchRead
+            || self.access_type == CacheAccessType::PrefetchWrite
+    }
+
+    pub fn is_os(&self) -> bool {
+        (self.va >> 63) == 1
+    }
+}
+
+#[derive(Clone)]
+pub struct CacheBlockRequest {
+    pub core_id: u32,
+    pub block_id: u64,
+    pub access_type: CacheAccessType,
+    pub instruction_pc_in_va: u64,
+}
+
+impl CacheBlockRequest {
+    pub fn is_instruction(&self) -> bool {
+        self.access_type == CacheAccessType::InstructionFetch
+    }
+
+    pub fn is_store(&self) -> bool {
+        self.access_type == CacheAccessType::DataWrite
+    }
+
+    pub fn is_prefetch(&self) -> bool {
+        self.access_type == CacheAccessType::PrefetchRead
+            || self.access_type == CacheAccessType::PrefetchWrite
+    }
+
+    pub fn is_os(&self) -> bool {
+        (self.block_id >> (63 - parameter::CACHE_LINE_SIZE.trailing_zeros())) == 1
+    }
+
+    pub fn is_page_walk(&self) -> bool {
+        self.access_type == CacheAccessType::PageWalkRead
+    }
+}
+
+pub trait MemoryHierarchy {
+    fn access_memory_pblock_id(
+        &self,
+        request: &CacheBlockRequest,
+        ts: u64,
+    ) -> CacheHierarchyAccessResult;
+
+    fn translate(&self, request: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult;
+
+    #[inline]
+    fn access_memory_with_va_and_pa(
+        &self,
+        request: &MemoryAccessRequest,
+        pa: Option<u64>,
+        ts: u64,
+    ) -> CacheHierarchyAccessResult {
+        assert!(
+            !(request.is_instruction() && request.is_store()),
+            "Instruction and store permission cannot be used at the same time."
+        );
+
+        let translation = self.translate(request, ts);
+
+        let translated_request = match translation {
+            MMUTranslationResult::MissNotCacheable(paddr) | MMUTranslationResult::Hit(paddr) => {
+                let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+
+                let block_id = if let Some(pa) = pa {
+                    pa >> parameter::CACHE_LINE_SIZE.trailing_zeros()
+                } else {
+                    block_id
+                };
+
+                CacheBlockRequest {
+                    core_id: request.core_id,
+                    block_id,
+                    access_type: request.access_type.clone(),
+                    instruction_pc_in_va: request.instruction_pc_in_va,
+                }
+            }
+            MMUTranslationResult::Miss(paddr, walk_trace) => {
+                // walk.
+                for pa in walk_trace {
+                    if pa == u64::MAX {
+                        break;
+                    }
+                    let pte_block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+                    let request = CacheBlockRequest {
+                        core_id: request.core_id,
+                        block_id: pte_block_id,
+                        access_type: CacheAccessType::PageWalkRead,
+                        instruction_pc_in_va: request.instruction_pc_in_va,
+                    };
+                    self.access_memory_pblock_id(&request, ts);
+                }
+
+                let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+
+                let block_id = if let Some(pa) = pa {
+                    pa >> parameter::CACHE_LINE_SIZE.trailing_zeros()
+                } else {
+                    block_id
+                };
+
+                CacheBlockRequest {
+                    core_id: request.core_id,
+                    block_id,
+                    access_type: request.access_type.clone(),
+                    instruction_pc_in_va: request.instruction_pc_in_va,
+                }
+            }
+        };
+
+        let result = self.access_memory_pblock_id(&translated_request, ts);
+
+        if ADJACENT_LINE_PREFETCHING {
+            let mut prefetch_request = translated_request.clone();
+            prefetch_request.block_id += 1;
+            self.access_memory_pblock_id(&prefetch_request, ts);
+        }
+        result
+    }
+
+    #[inline]
+    fn access_memory_with_va(
+        &self,
+        request: &MemoryAccessRequest,
+        ts: u64,
+    ) -> CacheHierarchyAccessResult {
+        self.access_memory_with_va_and_pa(request, None, ts)
+    }
+
+    fn serialize(&self, name: &str, numa_node_id: usize);
+    fn deserialize(&mut self, name: &str, numa_node_id: usize);
+}

@@ -31,6 +31,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::components::cache_hierarchy::CacheBlockRequest;
+
 use super::super::CCell;
 
 use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
@@ -118,19 +120,16 @@ impl<
     }
 
     #[inline]
-    fn poke_and_update(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        v_ts: u64,
-        is_instruction: bool,
-        is_store: bool,
-    ) -> PrivateCachePokeResult {
+    fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> PrivateCachePokeResult {
+        let core_id = request.core_id as usize;
+        let block_id = request.block_id;
+        let is_store = request.is_store();
+        let is_instruction = request.is_instruction();
+
         self.caches[core_id as usize]
             .get_set(block_id)
             .inner()
-            .poke_and_update(block_id, ts, v_ts, is_store, is_instruction)
+            .poke_and_update(block_id, ts, is_store, is_instruction)
     }
 
     #[inline]
@@ -213,10 +212,10 @@ impl<
     #[inline]
     fn get_set_for_fill(
         &self,
-        core_id: u32,
-        block_id: u64,
-        _: bool,
+        request: &CacheBlockRequest,
     ) -> impl DerefMut<Target = PrivateCacheSet> {
+        let core_id = request.core_id as usize;
+        let block_id = request.block_id;
         self.caches[core_id as usize].get_set(block_id).inner()
     }
 

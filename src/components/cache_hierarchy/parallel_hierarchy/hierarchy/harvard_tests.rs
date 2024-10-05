@@ -29,7 +29,10 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::components::cache_hierarchy::common::PrivateCaches;
+use crate::components::cache_hierarchy::common::{
+    CacheAccessType, CacheHierarchyAccessResult, PrivateCaches,
+};
+use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
 use crate::components::NoMMU;
 use crate::parameter;
 use crate::util::get_monotonic_ts;
@@ -38,12 +41,11 @@ use super::super::super::common::{
     statistics::ZeroSharedCacheSetStatistics, ParallelHarvardPrivateCache,
     ParallelSingleSharedCache,
 };
-use super::MemoryHierarchy;
-use super::{CacheAccessType, CacheHierarchyAccessResult};
+use super::ParallelMemoryHierarchy;
 
 const PCACHE_SET: usize = 64;
 
-type MH = MemoryHierarchy<
+type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelHarvardPrivateCache<
         32,
@@ -73,22 +75,40 @@ fn i_create_sharer_from_clean_d() {
 
     // First, generate a read request to the core 0 data cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataRead
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::DataRead
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, generate a read request to the core 0 instruction cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::InstructionFetch
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::InstructionFetch
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::InstructionFetch,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
@@ -107,22 +127,40 @@ fn i_create_sharer_from_dirty_d() {
 
     // First, generate a read request to the core 0 data cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataRead
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::DataRead
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, generate a write request to the core 0 data cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataWrite
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::DataWrite
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
@@ -133,11 +171,20 @@ fn i_create_sharer_from_dirty_d() {
 
     // Third, generate a read request to the core 0 instruction cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::InstructionFetch
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::InstructionFetch
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::InstructionFetch,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
@@ -156,22 +203,40 @@ fn d_create_sharer_from_clean_i() {
 
     // First, generate a read request to the core 0 instruction cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::InstructionFetch
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::InstructionFetch
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::InstructionFetch,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, generate a read request to the core 0 data cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataRead
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::DataRead
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
@@ -190,33 +255,60 @@ fn d_dirty_create_sharer_from_clean_i() {
 
     // First, generate a read request to the core 0 instruction cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::InstructionFetch
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::InstructionFetch
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::InstructionFetch,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, generate a write request to the core 0 data cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataWrite
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::DataWrite
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
     // Third, generate a read request to the core 0 data cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataRead
+        // mh.access_memory_pblock_id_with_the_same_ts_and_vts(
+        //     0,
+        //     block_id,
+        //     get_monotonic_ts(),
+        //     CacheAccessType::DataRead
+        // ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0
+            },
+            get_monotonic_ts()
         ),
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );

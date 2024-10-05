@@ -35,11 +35,13 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use crate::components::cache_hierarchy::CacheBlockRequest;
+
 use super::super::CCell;
 
 use super::{
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet, VtsViolationResult,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
 };
 use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutex;
@@ -112,7 +114,7 @@ impl<
         }
     }
 
-    fn invalidate(&self, _core_id: u32, block_id: u64, ts: u64, _v_ts: u64) -> Option<bool> {
+    fn invalidate(&self, _core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx].inner().invalidate(block_id, ts);
         return self.blocks[set_idx].inner().invalidate(block_id, ts);
@@ -120,25 +122,13 @@ impl<
 
     fn lookup(
         &self,
-        core_id: u32,
-        block_id: u64,
+        r: &CacheBlockRequest,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
-        access_type: super::CacheAccessType,
-        is_os: bool,
-    ) -> (SharedCacheLookupResult, VtsViolationResult) {
-        let set_idx = (block_id % SET as u64) as usize;
+    ) -> SharedCacheLookupResult {
+        let set_idx = (r.block_id % SET as u64) as usize;
 
-        self.blocks[set_idx].inner().lookup(
-            block_id,
-            core_id,
-            ts,
-            v_ts,
-            abandon_dirty,
-            access_type,
-            is_os,
-        )
+        self.blocks[set_idx].inner().lookup(r, ts, abandon_dirty)
     }
 
     fn insert(
@@ -146,7 +136,6 @@ impl<
         core_id: u32,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
     ) {
@@ -155,7 +144,6 @@ impl<
             block_id,
             core_id,
             ts,
-            v_ts,
             is_modified,
             increase_touched_count,
         );
@@ -166,47 +154,34 @@ impl<
 
     fn lookup_and_insert_on_miss(
         &self,
-        core_id: u32,
-        block_id: u64,
+        r: &CacheBlockRequest,
         ts: u64,
-        v_ts: u64,
         abandon_dirty: bool,
-        is_store: bool,
         increase_touched_count: bool,
-        access_type: super::CacheAccessType,
-        is_os: bool,
-    ) -> (SharedCacheLookupResult, VtsViolationResult) {
-        let set_idx = (block_id % SET as u64) as usize;
+    ) -> SharedCacheLookupResult {
+        let set_idx = (r.block_id % SET as u64) as usize;
         let result = self.blocks[set_idx].inner().lookup_and_insert(
-            block_id,
-            core_id,
+            r,
             ts,
-            v_ts,
             abandon_dirty,
-            is_store,
             increase_touched_count,
-            access_type,
-            is_os,
         );
 
-        (
-            match result.0 {
-                SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
-                    SharedCacheLookupResult::Hit(is_dirty)
+        match result {
+            SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
+                SharedCacheLookupResult::Hit(is_dirty)
+            }
+            SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
+                if just_warmed {
+                    self.warmed_sets.fetch_add(1, Ordering::Relaxed);
                 }
-                SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
-                    if just_warmed {
-                        self.warmed_sets.fetch_add(1, Ordering::Relaxed);
-                    }
-                    SharedCacheLookupResult::ColdMiss
-                }
-                SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
-                SharedCacheLookupAndInsertResult::Unknown(diff) => {
-                    SharedCacheLookupResult::Unknown(diff)
-                }
-            },
-            result.1,
-        )
+                SharedCacheLookupResult::ColdMiss
+            }
+            SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
+            SharedCacheLookupAndInsertResult::Unknown(diff) => {
+                SharedCacheLookupResult::Unknown(diff)
+            }
+        }
     }
 
     fn warmed_sets_count(&self) -> usize {
