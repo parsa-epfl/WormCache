@@ -48,7 +48,7 @@ use worm_cache::parameter;
 type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<
-        1,
+        64,
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
@@ -153,4 +153,51 @@ fn testing_pcache_always_hit() {
 
     // print the miss rate of the data cache and shared cache from core 0. They should be 100%.
     println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);
+}
+
+#[test]
+fn read_shared_cache_line() {
+    let mh = MH::new(false, 0, false);
+
+    // What I need to do is just to access the block id belonging to a specific shared cache set.
+    // The block id is calculated as follows:
+    // block_id = set_id * associativity + way_id
+
+    let mut ts: u64 = 1;
+    let block_id = 42;
+
+    // all cores except the last core read the shared cache line.
+    for core_id in 0..62 {
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: core_id as u32,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                instruction_pc_in_va: 0,
+            },
+            ts,
+        );
+        ts += 1;
+    }
+
+    let mut counter = Builder::new().build().unwrap();
+    counter.enable().unwrap();
+
+    // core 128 reads the shared cache line.
+    mh.access_memory_pblock_id(
+        &CacheBlockRequest {
+            core_id: 63,
+            block_id,
+            access_type: CacheAccessType::DataRead,
+            instruction_pc_in_va: 0,
+        },
+        ts,
+    );
+
+    counter.disable().unwrap();
+
+    // print the counter value
+    let count = counter.read().unwrap();
+    assert!(count < 700);
+    println!("{}", count);
 }
