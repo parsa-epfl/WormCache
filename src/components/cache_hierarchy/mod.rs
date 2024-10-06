@@ -37,11 +37,13 @@
 // - Shared caches, with set locks.
 
 pub mod common;
+pub mod mmu;
 mod parallel_hierarchy;
 mod single_cache_hierarchy;
 
 use common::CacheAccessType;
 use common::CacheHierarchyAccessResult;
+use mmu::MMUTranslationResult;
 pub use parallel_hierarchy::hierarchy;
 pub use parallel_hierarchy::ParallelCacheHierarchyPlugin;
 
@@ -49,8 +51,6 @@ pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 
 use crate::parameter;
 use crate::parameter::ADJACENT_LINE_PREFETCHING;
-
-use super::mmu::MMUTranslationResult;
 
 #[derive(Clone)]
 pub struct MemoryAccessRequest {

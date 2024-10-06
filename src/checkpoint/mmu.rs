@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::FlexusParameter;
+use crate::components::cache_hierarchy::mmu::tlb::TLBEntry;
 
-use crate::components::TLBEntry;
+use super::FlexusParameter;
 
 #[derive(Serialize, Deserialize)]
 struct SerializedTLBSet {

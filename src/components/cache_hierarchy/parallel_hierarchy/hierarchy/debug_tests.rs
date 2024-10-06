@@ -33,8 +33,8 @@
 // All these tests are taken from the input that triggers a bug.
 
 use crate::components::cache_hierarchy::common::{CacheAccessType, CacheHierarchyAccessResult};
+use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
-use crate::components::NoMMU;
 use crate::parameter;
 use crate::util::get_monotonic_ts;
 

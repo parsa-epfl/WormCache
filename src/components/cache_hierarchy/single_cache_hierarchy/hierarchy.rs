@@ -37,6 +37,7 @@ use crate::{
     components::{
         cache_hierarchy::{
             common::{CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult},
+            mmu::{AbstractMMU, MMUTranslationResult, MemoryManagementUnit},
             CacheBlockRequest, MemoryHierarchy,
         },
         debug::statistics::{EventType, Statistics},
@@ -46,7 +47,7 @@ use crate::{
 
 use super::super::common::{statistics::ZeroSharedCacheSetStatistics, SerialSingleSharedCache};
 
-pub struct SingleCacheHierarchy<MMU: crate::components::mmu::AbstractMMU> {
+pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
     pub shared_cache: SerialSingleSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
@@ -57,7 +58,7 @@ pub struct SingleCacheHierarchy<MMU: crate::components::mmu::AbstractMMU> {
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
 }
 
-impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
+impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
     pub fn new() -> Self {
         SingleCacheHierarchy {
             shared_cache: SerialSingleSharedCache::new(),
@@ -114,7 +115,7 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
     }
 }
 
-impl<MMU: crate::components::mmu::AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
+impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
     fn access_memory_pblock_id(
         &self,
         request: &CacheBlockRequest,
@@ -182,7 +183,7 @@ impl<MMU: crate::components::mmu::AbstractMMU> MemoryHierarchy for SingleCacheHi
         &self,
         r: &crate::components::cache_hierarchy::MemoryAccessRequest,
         ts: u64,
-    ) -> crate::components::mmu::MMUTranslationResult {
+    ) -> MMUTranslationResult {
         unsafe {
             self.mmus[r.core_id as usize]
                 .get()
@@ -208,9 +209,5 @@ impl<MMU: crate::components::mmu::AbstractMMU> MemoryHierarchy for SingleCacheHi
 }
 
 pub type PluginSingleCacheHierarchy = SingleCacheHierarchy<
-    crate::components::mmu::MemoryManagementUnit<
-        crate::arch::AArch64,
-        { parameter::TLB_ASSO },
-        { parameter::TLB_SET },
-    >,
+    MemoryManagementUnit<crate::arch::AArch64, { parameter::TLB_ASSO }, { parameter::TLB_SET }>,
 >;

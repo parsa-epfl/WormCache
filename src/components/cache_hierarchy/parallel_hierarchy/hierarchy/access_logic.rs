@@ -5,13 +5,13 @@ use crate::{
                 CacheHierarchyAccessResult, PrivateCacheEvictedSlot, PrivateCachePokeResult,
                 PrivateCaches, SharedCache, SharedCacheLookupResult,
             },
+            mmu::{AbstractMMU, MMUTranslationResult},
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
         },
         debug::{
             cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
             statistics::{EventType, Statistics},
         },
-        mmu::AbstractMMU,
     },
     parameter::{self, ENABLE_CACHE_LINE_HISTORY},
 };
@@ -764,11 +764,7 @@ impl<
         res
     }
 
-    fn translate(
-        &self,
-        r: &MemoryAccessRequest,
-        ts: u64,
-    ) -> crate::components::mmu::MMUTranslationResult {
+    fn translate(&self, r: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult {
         unsafe {
             self.mmus[r.core_id as usize]
                 .get()

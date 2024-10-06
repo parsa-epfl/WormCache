@@ -32,8 +32,8 @@
 use crate::components::cache_hierarchy::common::{
     CacheAccessType, CacheHierarchyAccessResult, PrivateCaches,
 };
+use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
-use crate::components::NoMMU;
 use crate::parameter;
 use crate::util::get_monotonic_ts;
 

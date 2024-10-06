@@ -35,8 +35,8 @@ use crate::components::cache_hierarchy::common::{
     CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, SharedCache,
     SharedCacheLookupResult,
 };
+use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
-use crate::components::NoMMU;
 use crate::parameter;
 
 use super::super::super::common::{

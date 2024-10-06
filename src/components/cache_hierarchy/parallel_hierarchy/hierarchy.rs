@@ -31,6 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
+use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
 use crate::components::debug::statistics::{EventType, Statistics};
@@ -39,7 +40,6 @@ use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, Ca
 
 use super::super::common::{Directory, DirectorySet, PrivateCaches, SharedCache};
 
-use crate::components::mmu::AbstractMMU;
 use std::cell::UnsafeCell;
 use std::ops::DerefMut;
 
