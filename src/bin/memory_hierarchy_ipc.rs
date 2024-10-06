@@ -73,7 +73,7 @@ fn test_hit_last() {
                 core_id: 0,
                 block_id: (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             i as u64,
         );
@@ -93,7 +93,7 @@ fn test_hit_last() {
                 core_id: 0,
                 block_id: addr,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             ts,
         );
@@ -119,7 +119,7 @@ fn testing_pcache_always_miss() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 ts,
             );
@@ -155,7 +155,7 @@ fn testing_always_miss() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 ts,
             );

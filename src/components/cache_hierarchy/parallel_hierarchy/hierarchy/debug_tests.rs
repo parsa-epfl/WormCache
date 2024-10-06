@@ -74,7 +74,7 @@ fn read_evict_and_other_core_read_back() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             get_monotonic_ts(),
         ),
@@ -90,7 +90,7 @@ fn read_evict_and_other_core_read_back() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 get_monotonic_ts(),
             ),
@@ -105,7 +105,7 @@ fn read_evict_and_other_core_read_back() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             get_monotonic_ts(),
         ),
@@ -125,7 +125,7 @@ fn one_core_write_first_then_read() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             10
         ),
@@ -139,7 +139,7 @@ fn one_core_write_first_then_read() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             20
         ),
@@ -161,7 +161,7 @@ fn write_write_read_then_old_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             100
         ),
@@ -175,7 +175,7 @@ fn write_write_read_then_old_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             150
         ),
@@ -189,7 +189,7 @@ fn write_write_read_then_old_write() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             200
         ),
@@ -203,7 +203,7 @@ fn write_write_read_then_old_write() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             125
         ),
@@ -223,7 +223,7 @@ fn write_read_then_early_read() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             100
         ),
@@ -237,7 +237,7 @@ fn write_read_then_early_read() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             150
         ),
@@ -251,7 +251,7 @@ fn write_read_then_early_read() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             50
         ),
@@ -271,7 +271,7 @@ fn read_then_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             100
         ),
@@ -285,7 +285,7 @@ fn read_then_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             150
         ),
@@ -309,7 +309,7 @@ fn write_read_after_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             100
         ),
@@ -323,7 +323,7 @@ fn write_read_after_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             150
         ),
@@ -337,7 +337,7 @@ fn write_read_after_write() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             200
         ),
@@ -357,7 +357,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             10
         ),
@@ -371,7 +371,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             20
         ),
@@ -385,7 +385,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             30
         ),
@@ -399,7 +399,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             15
         ),
@@ -413,7 +413,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             35
         ),
@@ -427,7 +427,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             40
         ),
@@ -443,7 +443,7 @@ fn later_read_after_write_cancel_sharers() {
                     core_id: 1,
                     block_id: block_id + ((i + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64,
                     access_type: CacheAccessType::DataRead,
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 (50 + i) as u64
             ),
@@ -463,7 +463,7 @@ fn write_evict_read_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             10
         ),
@@ -479,7 +479,7 @@ fn write_evict_read_write() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataWrite,
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 20 + i as u64 * 10
             ),
@@ -496,7 +496,7 @@ fn write_evict_read_write() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             1024
         ),
@@ -511,7 +511,7 @@ fn write_evict_read_write() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             5
         ),

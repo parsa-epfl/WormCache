@@ -78,7 +78,7 @@ unsafe extern "C" fn vcpu_mem_access(
                     } else {
                         CacheAccessType::DataRead
                     },
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 Some(pa),
                 get_monotonic_ts(),
@@ -109,7 +109,7 @@ unsafe extern "C" fn vcpu_insn_exec(
                 core_id: vcpu_idx,
                 va: vaddr,
                 access_type: CacheAccessType::InstructionFetch,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             get_monotonic_ts(),
         );

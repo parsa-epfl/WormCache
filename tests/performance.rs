@@ -86,7 +86,7 @@ fn testing_pcache_always_miss() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 ts,
             );
@@ -132,7 +132,7 @@ fn testing_pcache_always_hit() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    instruction_pc_in_va: 0,
+                    is_os: false,
                 },
                 ts,
             );
@@ -173,7 +173,7 @@ fn read_shared_cache_line() {
                 core_id: core_id as u32,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                instruction_pc_in_va: 0,
+                is_os: false,
             },
             ts,
         );
@@ -189,7 +189,7 @@ fn read_shared_cache_line() {
             core_id: 63,
             block_id,
             access_type: CacheAccessType::DataRead,
-            instruction_pc_in_va: 0,
+            is_os: false,
         },
         ts,
     );

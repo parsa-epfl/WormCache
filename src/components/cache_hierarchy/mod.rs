@@ -57,7 +57,7 @@ pub struct MemoryAccessRequest {
     pub core_id: u32,
     pub va: u64,
     pub access_type: CacheAccessType,
-    pub instruction_pc_in_va: u64,
+    pub is_os: bool,
 }
 
 impl MemoryAccessRequest {
@@ -75,7 +75,7 @@ impl MemoryAccessRequest {
     }
 
     pub fn is_os(&self) -> bool {
-        (self.va >> 63) == 1
+        return self.is_os;
     }
 }
 
@@ -84,7 +84,7 @@ pub struct CacheBlockRequest {
     pub core_id: u32,
     pub block_id: u64,
     pub access_type: CacheAccessType,
-    pub instruction_pc_in_va: u64,
+    pub is_os: bool,
 }
 
 impl CacheBlockRequest {
@@ -102,7 +102,7 @@ impl CacheBlockRequest {
     }
 
     pub fn is_os(&self) -> bool {
-        (self.block_id >> (63 - parameter::CACHE_LINE_SIZE.trailing_zeros())) == 1
+        return self.is_os;
     }
 
     pub fn is_page_walk(&self) -> bool {
@@ -147,7 +147,7 @@ pub trait MemoryHierarchy {
                     core_id: request.core_id,
                     block_id,
                     access_type: request.access_type.clone(),
-                    instruction_pc_in_va: request.instruction_pc_in_va,
+                    is_os: request.is_os,
                 }
             }
             MMUTranslationResult::Miss(paddr, walk_trace) => {
@@ -161,7 +161,7 @@ pub trait MemoryHierarchy {
                         core_id: request.core_id,
                         block_id: pte_block_id,
                         access_type: CacheAccessType::PageWalkRead,
-                        instruction_pc_in_va: request.instruction_pc_in_va,
+                        is_os: request.is_os,
                     };
                     self.access_memory_pblock_id(&request, ts);
                 }
@@ -178,7 +178,7 @@ pub trait MemoryHierarchy {
                     core_id: request.core_id,
                     block_id,
                     access_type: request.access_type.clone(),
-                    instruction_pc_in_va: request.instruction_pc_in_va,
+                    is_os: request.is_os,
                 }
             }
         };
