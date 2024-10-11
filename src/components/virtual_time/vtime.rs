@@ -55,6 +55,10 @@ impl VirtualTimeContext {
         self.time_scaling_factor = scaling_factor;
     }
 
+    pub fn get_scaling_factor(&self) -> f64 {
+        self.time_scaling_factor
+    }
+
     pub fn calculate_cpu_clock(&mut self) -> i64 {
         // 1. get real timestamp in nanosecond
         // let real_time = SystemTime::now()
