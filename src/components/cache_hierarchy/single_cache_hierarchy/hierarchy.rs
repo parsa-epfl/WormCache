@@ -189,7 +189,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
                 .get()
                 .as_mut()
                 .unwrap()
-                .translate_and_refill(r.va, ts, r.is_instruction())
+                .translate_and_refill(r.core_id, r.va, ts, r.is_instruction())
         }
     }
 
