@@ -14,6 +14,7 @@ struct FlexusBTBEntry {
     target: u64,
     #[serde(rename = "type")]
     type_: u64,
+    ts: u64, // for debugging
 }
 
 #[derive(Serialize, Deserialize)]
@@ -55,6 +56,7 @@ fn serialize_a_btb(
                 pc: entry.tag,
                 target: entry.target,
                 type_: entry.branch_type as u64,
+                ts: entry.ts,
             });
         }
         serialized_btb_json.push(serialized_set);

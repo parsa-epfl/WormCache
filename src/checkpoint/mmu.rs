@@ -19,6 +19,7 @@ pub struct SerializedTLB {
 pub struct FlexusTLBEntry {
     vpn: u64,
     ppn: u64,
+    ts: u64,
 }
 
 pub struct FlexusMMU {
@@ -34,7 +35,9 @@ fn serialize_a_tlb_set(set: SerializedTLBSet) -> Vec<FlexusTLBEntry> {
         .map(|entry| FlexusTLBEntry {
             vpn: entry.vpn,
             ppn: entry.ppn,
+            ts: entry.ts,
         })
+        .rev()
         .collect()
 }
 
@@ -64,7 +67,7 @@ fn serialize_a_tlb(
     // Step 2: Sort by the timestamp.
     for set in result.iter_mut() {
         set.sort_by_key(|entry| entry.ts);
-        set.reverse();
+        set.reverse(); // MRU are stored in the front after sorting.
 
         set.truncate(associativity);
     }
