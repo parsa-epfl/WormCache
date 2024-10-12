@@ -138,7 +138,14 @@ pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
-    fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
+    fn init(_plugin_id: u64, options: &FxHashMap<String, String>) {
+        let mode = String::new();
+        let mode = options.get("mode").unwrap_or(&mode);
+        assert_ne!(
+            mode, "vtime",
+            "Pure vtime is enabled. Memory Hierarchy should be disabled."
+        );
+
         unsafe {
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
             let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();

@@ -107,6 +107,9 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
         }
     }
 
+    if mode != "vtime" {
+        statistics::init();
+    }
+
     // Add more chronic behaviors here.
-    statistics::init();
 }

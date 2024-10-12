@@ -87,13 +87,24 @@ pub struct VirtualTimePlugin {}
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init(plugin_id: u64, options: &FxHashMap<String, String>) {
-        unsafe {
-            ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
-        }
         // check the following options:
         // - vtime=on|off
+        // - mode=vtime forces vtime=on.
+        // - vtime_mode=adaptive|fixed
+        // - vtime_scaling_factor=1000
 
-        let vtime_is_on = options.get("vtime").map(|x| x == "on").unwrap_or(false);
+        let mut vtime_is_on = options.get("vtime").map(|x| x == "on").unwrap_or(false);
+        let mode = String::new();
+        let mode = options.get("mode").unwrap_or(&mode);
+        if *mode == "vtime" {
+            vtime_is_on = true;
+            println!("Mode is set to vtime.");
+        } else {
+            // then, we need to record the instruction count.
+            unsafe {
+                ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
+            }
+        }
 
         if vtime_is_on && !unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
             assert!(unsafe {
@@ -106,80 +117,104 @@ impl super::Plugin for VirtualTimePlugin {
                 ))
             });
 
-            unsafe {
-                SLEEPING_TABLE = Box::into_raw(Box::new(sleeping_table::SleepingTable::new()));
-            }
+            // if the vtime_mode is fixed, we just set the scaling factor. Otherwise, we need to profile it.
+            let vtime_mode = String::from("adaptive");
+            let vtime_mode = options.get("vtime_mode").unwrap_or(&vtime_mode);
 
-            unsafe {
-                qemu_api::qemu_plugin_register_vcpu_idle_cb(plugin_id, Some(set_sleeping));
-            }
+            if vtime_mode == "fixed" {
+                let scaling_factor = options
+                    .get("vtime_scaling_factor")
+                    .unwrap_or(&String::from("1000"))
+                    .parse::<f64>()
+                    .unwrap();
 
-            // register threads to profile the icount and calculate the host time scaling factor.
-            thread::spawn(|| {
-                let mut history_icount = [(0, 0); param::CORE_COUNT];
+                TIME_PLUGIN
+                    .lock()
+                    .unwrap()
+                    .update_scaling_factor(scaling_factor);
+            } else {
+                unsafe {
+                    SLEEPING_TABLE = Box::into_raw(Box::new(sleeping_table::SleepingTable::new()));
+                }
 
-                let mut loop_count = 0;
-                let mut acc_active_core_count = 0;
-                loop {
-                    // read the current icount.
-                    let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
-                    let mut accumulated_icount_diff = 0;
-                    let mut awaking_cores = 0;
-                    // check the icount difference for cores that are not sleeping.
-                    for i in 0..param::CORE_COUNT {
-                        let (u, k) = icounts[i];
+                unsafe {
+                    qemu_api::qemu_plugin_register_vcpu_idle_cb(plugin_id, Some(set_sleeping));
+                }
 
-                        if !unsafe { (*SLEEPING_TABLE).has_slept(i) } {
-                            let (last_u, last_k) = history_icount[i];
-                            let diff = (u + k) - (last_u + last_k);
+                // register threads to profile the icount and calculate the host time scaling factor.
+                thread::spawn(|| {
+                    let mut history_icount = [(0, 0); param::CORE_COUNT];
 
-                            if diff != 0 {
-                                accumulated_icount_diff += diff;
-                                awaking_cores += 1;
+                    let mut loop_count = 0;
+                    let mut acc_active_core_count = 0;
+                    loop {
+                        // read the current icount.
+                        let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
+                        let mut accumulated_icount_diff = 0;
+                        let mut awaking_cores = 0;
+                        // check the icount difference for cores that are not sleeping.
+                        for i in 0..param::CORE_COUNT {
+                            let (u, k) = icounts[i];
 
-                                acc_active_core_count += 1;
+                            if !unsafe { (*SLEEPING_TABLE).has_slept(i) } {
+                                let (last_u, last_k) = history_icount[i];
+                                let diff = (u + k) - (last_u + last_k);
+
+                                if diff != 0 {
+                                    accumulated_icount_diff += diff;
+                                    awaking_cores += 1;
+
+                                    acc_active_core_count += 1;
+                                }
                             }
+
+                            // copy the icounts.
+                            history_icount[i] = (u, k);
                         }
 
-                        // copy the icounts.
-                        history_icount[i] = (u, k);
+                        if awaking_cores != 0 {
+                            // set the time scaling factor.
+                            let average_icount =
+                                accumulated_icount_diff as f64 / awaking_cores as f64;
+                            let scaling_factor = (param::HOST_TIME_SCALING_PROFILING_PERIOD as f64
+                                * 1e6)
+                                / average_icount;
+
+                            TIME_PLUGIN
+                                .lock()
+                                .unwrap()
+                                .update_scaling_factor(scaling_factor);
+                        }
+
+                        // clean the sleeping table.
+                        unsafe { (*SLEEPING_TABLE).clean_sleeping() };
+
+                        loop_count += 1;
+
+                        if loop_count % 100 == 0 {
+                            println!(
+                                "Average non-sleeping core count: {}",
+                                acc_active_core_count as f64 / 100_f64,
+                            );
+
+                            acc_active_core_count = 0;
+                        }
+
+                        // wait for a period.
+                        thread::sleep(Duration::from_millis(
+                            param::HOST_TIME_SCALING_PROFILING_PERIOD as u64,
+                        ));
                     }
+                });
+            }
 
-                    if awaking_cores != 0 {
-                        // set the time scaling factor.
-                        let average_icount = accumulated_icount_diff as f64 / awaking_cores as f64;
-                        let scaling_factor = (param::HOST_TIME_SCALING_PROFILING_PERIOD as f64
-                            * 1e6)
-                            / average_icount;
-
-                        TIME_PLUGIN
-                            .lock()
-                            .unwrap()
-                            .update_scaling_factor(scaling_factor);
-                    }
-
-                    // clean the sleeping table.
-                    unsafe { (*SLEEPING_TABLE).clean_sleeping() };
-
-                    loop_count += 1;
-
-                    if loop_count % 100 == 0 {
-                        println!(
-                            "Average non-sleeping core count: {}",
-                            acc_active_core_count as f64 / 100_f64,
-                        );
-
-                        acc_active_core_count = 0;
-                    }
-
-                    // wait for a period.
-                    thread::sleep(Duration::from_millis(
-                        param::HOST_TIME_SCALING_PROFILING_PERIOD as u64,
-                    ));
-                }
-            });
-
-            println!("Virtual time calculation is on.");
+            println!("Virtual time calculation is on. Mode: {}", vtime_mode);
+            if vtime_mode == "fixed" {
+                println!(
+                    "Scaling factor: {}",
+                    TIME_PLUGIN.lock().unwrap().get_scaling_factor()
+                );
+            }
         } else if unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
             println!("Virtual time calculation is off because icount mode is on.");
         }

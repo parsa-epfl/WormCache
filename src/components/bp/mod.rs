@@ -123,8 +123,17 @@ unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, f
 pub struct BranchPredictorPlugin {}
 
 impl Plugin for BranchPredictorPlugin {
-    fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
+    fn init(_plugin_id: u64, options: &FxHashMap<String, String>) {
         println!("BranchPredictorPlugin initialized.");
+
+        // get the mode name.
+        let mode = String::new();
+        let mode = options.get("mode").unwrap_or(&mode);
+
+        assert_ne!(
+            mode, "vtime",
+            "Pure vtime is enabled. BP should be disabled."
+        );
 
         assert!(unsafe {
             qemu_api::qemu_plugin_register_vcpu_branch_resolved_cb(Some(branch_resolved_cb))
