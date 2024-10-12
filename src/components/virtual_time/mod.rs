@@ -87,9 +87,6 @@ pub struct VirtualTimePlugin {}
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
     fn init(plugin_id: u64, options: &FxHashMap<String, String>) {
-        unsafe {
-            ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
-        }
         // check the following options:
         // - vtime=on|off
         // - mode=vtime forces vtime=on.
@@ -102,6 +99,11 @@ impl super::Plugin for VirtualTimePlugin {
         if *mode == "vtime" {
             vtime_is_on = true;
             println!("Mode is set to vtime.");
+        } else {
+            // then, we need to record the instruction count.
+            unsafe {
+                ICOUNT_PLUGIN = Box::into_raw(Box::new(icount::ICountPlugin::new()));
+            }
         }
 
         if vtime_is_on && !unsafe { qemu_api::qemu_plugin_is_icount_mode() } {

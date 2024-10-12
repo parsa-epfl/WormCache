@@ -130,10 +130,10 @@ impl Plugin for BranchPredictorPlugin {
         let mode = String::new();
         let mode = options.get("mode").unwrap_or(&mode);
 
-        if mode == "vtime" {
-            println!("Pure vtime is enabled. Disable the branch predictor.");
-            return;
-        }
+        assert_ne!(
+            mode, "vtime",
+            "Pure vtime is enabled. BP should be disabled."
+        );
 
         assert!(unsafe {
             qemu_api::qemu_plugin_register_vcpu_branch_resolved_cb(Some(branch_resolved_cb))

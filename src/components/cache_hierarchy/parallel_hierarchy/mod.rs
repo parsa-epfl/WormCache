@@ -49,7 +49,6 @@ type HierarchyForPlugin = parser::HierarchyForPlugin;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 static mut DUMMY_PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
-static mut ENABLED: bool = false;
 
 // TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
@@ -142,15 +141,12 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
     fn init(_plugin_id: u64, options: &FxHashMap<String, String>) {
         let mode = String::new();
         let mode = options.get("mode").unwrap_or(&mode);
-
-        if mode == "vtime" {
-            println!("Pure vtime is enabled. Disable the Memory Hierarchy.");
-            return;
-        }
+        assert_ne!(
+            mode, "vtime",
+            "Pure vtime is enabled. Memory Hierarchy should be disabled."
+        );
 
         unsafe {
-            ENABLED = true;
-
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
             let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
 
@@ -211,10 +207,6 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
 
     #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
-        if unsafe { !ENABLED } {
-            return;
-        }
-
         let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
 
         if n_instruction == 0 {

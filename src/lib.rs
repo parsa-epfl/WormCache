@@ -56,6 +56,7 @@ use components::trace::TracePlugin;
 #[allow(unused_imports)]
 use components::virtual_time::VirtualTimePlugin;
 
+use components::Plugin;
 use parameter::PluginList;
 use rustc_hash::FxHashMap;
 
@@ -149,14 +150,21 @@ unsafe extern "C" fn qemu_plugin_install(
         options.insert(key.to_string(), value.to_string());
     }
 
-    qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
-    qemu_api::qemu_plugin_register_atexit_cb(id, Some(qemu_plugin_exit), std::ptr::null_mut());
-    qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
-    qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
+    // check the current mode.
+    let current_mode = String::from("normal");
+    let current_mode = options.get("mode").unwrap_or(&current_mode);
 
-    PluginList::init(id, &options);
+    if *current_mode != "vtime" {
+        qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
+        qemu_api::qemu_plugin_register_atexit_cb(id, Some(qemu_plugin_exit), std::ptr::null_mut());
+        qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
+        qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
+        PluginList::init(id, &options);
+    } else {
+        VirtualTimePlugin::init(id, &options);
+        println!("Virtual Time is enabled. Disable all Memory Hierarchy.");
+    }
 
     chronic_behavior_init(&options);
-
     0
 }
