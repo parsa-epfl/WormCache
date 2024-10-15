@@ -306,21 +306,23 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
         let block_id = r.block_id;
         let core_id = r.core_id;
-        let is_store = r.is_store();
 
         let cache_access_result = match result {
             SharedCacheLookupResult::Hit(is_dirty) => {
                 SharedCacheLookupAndInsertResult::Hit(is_dirty)
             }
             SharedCacheLookupResult::Miss => {
-                let just_warmed =
-                    self.insert(block_id, core_id, ts, is_store, increase_touched_count);
+                // This function is only called when the private cache has a miss
+                // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
+                let just_warmed = self.insert(block_id, core_id, ts, false, increase_touched_count);
                 assert!(!just_warmed);
                 SharedCacheLookupAndInsertResult::Inserted
             }
             SharedCacheLookupResult::ColdMiss => {
-                let just_warmed =
-                    self.insert(block_id, core_id, ts, is_store, increase_touched_count);
+                // This function is only called when the private cache has a miss
+                // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
+
+                let just_warmed = self.insert(block_id, core_id, ts, false, increase_touched_count);
                 SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
             }
             SharedCacheLookupResult::Unknown(diff) => {
