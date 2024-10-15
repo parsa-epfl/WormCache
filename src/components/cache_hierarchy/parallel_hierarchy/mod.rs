@@ -41,6 +41,7 @@ use crate::{
 };
 
 use super::common::L0InstructionCache;
+use super::{common::CacheAccessType, MemoryAccessRequest, MemoryHierarchy};
 
 pub mod hierarchy;
 pub mod parser;
@@ -55,11 +56,8 @@ unsafe extern "C" fn vcpu_mem_access(
     vcpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
-    _inst_host_addr: *mut ffi::c_void,
+    inst_virtual_addr: *mut ffi::c_void,
 ) {
-    // let offset: u64 = offset as u64;
-    // let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
-
     let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
@@ -68,28 +66,47 @@ unsafe extern "C" fn vcpu_mem_access(
 
         let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
+        let inst_virtual_addr = inst_virtual_addr as u64;
+        let is_os = (inst_virtual_addr >> 48) & 1 == 1;
+        let offset = inst_virtual_addr >> 49;
+
+        let ts = if parameter::USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION {
+            let ipc = qemu_api::qemu_plugin_get_vcpu_ipc(vcpu_idx);
+            ((offset * 100) / ipc) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
+        } else {
+            get_monotonic_ts()
+        };
+
         if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
             (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
-                vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-                vaddr,
-                pa,
-                get_monotonic_ts(),
-                is_store,
-                false,
-                1,
-                0,
-            );
+                &MemoryAccessRequest {
+                    core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+                    va: vaddr,
+                    access_type: if is_store {
+                        CacheAccessType::DataWrite
+                    } else {
+                        CacheAccessType::DataRead
+                    },
+                    is_os,
+                },
+                Some(pa),
+                ts,
+            )
         } else {
             (*PLUGIN).access_memory_with_va_and_pa(
-                vcpu_idx,
-                vaddr,
-                pa,
-                get_monotonic_ts(),
-                is_store,
-                false,
-                1,
-                0,
-            );
+                &MemoryAccessRequest {
+                    core_id: vcpu_idx,
+                    va: vaddr,
+                    access_type: if is_store {
+                        CacheAccessType::DataWrite
+                    } else {
+                        CacheAccessType::DataRead
+                    },
+                    is_os,
+                },
+                Some(pa),
+                ts,
+            )
         };
     } else {
         // TODO: check the I/O event
@@ -100,27 +117,43 @@ static mut L0_CACHE: *mut L0InstructionCache<{ parameter::CORE_COUNT }> = std::p
 
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
-    inst_host_addr: *mut ffi::c_void, // it is basically its physical address.
+    inst_virtual_addr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
-    let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
+    let vaddr = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
 
     if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
         return;
     }
 
+    let offset = (inst_virtual_addr as u64) >> 49;
+    let ts = if parameter::USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION {
+        let ipc = qemu_api::qemu_plugin_get_vcpu_ipc(vcpu_idx);
+        ((offset * 100) / ipc) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
+    } else {
+        get_monotonic_ts()
+    };
+
     if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
         (*DUMMY_PLUGIN).access_memory_with_va(
-            vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-            vaddr,
-            get_monotonic_ts(),
-            false,
-            true,
-            1,
-            vaddr,
+            &MemoryAccessRequest {
+                core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+                va: vaddr,
+                access_type: CacheAccessType::InstructionFetch,
+                is_os: vaddr >> 63 == 1,
+            },
+            ts,
         );
     } else {
-        (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true, 1, vaddr);
+        (*PLUGIN).access_memory_with_va(
+            &MemoryAccessRequest {
+                core_id: vcpu_idx,
+                va: vaddr,
+                access_type: CacheAccessType::InstructionFetch,
+                is_os: vaddr >> 63 == 1,
+            },
+            ts,
+        );
     }
 }
 
@@ -213,6 +246,8 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             return;
         }
 
+        assert!(n_instruction < 32768);
+
         let mut block_id = vec![];
         for i in 0..n_instruction {
             let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
@@ -228,15 +263,9 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         for (idx, _) in fb_info.into_iter() {
             let i = qemu_api::qemu_plugin_tb_get_insn(tb, idx);
 
-            // The target virtual address should have the same page offset as the host virtual address.
-            assert_eq!(
-                (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0xfff,
-                (qemu_api::qemu_plugin_insn_haddr(i) as u64) & 0xfff
-            );
-
-            let insn_addr = (qemu_api::qemu_plugin_insn_haddr(i) as u64) & 0xffff_ffff_ffff;
+            let insn_addr = (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0x1_ffff_ffff_ffff;
             let offset = idx as u64;
-            let combined = insn_addr | (offset << 48);
+            let combined = insn_addr | (offset << 49);
 
             qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
                 i,
@@ -250,9 +279,9 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         for i in 0..n_instruction {
             let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
 
-            let insn_addr = (qemu_api::qemu_plugin_insn_haddr(inst) as u64) & 0xffff_ffff_ffff;
+            let insn_addr = (qemu_api::qemu_plugin_insn_vaddr(inst) as u64) & 0x1_ffff_ffff_ffff;
             let offset = i as u64;
-            let combined = insn_addr | (offset << 48);
+            let combined = insn_addr | (offset << 49);
 
             qemu_api::qemu_plugin_register_vcpu_mem_cb(
                 inst,

@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 2;
+pub const CORE_COUNT: usize = 5;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -98,7 +98,7 @@ static_assertions::const_assert!(TLB_SET.is_power_of_two());
  * If true, the private instruction cache and the private data cache are unified.
  * If false, the private instruction cache and the private data cache are separated, i.e., the Harvard architecture.
  */
-pub const USE_UNIFIED_CACHE: bool = false;
+pub const USE_UNIFIED_CACHE: bool = true;
 
 /**
  * PRI_CACHE_ASSO
@@ -323,3 +323,14 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
  * This option is only effective when the parallel cache model is used.
  */
 pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
+
+/**
+ * Whether to use the target time (calculated with the instruction count the IPC) for cache state construction.
+ *
+ * When this option is enabled, the previous option, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION, must be enabled.
+ */
+pub const USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION: bool = false;
+static_assertions::const_assert!(
+    !(DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
+        && USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION)
+);

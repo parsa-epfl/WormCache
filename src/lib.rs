@@ -62,6 +62,7 @@ use rustc_hash::FxHashMap;
 
 use std::ffi;
 
+#[allow(non_upper_case_globals)]
 #[no_mangle]
 pub static qemu_plugin_version: u32 = qemu_api::QEMU_PLUGIN_VERSION;
 

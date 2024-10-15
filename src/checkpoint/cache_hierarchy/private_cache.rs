@@ -99,8 +99,6 @@ pub fn resize_directory(
                         is_instruction: false,
                         writeable: false,
                         modified: false,
-                        access_v_ts: 0,
-                        write_v_ts: 0,
                     };
                     let mut owner = 0;
 
@@ -125,8 +123,6 @@ pub fn resize_directory(
                         line_to_evict.write_ts = line_to_evict.write_ts.max(line.write_ts);
                         line_to_evict.writeable |= line.writeable;
                         line_to_evict.modified |= line.modified;
-                        line_to_evict.access_v_ts = line_to_evict.access_v_ts.max(line.ts);
-                        line_to_evict.write_v_ts = line_to_evict.write_v_ts.max(line.write_ts);
 
                         // invalid the line
                         line.ts = 0;

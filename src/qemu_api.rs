@@ -949,10 +949,6 @@ extern "C" {
     pub fn qemu_plugin_register_loadvm_cb(cb: qemu_plugin_snapshot_cb_t) -> bool;
 }
 extern "C" {
-    #[doc = " qemu_plugin_read_vts_base - return the base virtual time calculated from the\n quantum budget and quantum generation.\n\n The return value does not contain the current translation block.\n You need to add the bias by yourself to get the accurate virtual timestamp.\n"]
-    pub fn qemu_plugin_read_local_virtual_time_base() -> u64;
-}
-extern "C" {
     #[doc = " qemu_plugin_get_quantum_size - return the quantum size.\n\n Return 0 if the quantum is not enabled."]
     pub fn qemu_plugin_get_quantum_size() -> u64;
 }
@@ -970,8 +966,18 @@ extern "C" {
     pub fn qemu_plugin_is_icount_mode() -> bool;
 }
 pub type qemu_plugin_periodic_check_cb_t =
-    ::std::option::Option<unsafe extern "C" fn(passed_cycles: u64)>;
+    ::std::option::Option<unsafe extern "C" fn(passed_cycles: u64) -> bool>;
 extern "C" {
-    #[doc = " qemu_plugin_register_periodic_check_cb() - register a callback for periodic checking.\n\n @cb: function is called every time the periodic checking is triggered.\n\n There are two scenario when the periodic checking is triggered:\n - When icount mode is on, and the `icount_checking_period` is set to non-zero.\n - When quantum mode is on, and the `quantum_checking_period` is set to non-zero.\n\n Without these options, the periodic checking will not be triggered.\n\n The periodic checking is triggered every `icount_checking_period` or `quantum_checking_period` cycles.\n Cycles are calculated from the provided IPC and the instruction count."]
+    #[doc = " qemu_plugin_register_periodic_check_cb() - register a callback for periodic\n checking.\n\n @cb: function is called every time the periodic checking is triggered.\n\n When the function return trues, the VM stop request is sent, and all vCPUs\n will be paused. This is useful for taking the snapshot of the system.\n\n There are two scenario when the periodic checking is triggered:\n - When icount mode is on, and the `icount_checking_period` is set to\n non-zero.\n - When quantum mode is on, and the `quantum_checking_period` is set to\n non-zero.\n\n Without these options, the periodic checking will not be triggered.\n\n The periodic checking is triggered every `icount_checking_period` or\n `quantum_checking_period` cycles. Cycles are calculated from the provided IPC\n and the instruction count."]
     pub fn qemu_plugin_register_periodic_check_cb(cb: qemu_plugin_periodic_check_cb_t) -> bool;
+}
+extern "C" {
+    #[doc = " The following functions are used to get and set the virtual time of a\n specific vCPU.\n\n This part of the logic should be able to be implemented by the plugin itself.\n\n The unit, unfortunately, is centi-cycle."]
+    pub fn qemu_plugin_get_vcpu_vtime(cpu_idx: u32) -> u64;
+}
+extern "C" {
+    pub fn qemu_plugin_set_vcpu_vtime(cpu_idx: u32, vtime: u64);
+}
+extern "C" {
+    pub fn qemu_plugin_get_vcpu_ipc(cpu_idx: u32) -> u64;
 }

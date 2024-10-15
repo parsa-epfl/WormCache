@@ -45,22 +45,12 @@ pub trait PrivateCaches {
     fn new() -> Self;
 
     // This function is for checking the whether the private cache hits or miss.
-    fn poke_and_update(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        v_ts: u64,
-        is_instruction: bool,
-        is_store: bool,
-    ) -> PrivateCachePokeResult;
+    fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> PrivateCachePokeResult;
 
     // This function is for filling the cache line from the shared LLC.
     fn get_set_for_fill(
         &self,
-        core_id: u32,
-        block_id: u64,
-        is_instruction: bool,
+        request: &CacheBlockRequest,
     ) -> impl DerefMut<Target = PrivateCacheSet>;
 
     // This function is for coherence messages and refill.
@@ -105,5 +95,7 @@ pub use havard::SerialHarvardPrivateCache;
 pub use unified::ParallelUnifiedPrivateCache;
 pub use unified::SerialUnifiedPrivateCache;
 pub use unified::UnifiedPerCorePrivateCacheSerdeHelper;
+
+use crate::components::cache_hierarchy::CacheBlockRequest;
 
 use super::directory::SharerList;

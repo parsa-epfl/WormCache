@@ -41,6 +41,7 @@ use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 #[derive(EnumCount, EnumIter, Display, Debug, Clone, Copy)]
 pub enum EventType {
     Instruction,
+    TargetLocalCycle,
 
     MemoryAccess,
     InstructionAccess,
@@ -71,9 +72,6 @@ pub enum EventType {
 
     // PrivateCacheColdMiss
     SharedCacheColdMiss, // The cache miss is caused due to the cold start of the shared cache.
-
-    PrivateCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the coherence state information.
-    SharedCacheVTsOrderViolation, // The violation of the order suggested by VTs, for the LRU information in the shared cache.
 
     ShadowSharedCacheHit,
     ShadowSharedCacheMiss, // this is for debugging purpose of the SharedCacheVTsOrderViolation.
@@ -129,6 +127,18 @@ impl PerCoreStatistics {
     }
 
     #[inline]
+    pub fn set(&mut self, event: EventType, is_os: bool, value: u64) {
+        if ENABLE_STATISTICS {
+            let index = (event as usize) * 2;
+            if is_os {
+                self.counters[index + 1] = value;
+            } else {
+                self.counters[index] = value;
+            }
+        }
+    }
+
+    #[inline]
     pub fn get_line(&self, ts: u64, core_id: u32) -> String {
         let mut line = format!("{},{}", ts, core_id);
         for event in 0..EventType::COUNT {
@@ -177,6 +187,15 @@ impl Statistics {
         }
     }
 
+    #[inline]
+    pub fn set(&self, core_id: u32, event: EventType, is_os: bool, value: u64) {
+        if ENABLE_STATISTICS {
+            unsafe {
+                (*self.per_core[core_id as usize].get()).set(event, is_os, value);
+            }
+        }
+    }
+
     pub fn get_header() -> String {
         // generate all event names.
         let headers = EventType::iter()
@@ -215,6 +234,13 @@ impl Statistics {
     pub fn global_record_by(core_id: u32, event: EventType, is_os: bool, increment: u64) {
         unsafe {
             GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
+        }
+    }
+
+    #[inline]
+    pub fn global_set(core_id: u32, event: EventType, is_os: bool, value: u64) {
+        unsafe {
+            GLOBAL_STATISTICS.set(core_id, event, is_os, value);
         }
     }
 

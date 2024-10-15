@@ -29,7 +29,9 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::components::debug::statistics::Statistics;
+use crate::components::debug::statistics::{EventType, Statistics};
+use crate::parameter::CORE_COUNT;
+use crate::qemu_api;
 use crate::util::get_monotonic_ts;
 use std::thread;
 
@@ -44,6 +46,16 @@ pub fn init() {
             .unwrap();
 
         loop {
+            // update the local target time before writing the statistics
+            for core_id in 0..CORE_COUNT {
+                Statistics::global_set(
+                    core_id as u32,
+                    EventType::TargetLocalCycle,
+                    false,
+                    unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
+                );
+            }
+
             for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
                 miss_file.write_all(stat.as_bytes()).unwrap();
                 miss_file.write_all(b"\n").unwrap();

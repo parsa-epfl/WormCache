@@ -29,6 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::components::cache_hierarchy::mmu::MemoryManagementUnit;
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
  *
@@ -48,11 +49,11 @@
  * Reference: https://willcrichton.net/notes/type-level-programming/
  *
  */
-use crate::arch::AArch64;
 use crate::parameter;
+use crate::{arch::AArch64, components::cache_hierarchy::MemoryHierarchy};
 
 pub trait CacheModelParser<const SERIAL_CACHE_MODEL: bool, const UNIFIED_CACHE_MODEL: bool> {
-    type Output;
+    type Output: MemoryHierarchy;
 }
 
 pub struct DummyParser;
@@ -87,14 +88,10 @@ pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT
 };
 
-type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
-    AArch64,
-    { parameter::TLB_ASSO },
-    { parameter::TLB_SET },
->;
+type AArch64MMU = MemoryManagementUnit<AArch64, { parameter::TLB_ASSO }, { parameter::TLB_SET }>;
 
 #[allow(dead_code)]
-type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
+type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     AArch64MMU,
     ParallelUnifiedPrivateCache<
         { ALLOCATED_CORE_COUNT },
@@ -115,7 +112,7 @@ type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
 >;
 
 #[allow(dead_code)]
-type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
+type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     AArch64MMU,
     ParallelHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },
@@ -138,7 +135,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
 >;
 
 #[allow(dead_code)]
-type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
+type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     AArch64MMU,
     SerialUnifiedPrivateCache<
         { ALLOCATED_CORE_COUNT },
@@ -159,7 +156,7 @@ type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
 >;
 
 #[allow(dead_code)]
-type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
+type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     AArch64MMU,
     SerialHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },

@@ -41,9 +41,6 @@ pub trait Plugin: Send + Sync {
     fn deserialize(name: &str);
 }
 
-mod mmu; // this is only used by other components, not exposed to the crate.
-pub use mmu::tlb::TLBEntry;
-pub use mmu::NoMMU;
 pub mod bp;
 pub mod cache_hierarchy;
 pub mod chronic;
