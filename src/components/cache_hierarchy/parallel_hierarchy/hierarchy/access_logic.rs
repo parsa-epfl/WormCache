@@ -13,7 +13,7 @@ use crate::{
             statistics::{EventType, Statistics},
         },
     },
-    parameter::{self, ENABLE_CACHE_LINE_HISTORY},
+    parameter,
 };
 
 use super::ParallelMemoryHierarchy;
@@ -479,7 +479,7 @@ impl<
                     if let Some(index) = index {
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), block_id);
-                        if !PRECISE_COHERENCE_RECONSTRUCTION || entry.access_ts() < ts {
+                        if !PRECISE_COHERENCE_RECONSTRUCTION || entry.access_ts() <= ts {
                             // invalid the directory entry.
                             incoming_sharer.set(*replica_cache_id, false);
                             // invalid the private cache entry.
@@ -493,21 +493,26 @@ impl<
                                 );
                             }
 
-                            if ENABLE_CACHE_LINE_HISTORY {
-                                CacheLineCoherenceHistory::global_record_history(
-                                    block_id,
-                                    CacheOperationType::Invalidate(p_cache_id),
-                                    *replica_cache_id,
-                                    ts,
-                                    false,
-                                    incoming_sharer,
-                                    line!(),
-                                )
-                            }
+                            CacheLineCoherenceHistory::global_record_history(
+                                block_id,
+                                CacheOperationType::Invalidate(p_cache_id),
+                                *replica_cache_id,
+                                ts,
+                                false,
+                                incoming_sharer,
+                                line!(),
+                            )
                         } else {
                             // This means you will only get the read permission, because there is a core with read permission and large timestamp.
                             assert!(entry.write_ts() <= ts);
-                            assert!(*replica_cache_id != p_cache_id);
+                            if *replica_cache_id == p_cache_id {
+                                CacheLineCoherenceHistory::global_get_block_history(block_id)
+                                    .unwrap()
+                                    .value()
+                                    .print_history();
+
+                                assert!(*replica_cache_id != p_cache_id);
+                            }
 
                             // remove the write permission.
                             set.request_sharer(*index, ts);

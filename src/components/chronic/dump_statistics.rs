@@ -29,9 +29,12 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::Write;
+
 use crate::{
     components::debug::statistics::{EventType, Statistics},
     parameter as param, qemu_api,
+    util::get_monotonic_ts,
 };
 
 use serde_json::json;
@@ -44,7 +47,7 @@ static mut CURRENT_CYCLE_COUNT: u64 = 0;
 static mut MEASURE_NEXT_THRESHOLD: u64 = 0;
 static mut MEASURE_PREFIX: String = String::new();
 
-unsafe extern "C" fn on_icount_periodic_checking(diff: u64) {
+unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
     CURRENT_CYCLE_COUNT += diff;
     // read user icount.
     if CURRENT_CYCLE_COUNT >= MEASURE_NEXT_THRESHOLD {
@@ -161,11 +164,33 @@ unsafe extern "C" fn on_icount_periodic_checking(diff: u64) {
         MEASURE_TURN += 1;
         if MEASURE_TURN >= MEASURE_MAX_TURN {
             println!("The maximum statistics turn is reached. Quit.");
+
+            let mut miss_file = std::fs::File::create("statistics.final.csv").unwrap();
+            miss_file
+                .write_fmt(format_args!("{}\n", Statistics::get_header()))
+                .unwrap();
+
+            // update the local target time before writing the statistics
+            for core_id in 0..param::CORE_COUNT {
+                Statistics::global_set(
+                    core_id as u32,
+                    EventType::TargetLocalCycle,
+                    false,
+                    unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
+                );
+            }
+
+            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+                miss_file.write_all(stat.as_bytes()).unwrap();
+                miss_file.write_all(b"\n").unwrap();
+            }
             std::process::exit(0);
         }
 
         MEASURE_NEXT_THRESHOLD += MEASURE_INTERVAL;
     }
+
+    false
 }
 
 pub unsafe fn init(init_threshold: u64, interval: u64, count: u64, prefix: String) {

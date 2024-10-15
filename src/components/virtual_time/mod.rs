@@ -243,7 +243,39 @@ impl super::Plugin for VirtualTimePlugin {
         }
     }
 
-    fn serialize(_: &str) {}
+    fn serialize(folder_name: &str) {
+        // for all cores, dump virtual times.
+        let file = std::fs::File::create(format!("{}/vtime.json.zstd", folder_name)).unwrap();
 
-    fn deserialize(_: &str) {}
+        let mut file = zstd::Encoder::new(file, 0).unwrap();
+
+        let vtime = (0..256)
+            .map(|idx| unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(idx) })
+            .collect::<Vec<_>>();
+
+        serde_json::to_writer(&mut file, &vtime).unwrap();
+
+        file.finish().unwrap();
+    }
+
+    fn deserialize(folder_name: &str) {
+        let file = std::fs::File::open(format!("{}/vtime.json.zstd", folder_name));
+
+        if file.is_err() {
+            println!("Cannot load the vtime state. Error: {:?}", file.err());
+            return;
+        }
+
+        let file = file.unwrap();
+
+        let mut file = zstd::Decoder::new(file).unwrap();
+
+        let vtime: Vec<u64> = serde_json::from_reader(&mut file).unwrap();
+
+        for (i, v) in vtime.into_iter().enumerate() {
+            unsafe {
+                qemu_api::qemu_plugin_set_vcpu_vtime(i as u32, v);
+            }
+        }
+    }
 }
