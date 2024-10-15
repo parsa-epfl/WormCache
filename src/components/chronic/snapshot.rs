@@ -29,7 +29,14 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::qemu_api;
+use std::{fs::File, io::Write};
+
+use crate::{
+    components::debug::statistics::{EventType, Statistics},
+    parameter, qemu_api,
+    util::get_monotonic_ts,
+};
+use once_cell::sync::OnceCell;
 use spin::Mutex as SpinMutex;
 
 static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
@@ -70,13 +77,47 @@ unsafe extern "C" fn event_loop_callback() {
 
     if PERIODIC_SNAPSHOT_COUNT >= PERIODIC_SNAPSHOT_REQUIRED_COUNT {
         println!("Generate {} snapshots. Quit.", PERIODIC_SNAPSHOT_COUNT);
+        let mut miss_file = std::fs::File::create("statistics.final.csv").unwrap();
+        miss_file
+            .write_fmt(format_args!("{}\n", Statistics::get_header()))
+            .unwrap();
+
+        // update the local target time before writing the statistics
+        for core_id in 0..parameter::CORE_COUNT {
+            Statistics::global_set(core_id as u32, EventType::TargetLocalCycle, false, unsafe {
+                qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32)
+            });
+        }
+
+        for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+            miss_file.write_all(stat.as_bytes()).unwrap();
+            miss_file.write_all(b"\n").unwrap();
+        }
         std::process::exit(0);
     }
 }
 
+// add a global file to record the statistics for each quantum.
+static STATISTICS_QUANTUM_FILE: OnceCell<SpinMutex<File>> = once_cell::sync::OnceCell::new();
+
 // Remember, this function will be used as a quantum callback.
-unsafe extern "C" fn quantum_checking_callback(diff: u64) {
+unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
     PERIODIC_SNAPSHOT_CURRENT_CYCLES += diff;
+
+    let mut miss_file = STATISTICS_QUANTUM_FILE.get().unwrap().lock();
+    // dump the statistics.
+    for core_id in 0..parameter::CORE_COUNT {
+        Statistics::global_set(core_id as u32, EventType::TargetLocalCycle, false, unsafe {
+            qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32)
+        });
+    }
+
+    for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+        miss_file.write_all(stat.as_bytes()).unwrap();
+        miss_file.write_all(b"\n").unwrap();
+    }
+
+    drop(miss_file);
 
     if PERIODIC_SNAPSHOT_CURRENT_CYCLES >= PERIODIC_SNAPSHOT_THRESHOLD {
         let snapshot_name = format!("{}_{}", SNAPSHOT_PREFIX.clone(), PERIODIC_SNAPSHOT_COUNT);
@@ -84,7 +125,7 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) {
 
         let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
         if snapshot_info_guard.is_none() {
-            return;
+            return false;
         }
 
         let mut snapshot_info_guard = snapshot_info_guard.unwrap();
@@ -94,7 +135,10 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) {
         }
 
         PERIODIC_SNAPSHOT_THRESHOLD += PERIODIC_SNAPSHOT_INTERVAL;
+
+        return true;
     }
+    return false;
 }
 
 pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, prefix: String) {
@@ -112,4 +156,10 @@ pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, pref
             event_loop_callback
         )));
     }
+
+    STATISTICS_QUANTUM_FILE
+        .set(SpinMutex::new(
+            File::create("statistics.quantum.csv").expect("Failed to create statistics file."),
+        ))
+        .expect("Failed to set the statistics file.");
 }

@@ -966,9 +966,9 @@ extern "C" {
     pub fn qemu_plugin_is_icount_mode() -> bool;
 }
 pub type qemu_plugin_periodic_check_cb_t =
-    ::std::option::Option<unsafe extern "C" fn(passed_cycles: u64)>;
+    ::std::option::Option<unsafe extern "C" fn(passed_cycles: u64) -> bool>;
 extern "C" {
-    #[doc = " qemu_plugin_register_periodic_check_cb() - register a callback for periodic\n checking.\n\n @cb: function is called every time the periodic checking is triggered.\n\n There are two scenario when the periodic checking is triggered:\n - When icount mode is on, and the `icount_checking_period` is set to\n non-zero.\n - When quantum mode is on, and the `quantum_checking_period` is set to\n non-zero.\n\n Without these options, the periodic checking will not be triggered.\n\n The periodic checking is triggered every `icount_checking_period` or\n `quantum_checking_period` cycles. Cycles are calculated from the provided IPC\n and the instruction count."]
+    #[doc = " qemu_plugin_register_periodic_check_cb() - register a callback for periodic\n checking.\n\n @cb: function is called every time the periodic checking is triggered.\n\n When the function return trues, the VM stop request is sent, and all vCPUs\n will be paused. This is useful for taking the snapshot of the system.\n\n There are two scenario when the periodic checking is triggered:\n - When icount mode is on, and the `icount_checking_period` is set to\n non-zero.\n - When quantum mode is on, and the `quantum_checking_period` is set to\n non-zero.\n\n Without these options, the periodic checking will not be triggered.\n\n The periodic checking is triggered every `icount_checking_period` or\n `quantum_checking_period` cycles. Cycles are calculated from the provided IPC\n and the instruction count."]
     pub fn qemu_plugin_register_periodic_check_cb(cb: qemu_plugin_periodic_check_cb_t) -> bool;
 }
 extern "C" {
