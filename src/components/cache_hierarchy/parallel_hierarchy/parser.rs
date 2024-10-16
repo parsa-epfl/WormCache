@@ -29,7 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::components::cache_hierarchy::mmu::MemoryManagementUnit;
+use crate::components::cache_hierarchy::mmu::{self, MemoryManagementUnit};
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
  *
@@ -88,7 +88,7 @@ pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT
 };
 
-type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
+type AArch64MMU = mmu::MemoryManagementUnit<
     AArch64,
     { parameter::ITLB_ASSO },
     { parameter::ITLB_SET },

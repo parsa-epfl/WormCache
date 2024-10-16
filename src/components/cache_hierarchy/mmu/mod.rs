@@ -34,16 +34,15 @@
 
 pub mod tlb;
 
+use crate::components::debug::statistics::EventType;
+use crate::{arch, components::debug::statistics::Statistics};
 use crate::arch::aarch64::ptw;
 use crate::qemu_api;
-use crate::arch;
 
 use rustc_hash::FxHashMap as HashMap;
 use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
 use tlb::TLB;
-
-use super::debug::statistics::{EventType, Statistics};
 
 pub trait AbstractMMU {
     fn new() -> Self;
@@ -317,16 +316,13 @@ impl<
         };
 
         if is_instruction {
-            self.itlb
-                .insert(vpn, asid, ppn, ts, is_instruction);
+            self.itlb.insert(vpn, asid, ppn, ts, is_instruction);
         } else {
-            self.dtlb
-                .insert(vpn, asid, ppn, ts, is_instruction);
+            self.dtlb.insert(vpn, asid, ppn, ts, is_instruction);
         }
 
         if S_ENABLED {
-            self.stlb
-                .insert(vpn, asid, ppn, ts, is_instruction);
+            self.stlb.insert(vpn, asid, ppn, ts, is_instruction);
         }
     }
 
