@@ -19,6 +19,7 @@ pub struct BackReferencedEntry {
 pub struct ExportedDirectoryEntry {
     tag: u64,
     sharers: Vec<bool>,
+    ts: u64,
 }
 
 pub struct FlexusPrivateCacheCheckpointHelper {
@@ -149,6 +150,7 @@ pub fn resize_directory(
                 .map(|entry| ExportedDirectoryEntry {
                     tag: entry.0,
                     sharers: entry.1.sharers.to_vec(),
+                    ts: entry.1.ts,
                 })
                 .collect()
         })
@@ -163,6 +165,7 @@ fn render_infinite_directory(
         .map(|(tag, entry)| ExportedDirectoryEntry {
             tag,
             sharers: entry.sharers.to_vec(),
+            ts: entry.ts,
         })
         .collect()
 }
@@ -336,6 +339,7 @@ pub struct FlexusCacheLine {
     tag: u64,
     writable: bool,
     dirty: bool,
+    ts: u64,
 }
 
 fn serialize_a_set(set: &PrivateCacheSet, number_of_set: usize) -> Vec<FlexusCacheLine> {
@@ -355,6 +359,7 @@ fn serialize_a_set(set: &PrivateCacheSet, number_of_set: usize) -> Vec<FlexusCac
             tag: (line.block_id_with_v >> 1) >> set_bits,
             writable: line.modified,
             dirty: line.modified,
+            ts: line.ts,
         })
         .collect();
 }
@@ -378,6 +383,7 @@ fn serialize_a_cache(
 pub struct FlexusDirectoryEntry {
     tag: u64,
     sharers: String,
+    ts: u64,
 }
 
 impl ExportedDirectoryEntry {
@@ -390,6 +396,7 @@ impl ExportedDirectoryEntry {
                 .rev()
                 .map(|b| if *b { "1" } else { "0" })
                 .collect::<String>(),
+            ts: self.ts,
         }
     }
 }

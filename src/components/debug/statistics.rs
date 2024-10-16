@@ -85,6 +85,14 @@ pub enum EventType {
     TLBMissDueToInstruction,
     TLBMissDueToData,
 
+    TLBAccess,
+    TLBAccessDueToInstruction,
+    TLBAccessDueToData,
+
+    HugeTLBHit,
+    HugeTLBHitDueToInstruction,
+    HugeTLBHitDueToData,
+
     BranchCount,
     BTBMiss,
     RASMiss,

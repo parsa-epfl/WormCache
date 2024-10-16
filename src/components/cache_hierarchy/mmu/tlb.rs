@@ -67,6 +67,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
 
     pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64, is_instruction: bool) -> Option<u64> {
         // TODO: This function is badly implemented. Currently its algorithm complexity is O(n).
+        // This will be a problem for 64 entry TLB sets, but whatever. A good design will be implemented later.
         for entry in self.entries.iter_mut() {
             if entry.valid && entry.vpn == vpn && entry.asid == asid {
                 assert!(

@@ -27,6 +27,7 @@ pub struct FlexusSerializedSharedCacheBlock {
     pub tag: u64,
     pub dirty: bool,
     pub writable: bool,
+    pub ts: u64,
 }
 
 fn serialize_a_share_cache_set(
@@ -36,11 +37,12 @@ fn serialize_a_share_cache_set(
     let mut result = vec![];
     let log2_set = set_number.trailing_zeros();
 
-    for block in set.blocks.iter() {
+    for block in set.blocks.iter().rev() {
         result.push(FlexusSerializedSharedCacheBlock {
             tag: block.block_id_with_v >> 1 >> log2_set,
             dirty: block.modified,
             writable: true,
+            ts: block.ts,
         });
     }
 

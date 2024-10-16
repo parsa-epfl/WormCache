@@ -34,10 +34,11 @@ use std::cell::UnsafeCell;
 use zstd::{Decoder, Encoder};
 
 use crate::{
+    arch::AArch64,
     components::{
         cache_hierarchy::{
             common::{CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult},
-            mmu::{AbstractMMU, MMUTranslationResult, MemoryManagementUnit},
+            mmu::{self, AbstractMMU, MMUTranslationResult},
             CacheBlockRequest, MemoryHierarchy,
         },
         debug::statistics::{EventType, Statistics},
@@ -189,7 +190,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
                 .get()
                 .as_mut()
                 .unwrap()
-                .translate_and_refill(r.va, ts, r.is_instruction())
+                .translate_and_refill(r.core_id, r.va, ts, r.is_instruction())
         }
     }
 
@@ -208,6 +209,16 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
     }
 }
 
-pub type PluginSingleCacheHierarchy = SingleCacheHierarchy<
-    MemoryManagementUnit<crate::arch::AArch64, { parameter::TLB_ASSO }, { parameter::TLB_SET }>,
+type AArch64MMU = mmu::MemoryManagementUnit<
+    AArch64,
+    { parameter::ITLB_ASSO },
+    { parameter::ITLB_SET },
+    { parameter::DTLB_ASSO },
+    { parameter::DTLB_SET },
+    { parameter::STLB_ENABLED },
+    { parameter::STLB_ASSO },
+    { parameter::STLB_SET },
+    { parameter::NO_HUGE_PAGE },
 >;
+
+pub type PluginSingleCacheHierarchy = SingleCacheHierarchy<AArch64MMU>;
