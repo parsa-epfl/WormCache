@@ -38,7 +38,7 @@ use crate::{
     components::{
         cache_hierarchy::{
             common::{CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult},
-            mmu::{self, AbstractMMU, MMUTranslationResult, MemoryManagementUnit},
+            mmu::{self, AbstractMMU, MMUTranslationResult},
             CacheBlockRequest, MemoryHierarchy,
         },
         debug::statistics::{EventType, Statistics},
