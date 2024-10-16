@@ -30,7 +30,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod icount;
-mod sleeping_table;
 mod vtime;
 
 use core::ffi;
@@ -48,13 +47,6 @@ use super::debug::statistics::Statistics;
 
 static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
     Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
-
-static mut SLEEPING_TABLE: *mut sleeping_table::SleepingTable<{ param::CORE_COUNT }> =
-    std::ptr::null_mut();
-
-unsafe extern "C" fn set_sleeping(_id: u64, core_id: u32) {
-    (*SLEEPING_TABLE).set_sleeping(core_id as usize, true);
-}
 
 static mut ICOUNT_PLUGIN: *mut icount::ICountPlugin = std::ptr::null_mut();
 
@@ -133,49 +125,38 @@ impl super::Plugin for VirtualTimePlugin {
                     .unwrap()
                     .update_scaling_factor(scaling_factor);
             } else {
-                unsafe {
-                    SLEEPING_TABLE = Box::into_raw(Box::new(sleeping_table::SleepingTable::new()));
-                }
-
-                unsafe {
-                    qemu_api::qemu_plugin_register_vcpu_idle_cb(plugin_id, Some(set_sleeping));
-                }
-
                 // register threads to profile the icount and calculate the host time scaling factor.
                 thread::spawn(|| {
-                    let mut history_icount = [(0, 0); param::CORE_COUNT];
+                    // let mut history_icount = [(0, 0); param::CORE_COUNT];
+                    let mut historical_local_time = [0; param::CORE_COUNT];
 
                     let mut loop_count = 0;
                     let mut acc_active_core_count = 0;
                     loop {
                         // read the current icount.
-                        let icounts = unsafe { (*ICOUNT_PLUGIN).get_icounts() };
-                        let mut accumulated_icount_diff = 0;
-                        let mut awaking_cores = 0;
+                        let mut local_vtime: [u64; param::CORE_COUNT] =
+                            std::array::from_fn(|idx| unsafe {
+                                qemu_api::qemu_plugin_get_vcpu_vtime(idx as u32)
+                            });
+
+                        let mut accumulated_local_vtime_diff = 0;
                         // check the icount difference for cores that are not sleeping.
                         for i in 0..param::CORE_COUNT {
-                            let (u, k) = icounts[i];
+                            // let (u, k) = icounts[i];
+                            let diff = local_vtime[i] - historical_local_time[i];
 
-                            if !unsafe { (*SLEEPING_TABLE).has_slept(i) } {
-                                let (last_u, last_k) = history_icount[i];
-                                let diff = (u + k) - (last_u + last_k);
-
-                                if diff != 0 {
-                                    accumulated_icount_diff += diff;
-                                    awaking_cores += 1;
-
-                                    acc_active_core_count += 1;
-                                }
+                            if diff != 0 {
+                                accumulated_local_vtime_diff += diff;
+                                acc_active_core_count += 1;
                             }
 
-                            // copy the icounts.
-                            history_icount[i] = (u, k);
+                            historical_local_time[i] = local_vtime[i];
                         }
 
-                        if awaking_cores != 0 {
+                        if acc_active_core_count != 0 {
                             // set the time scaling factor.
                             let average_icount =
-                                accumulated_icount_diff as f64 / awaking_cores as f64;
+                                accumulated_local_vtime_diff as f64 / acc_active_core_count as f64;
                             let scaling_factor = (param::HOST_TIME_SCALING_PROFILING_PERIOD as f64
                                 * 1e6)
                                 / average_icount;
@@ -185,9 +166,6 @@ impl super::Plugin for VirtualTimePlugin {
                                 .unwrap()
                                 .update_scaling_factor(scaling_factor);
                         }
-
-                        // clean the sleeping table.
-                        unsafe { (*SLEEPING_TABLE).clean_sleeping() };
 
                         loop_count += 1;
 

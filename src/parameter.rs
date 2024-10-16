@@ -52,7 +52,7 @@ pub const CORE_COUNT: usize = 8;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = false;
+pub const MEASURE_HALF_OF_CORES: bool = true;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -127,14 +127,14 @@ pub const USE_UNIFIED_CACHE: bool = true;
  * The associativity of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_ASSO: usize = 8;
+pub const UNIFIED_PRI_CACHE_ASSO: usize = 4;
 /**
  * PRI_CACHE_SET
  *
  * The number of sets of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_SET: usize = 2048 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const UNIFIED_PRI_CACHE_SET: usize = 64 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
 
 /**
@@ -183,7 +183,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 8 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 1 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -202,7 +202,7 @@ pub const SHARED_CACHE_EXCLUSIVE: bool = false;
  *
  * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
-pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = false;
+pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = true;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_WITH_PRIVATE_CACHE));
 
 /**
