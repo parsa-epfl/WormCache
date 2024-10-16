@@ -219,15 +219,28 @@ pub fn process_mmus(
 
     let mmus: serde_json::Value = serde_json::from_reader(decoder).unwrap();
 
-    let mmus: Vec<SerializedTLB> = match mmus {
+    let i_tlbs: Vec<SerializedTLB> = match mmus.clone() {
         serde_json::Value::Array(vec) => vec
             .iter()
-            .map(|mmu| serde_json::from_value(mmu["tlb"].clone()).unwrap())
+            .map(|mmu| { serde_json::from_value(mmu["itlb"].clone()).unwrap() })
             .collect::<Vec<_>>(),
         _ => panic!("The MMU checkpoint is not an array."),
     };
 
-    let mmu = FlexusMMU::from_unified_tlb(mmus, flexus_configuration.clone());
+    let d_tlbs: Vec<SerializedTLB> = match mmus {
+        serde_json::Value::Array(vec) => vec
+            .iter()
+            .map(|mmu| { serde_json::from_value(mmu["dtlb"].clone()).unwrap() })
+            .collect::<Vec<_>>(),
+        _ => panic!("The MMU checkpoint is not an array."),
+    };
+
+    // let mmu = FlexusMMU::from_unified_tlb(mmus, flexus_configuration.clone());
+    let mmu = FlexusMMU::from_harvard_tlb(
+        i_tlbs,
+        d_tlbs,
+        flexus_configuration.clone(),
+    );
 
     mmu.export(output_folder);
 }

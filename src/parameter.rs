@@ -183,7 +183,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 64 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 8 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**

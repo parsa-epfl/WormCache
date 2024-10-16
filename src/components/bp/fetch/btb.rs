@@ -76,7 +76,8 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
     ) -> BranchPredictorResult {
         self.local_ts += 1;
 
-        let index = (pc % SET as u64) as usize;
+        // This is the word-aligned PC, so the index is shifted by 2 to avoid wasting space.
+        let index = ((pc >> 2) % SET as u64) as usize;
 
         // We need to check if the entry is already in the BTB. If yes, we update the timestamp and return.
         // This should be the common case.
