@@ -41,6 +41,7 @@ pub enum PageSize {
 
 pub struct TranslationResult {
     pub paddr: u64,
+    pub is_global: bool,
     pub page_size: PageSize,
     pub traces: [u64; 4],
     pub cacheable: bool,
@@ -111,6 +112,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
 
     let mut result = TranslationResult {
         paddr: 0,
+        is_global: false,
         page_size: PageSize::_4KB,
         traces: [u64::MAX; 4],
         cacheable,
@@ -145,6 +147,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     if l1pte & 0b11 != 0b11 {
         // Well, we are done. This is a 1GB page.
         result.paddr = (l1pte & 0x0000_FFFF_C000_0000) + (va & 0x0000_0000_3FFF_FFFF);
+        result.is_global = (l1pte >> 11) & 0b1 == 0;
         result.page_size = PageSize::_1GB;
         return result;
     }
@@ -158,6 +161,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     if l2pte & 0b11 != 0b11 {
         // Well, we are done. This is a 2MB page.
         result.paddr = (l2pte & 0x0000_FFFF_FFE0_0000) + (va & 0x0000_0000_001F_FFFF);
+        result.is_global = (l2pte >> 11) & 0b1 == 0;
         result.page_size = PageSize::_2MB;
         return result;
     }
@@ -171,6 +175,7 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     // Well, we are done. This is a 4KB page.
     result.paddr = (l3pte & 0x0000FFFFFFFFF000) + (va & 0x0000_0000_0000_0FFF);
     result.page_size = PageSize::_4KB;
+    result.is_global = (l3pte >> 11) & 0b1 == 0;
 
     result
 }
