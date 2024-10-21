@@ -321,6 +321,11 @@ impl<
                 asid
             };
 
+            if is_kernel {
+                // kernel space has to be global address.
+                assert!(matches!(asid, AddressSpaceID::Global));
+            }
+
             // based on the ptw_result, we refill each TLB correspondingly.
             match ptw_result.page_size {
                 arch::aarch64::PageSize::_4KB => {
@@ -354,14 +359,19 @@ impl<
                 ptw(ttbr, tcr, vpn << 12, paddr_reader)
             };
 
-            let refill_asid = if ptw_result.is_global {
+            let asid = if ptw_result.is_global {
                 AddressSpaceID::Global
             } else {
                 asid.clone()
             };
 
+            if is_kernel {
+                // kernel space has to be global address.
+                assert!(matches!(asid, AddressSpaceID::Global));
+            }
+
             // based on the ptw_result, we refill each TLB correspondingly.
-            self.refill_4k_tlb(vpn, refill_asid, ptw_result.paddr >> 12, ts, is_instruction);
+            self.refill_4k_tlb(vpn, asid, ptw_result.paddr >> 12, ts, is_instruction);
 
             if ptw_result.cacheable {
                 MMUTranslationResult::Miss(ptw_result.paddr, ptw_result.traces)
