@@ -157,9 +157,9 @@ impl<
         is_instruction: bool,
     ) {
         if is_instruction {
-            self.itlb.insert(vpn, asid.clone(), ppn, ts, is_instruction);
+            self.itlb.insert(vpn, asid, ppn, ts, is_instruction);
         } else {
-            self.dtlb.insert(vpn, asid.clone(), ppn, ts, is_instruction);
+            self.dtlb.insert(vpn, asid, ppn, ts, is_instruction);
         }
 
         if S_ENABLED {
@@ -236,11 +236,9 @@ impl<
                 let pa = ppn << 12 | (va & 0xfff);
                 return MMUTranslationResult::Hit(pa);
             }
-        } else {
-            if let Some(ppn) = self.dtlb.lookup(vpn, asid, ts, is_instruction) {
-                let pa = ppn << 12 | (va & 0xfff);
-                return MMUTranslationResult::Hit(pa);
-            }
+        } else if let Some(ppn) = self.dtlb.lookup(vpn, asid, ts, is_instruction) {
+            let pa = ppn << 12 | (va & 0xfff);
+            return MMUTranslationResult::Hit(pa);
         }
 
         if S_ENABLED {
@@ -362,7 +360,7 @@ impl<
             let asid = if ptw_result.is_global {
                 AddressSpaceID::Global
             } else {
-                asid.clone()
+                asid
             };
 
             if is_kernel {

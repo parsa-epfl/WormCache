@@ -78,7 +78,7 @@ pub struct VirtualTimePlugin {}
 
 impl super::Plugin for VirtualTimePlugin {
     #[inline]
-    fn init(plugin_id: u64, options: &FxHashMap<String, String>) {
+    fn init(_: u64, options: &FxHashMap<String, String>) {
         // check the following options:
         // - vtime=on|off
         // - mode=vtime forces vtime=on.
@@ -134,7 +134,7 @@ impl super::Plugin for VirtualTimePlugin {
                     let mut acc_active_core_count = 0;
                     loop {
                         // read the current icount.
-                        let mut local_vtime: [u64; param::CORE_COUNT] =
+                        let local_vtime: [u64; param::CORE_COUNT] =
                             std::array::from_fn(|idx| unsafe {
                                 qemu_api::qemu_plugin_get_vcpu_vtime(idx as u32)
                             });

@@ -56,19 +56,19 @@ pub struct ICountPlugin {
 }
 
 impl ICountPlugin {
-    pub fn get_icounts(&self) -> [(u64, u64); CORE_COUNT] {
-        // (user_icount, kernel_icount)
-        let mut res = [(0, 0); CORE_COUNT];
-        for i in 0..CORE_COUNT {
-            unsafe {
-                res[i] = (
-                    (*self.data[i].get()).user_icount,
-                    (*self.data[i].get()).kernel_icount,
-                );
-            }
-        }
-        res
-    }
+    // pub fn get_icounts(&self) -> [(u64, u64); CORE_COUNT] {
+    //     // (user_icount, kernel_icount)
+    //     let mut res = [(0, 0); CORE_COUNT];
+    //     for i in 0..CORE_COUNT {
+    //         unsafe {
+    //             res[i] = (
+    //                 (*self.data[i].get()).user_icount,
+    //                 (*self.data[i].get()).kernel_icount,
+    //             );
+    //         }
+    //     }
+    //     res
+    // }
 
     pub fn increase_user_icount(&self, core_id: u8, icount: u64) {
         unsafe {

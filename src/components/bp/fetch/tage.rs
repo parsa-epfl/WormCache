@@ -513,3 +513,9 @@ impl TAGEPredictor {
         BranchPredictorResult::NotActive
     }
 }
+
+impl Default for TAGEPredictor {
+    fn default() -> Self {
+        Self::new()
+    }
+}

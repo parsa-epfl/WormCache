@@ -192,6 +192,12 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
     // }
 }
 
+impl<const SET_COUNT: usize, const ASSO: usize> Default for TLB<SET_COUNT, ASSO> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

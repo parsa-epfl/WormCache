@@ -350,7 +350,7 @@ pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
  *
  * When this option is enabled, the previous option, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION, must be enabled.
  */
-pub const USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION: bool = false;
+pub const USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION: bool = true;
 static_assertions::const_assert!(
     !(DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
         && USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION)
