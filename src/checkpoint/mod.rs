@@ -22,14 +22,17 @@ pub struct FlexusParameter {
     pub l1d_sets: usize,
     pub l1d_associativity: usize,
 
+    pub l2_sets: usize,
+    pub l2_associativity: usize,
+
     pub itlb_sets: usize,
     pub itlb_associativity: usize,
 
     pub dtlb_sets: usize,
     pub dtlb_associativity: usize,
 
-    pub l2_sets: usize,
-    pub l2_associativity: usize,
+    pub stlb_sets: usize,
+    pub stlb_associativity: usize,
 
     pub directory: FlexusDirectoryType,
 

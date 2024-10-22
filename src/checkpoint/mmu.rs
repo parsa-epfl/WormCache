@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::components::cache_hierarchy::mmu::tlb::TLBEntry;
+use crate::components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry};
+use rustc_hash::FxHashMap;
 
 use super::FlexusParameter;
 
@@ -17,6 +18,8 @@ pub struct SerializedTLB {
 
 #[derive(Serialize)]
 pub struct FlexusTLBEntry {
+    asid: u64,
+    ng: bool,
     vpn: u64,
     ppn: u64,
     ts: u64,
@@ -25,6 +28,7 @@ pub struct FlexusTLBEntry {
 pub struct FlexusMMU {
     itlbs: Vec<Vec<Vec<FlexusTLBEntry>>>,
     dtlbs: Vec<Vec<Vec<FlexusTLBEntry>>>,
+    stlbs: Vec<Vec<Vec<FlexusTLBEntry>>>,
 
     configuration: FlexusParameter,
 }
@@ -36,6 +40,11 @@ fn serialize_a_tlb_set(set: SerializedTLBSet) -> Vec<FlexusTLBEntry> {
             vpn: entry.vpn,
             ppn: entry.ppn,
             ts: entry.ts,
+            ng: matches!(entry.asid, AddressSpaceID::Global),
+            asid: match entry.asid {
+                AddressSpaceID::Global => 0,
+                AddressSpaceID::NonGlobal(asid) => asid as u64,
+            },
         })
         .rev()
         .collect()
@@ -45,6 +54,7 @@ fn serialize_a_tlb(
     tlb: SerializedTLB,
     set_count: usize,
     associativity: usize,
+    evicted_entries: &mut FxHashMap<u64, TLBEntry>,
 ) -> Vec<Vec<FlexusTLBEntry>> {
     assert!(tlb.entries.len() % set_count == 0);
 
@@ -69,7 +79,12 @@ fn serialize_a_tlb(
         set.sort_by_key(|entry| entry.ts);
         set.reverse(); // MRU are stored in the front after sorting.
 
-        set.truncate(associativity);
+        if set.len() > associativity {
+            let evicted = set.drain(associativity..);
+            for entry in evicted {
+                evicted_entries.insert(entry.vpn, entry);
+            }
+        }
     }
 
     // Step 3: Serialize the entries.
@@ -79,77 +94,85 @@ fn serialize_a_tlb(
         .collect()
 }
 
+fn render_stlb(
+    evicted_entries: FxHashMap<u64, TLBEntry>,
+    flexus_configuration: &FlexusParameter,
+) -> Vec<Vec<FlexusTLBEntry>> {
+    let mut result = vec![];
+
+    for _ in 0..flexus_configuration.stlb_sets {
+        result.push(vec![]);
+    }
+
+    for entry in evicted_entries.values() {
+        let set_idx = entry.vpn % flexus_configuration.stlb_sets as u64;
+        result[set_idx as usize].push(FlexusTLBEntry {
+            vpn: entry.vpn,
+            ppn: entry.ppn,
+            ts: entry.ts,
+            ng: matches!(entry.asid, AddressSpaceID::Global),
+            asid: match entry.asid {
+                AddressSpaceID::Global => 0,
+                AddressSpaceID::NonGlobal(asid) => asid as u64,
+            },
+        });
+    }
+
+    for set in result.iter_mut() {
+        set.sort_by_key(|entry| entry.ts);
+        set.reverse(); // MRU are stored in the front after sorting.
+
+        if set.len() > flexus_configuration.stlb_associativity {
+            set.drain(flexus_configuration.stlb_associativity..);
+        }
+    }
+
+    result
+}
+
 impl FlexusMMU {
     pub fn from_harvard_tlb(
         itlb: Vec<SerializedTLB>,
         dtlb: Vec<SerializedTLB>,
         configuration: FlexusParameter,
     ) -> Self {
+        assert_eq!(itlb.len(), dtlb.len());
+
+        let mut itlbs = vec![];
+        let mut dtlbs = vec![];
+        let mut stlbs = vec![];
+
+        for (itlb, dtlb) in itlb.into_iter().zip(dtlb.into_iter()) {
+            let mut evicted_entries = FxHashMap::default();
+            let itlb = serialize_a_tlb(
+                itlb,
+                configuration.itlb_sets,
+                configuration.itlb_associativity,
+                &mut evicted_entries,
+            );
+            let dtlb = serialize_a_tlb(
+                dtlb,
+                configuration.dtlb_sets,
+                configuration.dtlb_associativity,
+                &mut evicted_entries,
+            );
+            let stlb = render_stlb(evicted_entries, &configuration);
+
+            itlbs.push(itlb);
+            dtlbs.push(dtlb);
+            stlbs.push(stlb);
+        }
+
         Self {
-            itlbs: itlb
-                .into_iter()
-                .map(|tlb| {
-                    serialize_a_tlb(
-                        tlb,
-                        configuration.itlb_sets,
-                        configuration.itlb_associativity,
-                    )
-                })
-                .collect(),
-            dtlbs: dtlb
-                .into_iter()
-                .map(|tlb| {
-                    serialize_a_tlb(
-                        tlb,
-                        configuration.dtlb_sets,
-                        configuration.dtlb_associativity,
-                    )
-                })
-                .collect(),
+            itlbs,
+            dtlbs,
+            stlbs,
             configuration,
         }
     }
 
-    pub fn from_unified_tlb(tlbs: Vec<SerializedTLB>, configuration: FlexusParameter) -> Self {
-        let mut itlbs = vec![];
-        let mut dtlbs = vec![];
-
-        for tlb in tlbs {
-            let mut itlb = SerializedTLB { entries: vec![] };
-            let mut dtlb = SerializedTLB { entries: vec![] };
-
-            for set in tlb.entries {
-                let mut itlb_entries = vec![];
-                let mut dtlb_entries = vec![];
-
-                for entry in set.entries {
-                    if entry.is_instruction {
-                        itlb_entries.push(entry);
-                    } else {
-                        dtlb_entries.push(entry);
-                    }
-                }
-
-                itlb.entries.push(SerializedTLBSet {
-                    entries: itlb_entries,
-                });
-                dtlb.entries.push(SerializedTLBSet {
-                    entries: dtlb_entries,
-                });
-            }
-
-            itlbs.push(itlb);
-            dtlbs.push(dtlb);
-        }
-
-        Self::from_harvard_tlb(itlbs, dtlbs, configuration)
-    }
-
     pub fn export(&self, folder_name: &String) {
         // At present, we only support exporting the harvard TLB, and it has to be fully associative.
-
-        assert_eq!(self.configuration.itlb_sets, 1);
-        assert_eq!(self.configuration.dtlb_sets, 1);
 
         for (core_id, itlb) in self.itlbs.iter().enumerate() {
             let file_name = format!("{}/{:03}-mmu-itlb.json", folder_name, core_id);
@@ -158,8 +181,8 @@ impl FlexusMMU {
             serde_json::to_writer(
                 &mut file,
                 &json!({
-                    "capacity": self.configuration.itlb_associativity,
-                    "entries": itlb[0],
+                    "associativity": self.configuration.itlb_associativity,
+                    "entries": itlb,
                 }),
             )
             .unwrap();
@@ -172,13 +195,28 @@ impl FlexusMMU {
             serde_json::to_writer(
                 &mut file,
                 &json!({
-                    "capacity": self.configuration.dtlb_associativity,
-                    "entries": self.dtlbs[core_id][0],
+                    "associativity": self.configuration.dtlb_associativity,
+                    "entries": self.dtlbs[core_id],
                 }),
             )
             .unwrap();
 
             println!("Core {}'s DTLB is exported to {}", core_id, file_name);
+
+            // Expose the STLB.
+            let file_name = format!("{}/{:03}-mmu-stlb.json", folder_name, core_id);
+            let mut file = std::fs::File::create(&file_name).unwrap();
+
+            serde_json::to_writer(
+                &mut file,
+                &json!({
+                    "associativity": self.configuration.stlb_associativity,
+                    "entries": self.stlbs[core_id],
+                }),
+            )
+            .unwrap();
+
+            println!("Core {}'s STLB is exported to {}", core_id, file_name);
         }
     }
 }
@@ -222,7 +260,7 @@ pub fn process_mmus(
     let i_tlbs: Vec<SerializedTLB> = match mmus.clone() {
         serde_json::Value::Array(vec) => vec
             .iter()
-            .map(|mmu| { serde_json::from_value(mmu["itlb"].clone()).unwrap() })
+            .map(|mmu| serde_json::from_value(mmu["itlb"].clone()).unwrap())
             .collect::<Vec<_>>(),
         _ => panic!("The MMU checkpoint is not an array."),
     };
@@ -230,17 +268,13 @@ pub fn process_mmus(
     let d_tlbs: Vec<SerializedTLB> = match mmus {
         serde_json::Value::Array(vec) => vec
             .iter()
-            .map(|mmu| { serde_json::from_value(mmu["dtlb"].clone()).unwrap() })
+            .map(|mmu| serde_json::from_value(mmu["dtlb"].clone()).unwrap())
             .collect::<Vec<_>>(),
         _ => panic!("The MMU checkpoint is not an array."),
     };
 
     // let mmu = FlexusMMU::from_unified_tlb(mmus, flexus_configuration.clone());
-    let mmu = FlexusMMU::from_harvard_tlb(
-        i_tlbs,
-        d_tlbs,
-        flexus_configuration.clone(),
-    );
+    let mmu = FlexusMMU::from_harvard_tlb(i_tlbs, d_tlbs, flexus_configuration.clone());
 
     mmu.export(output_folder);
 }
