@@ -75,7 +75,7 @@ impl MemoryAccessRequest {
     }
 
     pub fn is_os(&self) -> bool {
-        return self.is_os;
+        self.is_os
     }
 }
 
@@ -102,7 +102,7 @@ impl CacheBlockRequest {
     }
 
     pub fn is_os(&self) -> bool {
-        return self.is_os;
+        self.is_os
     }
 
     pub fn is_page_walk(&self) -> bool {

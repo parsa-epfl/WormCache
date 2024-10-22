@@ -73,7 +73,7 @@ pub fn resize_directory(
     infinite_directory: FxHashMap<u64, BackReferencedEntry>,
     directory_set: usize,
     directory_associativity: usize,
-    harvard: &mut Vec<HarvardPerCorePrivateCacheSerdeHelper>,
+    harvard: &mut [HarvardPerCorePrivateCacheSerdeHelper],
     evicted_cache_line: &mut FxHashMap<u64, (PrivateCacheLine, u32)>,
 ) -> Vec<Vec<ExportedDirectoryEntry>> {
     let mut res: Vec<Vec<(u64, BackReferencedEntry)>> =
@@ -207,7 +207,7 @@ impl FlexusPrivateCacheCheckpointHelper {
             evicted_cache_line.push(i_rem);
             evicted_cache_line.push(d_rem);
 
-            for (cache_idx, cache) in vec![&new_icache, &new_dcache].iter().enumerate() {
+            for (cache_idx, cache) in [&new_icache, &new_dcache].iter().enumerate() {
                 // insert to the directory.
                 for (set_idx, set) in cache.iter().enumerate() {
                     for (way_idx, line) in set.lines.iter().enumerate() {
@@ -365,14 +365,14 @@ fn serialize_a_set(set: &PrivateCacheSet, number_of_set: usize) -> Vec<FlexusCac
 }
 
 fn serialize_a_cache(
-    cache: &Vec<PrivateCacheSet>,
+    cache: &[PrivateCacheSet],
     set_number: usize,
     asso: usize,
 ) -> serde_json::Value {
     json!({
         "associativity": asso,
         "tags": cache
-            .into_iter()
+            .iter()
             .map(|set| serialize_a_set(set, set_number))
             .collect::<Vec<_>>()
         }
@@ -402,7 +402,7 @@ impl ExportedDirectoryEntry {
 }
 
 fn serialize_a_directory(
-    directory: &Vec<Vec<ExportedDirectoryEntry>>,
+    directory: &[Vec<ExportedDirectoryEntry>],
     directory_type: FlexusDirectoryType,
 ) -> serde_json::Value {
     match directory_type {

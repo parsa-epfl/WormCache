@@ -214,8 +214,8 @@ impl PrivateCacheSet {
             let line = &mut self.lines[idx];
             if is_store {
                 if line.writeable {
-                    line.ts = ts.clone();
-                    line.write_ts = ts.clone();
+                    line.ts = ts;
+                    line.write_ts = ts;
                     line.modified = true;
                     return PrivateCachePokeResult::Hit;
                 } else {
@@ -267,7 +267,7 @@ impl PrivateCacheSet {
             PrivateCacheEvictedSlot::Valid(idx, _) => match self.recent_invalid_slot_index {
                 Some(idx) => (None, idx),
                 None => (
-                    Some((self.lines[idx].modified, self.lines[idx].write_ts.clone())),
+                    Some((self.lines[idx].modified, self.lines[idx].write_ts)),
                     idx,
                 ),
             },

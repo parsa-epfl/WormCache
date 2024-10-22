@@ -125,21 +125,13 @@ fn serialize_a_tage(
         minhist: MINHIST,
         cbits: CBITS,
 
-        btable: tage.btable.iter().cloned().collect(),
-        gtable: tage
-            .gtable
-            .iter()
-            .map(|x| x.iter().cloned().collect())
-            .collect(),
+        btable: tage.btable.to_vec(),
+        gtable: tage.gtable.iter().map(|x| x.to_vec()).collect(),
 
-        ch_i: tage.ch_i.iter().cloned().collect(),
-        ch_t: tage
-            .ch_t
-            .iter()
-            .map(|x| x.iter().cloned().collect())
-            .collect(),
+        ch_i: tage.ch_i.to_vec(),
+        ch_t: tage.ch_t.iter().map(|x| x.to_vec()).collect(),
 
-        m: HISTORIES.iter().copied().collect(),
+        m: HISTORIES.to_vec(),
     }
 }
 

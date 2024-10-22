@@ -126,7 +126,7 @@ impl<
         let is_store = request.is_store();
         let is_instruction = request.is_instruction();
 
-        self.caches[core_id as usize]
+        self.caches[core_id]
             .get_set(block_id)
             .inner()
             .poke_and_update(block_id, ts, is_store, is_instruction)
@@ -216,7 +216,7 @@ impl<
     ) -> impl DerefMut<Target = PrivateCacheSet> {
         let core_id = request.core_id as usize;
         let block_id = request.block_id;
-        self.caches[core_id as usize].get_set(block_id).inner()
+        self.caches[core_id].get_set(block_id).inner()
     }
 
     #[inline]

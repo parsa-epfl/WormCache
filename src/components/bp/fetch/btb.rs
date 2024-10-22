@@ -116,3 +116,9 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         BranchPredictorResult::Mispredict
     }
 }
+
+impl<const SET: usize, const ASSO: usize> Default for BTB<SET, ASSO> {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -138,7 +138,8 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
 
         return true;
     }
-    return false;
+
+    false
 }
 
 pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, prefix: String) {

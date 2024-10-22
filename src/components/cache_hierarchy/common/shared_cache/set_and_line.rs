@@ -196,7 +196,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                 SharedCacheLookupResult::Hit(is_dirty)
             }
             None => {
-                let cache_access_res = if ts < self.recent_evict_ts {
+                if ts < self.recent_evict_ts {
                     SharedCacheLookupResult::Unknown((self.recent_evict_ts - ts) as u32)
                 } else {
                     self.statistics.record(access_type, is_os, false);
@@ -205,9 +205,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                     } else {
                         SharedCacheLookupResult::Miss
                     }
-                };
-
-                cache_access_res
+                }
             }
         }
     }
@@ -307,7 +305,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         let block_id = r.block_id;
         let core_id = r.core_id;
 
-        let cache_access_result = match result {
+        match result {
             SharedCacheLookupResult::Hit(is_dirty) => {
                 SharedCacheLookupAndInsertResult::Hit(is_dirty)
             }
@@ -328,9 +326,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             SharedCacheLookupResult::Unknown(diff) => {
                 SharedCacheLookupAndInsertResult::Unknown(diff)
             }
-        };
-
-        cache_access_result
+        }
     }
 }
 
