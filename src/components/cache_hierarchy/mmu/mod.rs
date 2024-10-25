@@ -36,8 +36,8 @@ pub mod tlb;
 
 use crate::arch::aarch64::ptw;
 use crate::components::debug::statistics::EventType;
-use crate::qemu_api;
 use crate::{arch, components::debug::statistics::Statistics};
+use crate::{parameter, qemu_api};
 
 use rustc_hash::FxHashMap as HashMap;
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,6 @@ fn paddr_reader(addr: u64) -> u64 {
     }
     buf
 }
-
 impl<
         const I_T_A: usize,
         const I_T_S: usize,
@@ -165,6 +164,25 @@ impl<
         if S_ENABLED {
             self.stlb.insert(vpn, asid, ppn, ts, is_instruction);
         }
+    }
+
+    fn page_walk(&self, va: u64, tcr: u64) -> u64 {
+        let ptw_result = {
+            let t1_size = 64 - ((tcr >> 16) & 0b111111);
+            let t0_size = 64 - (tcr & 0b111111);
+
+            assert!(t0_size == 48); // the lower 48-bit VA are used for translation.
+            assert!(t1_size == 48); // the OS should take over all spaces.
+
+            let which_ttbr_for_base = if va < (1 << 48) { 0 } else { 1 };
+            let ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(which_ttbr_for_base) };
+            let vpn = va >> 12;
+            ptw(ttbr, tcr, vpn << 12, paddr_reader)
+        };
+
+        let ppn = ptw_result.paddr >> 12;
+
+        ppn << 12 | (va & 0xfff)
     }
 }
 
@@ -234,10 +252,22 @@ impl<
         if is_instruction {
             if let Some(ppn) = self.itlb.lookup(vpn, asid, ts, is_instruction) {
                 let pa = ppn << 12 | (va & 0xfff);
+
+                if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                    let walker_pa = self.page_walk(va, tcr);
+                    assert_eq!(pa, walker_pa);
+                }
+
                 return MMUTranslationResult::Hit(pa);
             }
         } else if let Some(ppn) = self.dtlb.lookup(vpn, asid, ts, is_instruction) {
             let pa = ppn << 12 | (va & 0xfff);
+
+            if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                let walker_pa = self.page_walk(va, tcr);
+                assert_eq!(pa, walker_pa);
+            }
+
             return MMUTranslationResult::Hit(pa);
         }
 
@@ -245,6 +275,12 @@ impl<
             // Then, we try L2 TLB.
             if let Some(ppn) = self.stlb.lookup(vpn, asid, ts, is_instruction) {
                 let pa = ppn << 12 | (va & 0xfff);
+
+                if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                    let walker_pa = self.page_walk(va, tcr);
+                    assert_eq!(pa, walker_pa);
+                }
+
                 return MMUTranslationResult::Hit(pa);
             }
         }
@@ -272,6 +308,11 @@ impl<
                         );
                     }
 
+                    if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                        let walker_pa = self.page_walk(va, tcr);
+                        assert_eq!(pa, walker_pa);
+                    }
+
                     return MMUTranslationResult::Hit(pa);
                 }
             }
@@ -297,6 +338,12 @@ impl<
                     }
 
                     let pa = ppn.1 << 30 | (va & 0x3fffffff);
+
+                    if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                        let walker_pa = self.page_walk(va, tcr);
+                        assert_eq!(pa, walker_pa);
+                    }
+
                     return MMUTranslationResult::Hit(pa);
                 }
             }
