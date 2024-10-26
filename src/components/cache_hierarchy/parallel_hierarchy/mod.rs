@@ -40,7 +40,7 @@ use crate::{
     util::get_monotonic_ts,
 };
 
-use super::common::L0InstructionCache;
+use super::{common::L0InstructionCache, mmu::{tlb::AddressSpaceID, MMUFlushMode}};
 use super::{common::CacheAccessType, MemoryAccessRequest, MemoryHierarchy};
 
 pub mod hierarchy;
@@ -167,6 +167,34 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
+unsafe extern "C" fn vcpu_invalid_tlb(
+    vcpu_idx: u32,
+    mode: u32,
+    asid: u64,
+    vpn: u64,
+    page_count: u64
+) {
+
+    let info = if mode == 0 {
+        MMUFlushMode::All
+    } else if mode == 1 {
+        MMUFlushMode::ByASID(AddressSpaceID::NonGlobal(asid as u16))
+    } else if mode == 2 {
+        MMUFlushMode::ByVPN(vpn, page_count)
+    } else if mode == 3 {
+        MMUFlushMode::ByVPNAndASID(vpn, page_count, AddressSpaceID::NonGlobal(asid as u16))
+    } else {
+        unreachable!()
+    };
+
+
+    if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
+        (*DUMMY_PLUGIN).flush_mmu(vcpu_idx - parameter::CORE_COUNT as u32 / 2, info);
+    } else {
+        (*PLUGIN).flush_mmu(vcpu_idx, info);
+    }
+}
+
 pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::super::Plugin for ParallelCacheHierarchyPlugin {
@@ -194,6 +222,8 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                 DUMMY_PLUGIN =
                     Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
             }
+
+            qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_invalid_tlb));
 
             // qemu_api::qemu_plugin_register_periodic_check_cb(Some(dump_statistics));
         }

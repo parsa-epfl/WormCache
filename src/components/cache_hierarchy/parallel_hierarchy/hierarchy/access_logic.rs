@@ -5,7 +5,7 @@ use crate::{
                 CacheHierarchyAccessResult, PrivateCacheEvictedSlot, PrivateCachePokeResult,
                 PrivateCaches, SharedCache, SharedCacheLookupResult,
             },
-            mmu::{AbstractMMU, MMUTranslationResult},
+            mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
         },
         debug::{
@@ -776,6 +776,15 @@ impl<
                 .as_mut()
                 .unwrap()
                 .translate_and_refill(r.core_id, r.va, ts, r.is_instruction())
+        }
+    }
+
+    fn flush_mmu(&self, core_id: u32, info: MMUFlushMode) {
+        unsafe {
+            println!("Flushing MMU for core {}", core_id);
+            let mmu = self.mmus[core_id as usize].get();
+            println!("MMU is {:?}", mmu);
+            self.mmus[core_id as usize].get().as_mut().unwrap().flush(info);
         }
     }
 

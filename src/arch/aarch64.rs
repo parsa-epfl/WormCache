@@ -180,19 +180,3 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
     result
 }
 
-pub enum TLBInvalidateInfo {
-    ASID,
-    VA,
-    VAASID,
-    ALL,
-}
-
-pub fn decode_tlbi(decoding: u32) -> Option<TLBInvalidateInfo> {
-    todo!(
-        "AArch64::decode_tlbi is not implemented yet! Parameter: {:x}",
-        decoding
-    );
-}
-
-// DMN, it is very hard to implement TLBi without locks. It flushes all TLBs, immediately.
-// So, the solution might be something like the quantum: periodic pooling others' request.

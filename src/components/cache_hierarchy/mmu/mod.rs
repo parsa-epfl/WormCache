@@ -44,6 +44,14 @@ use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
 use tlb::{AddressSpaceID, TLB};
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum MMUFlushMode {
+    All,
+    ByASID(AddressSpaceID),
+    ByVPN(u64, u64), // (VPN, Page number)
+    ByVPNAndASID(u64, u64, AddressSpaceID), // (VPN, Page number, ASID)
+}
+
 pub trait AbstractMMU {
     fn new() -> Self;
     fn translate_and_refill(
@@ -56,6 +64,8 @@ pub trait AbstractMMU {
 
     // Currently, this interface is for debugging. It reuses QEMU's PTW result.
     fn lookup(&mut self, vpn: u64, ts: u64, is_instruction: bool) -> Option<u64>;
+
+    fn flush(&mut self, mode: MMUFlushMode);
 
     fn serialize(&self) -> serde_json::Value;
     fn deserialize(&mut self, value: serde_json::Value);
@@ -76,8 +86,13 @@ impl AbstractMMU for NoMMU {
     ) -> MMUTranslationResult {
         MMUTranslationResult::Hit(va)
     }
+
     fn lookup(&mut self, _: u64, _: u64, _: bool) -> Option<u64> {
         None
+    }
+
+    fn flush(&mut self, _mode: MMUFlushMode) {
+        
     }
 
     fn serialize(&self) -> serde_json::Value {
@@ -218,6 +233,25 @@ impl<
             last_ttbr: u64::MAX, // This is special for kernel instruction space.
             arch: std::marker::PhantomData,
         }
+    }
+
+    fn flush(&mut self, mode: MMUFlushMode) {
+        // Huge TLB currently are just blindly flushed.
+        if !parameter::NO_HUGE_PAGE {
+            self.htbl_2mb.clear();
+            self.htlb_1gb.clear();
+        }
+
+        // Forward the flush to each TLB.
+        self.itlb.flush(mode);
+        self.dtlb.flush(mode);
+
+        if S_ENABLED {
+            self.stlb.flush(mode);
+        }
+
+        // print a log.
+        println!("MMU is flushed with {:?}", mode);
     }
 
     fn translate_and_refill(
