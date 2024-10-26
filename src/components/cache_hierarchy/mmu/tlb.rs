@@ -32,6 +32,8 @@
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use super::MMUFlushMode;
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy)]
 pub enum AddressSpaceID {
     Global,
@@ -179,17 +181,58 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
         set.insert(vpn, asid, ppn, ts, is_instruction);
     }
 
-    // pub fn _invalidate_by_vpn(&mut self, vpn: u64, asid: u16) {
-    //     let set_index = vpn % SET_COUNT as u64;
-    //     let set = &mut self.entries[set_index as usize];
-    //     set.invalidate_by_vpn(vpn, asid);
-    // }
-
-    // pub fn _invalidate_by_asid(&mut self, asid: u16) {
-    //     for set in self.entries.iter_mut() {
-    //         set.invalidate_by_asid(asid);
-    //     }
-    // }
+    pub fn flush(&mut self, mode: MMUFlushMode) {
+        match mode {
+            MMUFlushMode::All => {
+                // clean all TLB entries.
+                for set in self.entries.iter_mut() {
+                    for entry in set.entries.iter_mut() {
+                        entry.valid = false;
+                        entry.ts = 0;
+                    }
+                }
+            },
+            MMUFlushMode::ByASID(address_space_id) => {
+                // clean all TLB entries with the given ASID.
+                for set in self.entries.iter_mut() {
+                    for entry in set.entries.iter_mut() {
+                        if entry.asid == address_space_id {
+                            entry.valid = false;
+                            entry.ts = 0;
+                        }
+                    }
+                }
+            },
+            MMUFlushMode::ByVPN(vpn, page_count) => {
+                for each_page in 0..page_count {
+                    let vpn = vpn + each_page;
+                    let set_index = vpn % SET_COUNT as u64;
+                    let set = &mut self.entries[set_index as usize];
+                    for entry in set.entries.iter_mut() {
+                        if entry.vpn == vpn {
+                            entry.valid = false;
+                            entry.ts = 0;
+                            break;
+                        }
+                    }
+                }
+            },
+            MMUFlushMode::ByVPNAndASID(vpn, page_count, address_space_id) => {
+                for each_page in 0..page_count {
+                    let vpn = vpn + each_page;
+                    let set_index = vpn % SET_COUNT as u64;
+                    let set = &mut self.entries[set_index as usize];
+                    for entry in set.entries.iter_mut() {
+                        if entry.vpn == vpn && entry.asid == address_space_id {
+                            entry.valid = false;
+                            entry.ts = 0;
+                            break;
+                        }
+                    }
+                }
+            },
+        }
+    }
 }
 
 impl<const SET_COUNT: usize, const ASSO: usize> Default for TLB<SET_COUNT, ASSO> {

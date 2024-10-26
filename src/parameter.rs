@@ -112,6 +112,8 @@ static_assertions::const_assert!(STLB_SET.is_power_of_two());
 // No huge pages?
 pub const NO_HUGE_PAGE: bool = true;
 
+pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = true;
+
 /**
  * USE_UNIFIED_CACHE
  *

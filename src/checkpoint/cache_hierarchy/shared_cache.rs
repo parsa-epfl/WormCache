@@ -11,7 +11,6 @@ struct SharedCacheSet {
     blocks: Vec<SharedCacheBlock>,
     touched_count: usize,
     recent_evict_ts: u64,
-    recent_evict_vts: u64,
     access_count: u64,
 }
 
@@ -91,7 +90,6 @@ impl SingleSharedCacheSerdeHelper {
                 blocks: vec![],
                 touched_count: 0,
                 recent_evict_ts: 0,
-                recent_evict_vts: 0,
                 access_count: 0,
             });
         }
