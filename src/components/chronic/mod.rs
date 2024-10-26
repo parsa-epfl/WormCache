@@ -39,13 +39,13 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
     let normal = "normal".to_string();
     let mode = options.get("mode").unwrap_or(&normal);
 
-    // - mode=normal|warm|measure
+    // - mode=normal|warm|ff|measure
     // - init_threshold=N
     // - interval=N
     // - count=N
     // - prefix="name"
 
-    if mode == "warm" {
+    if mode == "warm" || mode == "ff" {
         println!("Periodical snapshot (warm) is enabled.");
 
         // assert!(unsafe { qemu_plugin_is_icount_mode() });

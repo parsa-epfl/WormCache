@@ -155,7 +155,7 @@ unsafe extern "C" fn qemu_plugin_install(
     let current_mode = String::from("normal");
     let current_mode = options.get("mode").unwrap_or(&current_mode);
 
-    if *current_mode != "vtime" {
+    if *current_mode != "vtime" || *current_mode != "ff" {
         qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
         qemu_api::qemu_plugin_register_atexit_cb(id, Some(qemu_plugin_exit), std::ptr::null_mut());
         qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
@@ -163,7 +163,7 @@ unsafe extern "C" fn qemu_plugin_install(
         PluginList::init(id, &options);
     } else {
         VirtualTimePlugin::init(id, &options);
-        println!("Virtual Time is enabled. Disable all Memory Hierarchy.");
+        println!("Virtual Time or Fast forward is enabled. Disable all Memory Hierarchy.");
     }
 
     chronic_behavior_init(&options);
