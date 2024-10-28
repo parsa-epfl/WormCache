@@ -484,7 +484,7 @@ fn write_evict_read_write() {
                 20 + i as u64 * 10
             ),
             CacheHierarchyAccessResult::Miss
-        );
+    );
     }
 
     // OK, we read it back, by another core
@@ -516,5 +516,70 @@ fn write_evict_read_write() {
             5
         ),
         CacheHierarchyAccessResult::Unknown
+    );
+}
+
+#[test]
+fn share_directory_entry_inseter_ts_update() {
+    let mh = MH::new(true, 0, false);
+    let block_id = 1043;
+
+    // Core 0 reads, at 30.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+            },
+            30
+        ),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 1 reads, at 40.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+            },
+            40
+        ),
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+
+    // Core 2 reads, at 20.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+            },
+            20
+        ),
+        CacheHierarchyAccessResult::Unknown
+    );
+
+    // The insert timestamp right now is 30, because reads to share block are not updating the timestamp.
+
+
+    // Now, core 2 writes at 25. It will trigger the assertion failure.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+            },
+            25
+        ),
+        CacheHierarchyAccessResult::MissDueToPermission
     );
 }

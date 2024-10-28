@@ -356,7 +356,22 @@ impl<
                 line!(),
             );
 
-            (evicted, CacheHierarchyAccessResult::HitInOtherPrivateCache)
+            if ts < miss_directory_guard.insertion_ts {
+                // This access is earlier than the directory creation.
+                // Its result should be unknowl
+                if self.with_statistics {
+                    Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
+                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
+                }
+                
+                // Mark the current access as the insertion file of the directory.
+                miss_directory_guard.insertion_ts = ts;
+
+                (evicted, CacheHierarchyAccessResult::Unknown)
+            } else {
+                (evicted, CacheHierarchyAccessResult::HitInOtherPrivateCache)
+            }
+
         } else {
             let mut acquire_list = sharers;
             // this list should either
@@ -784,7 +799,11 @@ impl<
             println!("Flushing MMU for core {}", core_id);
             let mmu = self.mmus[core_id as usize].get();
             println!("MMU is {:?}", mmu);
-            self.mmus[core_id as usize].get().as_mut().unwrap().flush(info);
+            self.mmus[core_id as usize]
+                .get()
+                .as_mut()
+                .unwrap()
+                .flush(info);
         }
     }
 
