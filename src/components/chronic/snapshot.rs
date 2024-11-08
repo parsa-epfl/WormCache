@@ -41,6 +41,7 @@ use spin::Mutex as SpinMutex;
 
 static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
 
+static mut PERIODIC_SNAPSHOT_INIT_INDEX: u64 = 0;
 static mut PERIODIC_SNAPSHOT_COUNT: u64 = 0;
 static mut PERIODIC_SNAPSHOT_REQUIRED_COUNT: u64 = 0xffff_ffff_ffff_ffff;
 
@@ -120,7 +121,7 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
     drop(miss_file);
 
     if PERIODIC_SNAPSHOT_CURRENT_CYCLES >= PERIODIC_SNAPSHOT_THRESHOLD {
-        let snapshot_name = format!("{}_{}", SNAPSHOT_PREFIX.clone(), PERIODIC_SNAPSHOT_COUNT);
+        let snapshot_name = format!("{}_{}", SNAPSHOT_PREFIX.clone(), PERIODIC_SNAPSHOT_COUNT + PERIODIC_SNAPSHOT_INIT_INDEX);
         let snapshot_info = (snapshot_name, PERIODIC_SNAPSHOT_CURRENT_CYCLES);
 
         let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
@@ -142,11 +143,13 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
     false
 }
 
-pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, prefix: String) {
+pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, prefix: String, init_idex: u64) {
     PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
     PERIODIC_SNAPSHOT_REQUIRED_COUNT = required_count;
     PERIODIC_SNAPSHOT_INTERVAL = interval;
     SNAPSHOT_PREFIX = prefix;
+    PERIODIC_SNAPSHOT_INIT_INDEX = init_idex;
+
 
     unsafe {
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
