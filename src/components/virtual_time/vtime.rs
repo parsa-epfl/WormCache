@@ -55,6 +55,12 @@ impl VirtualTimeContext {
         self.time_scaling_factor = scaling_factor;
     }
 
+    pub fn shift_time(&mut self, shift: u64) {
+        if unsafe { qemu_plugin_cpu_is_tick_enabled() } {
+            self.advanced_vclock += shift as i64;
+        }
+    }
+
     pub fn get_scaling_factor(&self) -> f64 {
         self.time_scaling_factor
     }

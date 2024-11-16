@@ -947,6 +947,9 @@ extern "C" {
 extern "C" {
     pub fn qemu_plugin_get_vcpu_ipc(cpu_idx: u32) -> u64;
 }
+extern "C" {
+    pub fn qemu_plugin_cpu_get_next_deadline(cpu_index: u32) -> u64;
+}
 pub const qemu_plugin_tlb_flush_type_t_QEMU_PLUGIN_TLB_FLUSH_ALL: qemu_plugin_tlb_flush_type_t = 0;
 pub const qemu_plugin_tlb_flush_type_t_QEMU_PLUGIN_TLB_FLUSH_BY_ASID: qemu_plugin_tlb_flush_type_t =
     1;

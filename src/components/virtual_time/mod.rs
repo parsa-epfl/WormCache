@@ -129,9 +129,10 @@ impl super::Plugin for VirtualTimePlugin {
                 thread::spawn(|| {
                     // let mut history_icount = [(0, 0); param::CORE_COUNT];
                     let mut historical_local_time = [0; param::CORE_COUNT];
+                    let mut last_scaling_factor = param::INIT_HOST_TIME_SCALE as f64;
 
                     let mut loop_count = 0;
-                    let mut acc_active_core_count = 0;
+                    let mut full_system_continuous_idle_turn = 0;
                     loop {
                         // read the current icount.
                         let local_vtime: [u64; param::CORE_COUNT] =
@@ -140,42 +141,67 @@ impl super::Plugin for VirtualTimePlugin {
                             });
 
                         let mut accumulated_local_vtime_diff = 0;
+                        let mut active_core_count = 0;
                         // check the icount difference for cores that are not sleeping.
                         for i in 0..param::CORE_COUNT {
-                            // let (u, k) = icounts[i];
                             let diff = local_vtime[i] - historical_local_time[i];
 
                             if diff != 0 {
                                 accumulated_local_vtime_diff += diff;
-                                acc_active_core_count += 1;
+                                active_core_count += 1;
                             }
 
                             historical_local_time[i] = local_vtime[i];
                         }
 
-                        if acc_active_core_count != 0 {
+                        if active_core_count != 0 {
                             // set the time scaling factor.
-                            let average_icount =
-                                accumulated_local_vtime_diff as f64 / acc_active_core_count as f64;
+                            let average_centi_nanosecond =
+                                accumulated_local_vtime_diff as f64 / active_core_count as f64;
+                            
                             let scaling_factor = (param::HOST_TIME_SCALING_PROFILING_PERIOD as f64
-                                * 1e6)
-                                / average_icount;
+                                * 1e8) 
+                                / average_centi_nanosecond; // (delta host time in nano) / (delta vtime in centi-nano)
+
+                            assert!(scaling_factor.is_finite());
 
                             TIME_PLUGIN
                                 .lock()
                                 .unwrap()
                                 .update_scaling_factor(scaling_factor);
+
+                            last_scaling_factor = scaling_factor;
+                        } else {
+                            full_system_continuous_idle_turn += 1;
+
+                            if full_system_continuous_idle_turn == 2 {
+                                // get all core's deadlines.
+                                let mut next_deadline = std::u64::MAX;
+                                for i in 0..param::CORE_COUNT {
+                                    let deadline = unsafe {
+                                        qemu_api::qemu_plugin_cpu_get_next_deadline(i as u32)
+                                    };
+
+                                    if deadline < next_deadline {
+                                        next_deadline = deadline;
+                                    }
+                                }
+
+                                if next_deadline < std::i64::MAX as u64 {
+                                    // shift the time to the next deadline.
+                                    TIME_PLUGIN.lock().unwrap().shift_time(next_deadline);
+                                }
+
+                                full_system_continuous_idle_turn = 0;
+                            }
                         }
 
                         loop_count += 1;
 
                         if loop_count % 100 == 0 {
                             println!(
-                                "Average non-sleeping core count: {}",
-                                acc_active_core_count as f64 / 100_f64,
+                                "Scaling factor: {}", last_scaling_factor
                             );
-
-                            acc_active_core_count = 0;
                         }
 
                         // wait for a period.
