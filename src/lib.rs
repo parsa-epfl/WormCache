@@ -75,6 +75,14 @@ unsafe extern "C" fn vcpu_tb_trans(
 }
 
 #[no_mangle]
+unsafe extern "C" fn vcpu_vtime_tb_trans(
+    _: qemu_api::qemu_plugin_id_t,
+    tb: *mut qemu_api::qemu_plugin_tb,
+) {
+    VirtualTimePlugin::on_translation(tb);
+}
+
+#[no_mangle]
 unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
     let converted_name = ffi::CStr::from_ptr(name).to_str();
 
@@ -163,6 +171,7 @@ unsafe extern "C" fn qemu_plugin_install(
         PluginList::init(id, &options);
     } else {
         VirtualTimePlugin::init(id, &options);
+        qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_vtime_tb_trans));
         println!("Virtual Time or Fast forward is enabled. Disable all Memory Hierarchy.");
     }
 
