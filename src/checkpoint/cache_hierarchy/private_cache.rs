@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub struct BackReferencedEntry {
-    sharers: [bool; 128],
+    sharers: [bool; 256], // For flexus, (0) is data cache, (1) is instruction cache.
     ts: u64,
     anti_reference: Vec<(usize, usize, usize, usize)>,
 }
@@ -215,12 +215,13 @@ impl FlexusPrivateCacheCheckpointHelper {
                             let directory_entry = infinite_directory
                                 .entry(line.block_id())
                                 .or_insert_with(|| BackReferencedEntry {
-                                    sharers: [false; 128],
+                                    sharers: [false; 256],
                                     ts: line.ts,
                                     anti_reference: vec![],
                                 });
 
-                            directory_entry.sharers[owner_id] = true;
+                            let sharer_position = owner_id * 2 + (1 - cache_idx);
+                            directory_entry.sharers[sharer_position] = true;
 
                             if directory_entry.ts < line.ts {
                                 directory_entry.ts = line.ts;
@@ -389,7 +390,7 @@ pub struct FlexusDirectoryEntry {
 impl ExportedDirectoryEntry {
     pub fn to_flexus_directory_entry(&self) -> FlexusDirectoryEntry {
         FlexusDirectoryEntry {
-            tag: self.tag,
+            tag: self.tag << crate::parameter::CACHE_LINE_SIZE.trailing_zeros(), // the directory tag is the address of the block with offset to be 0.
             sharers: self
                 .sharers
                 .iter()

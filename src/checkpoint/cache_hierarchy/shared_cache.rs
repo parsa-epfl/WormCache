@@ -31,14 +31,13 @@ pub struct FlexusSerializedSharedCacheBlock {
 
 fn serialize_a_share_cache_set(
     set: &SharedCacheSet,
-    set_number: usize,
+    _: usize,
 ) -> Vec<FlexusSerializedSharedCacheBlock> {
     let mut result = vec![];
-    let log2_set = set_number.trailing_zeros();
 
     for block in set.blocks.iter().rev() {
         result.push(FlexusSerializedSharedCacheBlock {
-            tag: block.block_id_with_v >> 1 >> log2_set,
+            tag: (block.block_id_with_v >> 1) << crate::parameter::CACHE_LINE_SIZE.trailing_zeros(), // well, complete PA (with offset as 0) is used as a tag in the LLC.
             dirty: block.modified,
             writable: true,
             ts: block.ts,
@@ -134,4 +133,201 @@ impl SingleSharedCacheSerdeHelper {
             folder_name
         );
     }
+}
+
+#[test]
+fn test_process_evicted_cache_line() {
+    // There are two cases:
+    // - The shared cahce already has the cache block.
+    // - The shared cache does not have the cache block.
+
+    let mut shared_cache_containing_block = SingleSharedCacheSerdeHelper {
+        blocks: vec![
+            SharedCacheSet {
+                blocks: vec![SharedCacheBlock {
+                    block_id_with_v: 0b1,
+                    ts: 1,
+                    modified: false,
+                    last_accessor: 0,
+                }],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+            SharedCacheSet {
+                blocks: vec![SharedCacheBlock {
+                    block_id_with_v: 0b11,
+                    ts: 2,
+                    modified: false,
+                    last_accessor: 0,
+                }],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+        ],
+        warmed_sets: 0,
+    };
+
+    shared_cache_containing_block.process_evicted_cache_line(
+        &PrivateCacheLine {
+            block_id_with_v: 0b1,
+            ts: 3,
+            write_ts: 3,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        },
+        0,
+    );
+
+    // Now, this block should be updated.
+    assert_eq!(shared_cache_containing_block.blocks[0].blocks.len(), 1);
+    assert_eq!(shared_cache_containing_block.blocks[0].blocks[0].ts, 3);
+
+    // The shared cache does not have the cache block.
+    let mut shared_cache_not_containing_block = SingleSharedCacheSerdeHelper {
+        blocks: vec![
+            SharedCacheSet {
+                blocks: vec![SharedCacheBlock {
+                    block_id_with_v: 0b1,
+                    ts: 1,
+                    modified: false,
+                    last_accessor: 0,
+                }],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+            SharedCacheSet {
+                blocks: vec![SharedCacheBlock {
+                    block_id_with_v: 0b11,
+                    ts: 2,
+                    modified: false,
+                    last_accessor: 0,
+                }],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+        ],
+        warmed_sets: 0,
+    };
+
+    shared_cache_not_containing_block.process_evicted_cache_line(
+        &PrivateCacheLine {
+            block_id_with_v: 0b101,
+            ts: 3,
+            write_ts: 3,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        },
+        0,
+    );
+
+    // Now, this block should be added.
+    assert_eq!(shared_cache_not_containing_block.blocks[0].blocks.len(), 2);
+    assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[0].ts, 1);
+    assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[0].block_id_with_v, 0b1);
+    assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[1].ts, 3);
+    assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[1].block_id_with_v, 0b101);
+}
+
+#[test]
+fn test_resize() {
+    let mut shared_cache = SingleSharedCacheSerdeHelper {
+        blocks: vec![
+            SharedCacheSet {
+                blocks: vec![
+                    SharedCacheBlock {
+                        block_id_with_v: 0b1,
+                        ts: 1,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                    SharedCacheBlock {
+                        block_id_with_v: 0b101,
+                        ts: 2,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                    SharedCacheBlock {
+                        block_id_with_v: 0b1101,
+                        ts: 3,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                    SharedCacheBlock {
+                        block_id_with_v: 0b11101,
+                        ts: 5,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                ],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+            SharedCacheSet {
+                blocks: vec![
+                    SharedCacheBlock {
+                        block_id_with_v: 0b11,
+                        ts: 1,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                    SharedCacheBlock {
+                        block_id_with_v: 0b111,
+                        ts: 2,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                    SharedCacheBlock {
+                        block_id_with_v: 0b1111,
+                        ts: 3,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                    SharedCacheBlock {
+                        block_id_with_v: 0b11111,
+                        ts: 4,
+                        modified: false,
+                        last_accessor: 0,
+                    },
+                ],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+        ],
+        warmed_sets: 0,
+    };
+
+    shared_cache.resize(&FlexusParameter {
+        l2_sets: 1,
+        l2_associativity: 2,
+        l1i_sets: 1,
+        l1i_associativity: 1,
+        l1d_sets: 1,
+        l1d_associativity: 1,
+        itlb_sets: 1,
+        itlb_associativity: 1,
+        dtlb_sets: 1,
+        dtlb_associativity: 1,
+        stlb_sets: 1,
+        stlb_associativity: 1,
+        directory: crate::checkpoint::FlexusDirectoryType::Infinite,
+        btb_sets: 1,
+        btb_associativity: 1,
+    });
+
+    assert_eq!(shared_cache.blocks.len(), 1);
+    assert_eq!(shared_cache.blocks[0].blocks.len(), 2);
+
+    // The left two blocks should be kept.
+    assert_eq!(shared_cache.blocks[0].blocks[0].ts, 5);
+    assert_eq!(shared_cache.blocks[0].blocks[0].block_id_with_v, 0b11101);
+    assert_eq!(shared_cache.blocks[0].blocks[1].ts, 4);
+    assert_eq!(shared_cache.blocks[0].blocks[1].block_id_with_v, 0b11111);
 }
