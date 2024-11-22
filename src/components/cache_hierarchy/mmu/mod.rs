@@ -249,9 +249,6 @@ impl<
         if S_ENABLED {
             self.stlb.flush(mode);
         }
-
-        // print a log.
-        println!("MMU is flushed with {:?}", mode);
     }
 
     fn translate_and_refill(

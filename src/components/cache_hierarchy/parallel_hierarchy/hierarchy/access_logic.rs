@@ -196,7 +196,7 @@ impl<
             miss_directory_guard.sharers.set(p_cache_id, true);
             miss_directory_guard.insertion_ts = ts; // this is the moment when the block is inserted to the directory.
 
-            if is_store {
+            if is_store && PRECISE_COHERENCE_RECONSTRUCTION {
                 miss_directory_guard.recent_writer_ts = ts;
             }
 
@@ -593,7 +593,7 @@ impl<
                             );
                         }
                     }
-                } else {
+                } else if PRECISE_COHERENCE_RECONSTRUCTION {
                     // This memory access is definitely not the first one to this cache line.
                     assert!(miss_directory_guard.insertion_ts <= ts);
                 }
@@ -606,9 +606,11 @@ impl<
                 miss_directory_guard.sharers = incoming_sharer;
 
                 // We have a new write exposed to the directory.
-                assert!(miss_directory_guard.recent_writer_ts <= ts);
-                miss_directory_guard.recent_writer_ts = ts;
-
+                if PRECISE_COHERENCE_RECONSTRUCTION {
+                    assert!(miss_directory_guard.recent_writer_ts <= ts);
+                    miss_directory_guard.recent_writer_ts = ts;
+                }
+                
                 CacheLineCoherenceHistory::global_record_history(
                     block_id,
                     record_op,
@@ -796,9 +798,6 @@ impl<
 
     fn flush_mmu(&self, core_id: u32, info: MMUFlushMode) {
         unsafe {
-            println!("Flushing MMU for core {}", core_id);
-            let mmu = self.mmus[core_id as usize].get();
-            println!("MMU is {:?}", mmu);
             self.mmus[core_id as usize]
                 .get()
                 .as_mut()
