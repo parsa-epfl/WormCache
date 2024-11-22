@@ -143,12 +143,12 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
     false
 }
 
-pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, prefix: String, init_idex: u64) {
+pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, prefix: String, init_index: u64) {
     PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
     PERIODIC_SNAPSHOT_REQUIRED_COUNT = required_count;
     PERIODIC_SNAPSHOT_INTERVAL = interval;
     SNAPSHOT_PREFIX = prefix;
-    PERIODIC_SNAPSHOT_INIT_INDEX = init_idex;
+    PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
 
 
     unsafe {
