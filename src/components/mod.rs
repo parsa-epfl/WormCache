@@ -50,3 +50,4 @@ pub mod pw_log;
 pub mod touch_once;
 pub mod trace;
 pub mod virtual_time;
+pub mod instruction_frequency;

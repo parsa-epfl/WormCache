@@ -81,7 +81,7 @@ impl BranchResolutionResult {
         BranchResolutionResult {
             is_taken,
             branch_type: match result_value {
-                0 => BranchType::NonBranch,
+                0 => unreachable!(),
                 1 => BranchType::Conditional,
                 2 => {
                     assert!(is_taken);

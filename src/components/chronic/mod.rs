@@ -76,8 +76,20 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
             .map(|x| x.parse::<u64>().unwrap())
             .unwrap_or(0);
 
+        let no_qemu_snapshot = options
+            .get("no_qemu_snapshot")
+            .map(|x| x.parse::<bool>().unwrap())
+            .unwrap_or(false);
+
         unsafe {
-            snapshot::init(init_threshold, interval, count, prefix, init_index);
+            snapshot::init(
+                init_threshold,
+                interval,
+                count,
+                prefix,
+                init_index,
+                no_qemu_snapshot,
+            );
         }
     } else if mode == "measure" {
         // assert!(unsafe { qemu_plugin_is_icount_mode() });

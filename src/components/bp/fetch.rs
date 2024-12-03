@@ -108,7 +108,7 @@ impl PerCoreFetchUnit {
         }
     }
 
-    pub fn get_flexus_checkpoint(&self) -> serde_json::Value {
+    pub fn get_flexus_checkpoint(&self) -> serde_json::Value { 
         unimplemented!();
 
         // let serialized_btb = self.btb.get_serialize_helper();

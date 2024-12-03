@@ -55,6 +55,8 @@ use components::touch_once::TouchOnePlugin;
 use components::trace::TracePlugin;
 #[allow(unused_imports)]
 use components::virtual_time::VirtualTimePlugin;
+#[allow(unused_imports)]
+use components::instruction_frequency::InstructionFrequencyPlugin;
 
 use components::Plugin;
 use parameter::PluginList;

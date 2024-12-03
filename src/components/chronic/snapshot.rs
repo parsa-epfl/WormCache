@@ -33,7 +33,7 @@ use std::{fs::File, io::Write};
 
 use crate::{
     components::debug::statistics::{EventType, Statistics},
-    parameter, qemu_api,
+    parameter::{self, PluginList}, qemu_api,
     util::get_monotonic_ts,
 };
 use once_cell::sync::OnceCell;
@@ -48,6 +48,7 @@ static mut PERIODIC_SNAPSHOT_REQUIRED_COUNT: u64 = 0xffff_ffff_ffff_ffff;
 static mut PERIODIC_SNAPSHOT_THRESHOLD: u64 = 0xffff_ffff_ffff_ffff;
 static mut PERIODIC_SNAPSHOT_INTERVAL: u64 = 0xffff_ffff_ffff_ffff;
 static mut PERIODIC_SNAPSHOT_CURRENT_CYCLES: u64 = 0;
+static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
 
 static mut SNAPSHOT_PREFIX: String = String::new();
 
@@ -121,44 +122,90 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
     drop(miss_file);
 
     if PERIODIC_SNAPSHOT_CURRENT_CYCLES >= PERIODIC_SNAPSHOT_THRESHOLD {
-        let snapshot_name = format!("{}_{}", SNAPSHOT_PREFIX.clone(), PERIODIC_SNAPSHOT_COUNT + PERIODIC_SNAPSHOT_INIT_INDEX);
+        let snapshot_name = format!(
+            "{}_{}",
+            SNAPSHOT_PREFIX.clone(),
+            PERIODIC_SNAPSHOT_COUNT + PERIODIC_SNAPSHOT_INIT_INDEX
+        );
         let snapshot_info = (snapshot_name, PERIODIC_SNAPSHOT_CURRENT_CYCLES);
 
-        let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
-        if snapshot_info_guard.is_none() {
-            return false;
-        }
+        if !PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT {
+            let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
+            if snapshot_info_guard.is_none() {
+                return false;
+            }
 
-        let mut snapshot_info_guard = snapshot_info_guard.unwrap();
+            let mut snapshot_info_guard = snapshot_info_guard.unwrap();
 
-        if snapshot_info_guard.is_none() {
-            *snapshot_info_guard = Some(snapshot_info);
+            if snapshot_info_guard.is_none() {
+                *snapshot_info_guard = Some(snapshot_info);
+            }
+        } else {
+            println!(
+                "WormCache-only snapshot request: {}, At Cycle: {}",
+                &snapshot_info.0, snapshot_info.1
+            );
+
+            // manually call serialize function of all plugins.
+            std::fs::create_dir_all(&snapshot_info.0).unwrap();
+            PluginList::serialize(&snapshot_info.0);
+            PERIODIC_SNAPSHOT_COUNT += 1;
+
+            if PERIODIC_SNAPSHOT_COUNT >= PERIODIC_SNAPSHOT_REQUIRED_COUNT {
+                println!("Generate {} snapshots. Quit.", PERIODIC_SNAPSHOT_COUNT);
+                let mut miss_file = std::fs::File::create("statistics.final.csv").unwrap();
+                miss_file
+                    .write_fmt(format_args!("{}\n", Statistics::get_header()))
+                    .unwrap();
+        
+                // update the local target time before writing the statistics
+                for core_id in 0..parameter::CORE_COUNT {
+                    Statistics::global_set(core_id as u32, EventType::TargetLocalCycle, false, unsafe {
+                        qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32)
+                    });
+                }
+        
+                for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+                    miss_file.write_all(stat.as_bytes()).unwrap();
+                    miss_file.write_all(b"\n").unwrap();
+                }
+                std::process::exit(0);
+            }
         }
 
         PERIODIC_SNAPSHOT_THRESHOLD += PERIODIC_SNAPSHOT_INTERVAL;
 
-        return true;
+        return !PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT;
     }
 
     false
 }
 
-pub unsafe fn init(init_threshold: u64, interval: u64, required_count: u64, prefix: String, init_index: u64) {
+pub unsafe fn init(
+    init_threshold: u64,
+    interval: u64,
+    required_count: u64,
+    prefix: String,
+    init_index: u64,
+    no_qemu_snapshot: bool,
+) {
     PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
     PERIODIC_SNAPSHOT_REQUIRED_COUNT = required_count;
     PERIODIC_SNAPSHOT_INTERVAL = interval;
     SNAPSHOT_PREFIX = prefix;
     PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
-
+    PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT = no_qemu_snapshot;
 
     unsafe {
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
             quantum_checking_callback
         )));
 
-        assert!(qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(
-            event_loop_callback
-        )));
+        if !PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT {
+            assert!(qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(
+                event_loop_callback
+            )));
+        }
     }
 
     STATISTICS_QUANTUM_FILE
