@@ -382,7 +382,7 @@ fn serialize_a_cache(
 
 #[derive(Serialize)]
 pub struct FlexusDirectoryEntry {
-    tag: u64,
+    tag: u64, // block id.
     sharers: String,
     ts: u64,
 }
@@ -431,6 +431,33 @@ fn serialize_a_directory(
     }
 }
 
+fn serialize_directory_slices(
+    directory: &[Vec<ExportedDirectoryEntry>],
+    directory_type: FlexusDirectoryType,
+    slice_count: usize,
+) -> Vec<serde_json::Value> {
+    match directory_type {
+        FlexusDirectoryType::Infinite => {
+            let mut slices = Vec::from_iter(std::iter::repeat_with(Vec::new).take(slice_count));
+
+            // Now, classify the directory entries into slices.
+            for entry in directory[0].iter() {
+                let slice_idx = (entry.tag as usize) % slice_count;
+                slices[slice_idx].push(entry.to_flexus_directory_entry());
+            }
+
+            slices
+                .into_iter()
+                .map(|slice| serde_json::to_value(slice).unwrap())
+                .collect()
+        }
+        FlexusDirectoryType::Standard {
+            sets: _,
+            associativity: _,
+        } => unimplemented!(),
+    }
+}
+
 impl FlexusPrivateCacheCheckpointHelper {
     pub fn export(&self, folder_name: String) {
         // Export the caches.
@@ -465,18 +492,38 @@ impl FlexusPrivateCacheCheckpointHelper {
             println!("Core {}'s L1d is exported to {}", core_id, dcache_path);
         }
 
-        // Export the directory.
-        let directory_path = format!("{}/sys-L2-dir.json", folder_name);
-        std::fs::write(
-            &directory_path,
-            serde_json::to_string(&serialize_a_directory(
-                &self.directory,
-                self.flexus_configuration.directory.clone(),
-            ))
-            .unwrap(),
-        )
-        .unwrap();
+        // Export the directory slices.
+        let directory_slices = serialize_directory_slices(
+            &self.directory,
+            self.flexus_configuration.directory.clone(),
+            self.flexus_configuration.directory_slice_count,
+        );
 
-        println!("Directory is exported to {}", directory_path);
+        for slice_idx in 0..directory_slices.len() {
+            let directory_path = format!("{}/{:03}-L2-dir-slice.json", folder_name, slice_idx);
+            std::fs::write(
+                &directory_path,
+                serde_json::to_string(&directory_slices[slice_idx]).unwrap(),
+            )
+            .unwrap();
+            println!(
+                "Directory slice {} is exported to {}",
+                slice_idx, directory_path
+            );
+        }
+
+        // // Export the directory.
+        // let directory_path = format!("{}/sys-L2-dir.json", folder_name);
+        // std::fs::write(
+        //     &directory_path,
+        //     serde_json::to_string(&serialize_a_directory(
+        //         &self.directory,
+        //         self.flexus_configuration.directory.clone(),
+        //     ))
+        //     .unwrap(),
+        // )
+        // .unwrap();
+
+        // println!("Directory is exported to {}", directory_path);
     }
 }

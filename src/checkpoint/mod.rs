@@ -24,6 +24,7 @@ pub struct FlexusParameter {
 
     pub l2_sets: usize,
     pub l2_associativity: usize,
+    pub l2_slice_count: usize,
 
     pub itlb_sets: usize,
     pub itlb_associativity: usize,
@@ -35,7 +36,9 @@ pub struct FlexusParameter {
     pub stlb_associativity: usize,
 
     pub directory: FlexusDirectoryType,
+    pub directory_slice_count: usize,
 
     pub btb_sets: usize,
     pub btb_associativity: usize,
+
 }

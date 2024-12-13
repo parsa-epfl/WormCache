@@ -133,6 +133,46 @@ impl SingleSharedCacheSerdeHelper {
             folder_name
         );
     }
+
+    pub fn export_slices(&self, folder_name: &String, flexus_configuration: &FlexusParameter) {
+        // Now, we export each slice. Slices are set-interleaved at this stage.
+        assert!(
+            self.blocks.len() % flexus_configuration.l2_slice_count == 0,
+            "The number of sets in the shared cache should be a multiple of the slice count."
+        );
+
+        // Step 1: Calculate the number of sets in each slice.
+        let sets_per_slice = self.blocks.len() / flexus_configuration.l2_slice_count;
+
+        // Step 2: Export each slice.
+        for slice_idx in 0..flexus_configuration.l2_slice_count {
+            let mut file = std::fs::File::create(format!(
+                "{}/{:03}-L2-cache-slice.json",
+                folder_name, slice_idx
+            ))
+            .unwrap();
+
+            let sets: Vec<_> = (0..sets_per_slice).map(|set_idx| {
+                &self.blocks[set_idx * flexus_configuration.l2_slice_count + slice_idx]
+            }).collect();
+
+            serde_json::to_writer(
+                &mut file,
+                &json!({
+                    "associativity": flexus_configuration.l2_associativity,
+                    "tags": sets.iter().map(|set| {
+                        serialize_a_share_cache_set(set, flexus_configuration.l2_sets)
+                    }).collect::<Vec<_>>(),
+                }),
+            )
+            .unwrap();
+
+            println!(
+                "Shared cache slice {} is exported to {}/sys-L2-cache-slice-{}.json",
+                slice_idx, folder_name, slice_idx
+            );
+        }
+    }
 }
 
 #[test]
@@ -307,6 +347,7 @@ fn test_resize() {
     shared_cache.resize(&FlexusParameter {
         l2_sets: 1,
         l2_associativity: 2,
+        l2_slice_count: 1,
         l1i_sets: 1,
         l1i_associativity: 1,
         l1d_sets: 1,
@@ -318,6 +359,7 @@ fn test_resize() {
         stlb_sets: 1,
         stlb_associativity: 1,
         directory: crate::checkpoint::FlexusDirectoryType::Infinite,
+        directory_slice_count: 1,
         btb_sets: 1,
         btb_associativity: 1,
     });

@@ -129,5 +129,5 @@ pub fn process_cache_hierarchy(
 
     shared_cache.resize(flexus_configuration);
 
-    shared_cache.export(output_folder, flexus_configuration);
+    shared_cache.export_slices(output_folder, flexus_configuration);
 }
