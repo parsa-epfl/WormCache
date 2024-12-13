@@ -87,7 +87,9 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
 
                 let miss = entry.target != target;
 
-                entry.target = target; // also update the target.
+                entry.target = target; // also update the target and the branch type.
+                entry.branch_type = result.branch_type;
+
                 return if miss {
                     BranchPredictorResult::Mispredict
                 } else {

@@ -4,6 +4,7 @@ use crate::components::bp::fetch::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use rustc_hash::FxHashSet;
 
 use super::FlexusParameter;
 
@@ -41,9 +42,19 @@ fn serialize_a_btb(
         serialized_btb[new_set_idx].append(&mut old_set);
     }
 
+    // As a sanity check, all entries's PC should be unique.
+    let mut pc_set = FxHashSet::default();
+    for set in serialized_btb.iter() {
+        for entry in set.iter() {
+            assert!(!pc_set.contains(&entry.tag));
+            pc_set.insert(entry.tag);
+        }
+    }
+
     // Step 2: Apply LRU associativity.
     for set in serialized_btb.iter_mut() {
         set.sort_by_key(|entry| entry.ts);
+        set.reverse();
         set.truncate(flexus_configuration.btb_associativity);
     }
 
@@ -51,7 +62,7 @@ fn serialize_a_btb(
     let mut serialized_btb_json = Vec::new();
     for set in serialized_btb.iter() {
         let mut serialized_set = Vec::new();
-        for entry in set.iter() {
+        for entry in set.iter().rev() {
             serialized_set.push(FlexusBTBEntry {
                 pc: entry.tag,
                 target: entry.target,
