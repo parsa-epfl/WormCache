@@ -33,7 +33,7 @@ pub struct InstructionFrequencyPlugin {}
 impl super::super::Plugin for InstructionFrequencyPlugin {
     fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
         let plugin = InstructionFrequency {
-            frequencies: Default::default()
+            frequencies: std::array::from_fn(|_| FxHashMap::default())
         };
 
         unsafe {
