@@ -71,8 +71,8 @@ unsafe extern "C" fn vcpu_mem_access(
         let offset = inst_virtual_addr >> 49;
 
         let ts = if parameter::USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION {
-            let ipc = qemu_api::qemu_plugin_get_vcpu_ipc(vcpu_idx);
-            ((offset * 100) / ipc) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
+            let ip10ps = qemu_api::qemu_plugin_get_vcpu_ip10ps(vcpu_idx);
+            ((offset * 10000) / ip10ps) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
         } else {
             get_monotonic_ts()
         };
@@ -128,8 +128,8 @@ unsafe extern "C" fn vcpu_insn_exec(
 
     let offset = (inst_virtual_addr as u64) >> 49;
     let ts = if parameter::USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION {
-        let ipc = qemu_api::qemu_plugin_get_vcpu_ipc(vcpu_idx);
-        ((offset * 100) / ipc) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
+        let ip10ps = qemu_api::qemu_plugin_get_vcpu_ip10ps(vcpu_idx);
+        ((offset * 10000) / ip10ps) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
     } else {
         get_monotonic_ts()
     };
