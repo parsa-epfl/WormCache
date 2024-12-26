@@ -484,7 +484,7 @@ fn write_evict_read_write() {
                 20 + i as u64 * 10
             ),
             CacheHierarchyAccessResult::Miss
-    );
+        );
     }
 
     // OK, we read it back, by another core
@@ -567,7 +567,6 @@ fn share_directory_entry_inseter_ts_update() {
     );
 
     // The insert timestamp right now is 30, because reads to share block are not updating the timestamp.
-
 
     // Now, core 2 writes at 25. It will trigger the assertion failure.
     assert_eq!(

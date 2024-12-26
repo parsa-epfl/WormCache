@@ -40,5 +40,4 @@ pub struct FlexusParameter {
 
     pub btb_sets: usize,
     pub btb_associativity: usize,
-
 }

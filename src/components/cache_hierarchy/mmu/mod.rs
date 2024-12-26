@@ -48,7 +48,7 @@ use tlb::{AddressSpaceID, TLB};
 pub enum MMUFlushMode {
     All,
     ByASID(AddressSpaceID),
-    ByVPN(u64, u64), // (VPN, Page number)
+    ByVPN(u64, u64),                        // (VPN, Page number)
     ByVPNAndASID(u64, u64, AddressSpaceID), // (VPN, Page number, ASID)
 }
 
@@ -91,9 +91,7 @@ impl AbstractMMU for NoMMU {
         None
     }
 
-    fn flush(&mut self, _mode: MMUFlushMode) {
-        
-    }
+    fn flush(&mut self, _mode: MMUFlushMode) {}
 
     fn serialize(&self) -> serde_json::Value {
         serde_json::json!({})

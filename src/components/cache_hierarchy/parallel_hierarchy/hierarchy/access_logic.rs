@@ -363,7 +363,7 @@ impl<
                     Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
                     Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
                 }
-                
+
                 // Mark the current access as the insertion file of the directory.
                 miss_directory_guard.insertion_ts = ts;
 
@@ -371,7 +371,6 @@ impl<
             } else {
                 (evicted, CacheHierarchyAccessResult::HitInOtherPrivateCache)
             }
-
         } else {
             let mut acquire_list = sharers;
             // this list should either
@@ -610,7 +609,7 @@ impl<
                     assert!(miss_directory_guard.recent_writer_ts <= ts);
                     miss_directory_guard.recent_writer_ts = ts;
                 }
-                
+
                 CacheLineCoherenceHistory::global_record_history(
                     block_id,
                     record_op,

@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 8;
+pub const CORE_COUNT: usize = 128;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +52,7 @@ pub const CORE_COUNT: usize = 8;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = true;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -77,17 +77,17 @@ static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
 
 // ITLB
 
-pub const ITLB_ASSO: usize = 64;
+pub const ITLB_ASSO: usize = 8;
 
-pub const ITLB_SET: usize = 1;
+pub const ITLB_SET: usize = 1024;
 
 static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 
 // DTLB
 
-pub const DTLB_ASSO: usize = 64;
+pub const DTLB_ASSO: usize = 8;
 
-pub const DTLB_SET: usize = 1;
+pub const DTLB_SET: usize = 1024;
 
 static_assertions::const_assert!(DTLB_SET.is_power_of_two());
 
@@ -112,7 +112,7 @@ static_assertions::const_assert!(STLB_SET.is_power_of_two());
 // No huge pages?
 pub const NO_HUGE_PAGE: bool = true;
 
-pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = true;
+pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = false;
 
 /**
  * USE_UNIFIED_CACHE
@@ -121,7 +121,7 @@ pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = true;
  * If true, the private instruction cache and the private data cache are unified.
  * If false, the private instruction cache and the private data cache are separated, i.e., the Harvard architecture.
  */
-pub const USE_UNIFIED_CACHE: bool = true;
+pub const USE_UNIFIED_CACHE: bool = false;
 
 /**
  * PRI_CACHE_ASSO
@@ -145,7 +145,7 @@ static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
  * The associativity of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
+pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -153,7 +153,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 4096;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -162,7 +162,7 @@ static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
  * The associativity of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
+pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -170,7 +170,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 4096;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -185,7 +185,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 1 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 1 * 1024 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -266,7 +266,7 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 3;
+pub const BTB_ASSO: usize = 4;
 
 /**
  * BP_RAS_COUNT
@@ -350,9 +350,11 @@ pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
 /**
  * Whether to use the target time (calculated with the instruction count the IPC) for cache state construction.
  *
- * When this option is enabled, the previous option, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION, must be enabled.
+ * When this option is enabled,
+ * the previous options, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION and DISABLE_PRECISE_SHARED_CACHE_LRU_RECONSTRUCTION,
+ * must be set to true.
  */
-pub const USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION: bool = true;
+pub const USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION: bool = false;
 static_assertions::const_assert!(
     !(DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
         && USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION)

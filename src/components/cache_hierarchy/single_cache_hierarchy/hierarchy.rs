@@ -196,7 +196,11 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
 
     fn flush_mmu(&self, core_id: u32, info: crate::components::cache_hierarchy::mmu::MMUFlushMode) {
         unsafe {
-            self.mmus[core_id as usize].get().as_mut().unwrap().flush(info);
+            self.mmus[core_id as usize]
+                .get()
+                .as_mut()
+                .unwrap()
+                .flush(info);
         }
     }
 

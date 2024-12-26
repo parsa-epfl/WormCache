@@ -118,7 +118,7 @@ pub trait MemoryHierarchy {
     ) -> CacheHierarchyAccessResult;
 
     fn translate(&self, request: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult;
-    
+
     fn flush_mmu(&self, core_id: u32, info: mmu::MMUFlushMode);
 
     #[inline]

@@ -40,8 +40,11 @@ use crate::{
     util::get_monotonic_ts,
 };
 
-use super::{common::L0InstructionCache, mmu::{tlb::AddressSpaceID, MMUFlushMode}};
 use super::{common::CacheAccessType, MemoryAccessRequest, MemoryHierarchy};
+use super::{
+    common::L0InstructionCache,
+    mmu::{tlb::AddressSpaceID, MMUFlushMode},
+};
 
 pub mod hierarchy;
 pub mod parser;
@@ -172,9 +175,8 @@ unsafe extern "C" fn vcpu_invalid_tlb(
     mode: u32,
     asid: u64,
     vpn: u64,
-    page_count: u64
+    page_count: u64,
 ) {
-
     let info = if mode == 0 {
         MMUFlushMode::All
     } else if mode == 1 {
@@ -186,7 +188,6 @@ unsafe extern "C" fn vcpu_invalid_tlb(
     } else {
         unreachable!()
     };
-
 
     if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
         (*DUMMY_PLUGIN).flush_mmu(vcpu_idx - parameter::CORE_COUNT as u32 / 2, info);

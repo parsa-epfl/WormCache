@@ -158,9 +158,9 @@ impl super::Plugin for VirtualTimePlugin {
                             // set the time scaling factor.
                             let average_centi_nanosecond =
                                 accumulated_local_vtime_diff as f64 / active_core_count as f64;
-                            
+
                             let scaling_factor = (param::HOST_TIME_SCALING_PROFILING_PERIOD as f64
-                                * 1e8) 
+                                * 1e8)
                                 / average_centi_nanosecond; // (delta host time in nano) / (delta vtime in centi-nano)
 
                             assert!(scaling_factor.is_finite());
@@ -199,9 +199,7 @@ impl super::Plugin for VirtualTimePlugin {
                         loop_count += 1;
 
                         if loop_count % 100 == 0 {
-                            println!(
-                                "Scaling factor: {}", last_scaling_factor
-                            );
+                            println!("Scaling factor: {}", last_scaling_factor);
                         }
 
                         // wait for a period.

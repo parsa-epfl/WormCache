@@ -2,9 +2,9 @@ use crate::components::bp::fetch::{
     btb::BTBEntry,
     tage::{self, *},
 };
+use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use rustc_hash::FxHashSet;
 
 use super::FlexusParameter;
 

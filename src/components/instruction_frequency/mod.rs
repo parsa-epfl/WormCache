@@ -1,39 +1,36 @@
 use core::ffi;
 
+use crate::{parameter::CORE_COUNT, qemu_api};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use crate::{parameter::CORE_COUNT, qemu_api};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
 pub struct InstructionFrequency {
     #[serde_as(as = "[_; CORE_COUNT]")]
-    pub frequencies: [FxHashMap<u64, u64>; CORE_COUNT] // PC -> frequency
+    pub frequencies: [FxHashMap<u64, u64>; CORE_COUNT], // PC -> frequency
 }
-
 
 static mut PLUGIN: *mut InstructionFrequency = std::ptr::null_mut();
 
-unsafe extern "C" fn vcpu_insn_exec(
-    vcpu_idx: u32,
-    inst_virtual_addr: *mut ffi::c_void,
-) {
+unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, inst_virtual_addr: *mut ffi::c_void) {
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
 
     let plugin = unsafe { &mut *PLUGIN };
-    let freq = plugin.frequencies[vcpu_idx as usize].entry(vaddr).or_insert(0);
+    let freq = plugin.frequencies[vcpu_idx as usize]
+        .entry(vaddr)
+        .or_insert(0);
     *freq += 1;
 }
 
 pub struct InstructionFrequencyPlugin {}
 
-
 impl super::super::Plugin for InstructionFrequencyPlugin {
     fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
         let plugin = InstructionFrequency {
-            frequencies: std::array::from_fn(|_| FxHashMap::default())
+            frequencies: std::array::from_fn(|_| FxHashMap::default()),
         };
 
         unsafe {
@@ -51,7 +48,6 @@ impl super::super::Plugin for InstructionFrequencyPlugin {
         }
 
         for i in 0..n_instruction {
-
             let insn = qemu_api::qemu_plugin_tb_get_insn(tb, i);
             let insn_addr = qemu_api::qemu_plugin_insn_vaddr(insn);
 
@@ -75,7 +71,5 @@ impl super::super::Plugin for InstructionFrequencyPlugin {
         file.finish().unwrap();
     }
 
-    fn deserialize(_name: &str) {
-        
-    }
+    fn deserialize(_name: &str) {}
 }

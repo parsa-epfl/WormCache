@@ -179,4 +179,3 @@ pub fn ptw(ttbr: u64, tcr: u64, va: u64, paddr_reader_q: fn(u64) -> u64) -> Tran
 
     result
 }
-

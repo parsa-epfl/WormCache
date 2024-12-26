@@ -152,9 +152,11 @@ impl SingleSharedCacheSerdeHelper {
             ))
             .unwrap();
 
-            let sets: Vec<_> = (0..sets_per_slice).map(|set_idx| {
-                &self.blocks[set_idx * flexus_configuration.l2_slice_count + slice_idx]
-            }).collect();
+            let sets: Vec<_> = (0..sets_per_slice)
+                .map(|set_idx| {
+                    &self.blocks[set_idx * flexus_configuration.l2_slice_count + slice_idx]
+                })
+                .collect();
 
             serde_json::to_writer(
                 &mut file,
@@ -269,9 +271,15 @@ fn test_process_evicted_cache_line() {
     // Now, this block should be added.
     assert_eq!(shared_cache_not_containing_block.blocks[0].blocks.len(), 2);
     assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[0].ts, 1);
-    assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[0].block_id_with_v, 0b1);
+    assert_eq!(
+        shared_cache_not_containing_block.blocks[0].blocks[0].block_id_with_v,
+        0b1
+    );
     assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[1].ts, 3);
-    assert_eq!(shared_cache_not_containing_block.blocks[0].blocks[1].block_id_with_v, 0b101);
+    assert_eq!(
+        shared_cache_not_containing_block.blocks[0].blocks[1].block_id_with_v,
+        0b101
+    );
 }
 
 #[test]

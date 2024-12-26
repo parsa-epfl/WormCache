@@ -191,7 +191,7 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
                         entry.ts = 0;
                     }
                 }
-            },
+            }
             MMUFlushMode::ByASID(address_space_id) => {
                 // clean all TLB entries with the given ASID.
                 for set in self.entries.iter_mut() {
@@ -202,7 +202,7 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
                         }
                     }
                 }
-            },
+            }
             MMUFlushMode::ByVPN(vpn, page_count) => {
                 for each_page in 0..page_count {
                     let vpn = vpn + each_page;
@@ -216,7 +216,7 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
                         }
                     }
                 }
-            },
+            }
             MMUFlushMode::ByVPNAndASID(vpn, page_count, address_space_id) => {
                 for each_page in 0..page_count {
                     let vpn = vpn + each_page;
@@ -230,7 +230,7 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
                         }
                     }
                 }
-            },
+            }
         }
     }
 }
