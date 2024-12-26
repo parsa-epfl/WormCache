@@ -173,7 +173,13 @@ unsafe extern "C" fn qemu_plugin_install(
         PluginList::init(id, &options);
     } else {
         VirtualTimePlugin::init(id, &options);
-        qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_vtime_tb_trans));
+        // We do not instrument anything if we have fixed virtual time.
+        let vtime_mode = String::from("adaptive");
+        let vtime_mode = options.get("vtime_mode").unwrap_or(&vtime_mode);
+        if vtime_mode == "adaptive" {
+            println!("Adaptive Virtual Time is enabled. This mode reuiqres counting the number of instructions.");
+            qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_vtime_tb_trans));
+        }
         println!("Virtual Time or Fast forward is enabled. Disable all Memory Hierarchy.");
     }
 
