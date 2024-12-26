@@ -33,7 +33,8 @@ use std::{fs::File, io::Write};
 
 use crate::{
     components::debug::statistics::{EventType, Statistics},
-    parameter::{self, PluginList}, qemu_api,
+    parameter::{self, PluginList},
+    qemu_api,
     util::get_monotonic_ts,
 };
 use once_cell::sync::OnceCell;
@@ -106,22 +107,22 @@ static STATISTICS_QUANTUM_FILE: OnceCell<SpinMutex<File>> = once_cell::sync::Onc
 unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
     PERIODIC_SNAPSHOT_CURRENT_CYCLES += diff;
 
-    let mut miss_file = STATISTICS_QUANTUM_FILE.get().unwrap().lock();
-    // dump the statistics.
-    for core_id in 0..parameter::CORE_COUNT {
-        Statistics::global_set(core_id as u32, EventType::TargetLocalCycle, false, unsafe {
-            qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32)
-        });
-    }
-
-    for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-        miss_file.write_all(stat.as_bytes()).unwrap();
-        miss_file.write_all(b"\n").unwrap();
-    }
-
-    drop(miss_file);
-
     if PERIODIC_SNAPSHOT_CURRENT_CYCLES >= PERIODIC_SNAPSHOT_THRESHOLD {
+        let mut miss_file = STATISTICS_QUANTUM_FILE.get().unwrap().lock();
+        // dump the statistics.
+        for core_id in 0..parameter::CORE_COUNT {
+            Statistics::global_set(core_id as u32, EventType::TargetLocalCycle, false, unsafe {
+                qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32)
+            });
+        }
+
+        for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+            miss_file.write_all(stat.as_bytes()).unwrap();
+            miss_file.write_all(b"\n").unwrap();
+        }
+
+        drop(miss_file);
+
         let snapshot_name = format!(
             "{}_{}",
             SNAPSHOT_PREFIX.clone(),
@@ -157,14 +158,17 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
                 miss_file
                     .write_fmt(format_args!("{}\n", Statistics::get_header()))
                     .unwrap();
-        
+
                 // update the local target time before writing the statistics
                 for core_id in 0..parameter::CORE_COUNT {
-                    Statistics::global_set(core_id as u32, EventType::TargetLocalCycle, false, unsafe {
-                        qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32)
-                    });
+                    Statistics::global_set(
+                        core_id as u32,
+                        EventType::TargetLocalCycle,
+                        false,
+                        unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
+                    );
                 }
-        
+
                 for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
                     miss_file.write_all(stat.as_bytes()).unwrap();
                     miss_file.write_all(b"\n").unwrap();
@@ -213,4 +217,11 @@ pub unsafe fn init(
             File::create("statistics.quantum.csv").expect("Failed to create statistics file."),
         ))
         .expect("Failed to set the statistics file.");
+
+    STATISTICS_QUANTUM_FILE
+        .get()
+        .unwrap()
+        .lock()
+        .write_fmt(format_args!("{}\n", Statistics::get_header()))
+        .unwrap();
 }

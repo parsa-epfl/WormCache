@@ -32,8 +32,8 @@
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter};
 
-use std::cell::UnsafeCell;
 use once_cell::sync::Lazy;
+use std::cell::UnsafeCell;
 
 use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 
