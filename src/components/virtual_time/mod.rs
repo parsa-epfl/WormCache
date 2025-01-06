@@ -176,21 +176,21 @@ impl super::Plugin for VirtualTimePlugin {
 
                             if full_system_continuous_idle_turn == 2 {
                                 // get all core's deadlines.
-                                let mut next_deadline = std::u64::MAX;
-                                for i in 0..param::CORE_COUNT {
-                                    let deadline = unsafe {
-                                        qemu_api::qemu_plugin_cpu_get_next_deadline(i as u32)
-                                    };
+                                // let mut next_deadline = std::u64::MAX;
+                                // for i in 0..param::CORE_COUNT {
+                                //     let deadline = unsafe {
+                                //         qemu_api::qemu_plugin_cpu_get_next_deadline(i as u32)
+                                //     };
 
-                                    if deadline < next_deadline {
-                                        next_deadline = deadline;
-                                    }
-                                }
+                                //     if deadline < next_deadline {
+                                //         next_deadline = deadline;
+                                //     }
+                                // }
 
-                                if next_deadline < std::i64::MAX as u64 {
-                                    // shift the time to the next deadline.
-                                    TIME_PLUGIN.lock().unwrap().shift_time(next_deadline);
-                                }
+                                // if next_deadline < std::i64::MAX as u64 {
+                                //     // shift the time to the next deadline.
+                                //     TIME_PLUGIN.lock().unwrap().shift_time(next_deadline);
+                                // }
 
                                 full_system_continuous_idle_turn = 0;
                             }

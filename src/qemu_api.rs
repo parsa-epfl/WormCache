@@ -947,7 +947,7 @@ unsafe extern "C" {
     pub fn qemu_plugin_set_vcpu_vtime(cpu_idx: u32, vtime: u64);
 }
 unsafe extern "C" {
-    pub fn qemu_plugin_get_vcpu_ip10ps(cpu_idx: u32) -> u64;
+    pub fn qemu_plugin_get_vcpu_ip100ns(cpu_idx: u32) -> u64;
 }
 unsafe extern "C" {
     pub fn qemu_plugin_cpu_get_next_deadline(cpu_index: u32) -> u64;
