@@ -123,6 +123,10 @@ pub fn process_cache_hierarchy(
 
     let mut shared_cache: SingleSharedCacheSerdeHelper = serde_json::from_reader(decoder).unwrap();
 
+    if flexus_configuration.no_resizing {
+        assert!(private_cache.get_evicted_lines().is_empty());
+    }
+
     for (_, (line, accessor)) in private_cache.get_evicted_lines().iter() {
         shared_cache.process_evicted_cache_line(line, *accessor);
     }

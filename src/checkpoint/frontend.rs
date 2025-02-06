@@ -28,6 +28,11 @@ fn serialize_a_btb(
     flexus_configuration: &FlexusParameter,
 ) -> Vec<Vec<FlexusBTBEntry>> {
     assert!(btb_proxy.array.len() % flexus_configuration.btb_sets == 0);
+
+    if flexus_configuration.no_resizing {
+        assert!(btb_proxy.array.len() == flexus_configuration.btb_sets);
+    }
+
     let mut serialized_btb = Vec::new();
 
     // Step 0: Initialize the serialized BTB.
@@ -55,6 +60,14 @@ fn serialize_a_btb(
     for set in serialized_btb.iter_mut() {
         set.sort_by_key(|entry| entry.ts);
         set.reverse();
+
+        if flexus_configuration.no_resizing {
+            assert!(
+                set.len() <= flexus_configuration.btb_associativity,
+                "BTB set is too large",
+            );
+        }
+
         set.truncate(flexus_configuration.btb_associativity);
     }
 

@@ -33,8 +33,13 @@ fn resize_private_cache(
     private_cache: Vec<PrivateCacheSet>,
     set: usize,
     asso: usize,
+    no_resizing: bool
 ) -> (Vec<PrivateCacheSet>, Vec<PrivateCacheLine>) {
     assert!(private_cache.len() % set == 0);
+
+    if no_resizing {
+        assert!(private_cache.len() == set);
+    }
 
     let mut new_cache = vec![vec![]; set];
     let mut evicted_lines = vec![];
@@ -49,6 +54,9 @@ fn resize_private_cache(
     for set in new_cache.iter_mut() {
         set.sort_by(|a, b| b.ts.cmp(&a.ts));
         if set.len() > asso {
+            if no_resizing {
+                panic!("No resizing is enabled, but the cache is too large.");
+            }
             evicted_lines.append(&mut set.drain(asso..).collect::<Vec<_>>());
         }
     }
@@ -197,11 +205,13 @@ impl FlexusPrivateCacheCheckpointHelper {
                 i_cache,
                 flexus_configuration.l1i_sets,
                 flexus_configuration.l1i_associativity,
+                flexus_configuration.no_resizing,
             );
             let (new_dcache, d_rem) = resize_private_cache(
                 d_cache,
                 flexus_configuration.l1d_sets,
                 flexus_configuration.l1d_associativity,
+                flexus_configuration.no_resizing,
             );
 
             evicted_cache_line.push(i_rem);

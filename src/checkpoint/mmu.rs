@@ -54,9 +54,13 @@ fn serialize_a_tlb(
     tlb: SerializedTLB,
     set_count: usize,
     associativity: usize,
-    evicted_entries: &mut FxHashMap<u64, TLBEntry>,
+    no_resizing: bool,
 ) -> Vec<Vec<FlexusTLBEntry>> {
     assert!(tlb.entries.len() % set_count == 0);
+
+    if no_resizing {
+        assert!(tlb.entries.len() == set_count);
+    }
 
     let mut result = vec![];
 
@@ -80,6 +84,10 @@ fn serialize_a_tlb(
         set.reverse(); // MRU are stored in the front after sorting.
 
         if set.len() > associativity {
+            if no_resizing {
+                panic!("The TLB is not resizable, but the entries exceed the associativity.");
+            }
+
             let evicted = set.drain(associativity..);
             for entry in evicted {
                 evicted_entries.insert(entry.vpn, entry);
@@ -123,6 +131,10 @@ fn render_stlb(
         set.reverse(); // MRU are stored in the front after sorting.
 
         if set.len() > flexus_configuration.stlb_associativity {
+            if flexus_configuration.no_resizing {
+                panic!("The TLB is not resizable, but the entries exceed the associativity.");
+            }
+            
             set.drain(flexus_configuration.stlb_associativity..);
         }
     }
@@ -154,6 +166,7 @@ impl FlexusMMU {
                 dtlb,
                 configuration.dtlb_sets,
                 configuration.dtlb_associativity,
+                configuration.no_resizing,
                 &mut evicted_entries,
             );
             let stlb = render_stlb(evicted_entries, &configuration);

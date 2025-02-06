@@ -82,6 +82,10 @@ impl SingleSharedCacheSerdeHelper {
     pub fn resize(&mut self, flexus_configuration: &FlexusParameter) {
         assert!(self.blocks.len() % flexus_configuration.l2_sets == 0);
 
+        if flexus_configuration.no_resizing {
+            assert!(self.blocks.len() == flexus_configuration.l2_sets);
+        }
+
         let mut new_blocks = vec![];
 
         for _ in 0..flexus_configuration.l2_sets {
@@ -107,6 +111,13 @@ impl SingleSharedCacheSerdeHelper {
             set.blocks.retain(|block| block.block_id_with_v & 1 == 1); // keep valid blocks.
             set.blocks.sort_by_key(|block| block.ts);
             set.blocks.reverse();
+
+            if flexus_configuration.no_resizing {
+                assert!(
+                    set.blocks.len() <= flexus_configuration.l2_associativity,
+                    "Shared cache set is too large",
+                );
+            }
 
             set.blocks.truncate(flexus_configuration.l2_associativity);
         }
@@ -370,6 +381,7 @@ fn test_resize() {
         directory_slice_count: 1,
         btb_sets: 1,
         btb_associativity: 1,
+        no_resizing: false
     });
 
     assert_eq!(shared_cache.blocks.len(), 1);
