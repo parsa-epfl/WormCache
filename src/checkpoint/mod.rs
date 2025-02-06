@@ -40,4 +40,7 @@ pub struct FlexusParameter {
 
     pub btb_sets: usize,
     pub btb_associativity: usize,
+
+    #[serde(skip)]
+    pub no_resizing: bool,
 }

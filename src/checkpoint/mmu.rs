@@ -55,6 +55,7 @@ fn serialize_a_tlb(
     set_count: usize,
     associativity: usize,
     no_resizing: bool,
+    evicted_entries: &mut FxHashMap<(u64, AddressSpaceID), TLBEntry>,
 ) -> Vec<Vec<FlexusTLBEntry>> {
     assert!(tlb.entries.len() % set_count == 0);
 
@@ -90,7 +91,7 @@ fn serialize_a_tlb(
 
             let evicted = set.drain(associativity..);
             for entry in evicted {
-                evicted_entries.insert(entry.vpn, entry);
+                evicted_entries.insert((entry.vpn, entry.asid), entry);
             }
         }
     }
@@ -103,17 +104,46 @@ fn serialize_a_tlb(
 }
 
 fn render_stlb(
-    evicted_entries: FxHashMap<u64, TLBEntry>,
+    base: SerializedTLB,
+    evicted_entries: FxHashMap<(u64, AddressSpaceID), TLBEntry>,
     flexus_configuration: &FlexusParameter,
 ) -> Vec<Vec<FlexusTLBEntry>> {
+    assert!(base.entries.len() % flexus_configuration.stlb_sets == 0);
+
+    if flexus_configuration.no_resizing {
+        assert!(base.entries.len() == flexus_configuration.stlb_sets);
+    }
+
     let mut result = vec![];
 
     for _ in 0..flexus_configuration.stlb_sets {
         result.push(vec![]);
     }
 
+    for (base_set_idx, base_set) in base.entries.into_iter().enumerate() {
+        let set_idx = base_set_idx % flexus_configuration.stlb_sets;
+        let new_set = &mut result[set_idx];
+        new_set.extend(base_set.entries.into_iter().filter_map(|entry| {
+            if entry.valid {
+                Some(FlexusTLBEntry {
+                    vpn: entry.vpn,
+                    ppn: entry.ppn,
+                    ts: entry.ts,
+                    ng: matches!(entry.asid, AddressSpaceID::Global),
+                    asid: match entry.asid {
+                        AddressSpaceID::Global => 0,
+                        AddressSpaceID::NonGlobal(asid) => asid as u64,
+                    },
+                })
+            } else {
+                None
+            }
+        }));
+    }
+
     for entry in evicted_entries.values() {
         let set_idx = entry.vpn % flexus_configuration.stlb_sets as u64;
+        assert!(entry.valid);
         result[set_idx as usize].push(FlexusTLBEntry {
             vpn: entry.vpn,
             ppn: entry.ppn,
@@ -146,20 +176,23 @@ impl FlexusMMU {
     pub fn from_harvard_tlb(
         itlb: Vec<SerializedTLB>,
         dtlb: Vec<SerializedTLB>,
+        stlb: Vec<SerializedTLB>,
         configuration: FlexusParameter,
     ) -> Self {
         assert_eq!(itlb.len(), dtlb.len());
+        assert_eq!(itlb.len(), stlb.len());
 
         let mut itlbs = vec![];
         let mut dtlbs = vec![];
         let mut stlbs = vec![];
 
-        for (itlb, dtlb) in itlb.into_iter().zip(dtlb.into_iter()) {
+        for (itlb, (dtlb, stlb)) in itlb.into_iter().zip(dtlb.into_iter().zip(stlb.into_iter())) {
             let mut evicted_entries = FxHashMap::default();
             let itlb = serialize_a_tlb(
                 itlb,
                 configuration.itlb_sets,
                 configuration.itlb_associativity,
+                configuration.no_resizing,
                 &mut evicted_entries,
             );
             let dtlb = serialize_a_tlb(
@@ -169,7 +202,7 @@ impl FlexusMMU {
                 configuration.no_resizing,
                 &mut evicted_entries,
             );
-            let stlb = render_stlb(evicted_entries, &configuration);
+            let stlb = render_stlb(stlb, evicted_entries, &configuration);
 
             itlbs.push(itlb);
             dtlbs.push(dtlb);
@@ -278,7 +311,7 @@ pub fn process_mmus(
         _ => panic!("The MMU checkpoint is not an array."),
     };
 
-    let d_tlbs: Vec<SerializedTLB> = match mmus {
+    let d_tlbs: Vec<SerializedTLB> = match mmus.clone() {
         serde_json::Value::Array(vec) => vec
             .iter()
             .map(|mmu| serde_json::from_value(mmu["dtlb"].clone()).unwrap())
@@ -286,8 +319,16 @@ pub fn process_mmus(
         _ => panic!("The MMU checkpoint is not an array."),
     };
 
+    let s_tlbs: Vec<SerializedTLB> = match mmus {
+        serde_json::Value::Array(vec) => vec
+            .iter()
+            .map(|mmu| serde_json::from_value(mmu["stlb"].clone()).unwrap())
+            .collect::<Vec<_>>(),
+        _ => panic!("The MMU checkpoint is not an array."),
+    };
+
     // let mmu = FlexusMMU::from_unified_tlb(mmus, flexus_configuration.clone());
-    let mmu = FlexusMMU::from_harvard_tlb(i_tlbs, d_tlbs, flexus_configuration.clone());
+    let mmu = FlexusMMU::from_harvard_tlb(i_tlbs, d_tlbs, s_tlbs, flexus_configuration.clone());
 
     mmu.export(output_folder);
 }
