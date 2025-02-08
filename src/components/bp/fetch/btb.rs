@@ -74,6 +74,11 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         result: BranchResolutionResult,
         target: u64,
     ) -> BranchPredictorResult {
+        // BTB is not trained or accessed when the branch is predicted to be not taken.
+        if !result.is_taken {
+            return BranchPredictorResult::NotActive;
+        }
+
         self.local_ts += 1;
 
         // This is the word-aligned PC, so the index is shifted by 2 to avoid wasting space.
