@@ -9,9 +9,9 @@ fn main() {
     let args = std::env::args().collect::<Vec<String>>();
 
     // usage: <pf_checkpoint_folder> <flexus_configuration> <output_folder>
-    if args.len() != 4 || args.len() != 5 {
+    if args.len() != 4 && args.len() != 5 {
         println!(
-            "Usage: {} <pf_checkpoint_folder> <flexus_configuration> <output_folder> <resizing=false>",
+            "Usage: {} <pf_checkpoint_folder> <flexus_configuration> <output_folder> <resizing=true>",
             args[0]
         );
         std::process::exit(1);
