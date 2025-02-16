@@ -40,7 +40,7 @@ fn serialize_a_tlb_set(set: SerializedTLBSet) -> Vec<FlexusTLBEntry> {
             vpn: entry.vpn,
             ppn: entry.ppn,
             ts: entry.ts,
-            ng: matches!(entry.asid, AddressSpaceID::Global),
+            ng: matches!(entry.asid, AddressSpaceID::NonGlobal(_)),
             asid: match entry.asid {
                 AddressSpaceID::Global => 0,
                 AddressSpaceID::NonGlobal(asid) => asid as u64,
@@ -129,7 +129,7 @@ fn render_stlb(
                     vpn: entry.vpn,
                     ppn: entry.ppn,
                     ts: entry.ts,
-                    ng: matches!(entry.asid, AddressSpaceID::Global),
+                    ng: matches!(entry.asid, AddressSpaceID::NonGlobal(_)),
                     asid: match entry.asid {
                         AddressSpaceID::Global => 0,
                         AddressSpaceID::NonGlobal(asid) => asid as u64,
@@ -148,7 +148,7 @@ fn render_stlb(
             vpn: entry.vpn,
             ppn: entry.ppn,
             ts: entry.ts,
-            ng: matches!(entry.asid, AddressSpaceID::Global),
+            ng: matches!(entry.asid, AddressSpaceID::NonGlobal(_)),
             asid: match entry.asid {
                 AddressSpaceID::Global => 0,
                 AddressSpaceID::NonGlobal(asid) => asid as u64,
