@@ -59,6 +59,9 @@ unsafe extern "C" fn vcpu_mem_access(
     // let offset: u64 = offset as u64;
     // let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
 
+    let instruction_virtual_address = _inst_host_addr as u64 & 0x1_ffff_ffff_ffff;
+    let is_os = (instruction_virtual_address >> 48) != 0;
+
     let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
     let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
@@ -78,7 +81,7 @@ unsafe extern "C" fn vcpu_mem_access(
                     } else {
                         CacheAccessType::DataRead
                     },
-                    is_os: false,
+                    is_os,
                 },
                 Some(pa),
                 get_monotonic_ts(),
@@ -98,6 +101,8 @@ unsafe extern "C" fn vcpu_insn_exec(
     let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
     let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
 
+    let is_os = (vaddr >> 48) != 0;
+
     if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
         return;
     }
@@ -109,7 +114,7 @@ unsafe extern "C" fn vcpu_insn_exec(
                 core_id: vcpu_idx,
                 va: vaddr,
                 access_type: CacheAccessType::InstructionFetch,
-                is_os: false,
+                is_os,
             },
             get_monotonic_ts(),
         );
@@ -222,9 +227,9 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
                 (qemu_api::qemu_plugin_insn_haddr(i) as u64) & 0xfff
             );
 
-            let insn_addr = (qemu_api::qemu_plugin_insn_haddr(i) as u64) & 0xffff_ffff_ffff;
+            let insn_addr = (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0x1_ffff_ffff_ffff;
             let offset = idx as u64;
-            let combined = insn_addr | (offset << 48);
+            let combined = insn_addr | (offset << 49);
 
             qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
                 i,
@@ -238,9 +243,9 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
         for i in 0..n_instruction {
             let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
 
-            let insn_addr = (qemu_api::qemu_plugin_insn_haddr(inst) as u64) & 0xffff_ffff_ffff;
+            let insn_addr = (qemu_api::qemu_plugin_insn_vaddr(inst) as u64) & 0x1_ffff_ffff_ffff;
             let offset = i as u64;
-            let combined = insn_addr | (offset << 48);
+            let combined = insn_addr | (offset << 49);
 
             qemu_api::qemu_plugin_register_vcpu_mem_cb(
                 inst,

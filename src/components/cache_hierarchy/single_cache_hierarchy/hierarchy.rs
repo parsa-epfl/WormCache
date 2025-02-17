@@ -138,7 +138,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
                 core_id,
                 block_id,
                 access_type,
-                is_os: false,
+                is_os,
             },
             ts,
             true,
