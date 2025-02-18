@@ -69,8 +69,18 @@ impl PerCoreFetchUnit {
 
     pub fn train(&mut self, pc: u64, result: BranchResolutionResult, target: u64, core_id: usize) {
         let is_os = pc >> 63 == 1;
-        let btb_miss = self.btb.train(pc, result, target) == BranchPredictorResult::Mispredict;
-        let tage_miss = self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict;
+        let btb_result = self.btb.train(pc, result, target);
+        let btb_miss = btb_result.0 == BranchPredictorResult::Mispredict;
+
+        let tage_miss = if btb_result.1 == BranchType::Conditional {
+            self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict
+        } else if btb_result.1 != BranchType::NonBranch {
+            self.tage.update_history(pc, true); // This has to be done for non-conditional branches.
+            false // No way to train the TAGE predictor for non-conditional branches.
+        } else {
+            false
+        };
+
         let ras_miss = self.ras.train(pc, result, target) == BranchPredictorResult::Mispredict;
 
         if btb_miss {
@@ -107,19 +117,6 @@ impl PerCoreFetchUnit {
             }
         }
     }
-
-    pub fn get_flexus_checkpoint(&self) -> serde_json::Value {
-        unimplemented!();
-
-        // let serialized_btb = self.btb.get_serialize_helper();
-
-        // let serialized_tage = self.tage.get_serialize_helper();
-
-        // json!({
-        //     "btb": serialized_btb,
-        //     "tage": serialized_tage,
-        // })
-    }
 }
 
 impl Default for PerCoreFetchUnit {
@@ -144,6 +141,14 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
 
     pub fn train(&mut self, core_id: usize, pc: u64, result: BranchResolutionResult, target: u64) {
         self.private_units[core_id].train(pc, result, target, core_id);
+    }
+
+    pub fn dump_training_trace(&self, folder_name: &str) {
+        for i in 0..CORE_COUNT {
+            let file_name = format!("{}/{}-bpred-training-history.json", folder_name, i);
+            let file = std::fs::File::create(file_name).unwrap();
+            serde_json::to_writer(file, &self.private_units[i].tage.training_trace).unwrap();
+        }
     }
 }
 

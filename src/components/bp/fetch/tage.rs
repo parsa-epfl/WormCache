@@ -67,14 +67,14 @@ pub const TBITS: usize = 12;
 // MAXHIST = 131 - 1
 // MINHIST = 5
 // NHIST = 7
-// HISTORIES = [int(math.ceil(MINHIST * math.pow(MAXHIST / MINHIST, i / (NHIST - 1)))) for i in range(NHIST)]
+// HISTORIES = [int(math.round(MINHIST * math.pow(MAXHIST / MINHIST, i / (NHIST - 1)))) for i in range(NHIST)]
 // HISTORIES = reversed(HISTORIES)
 // print(HISTORIES)
 // ```
 // This logic should be able to purely implemented in Rust after constant floating point arithmetic is stabilized.
 pub const MAXHIST: usize = 131;
 pub const MINHIST: usize = 5;
-pub const HISTORIES: [usize; NHIST] = [130, 76, 44, 26, 15, 9, 5];
+pub const HISTORIES: [usize; NHIST] = [130, 76, 44, 25, 15, 9, 5];
 
 type Address = u64;
 
@@ -158,8 +158,33 @@ struct TAGEPredictionResultWithBank {
     pub result: bool,
     pub bank: usize,
     pub alternate_prediction: bool,
+    pub alternate_bank: usize,
     pub gi: [usize; NHIST],
     pub bi: usize,
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TAGETrainingTrace {
+    pc: Address,
+    target: Address,
+    direction: bool,
+
+    prediction_result: bool,
+    bank: usize,
+    alternate_prediction: bool,
+    alternate_bank: usize,
+
+    gi: [usize; NHIST],
+    bi: usize,
+
+    phist: i32,
+    #[serde_as(as = "[_; MAXHIST]")]
+    ghist: History,
+    #[serde_as(as = "[_; NHIST]")]
+    ch_i: [u32; NHIST],
+    #[serde_as(as = "[[_; NHIST]; 2]")]
+    ch_t: [[u32; NHIST]; 2],
 }
 
 #[serde_as]
@@ -186,6 +211,10 @@ pub struct TAGEPredictor {
 
     // the seed for pseudo-random number generator
     pub seed: i32,
+
+    #[serde(skip)]
+    pub training_trace: Vec<TAGETrainingTrace>,
+    // Debugging training trace.
 }
 
 impl TAGEPredictor {
@@ -197,7 +226,7 @@ impl TAGEPredictor {
         for i in 1..(NHIST - 1) {
             let base = (MAXHIST - 1) as f64 / MINHIST as f64;
             let exp = i as f64 / (NHIST - 1) as f64;
-            m[NHIST - 1 - i] = (MINHIST as f64 * f64::powf(base, exp)).ceil() as usize;
+            m[NHIST - 1 - i] = (MINHIST as f64 * f64::powf(base, exp)).round() as usize;
         }
 
         // m and HISTORIES should be the same.
@@ -259,29 +288,31 @@ impl TAGEPredictor {
             gtable: std::array::from_fn(|_| {
                 Box::new(std::array::from_fn(|_| TAGEGlobalTableEntry::new()))
             }),
+
+            training_trace: vec![],
         }
     }
 
-    fn bindex(&self, pc: Address) -> usize {
+    fn bindex(&self, shifted_pc: Address) -> usize {
         let b_mask = (1 << LOGB) - 1;
-        (pc & b_mask) as usize
+        (shifted_pc & b_mask) as usize
     }
 
     // I am really confused by this function.
     #[inline(always)]
-    fn gindex(&self, pc: Address, bank: usize) -> usize {
+    fn gindex(&self, shifted_pc: Address, bank: usize) -> usize {
         let path_history_mixer_hash_function = |path_history: u32, size: usize, bank: usize| {
             let a = (path_history as usize) & ((1 << size) - 1);
             let a1 = a & ((1 << LOGG) - 1);
             let a2 = a >> LOGG;
-            let a2 = (a2 << bank) & (((1 << LOGG) - 1) + (a2 >> (LOGG - bank)));
+            let a2 = ((a2 << bank) & ((1 << LOGG) - 1)) + (a2 >> (LOGG - bank));
             let a = a1 ^ a2;
 
-            (a << bank) & (((1 << LOGG) - 1) + (a >> (LOGG - bank)))
+            ((a << bank) & ((1 << LOGG) - 1)) + (a >> (LOGG - bank))
         };
 
         let index_without_path =
-            pc ^ (pc >> (LOGG - NHIST + bank + 1)) ^ self.ch_i[bank].comp as u64;
+            shifted_pc ^ (shifted_pc >> (LOGG - NHIST + bank + 1)) ^ self.ch_i[bank].comp as u64;
 
         let index = if HISTORIES[bank] >= 16 {
             index_without_path
@@ -296,8 +327,9 @@ impl TAGEPredictor {
         (index & g_mask) as usize
     }
 
-    fn gtag(&self, pc: Address, bank: usize) -> u16 {
-        let tag = pc ^ self.ch_t[0][bank].comp as u64 ^ (self.ch_t[1][bank].comp << 1) as u64;
+    fn gtag(&self, shifted_pc: Address, bank: usize) -> u16 {
+        let tag =
+            shifted_pc ^ self.ch_t[0][bank].comp as u64 ^ (self.ch_t[1][bank].comp << 1) as u64;
         let mask = (1 << (TBITS - (bank + (NHIST & 1)) / 2)) - 1;
         (tag & mask) as u16
     }
@@ -356,6 +388,7 @@ impl TAGEPredictor {
                 result: cnt >= 0,
                 bank: which_bank,
                 alternate_prediction,
+                alternate_bank: alter_which_bank,
                 gi,
                 bi,
             }
@@ -365,6 +398,7 @@ impl TAGEPredictor {
                 result: alternate_prediction,
                 bank: which_bank,
                 alternate_prediction,
+                alternate_bank: alter_which_bank,
                 gi,
                 bi,
             }
@@ -376,7 +410,7 @@ impl TAGEPredictor {
         self.ghist[0] = taken;
     }
 
-    fn update_history(&mut self, pc: Address, taken: bool) {
+    pub fn update_history(&mut self, pc: Address, taken: bool) {
         // update ghist.
         self.shift_global_history(taken);
         // update phist.
@@ -405,112 +439,171 @@ impl TAGEPredictor {
     ) -> BranchPredictorResult {
         // we only update the predictor when the branch is conditional, but we update the history all the time.
         let is_conditional = result.branch_type == BranchType::Conditional;
+        assert!(is_conditional);
         let taken = result.is_taken;
-        if is_conditional {
-            let prediction_result = self.is_cond_taken(pc);
-            let allocation = prediction_result.result != taken;
+        let prediction_result = self.is_cond_taken(pc);
+        let mut allocation = prediction_result.result != taken && prediction_result.bank > 0;
 
-            if allocation {
-                let mut min: i8 = 3; // the the minimum useful counter value
+        if prediction_result.bank < NHIST {
+            let ctr = self.gtable[prediction_result.bank]
+                [prediction_result.gi[prediction_result.bank]]
+                .ctr;
+            let ubit = self.gtable[prediction_result.bank]
+                [prediction_result.gi[prediction_result.bank]]
+                .ubit;
+            let local_taken = ctr >= 0;
+            let pesudo_new_alloc = ((ctr * 2 + 1).abs() == 1) && (ubit == 0);
+
+            if pesudo_new_alloc {
+                if local_taken == taken {
+                    allocation = false;
+                }
+            }
+        }
+
+        if allocation {
+            assert!(prediction_result.result != taken);
+            let mut min: i8 = 3; // the the minimum useful counter value
+            for idx in 0..(prediction_result.bank) {
+                if self.gtable[idx][prediction_result.gi[idx]].ubit < min {
+                    min = self.gtable[idx][prediction_result.gi[idx]].ubit;
+                }
+            }
+
+            if min > 0 {
+                // NO UNUSEFUL ENTRY TO ALLOCATE: age all possible targets, but do not allocate
                 for idx in 0..(prediction_result.bank) {
-                    if self.gtable[idx][prediction_result.gi[idx]].ubit < min {
-                        min = self.gtable[idx][prediction_result.gi[idx]].ubit;
-                    }
+                    self.gtable[idx][prediction_result.gi[idx]].ubit -= 1;
+                }
+            } else {
+                // YES: allocate one entry, but apply some randomness
+                // bank I is twice more probable than bank I-1
+                let n_rand = self.get_random();
+                let mut y = n_rand & ((1 << (prediction_result.bank - 1)) - 1);
+                let mut x = prediction_result.bank - 1;
+                while (y & 1) != 0 {
+                    x -= 1;
+                    y >>= 1;
                 }
 
-                if min > 0 {
-                    // NO UNUSEFUL ENTRY TO ALLOCATE: age all possible targets, but do not allocate
-                    for idx in 0..(prediction_result.bank) {
-                        self.gtable[idx][prediction_result.gi[idx]].ubit -= 1;
-                    }
-                } else {
-                    // YES: allocate one entry, but apply some randomness
-                    // bank I is twice more probable than bank I-1
-                    let n_rand = self.get_random();
-                    let mut y = n_rand & ((1 << (prediction_result.bank - 1)) - 1);
-                    let mut x = prediction_result.bank - 1;
-                    while (y & 1) != 0 {
-                        x -= 1;
-                        y >>= 1;
-                    }
-
-                    for idx in 0..(x + 1) {
-                        let t = x - idx;
-                        if self.gtable[t][prediction_result.gi[t]].ubit == min {
-                            self.gtable[t][prediction_result.gi[t]].tag = self.gtag(pc, t);
-                            self.gtable[t][prediction_result.gi[t]].ctr =
-                                if taken { 0 } else { -1 };
-                            self.gtable[t][prediction_result.gi[t]].ubit = 0;
-                            break;
-                        }
+                for idx in 0..(x + 1) {
+                    let t = x - idx;
+                    if self.gtable[t][prediction_result.gi[t]].ubit == min {
+                        self.gtable[t][prediction_result.gi[t]].tag = self.gtag(pc >> 2, t);
+                        self.gtable[t][prediction_result.gi[t]].ctr = if taken { 0 } else { -1 };
+                        self.gtable[t][prediction_result.gi[t]].ubit = 0;
+                        break;
                     }
                 }
             }
+        }
 
-            // periodic reset of ubit: reset is not complete but bit by bit
-            self.tick += 1;
+        // periodic reset of ubit: reset is not complete but bit by bit
+        self.tick += 1;
 
-            if (self.tick & ((1 << 18) - 1)) == 0 {
-                let mut mask = (self.tick >> 18) & 1;
-                if mask == 0 {
-                    mask = 2;
-                }
-                for idx in 0..NHIST {
-                    for idx2 in 0..(1 << LOGG) {
-                        self.gtable[idx][idx2].ubit &= mask as i8;
-                    }
+        if (self.tick & ((1 << 18) - 1)) == 0 {
+            let mut mask = (self.tick >> 18) & 1;
+            if mask == 0 {
+                mask = 2;
+            }
+            for idx in 0..NHIST {
+                for idx2 in 0..(1 << LOGG) {
+                    self.gtable[idx][idx2].ubit &= mask as i8;
                 }
             }
+        }
 
-            // update the counter that provided the prediction, and only this counter
+        // update the counter that provided the prediction, and only this counter
 
-            if prediction_result.bank < NHIST {
-                self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]]
-                    .ctr = TAGEPredictor::ctrupdate(
+        if prediction_result.bank < NHIST {
+            self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]].ctr =
+                TAGEPredictor::ctrupdate(
                     self.gtable[prediction_result.bank]
                         [prediction_result.gi[prediction_result.bank]]
                         .ctr,
                     taken,
                     CBITS,
                 );
-            } else {
-                // the prediction is from the btable.
-                assert!(prediction_result.alternate_prediction == prediction_result.result);
+        } else {
+            // the prediction is from the btable.
+            assert!(prediction_result.alternate_prediction == prediction_result.result);
+            assert!((self.btable[prediction_result.bi].pred > 0) == prediction_result.result);
 
-                if prediction_result.result == taken {
-                    if taken {
-                        if self.btable[prediction_result.bi].pred != 0 {
-                            self.btable[prediction_result.bi].hyst = 1;
-                        }
-                    } else if self.btable[prediction_result.bi].pred == 0 {
-                        self.btable[prediction_result.bi].hyst = 0;
+            if prediction_result.result == taken {
+                if taken {
+                    if self.btable[prediction_result.bi].pred != 0 {
+                        self.btable[prediction_result.bi].hyst = 1;
                     }
-                } else {
-                    let mut inter = self.btable[prediction_result.bi].pred * 2
-                        + self.btable[prediction_result.bi].hyst;
-                    if taken {
-                        if inter < 3 {
-                            inter += 1;
-                        }
-                    } else if inter > 0 {
-                        inter -= 1;
-                    }
-                    self.btable[prediction_result.bi].pred = inter >> 1;
-                    self.btable[prediction_result.bi].hyst = inter & 1;
+                } else if self.btable[prediction_result.bi].pred == 0 {
+                    self.btable[prediction_result.bi].hyst = 0;
                 }
-            }
-
-            if allocation {
-                return BranchPredictorResult::Mispredict;
             } else {
-                return BranchPredictorResult::Match;
+                let mut inter = self.btable[prediction_result.bi].pred * 2
+                    + self.btable[prediction_result.bi].hyst;
+                if taken {
+                    if inter < 3 {
+                        inter += 1;
+                    }
+                } else if inter > 0 {
+                    inter -= 1;
+                }
+                self.btable[prediction_result.bi].pred = inter >> 1;
+                self.btable[prediction_result.bi].hyst = inter & 1;
             }
         }
 
-        // In any case, the history must be updated.
+        // update the ubit counter
+        if prediction_result.result != prediction_result.alternate_prediction {
+            assert!(prediction_result.bank < NHIST);
+            if prediction_result.result == taken {
+                if self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]]
+                    .ubit
+                    < 3
+                {
+                    self.gtable[prediction_result.bank]
+                        [prediction_result.gi[prediction_result.bank]]
+                        .ubit += 1;
+                }
+            } else {
+                if self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]]
+                    .ubit
+                    > 0
+                {
+                    self.gtable[prediction_result.bank]
+                        [prediction_result.gi[prediction_result.bank]]
+                        .ubit -= 1;
+                }
+            }
+        }
+
+        // // record the training trace.
+        // self.training_trace.push(TAGETrainingTrace {
+        //     pc,
+        //     target: _target,
+        //     direction: taken,
+        //     prediction_result: prediction_result.result,
+        //     bank: prediction_result.bank,
+        //     alternate_prediction: prediction_result.alternate_prediction,
+        //     alternate_bank: prediction_result.alternate_bank,
+        //     gi: prediction_result.gi,
+        //     bi: prediction_result.bi,
+        //     phist: self.phist,
+        //     ghist: self.ghist,
+        //     ch_i: std::array::from_fn(|idx| self.ch_i[idx].comp),
+        //     ch_t: [
+        //         std::array::from_fn(|idx| self.ch_t[0][idx].comp),
+        //         std::array::from_fn(|idx| self.ch_t[1][idx].comp),
+        //     ],
+        // });
+
+        // before returning, update the history.
         self.update_history(pc, taken);
 
-        BranchPredictorResult::NotActive
+        if prediction_result.result != taken {
+            return BranchPredictorResult::Mispredict;
+        } else {
+            return BranchPredictorResult::Match;
+        }
     }
 }
 

@@ -73,12 +73,7 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         pc: u64,
         result: BranchResolutionResult,
         target: u64,
-    ) -> BranchPredictorResult {
-        // BTB is not trained or accessed when the branch is predicted to be not taken.
-        if !result.is_taken {
-            return BranchPredictorResult::NotActive;
-        }
-
+    ) -> (BranchPredictorResult, BranchType) {
         self.local_ts += 1;
 
         // This is the word-aligned PC, so the index is shifted by 2 to avoid wasting space.
@@ -89,38 +84,48 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         for entry in self.array[index].iter_mut() {
             if entry.tag == pc {
                 entry.ts = self.local_ts;
+                // BTB is not trained or accessed when the branch is predicted to be not taken.
+                if !result.is_taken {
+                    // This is useful to guide the TAGE training.
+                    return (BranchPredictorResult::NotActive, entry.branch_type);
+                }
 
                 let miss = entry.target != target;
+
+                let prediction = if miss {
+                    (BranchPredictorResult::Mispredict, entry.branch_type)
+                } else {
+                    (BranchPredictorResult::Match, entry.branch_type)
+                };
 
                 entry.target = target; // also update the target and the branch type.
                 entry.branch_type = result.branch_type;
 
-                return if miss {
-                    BranchPredictorResult::Mispredict
-                } else {
-                    BranchPredictorResult::Match
-                };
+                return prediction;
             }
         }
 
-        // Find the entry with the minimum timestamp. Ts is zero means it is not valid.
-        let mut min_index = 0;
-        let mut min_ts = u64::MAX;
+        // Only insert the entry if the branch is taken.
+        if result.is_taken {
+            // Find the entry with the minimum timestamp. Ts is zero means it is not valid.
+            let mut min_index = 0;
+            let mut min_ts = u64::MAX;
 
-        for (i, entry) in self.array[index].iter().enumerate() {
-            if entry.ts < min_ts {
-                min_ts = entry.ts;
-                min_index = i;
+            for (i, entry) in self.array[index].iter().enumerate() {
+                if entry.ts < min_ts {
+                    min_ts = entry.ts;
+                    min_index = i;
+                }
             }
+
+            // always replace the entry with the minimum timestamp
+            self.array[index][min_index].tag = pc;
+            self.array[index][min_index].target = target;
+            self.array[index][min_index].ts = self.local_ts;
+            self.array[index][min_index].branch_type = result.branch_type;
         }
 
-        // always replace the entry with the minimum timestamp
-        self.array[index][min_index].tag = pc;
-        self.array[index][min_index].target = target;
-        self.array[index][min_index].ts = self.local_ts;
-        self.array[index][min_index].branch_type = result.branch_type;
-
-        BranchPredictorResult::Mispredict
+        (BranchPredictorResult::Mispredict, BranchType::NonBranch)
     }
 }
 

@@ -100,7 +100,7 @@ struct FlexusTAGEPredictorState {
     #[serde(rename = "PHIST")]
     pub phist: i32,
     #[serde(rename = "GHIST")]
-    pub ghist: String,
+    pub ghist: Vec<bool>,
 
     #[serde(rename = "LOGB")]
     pub logb: usize,
@@ -137,8 +137,7 @@ fn serialize_a_tage(
         ghist: tage
             .ghist
             .iter()
-            .rev()
-            .map(|x| if *x { '1' } else { '0' })
+            .copied()
             .collect(),
 
         logb: LOGB,
