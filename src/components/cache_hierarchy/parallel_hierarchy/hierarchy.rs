@@ -64,7 +64,7 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
 > {
-    mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
+    mmus: [UnsafeCell<MMU>; super::parser::ALLOCATED_CORE_COUNT],
 
     private_caches: PCache,
     directory: Directory<DIRECTORY_SHARD_COUNT>,
@@ -113,6 +113,7 @@ impl<
         block_id: u64,
         ts: u64,
         modified: (bool, u64),
+        is_os: bool
     ) {
         let directory_entry = directory_set_guard.get_or_create(block_id);
 
@@ -163,7 +164,7 @@ impl<
                 Statistics::global_record(
                     PCache::find_cache_info_by_cache_id(cache_id).0,
                     EventType::SharedCacheAccess,
-                    false,
+                    is_os,
                 );
             }
 

@@ -85,22 +85,12 @@ impl MH {
             return BlockPosition::InPrivateCache(private_owner);
         }
 
-        if matches!(
-            // self.shared_cache
-            //     .lookup(0, block_id, 0, 0, false, CacheAccessType::DataRead, false)
-            //     .0,
-            self.shared_cache.lookup(
-                &CacheBlockRequest {
-                    core_id: 0,
-                    block_id,
-                    access_type: CacheAccessType::DataRead,
-                    is_os: false,
-                },
-                0,
-                false,
-            ),
-            SharedCacheLookupResult::Hit(_)
-        ) {
+        if self.shared_cache.peek(&CacheBlockRequest {
+            core_id: 0,
+            block_id,
+            access_type: CacheAccessType::DataRead,
+            is_os: false,
+        }) {
             return BlockPosition::InSharedCache;
         }
         BlockPosition::NotInCache

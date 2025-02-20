@@ -37,7 +37,7 @@ use crate::{
     arch::AArch64,
     components::{
         cache_hierarchy::{
-            common::{CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult},
+            common::{CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult},
             mmu::{self, AbstractMMU, MMUTranslationResult},
             CacheBlockRequest, MemoryHierarchy,
         },
@@ -128,7 +128,6 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         let is_os = request.is_os();
         let core_id = request.core_id;
         let block_id = request.block_id;
-        let access_type = request.access_type.clone();
 
         Statistics::global_record(core_id, EventType::DataAccess, is_os);
         Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
@@ -137,18 +136,17 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             &CacheBlockRequest {
                 core_id,
                 block_id,
-                access_type,
+                access_type: CacheAccessType::DataRead, // Read does not have impact on the tag array.
                 is_os,
             },
             ts,
-            true,
             true,
         );
 
         Statistics::global_record(
             core_id,
             match res {
-                SharedCacheLookupResult::Hit(_) => EventType::SharedCacheAccess,
+                SharedCacheLookupResult::Hit => EventType::SharedCacheAccess,
                 SharedCacheLookupResult::Miss => EventType::SharedCacheMiss,
                 SharedCacheLookupResult::ColdMiss => EventType::SharedCacheColdMiss,
                 SharedCacheLookupResult::Unknown(_) => EventType::UnknownSharedCacheMisses,
@@ -173,7 +171,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         }
 
         match res {
-            SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+            SharedCacheLookupResult::Hit => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::Unknown(_) => CacheHierarchyAccessResult::Unknown,

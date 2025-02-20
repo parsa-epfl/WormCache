@@ -131,17 +131,17 @@ impl<
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
-            let shared_cache_result = if FILL_SCACHE_ON_FILLING_PCACHE {
+            let shared_cache_result = if FILL_SCACHE_ON_FILLING_PCACHE && !is_store {
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
                 let lookup_result = self
                     .shared_cache
-                    .lookup_and_insert_on_miss(r, ts, true, false);
+                    .lookup_and_insert_on_miss(r, ts, true);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
-                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::Hit => true,
+                    SharedCacheLookupResult::Miss => false,
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -150,7 +150,7 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        false
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -160,15 +160,15 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        false
                     }
                 }
             } else {
-                let lookup_result = self.shared_cache.lookup(r, ts, true);
+                let lookup_result = self.shared_cache.lookup(r, ts);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
-                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::Hit => true,
+                    SharedCacheLookupResult::Miss => false,
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -177,7 +177,7 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        false
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -187,7 +187,7 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        false
                     }
                 }
             };
@@ -262,7 +262,7 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            if shared_cache_result.is_some() {
+            if shared_cache_result {
                 return CacheHierarchyAccessResult::HitInSharedCache;
             } else {
                 if !is_prefetch && self.with_statistics {

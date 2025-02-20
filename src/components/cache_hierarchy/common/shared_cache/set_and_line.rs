@@ -122,38 +122,16 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         }
     }
 
+    // Return whether the block is a hit.
     #[inline]
-    fn index_of(&self, block_id: u64) -> Option<usize> {
+    pub fn index_of(&self, block_id: u64) -> Option<usize> {
         let internal_block_id = block_id << 1 | 1;
         self.blocks
             .iter()
             .position(|p| p.block_id_with_v == internal_block_id)
     }
 
-    fn peek(&mut self, block_id: u64, core_id: u32, ts: u64, abandon_dirty: bool) -> Option<bool> {
-        if let Some(hit_block) = self.index_of(block_id) {
-            let hit_block = &mut self.blocks[hit_block];
-            if ts >= hit_block.ts {
-                // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
-                hit_block.ts = ts;
-            }
-
-            if abandon_dirty {
-                // Force a write back to the DRAM here.
-                // We don't simulate this event now.
-                hit_block.modified = false;
-            }
-
-            hit_block.last_accessor = core_id;
-
-            return Some(hit_block.modified);
-        }
-
-        // otherwise, it is a miss.
-        None
-    }
-
-    pub fn invalidate(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    pub fn invalidate(&mut self, block_id: u64, ts: u64) -> bool {
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
@@ -165,20 +143,15 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                 self.recent_evict_ts = ts;
             }
 
-            return res;
+            return true;
         }
 
         // otherwise, it is a miss.
-        None
+        false
     }
 
     #[inline]
-    pub fn lookup(
-        &mut self,
-        r: &CacheBlockRequest,
-        ts: u64,
-        abandon_dirty: bool,
-    ) -> SharedCacheLookupResult {
+    pub fn lookup(&mut self, r: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
         self.access_count += 1;
 
         let block_id = r.block_id;
@@ -189,13 +162,37 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         match if EXCLUSIVE {
             self.invalidate(block_id, ts)
         } else {
-            self.peek(block_id, core_id, ts, abandon_dirty)
-        } {
-            Some(is_dirty) => {
-                self.statistics.record(access_type, is_os, true);
-                SharedCacheLookupResult::Hit(is_dirty)
+            if let Some(hit_block) = self.index_of(block_id) {
+                let hit_block = &mut self.blocks[hit_block];
+                if r.is_store() {
+                    // The cache line should be transferred to the accessor.
+                    hit_block.block_id_with_v = 0;
+                    hit_block.ts = 0;
+
+                    if self.recent_evict_ts < ts {
+                        self.recent_evict_ts = ts;
+                    }
+                } else {
+                    if ts >= hit_block.ts {
+                        // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
+                        hit_block.ts = ts;
+                    }
+
+                    hit_block.last_accessor = core_id;
+
+                    // Accessed by a higher-level, meaning that the block is not dirty anymore.
+                    hit_block.modified = false;
+                }
+                true
+            } else {
+                false
             }
-            None => {
+        } {
+            true => {
+                self.statistics.record(access_type, is_os, true);
+                SharedCacheLookupResult::Hit
+            }
+            false => {
                 if ts < self.recent_evict_ts {
                     SharedCacheLookupResult::Unknown((self.recent_evict_ts - ts) as u32)
                 } else {
@@ -296,25 +293,26 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         &mut self,
         r: &CacheBlockRequest,
         ts: u64,
-        abandon_dirty: bool,
         increase_touched_count: bool,
     ) -> SharedCacheLookupAndInsertResult {
         // (is_hit, dirty/just_warmed)
-        let result = self.lookup(r, ts, abandon_dirty);
+        let result = self.lookup(r, ts);
 
         let block_id = r.block_id;
         let core_id = r.core_id;
 
         match result {
-            SharedCacheLookupResult::Hit(is_dirty) => {
-                SharedCacheLookupAndInsertResult::Hit(is_dirty)
-            }
+            SharedCacheLookupResult::Hit => SharedCacheLookupAndInsertResult::Hit,
             SharedCacheLookupResult::Miss => {
                 // This function is only called when the private cache has a miss
                 // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
-                let just_warmed = self.insert(block_id, core_id, ts, false, increase_touched_count);
-                assert!(!just_warmed);
-                SharedCacheLookupAndInsertResult::Inserted
+                if !r.is_store() {
+                    let just_warmed = self.insert(block_id, core_id, ts, false, increase_touched_count);
+                    assert!(!just_warmed);    
+                    SharedCacheLookupAndInsertResult::Inserted
+                } else {
+                    SharedCacheLookupAndInsertResult::Miss
+                }
             }
             SharedCacheLookupResult::ColdMiss => {
                 // This function is only called when the private cache has a miss
@@ -344,7 +342,7 @@ fn minimum_can_find_invalid() {
     }
 
     // now, we invalid set 0.
-    assert_eq!(set.invalidate(0, ts), Some(false));
+    assert_eq!(set.invalidate(0, ts), true);
     ts += 1;
 
     // Now if we refill, we will hit the first place.
@@ -396,7 +394,6 @@ fn cold_miss_exist() {
                 is_os: false
             },
             ts,
-            false
         ),
         SharedCacheLookupResult::ColdMiss,
     );
@@ -419,7 +416,6 @@ fn cold_miss_exist() {
                 is_os: false
             },
             ts,
-            false
         ),
         SharedCacheLookupResult::Miss,
     );

@@ -83,7 +83,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         }
     }
 
-    fn invalidate(&mut self, block_id: u64, ts: u64) -> Option<bool> {
+    fn invalidate(&mut self, block_id: u64, ts: u64) -> bool {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx].invalidate(block_id, ts)
     }
@@ -92,10 +92,9 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         &mut self,
         r: &CacheBlockRequest,
         ts: u64,
-        abandon_dirty: bool,
     ) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
-        self.blocks[set_idx].lookup(r, ts, abandon_dirty)
+        self.blocks[set_idx].lookup(r, ts)
     }
 
     fn insert(
@@ -114,16 +113,16 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         &mut self,
         r: &CacheBlockRequest,
         ts: u64,
-        abandon_dirty: bool,
         increase_touched_count: bool,
     ) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
         let res =
-            self.blocks[set_idx].lookup_and_insert(r, ts, abandon_dirty, increase_touched_count);
+            self.blocks[set_idx].lookup_and_insert(r, ts, increase_touched_count);
         match res {
-            SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
-                SharedCacheLookupResult::Hit(is_dirty)
+            SharedCacheLookupAndInsertResult::Hit => {
+                SharedCacheLookupResult::Hit
             }
+            SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
             SharedCacheLookupAndInsertResult::InsertedAndCold(_) => {
                 SharedCacheLookupResult::ColdMiss
             }
@@ -212,7 +211,13 @@ impl<
         }
     }
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
+    fn peek(&self, request: &CacheBlockRequest) -> bool {
+        let pcache = unsafe { &mut *self.blocks[request.core_id as usize].get() };
+        let set_idx = (request.block_id % SET as u64) as usize;
+        pcache.blocks[set_idx].index_of(request.block_id).is_some()
+    }
+
+    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> bool {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.invalidate(block_id, ts)
     }
@@ -221,12 +226,11 @@ impl<
         &self,
         request: &CacheBlockRequest,
         ts: u64,
-        abandon_dirty: bool,
     ) -> SharedCacheLookupResult {
         let core_id = request.core_id;
 
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        pcache.lookup(request, ts, abandon_dirty)
+        pcache.lookup(request, ts)
     }
 
     fn insert(
@@ -245,12 +249,11 @@ impl<
         &self,
         request: &CacheBlockRequest,
         ts: u64,
-        abandon_dirty: bool,
         increase_touched_count: bool,
     ) -> SharedCacheLookupResult {
         let pcache = unsafe { &mut *self.blocks[request.core_id as usize].get() };
 
-        pcache.lookup_and_insert(request, ts, abandon_dirty, increase_touched_count)
+        pcache.lookup_and_insert(request, ts, increase_touched_count)
     }
 
     fn warmed_sets_count(&self) -> usize {
