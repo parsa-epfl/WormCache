@@ -27,6 +27,7 @@ impl<
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
         const DIRECTORY_SHARD_COUNT: usize,
+        const CORE_COUNT: usize,
     > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
@@ -37,6 +38,7 @@ impl<
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         DIRECTORY_SHARD_COUNT,
+        CORE_COUNT,
     >
 {
     fn access_memory_pblock_id(
@@ -244,6 +246,7 @@ impl<
                     evicted_block_id,
                     ts,
                     evicted_line_is_modified,
+                    is_os,
                 );
             }
 
@@ -759,6 +762,7 @@ impl<
                 evicted_block_id,
                 ts,
                 is_modified,
+                is_os,
             );
         }
 
