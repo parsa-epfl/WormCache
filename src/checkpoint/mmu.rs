@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry};
+use crate::{checkpoint::FlexusSTLBInclusion, components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry}};
 use rustc_hash::FxHashMap;
 
 use super::FlexusParameter;
@@ -55,6 +55,7 @@ fn serialize_a_tlb(
     set_count: usize,
     associativity: usize,
     no_resizing: bool,
+    stlb_inclusion: bool,
     evicted_entries: &mut FxHashMap<(u64, AddressSpaceID), TLBEntry>,
 ) -> Vec<Vec<FlexusTLBEntry>> {
     assert!(tlb.entries.len() % set_count == 0);
@@ -84,14 +85,25 @@ fn serialize_a_tlb(
         set.sort_by_key(|entry| entry.ts);
         set.reverse(); // MRU are stored in the front after sorting.
 
+        // We make an inclusion insertion here, considering that the L1 TLBs are small.
+        if stlb_inclusion {
+            for entry in set.iter() {
+                evicted_entries.insert((entry.vpn, entry.asid), entry.clone());
+            }
+        }
+
         if set.len() > associativity {
             if no_resizing {
                 panic!("The TLB is not resizable, but the entries exceed the associativity.");
             }
 
             let evicted = set.drain(associativity..);
-            for entry in evicted {
-                evicted_entries.insert((entry.vpn, entry.asid), entry);
+
+            if !stlb_inclusion {
+                // insert the evicted entries into the evicted_entries map.
+                for entry in evicted {
+                    evicted_entries.insert((entry.vpn, entry.asid), entry.clone());
+                }
             }
         }
     }
@@ -193,6 +205,7 @@ impl FlexusMMU {
                 configuration.itlb_sets,
                 configuration.itlb_associativity,
                 configuration.no_resizing,
+                matches!(configuration.stlb_inclusion, FlexusSTLBInclusion::Inclusive),
                 &mut evicted_entries,
             );
             let dtlb = serialize_a_tlb(
@@ -200,6 +213,7 @@ impl FlexusMMU {
                 configuration.dtlb_sets,
                 configuration.dtlb_associativity,
                 configuration.no_resizing,
+                matches!(configuration.stlb_inclusion, FlexusSTLBInclusion::Inclusive),
                 &mut evicted_entries,
             );
             let stlb = render_stlb(stlb, evicted_entries, &configuration);

@@ -74,7 +74,7 @@ unsafe extern "C" fn event_loop_callback() {
 
     let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
 
-    qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr());
+    qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), false);
 
     PERIODIC_SNAPSHOT_COUNT += 1;
 

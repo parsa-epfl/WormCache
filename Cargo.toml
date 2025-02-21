@@ -32,3 +32,6 @@ crate-type=["rlib", "cdylib"]
 [profile.release]
 debug = true
 
+[dev-dependencies]
+tempfile = "3.17.1"
+

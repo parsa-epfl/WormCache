@@ -81,20 +81,20 @@ unsafe extern "C" fn vcpu_mem_access(
         };
 
         if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
-            (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
-                &MemoryAccessRequest {
-                    core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-                    va: vaddr,
-                    access_type: if is_store {
-                        CacheAccessType::DataWrite
-                    } else {
-                        CacheAccessType::DataRead
-                    },
-                    is_os,
-                },
-                Some(pa),
-                ts,
-            )
+            // (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
+            //     &MemoryAccessRequest {
+            //         core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+            //         va: vaddr,
+            //         access_type: if is_store {
+            //             CacheAccessType::DataWrite
+            //         } else {
+            //             CacheAccessType::DataRead
+            //         },
+            //         is_os,
+            //     },
+            //     Some(pa),
+            //     ts,
+            // )
         } else {
             (*PLUGIN).access_memory_with_va_and_pa(
                 &MemoryAccessRequest {
@@ -109,7 +109,7 @@ unsafe extern "C" fn vcpu_mem_access(
                 },
                 Some(pa),
                 ts,
-            )
+            );
         };
     } else {
         // TODO: check the I/O event
@@ -138,15 +138,15 @@ unsafe extern "C" fn vcpu_insn_exec(
     };
 
     if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
-        (*DUMMY_PLUGIN).access_memory_with_va(
-            &MemoryAccessRequest {
-                core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-                va: vaddr,
-                access_type: CacheAccessType::InstructionFetch,
-                is_os: vaddr >> 63 == 1,
-            },
-            ts,
-        );
+        // (*DUMMY_PLUGIN).access_memory_with_va(
+        //     &MemoryAccessRequest {
+        //         core_id: vcpu_idx - parameter::CORE_COUNT as u32 / 2,
+        //         va: vaddr,
+        //         access_type: CacheAccessType::InstructionFetch,
+        //         is_os: vaddr >> 63 == 1,
+        //     },
+        //     ts,
+        // );
     } else {
         (*PLUGIN).access_memory_with_va(
             &MemoryAccessRequest {
@@ -190,7 +190,7 @@ unsafe extern "C" fn vcpu_invalid_tlb(
     };
 
     if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
-        (*DUMMY_PLUGIN).flush_mmu(vcpu_idx - parameter::CORE_COUNT as u32 / 2, info);
+        // (*DUMMY_PLUGIN).flush_mmu(vcpu_idx - parameter::CORE_COUNT as u32 / 2, info);
     } else {
         (*PLUGIN).flush_mmu(vcpu_idx, info);
     }
@@ -219,10 +219,10 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             )));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
-            if parameter::MEASURE_HALF_OF_CORES {
-                DUMMY_PLUGIN =
-                    Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
-            }
+            // if parameter::MEASURE_HALF_OF_CORES {
+                // DUMMY_PLUGIN =
+                    // Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
+            // }
 
             qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_invalid_tlb));
 
@@ -327,18 +327,18 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
     fn serialize(name: &str) {
         unsafe {
             (*PLUGIN).serialize(name, 0);
-            if parameter::MEASURE_HALF_OF_CORES {
-                (*DUMMY_PLUGIN).serialize(name, 1);
-            }
+            // if parameter::MEASURE_HALF_OF_CORES {
+                // (*DUMMY_PLUGIN).serialize(name, 1);
+            // }
         }
     }
 
     fn deserialize(name: &str) {
         unsafe {
             (*PLUGIN).deserialize(name, 0);
-            if parameter::MEASURE_HALF_OF_CORES {
-                (*DUMMY_PLUGIN).deserialize(name, 1);
-            }
+            // if parameter::MEASURE_HALF_OF_CORES {
+                // (*DUMMY_PLUGIN).deserialize(name, 1);
+            // }
         }
     }
 }

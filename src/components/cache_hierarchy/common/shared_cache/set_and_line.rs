@@ -135,7 +135,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
-            let res = Some(hit_block.modified);
+            // let res = Some(hit_block.modified);
             hit_block.block_id_with_v = 0;
             hit_block.ts = 0;
 

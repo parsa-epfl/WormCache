@@ -214,6 +214,13 @@ impl FlexusPrivateCacheCheckpointHelper {
                 flexus_configuration.no_resizing,
             );
 
+            // This is the way to create an empty data cache.
+            // let new_dcache = d_cache
+            //     .into_iter()
+            //     .map(|_| PrivateCacheSet::new(flexus_configuration.l1d_associativity))
+            //     .collect::<Vec<_>>();
+            // let d_rem = vec![];
+
             evicted_cache_line.push(i_rem);
             evicted_cache_line.push(d_rem);
 
@@ -366,6 +373,7 @@ fn serialize_a_set(set: &PrivateCacheSet, number_of_set: usize) -> Vec<FlexusCac
     return sorted_lines
         .iter()
         .filter(|line| line.block_id_with_v & 0x1 == 1)
+        .rev()
         .map(|line| FlexusCacheLine {
             tag: (line.block_id_with_v >> 1) >> set_bits,
             writable: line.modified,
@@ -412,6 +420,7 @@ impl ExportedDirectoryEntry {
     }
 }
 
+#[allow(dead_code)]
 fn serialize_a_directory(
     directory: &[Vec<ExportedDirectoryEntry>],
     directory_type: FlexusDirectoryType,

@@ -196,6 +196,40 @@ impl SingleSharedCacheSerdeHelper {
     }
 }
 
+impl SingleSharedCacheSerdeHelper {
+    pub fn assert_eq(&self, other: &Self) {
+        // set count should be the same.
+        if self.blocks.len() != other.blocks.len() {
+            panic!("Size mismatch");
+        }
+
+        let mut set_idx = 0;
+
+        // Now comparing each set.
+        for (a, b) in self.blocks.iter().zip(other.blocks.iter()) {
+            if a.blocks.len() != b.blocks.len() {
+                panic!("Set {} size mishatch", set_idx);
+            }
+
+            let mut way_idx = 0;
+
+            for (a_block, b_block) in a.blocks.iter().zip(b.blocks.iter()) {
+                if a_block.block_id_with_v != b_block.block_id_with_v
+                    || a_block.ts != b_block.ts
+                    || a_block.modified != b_block.modified
+                    || a_block.last_accessor != b_block.last_accessor
+                {
+                    panic!("Set {} way {} mismatch", set_idx, way_idx);
+                }
+
+                way_idx += 1;
+            }
+
+            set_idx += 1;
+        }
+    }
+}
+
 #[test]
 fn test_process_evicted_cache_line() {
     // There are two cases:
@@ -385,6 +419,7 @@ fn test_resize() {
         dtlb_associativity: 1,
         stlb_sets: 1,
         stlb_associativity: 1,
+        stlb_inclusion: crate::checkpoint::FlexusSTLBInclusion::Inclusive,
         directory: crate::checkpoint::FlexusDirectoryType::Infinite,
         directory_slice_count: 1,
         btb_sets: 1,
@@ -456,6 +491,7 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
         dtlb_associativity: 1,
         stlb_sets: 1,
         stlb_associativity: 1,
+        stlb_inclusion: crate::checkpoint::FlexusSTLBInclusion::Inclusive,
         directory: crate::checkpoint::FlexusDirectoryType::Infinite,
         directory_slice_count: 1,
         btb_sets: 1,

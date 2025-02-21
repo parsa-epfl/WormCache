@@ -1,6 +1,6 @@
 use super::FlexusParameter;
 use serde_json;
-use shared_cache::SingleSharedCacheSerdeHelper;
+pub use shared_cache::SingleSharedCacheSerdeHelper;
 use zstd::stream::read::Decoder;
 
 use crate::components::cache_hierarchy::common::{
