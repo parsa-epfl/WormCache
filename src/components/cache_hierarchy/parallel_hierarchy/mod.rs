@@ -52,7 +52,7 @@ pub mod parser;
 type HierarchyForPlugin = parser::HierarchyForPlugin;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
-static mut DUMMY_PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
+// static mut DUMMY_PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
 // TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
@@ -220,8 +220,8 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
             // if parameter::MEASURE_HALF_OF_CORES {
-                // DUMMY_PLUGIN =
-                    // Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
+            // DUMMY_PLUGIN =
+            // Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
             // }
 
             qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_invalid_tlb));
@@ -328,7 +328,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         unsafe {
             (*PLUGIN).serialize(name, 0);
             // if parameter::MEASURE_HALF_OF_CORES {
-                // (*DUMMY_PLUGIN).serialize(name, 1);
+            // (*DUMMY_PLUGIN).serialize(name, 1);
             // }
         }
     }
@@ -337,7 +337,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         unsafe {
             (*PLUGIN).deserialize(name, 0);
             // if parameter::MEASURE_HALF_OF_CORES {
-                // (*DUMMY_PLUGIN).deserialize(name, 1);
+            // (*DUMMY_PLUGIN).deserialize(name, 1);
             // }
         }
     }

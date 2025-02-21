@@ -39,13 +39,16 @@ use crate::{
 
 use serde_json::json;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
+
 static mut MEASURE_MAX_TURN: u64 = 0xffff_ffff_ffff_ffff;
 static mut MEASURE_INTERVAL: u64 = 0;
 
-static mut MEASURE_TURN: u64 = 0;
+static MEASURE_TURN: AtomicU64 = AtomicU64::new(0);
 static mut CURRENT_CYCLE_COUNT: u64 = 0;
 static mut MEASURE_NEXT_THRESHOLD: u64 = 0;
-static mut MEASURE_PREFIX: String = String::new();
+static MEASURE_PREFIX: OnceLock<String> = OnceLock::new();
 
 unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
     CURRENT_CYCLE_COUNT += diff;
@@ -156,13 +159,17 @@ unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
             "tlb:k": tlb_miss_k,
         });
 
+        let mut turn = MEASURE_TURN.fetch_add(1, Ordering::Relaxed);
+
         // write the result_json to a file.
         let file =
-            std::fs::File::create(format!("{}_{}.json", MEASURE_PREFIX, MEASURE_TURN)).unwrap();
+            std::fs::File::create(format!("{}_{}.json", MEASURE_PREFIX.get().unwrap(), turn))
+                .unwrap();
         serde_json::to_writer(&file, &result_json).unwrap();
 
-        MEASURE_TURN += 1;
-        if MEASURE_TURN >= MEASURE_MAX_TURN {
+        turn += 1;
+
+        if turn >= MEASURE_MAX_TURN {
             println!("The maximum statistics turn is reached. Quit.");
 
             let mut miss_file = std::fs::File::create("statistics.final.csv").unwrap();
@@ -197,7 +204,7 @@ pub unsafe fn init(init_threshold: u64, interval: u64, count: u64, prefix: Strin
     MEASURE_NEXT_THRESHOLD = init_threshold;
     MEASURE_MAX_TURN = count;
     MEASURE_INTERVAL = interval;
-    MEASURE_PREFIX = prefix;
+    MEASURE_PREFIX.set(prefix).unwrap();
 
     assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
         on_icount_periodic_checking

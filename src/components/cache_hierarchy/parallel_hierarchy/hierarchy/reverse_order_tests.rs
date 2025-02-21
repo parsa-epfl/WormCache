@@ -62,7 +62,7 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::DIRECTORY_SHARD_COUNT },
-    32
+    32,
 >;
 
 #[derive(Debug, PartialEq, Eq)]

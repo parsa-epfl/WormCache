@@ -88,11 +88,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         self.blocks[set_idx].invalidate(block_id, ts)
     }
 
-    fn lookup(
-        &mut self,
-        r: &CacheBlockRequest,
-        ts: u64,
-    ) -> SharedCacheLookupResult {
+    fn lookup(&mut self, r: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
         self.blocks[set_idx].lookup(r, ts)
     }
@@ -116,12 +112,9 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         increase_touched_count: bool,
     ) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
-        let res =
-            self.blocks[set_idx].lookup_and_insert(r, ts, increase_touched_count);
+        let res = self.blocks[set_idx].lookup_and_insert(r, ts, increase_touched_count);
         match res {
-            SharedCacheLookupAndInsertResult::Hit => {
-                SharedCacheLookupResult::Hit
-            }
+            SharedCacheLookupAndInsertResult::Hit => SharedCacheLookupResult::Hit,
             SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
             SharedCacheLookupAndInsertResult::InsertedAndCold(_) => {
                 SharedCacheLookupResult::ColdMiss
@@ -222,11 +215,7 @@ impl<
         pcache.invalidate(block_id, ts)
     }
 
-    fn lookup(
-        &self,
-        request: &CacheBlockRequest,
-        ts: u64,
-    ) -> SharedCacheLookupResult {
+    fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
         let core_id = request.core_id;
 
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };

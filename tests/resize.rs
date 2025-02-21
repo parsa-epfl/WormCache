@@ -229,14 +229,18 @@ fn test_resizable_llc() {
 #[ignore]
 fn test_resize_cache_hierarchy() {
     use rand::SeedableRng;
-    use worm_cache::{checkpoint::{process_cache_hierarchy, FlexusParameter}, components::cache_hierarchy::{
-        common::{
-            statistics::ZeroSharedCacheSetStatistics, CacheAccessType, ParallelHarvardPrivateCache,
+    use worm_cache::{
+        checkpoint::{process_cache_hierarchy, FlexusParameter},
+        components::cache_hierarchy::{
+            common::{
+                statistics::ZeroSharedCacheSetStatistics, CacheAccessType,
+                ParallelHarvardPrivateCache,
+            },
+            hierarchy::ParallelMemoryHierarchy,
+            mmu::NoMMU,
+            CacheBlockRequest, MemoryHierarchy,
         },
-        hierarchy::ParallelMemoryHierarchy,
-        mmu::NoMMU,
-        CacheBlockRequest, MemoryHierarchy,
-    }};
+    };
 
     const CORE_COUNT: usize = 8;
 
@@ -299,7 +303,10 @@ fn test_resize_cache_hierarchy() {
         };
 
         if addr == special_cache_line {
-            eprintln!("ts: {}, core_id: {}, addr: {}, access_type: {:#?}, is_os: {}", ts, core_id, addr, access_type, is_os);
+            eprintln!(
+                "ts: {}, core_id: {}, addr: {}, access_type: {:#?}, is_os: {}",
+                ts, core_id, addr, access_type, is_os
+            );
         }
 
         let request = CacheBlockRequest {
@@ -328,7 +335,7 @@ fn test_resize_cache_hierarchy() {
     small_hierarchy.serialize(&format!("{}/small", temp_dir.path().to_str().unwrap()), 0);
     large_hierarchy.serialize(&format!("{}/large", temp_dir.path().to_str().unwrap()), 0);
 
-    // Now, we need to parse them back and resize it. 
+    // Now, we need to parse them back and resize it.
     let flexus_parameter = FlexusParameter {
         l1i_sets: 32,
         l1i_associativity: 4,
@@ -368,17 +375,25 @@ fn test_resize_cache_hierarchy() {
         // Read the JSON file and compare them.
         let small_l1i: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(
-                temp_dir.path().join("small-flexus").join(format!("{:03}-ufetch-L1i.json", i)),
+                temp_dir
+                    .path()
+                    .join("small-flexus")
+                    .join(format!("{:03}-ufetch-L1i.json", i)),
             )
             .unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let large_l1i: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(
-                temp_dir.path().join("large-flexus").join(format!("{:03}-ufetch-L1i.json", i)),
+                temp_dir
+                    .path()
+                    .join("large-flexus")
+                    .join(format!("{:03}-ufetch-L1i.json", i)),
             )
             .unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(small_l1i, large_l1i);
     }
@@ -387,29 +402,45 @@ fn test_resize_cache_hierarchy() {
     for i in 0..CORE_COUNT {
         let small_l1d: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(
-                temp_dir.path().join("small-flexus").join(format!("{:03}-L1d.json", i)),
+                temp_dir
+                    .path()
+                    .join("small-flexus")
+                    .join(format!("{:03}-L1d.json", i)),
             )
             .unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let large_l1d: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(
-                temp_dir.path().join("large-flexus").join(format!("{:03}-L1d.json", i)),
+                temp_dir
+                    .path()
+                    .join("large-flexus")
+                    .join(format!("{:03}-L1d.json", i)),
             )
             .unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
         if small_l1d != large_l1d {
             // copy two json file to the current directory.
             std::fs::copy(
-                temp_dir.path().join("small-flexus").join(format!("{:03}-L1d.json", i)),
+                temp_dir
+                    .path()
+                    .join("small-flexus")
+                    .join(format!("{:03}-L1d.json", i)),
                 std::path::Path::new("small-L1d.json"),
-            ).unwrap();
+            )
+            .unwrap();
 
             std::fs::copy(
-                temp_dir.path().join("large-flexus").join(format!("{:03}-L1d.json", i)),
+                temp_dir
+                    .path()
+                    .join("large-flexus")
+                    .join(format!("{:03}-L1d.json", i)),
                 std::path::Path::new("large-L1d.json"),
-            ).unwrap();
+            )
+            .unwrap();
 
             panic!();
         }
@@ -419,12 +450,26 @@ fn test_resize_cache_hierarchy() {
 
     // Then compare the L2.
     let small_l2: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(temp_dir.path().join("small-flexus").join("000-L2-cache-slice.json")).unwrap(),
-    ).unwrap();
+        &std::fs::read_to_string(
+            temp_dir
+                .path()
+                .join("small-flexus")
+                .join("000-L2-cache-slice.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
 
     let large_l2: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(temp_dir.path().join("large-flexus").join("000-L2-cache-slice.json")).unwrap(),
-    ).unwrap();
+        &std::fs::read_to_string(
+            temp_dir
+                .path()
+                .join("large-flexus")
+                .join("000-L2-cache-slice.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
 
     assert_eq!(small_l2, large_l2);
 

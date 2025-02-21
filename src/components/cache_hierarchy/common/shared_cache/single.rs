@@ -74,7 +74,9 @@ impl<
         const EXCLUSIVE: bool,
     > SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
-    pub fn from_serialize_helper(helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>) -> Self {
+    pub fn from_serialize_helper(
+        helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>,
+    ) -> Self {
         let mut blocks = Vec::with_capacity(SET);
         for block in helper.blocks {
             blocks.push(G::new(SharedCacheSet::from_without_statistics(block)));
@@ -120,19 +122,12 @@ impl<
         return self.blocks[set_idx].inner().invalidate(block_id, ts);
     }
 
-    fn peek(
-        &self,
-        r: &CacheBlockRequest,
-    ) -> bool {
+    fn peek(&self, r: &CacheBlockRequest) -> bool {
         let set_idx = (r.block_id % SET as u64) as usize;
         self.blocks[set_idx].inner().index_of(r.block_id).is_some()
     }
 
-    fn lookup(
-        &self,
-        r: &CacheBlockRequest,
-        ts: u64,
-    ) -> SharedCacheLookupResult {
+    fn lookup(&self, r: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
 
         self.blocks[set_idx].inner().lookup(r, ts)
@@ -166,16 +161,12 @@ impl<
         increase_touched_count: bool,
     ) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
-        let result = self.blocks[set_idx].inner().lookup_and_insert(
-            r,
-            ts,
-            increase_touched_count,
-        );
+        let result = self.blocks[set_idx]
+            .inner()
+            .lookup_and_insert(r, ts, increase_touched_count);
 
         match result {
-            SharedCacheLookupAndInsertResult::Hit => {
-                SharedCacheLookupResult::Hit
-            }
+            SharedCacheLookupAndInsertResult::Hit => SharedCacheLookupResult::Hit,
             SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
                 if just_warmed {

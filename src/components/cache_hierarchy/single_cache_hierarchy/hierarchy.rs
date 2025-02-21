@@ -37,7 +37,9 @@ use crate::{
     arch::AArch64,
     components::{
         cache_hierarchy::{
-            common::{CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult},
+            common::{
+                CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult,
+            },
             mmu::{self, AbstractMMU, MMUTranslationResult},
             CacheBlockRequest, MemoryHierarchy,
         },

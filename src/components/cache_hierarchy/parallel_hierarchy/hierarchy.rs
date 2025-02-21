@@ -63,7 +63,7 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
-    const CORE_COUNT: usize
+    const CORE_COUNT: usize,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
@@ -84,7 +84,7 @@ impl<
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
         const DIRECTORY_SHARD_COUNT: usize,
-        const CORE_COUNT: usize
+        const CORE_COUNT: usize,
     >
     ParallelMemoryHierarchy<
         MMU,
@@ -95,7 +95,7 @@ impl<
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         DIRECTORY_SHARD_COUNT,
-        CORE_COUNT
+        CORE_COUNT,
     >
 {
     pub fn new(with_statistics: bool, _quantum_size: u64, directory_run_gc: bool) -> Self {
@@ -116,7 +116,7 @@ impl<
         block_id: u64,
         ts: u64,
         modified: (bool, u64),
-        is_os: bool
+        is_os: bool,
     ) {
         let directory_entry = directory_set_guard.get_or_create(block_id);
 

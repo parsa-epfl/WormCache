@@ -33,8 +33,8 @@ mod icount;
 mod vtime;
 
 use core::ffi;
-use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -45,8 +45,8 @@ use crate::qemu_api;
 use super::debug::statistics::EventType;
 use super::debug::statistics::Statistics;
 
-static TIME_PLUGIN: Lazy<Mutex<vtime::VirtualTimeContext>> =
-    Lazy::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
+static TIME_PLUGIN: LazyLock<Mutex<vtime::VirtualTimeContext>> =
+    LazyLock::new(|| Mutex::new(vtime::VirtualTimeContext::new()));
 
 static mut ICOUNT_PLUGIN: *mut icount::ICountPlugin = std::ptr::null_mut();
 

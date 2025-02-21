@@ -62,7 +62,6 @@ impl SingleSharedCacheSerdeHelper {
 
             let block_id = block.block_id_with_v >> 1;
             if block_id == line.block_id() {
-
                 if !is_valid {
                     block.block_id_with_v = (line.block_id() << 1) | 1;
                     block.ts = line.ts;
@@ -424,7 +423,7 @@ fn test_resize() {
         directory_slice_count: 1,
         btb_sets: 1,
         btb_associativity: 1,
-        no_resizing: false
+        no_resizing: false,
     });
 
     assert_eq!(shared_cache.blocks.len(), 1);
@@ -442,14 +441,12 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
     let mut shared_cache = SingleSharedCacheSerdeHelper {
         blocks: vec![
             SharedCacheSet {
-                blocks: vec![
-                    SharedCacheBlock {
-                        block_id_with_v: 0b100,
-                        ts: 0,
-                        modified: false,
-                        last_accessor: 0,
-                    }
-                ],
+                blocks: vec![SharedCacheBlock {
+                    block_id_with_v: 0b100,
+                    ts: 0,
+                    modified: false,
+                    last_accessor: 0,
+                }],
                 touched_count: 0,
                 recent_evict_ts: 0,
                 access_count: 0,
@@ -496,7 +493,7 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
         directory_slice_count: 1,
         btb_sets: 1,
         btb_associativity: 1,
-        no_resizing: false
+        no_resizing: false,
     });
 
     assert_eq!(shared_cache.blocks.len(), 1);

@@ -37,8 +37,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
 use crate::qemu_api;
-
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 mod touched_cache;
 use rustc_hash::FxHashMap;
@@ -48,7 +47,7 @@ use crate::util::get_monotonic_ts;
 
 const CONFIGURATION: [usize; 1] = [1024 * 1024];
 
-static PLUGIN: Lazy<Mutex<Vec<(TouchedCache, File)>>> = Lazy::new(|| {
+static PLUGIN: LazyLock<Mutex<Vec<(TouchedCache, File)>>> = LazyLock::new(|| {
     Mutex::new(Vec::from_iter(CONFIGURATION.iter().map(|&set| {
         (
             TouchedCache::new(set, 16),

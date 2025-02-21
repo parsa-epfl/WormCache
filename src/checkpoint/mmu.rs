@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{checkpoint::FlexusSTLBInclusion, components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry}};
+use crate::{
+    checkpoint::FlexusSTLBInclusion,
+    components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry},
+};
 use rustc_hash::FxHashMap;
 
 use super::FlexusParameter;
@@ -176,7 +179,7 @@ fn render_stlb(
             if flexus_configuration.no_resizing {
                 panic!("The TLB is not resizable, but the entries exceed the associativity.");
             }
-            
+
             set.drain(flexus_configuration.stlb_associativity..);
         }
     }

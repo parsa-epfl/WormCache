@@ -48,8 +48,8 @@ pub enum SharedCacheLookupResult {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupAndInsertResult {
-    Hit,        
-    Miss,           
+    Hit,
+    Miss,
     InsertedAndCold(bool), // (just_warmed)
     Inserted,
     Unknown(u32), // timestamp difference
@@ -66,11 +66,7 @@ pub trait SharedCache {
     // 1. Peek
     // 2. For read, throw dirty information
     // 3. For write, invalid the cache line.
-    fn lookup(
-        &self,
-        request: &CacheBlockRequest,
-        ts: u64,
-    ) -> SharedCacheLookupResult;
+    fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult;
 
     fn insert(
         &self,

@@ -134,11 +134,7 @@ fn serialize_a_tage(
         tick: tage.tick,
         seed: tage.seed,
         phist: tage.phist,
-        ghist: tage
-            .ghist
-            .iter()
-            .copied()
-            .collect(),
+        ghist: tage.ghist.iter().copied().collect(),
 
         logb: LOGB,
         nhist: NHIST,

@@ -33,7 +33,7 @@ fn resize_private_cache(
     private_cache: Vec<PrivateCacheSet>,
     set: usize,
     asso: usize,
-    no_resizing: bool
+    no_resizing: bool,
 ) -> (Vec<PrivateCacheSet>, Vec<PrivateCacheLine>) {
     assert!(private_cache.len() % set == 0);
 

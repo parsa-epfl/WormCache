@@ -137,9 +137,7 @@ impl<
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
-                let lookup_result = self
-                    .shared_cache
-                    .lookup_and_insert_on_miss(r, ts, true);
+                let lookup_result = self.shared_cache.lookup_and_insert_on_miss(r, ts, true);
 
                 match lookup_result {
                     SharedCacheLookupResult::Hit => true,

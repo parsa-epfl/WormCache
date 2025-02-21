@@ -29,14 +29,20 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi, fs::File, io::Write, process::exit};
+use std::{
+    ffi,
+    fs::File,
+    io::Write,
+    process::exit,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use rustc_hash::FxHashMap;
 use zstd::Encoder;
 
 static mut TRACE_FILE: *mut Encoder<File> = std::ptr::null_mut();
 
-static mut C0_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static C0_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 use crate::qemu_api;
 
@@ -59,7 +65,7 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, host_va: *mut ffi::c_void) {
 
     // increment the counter.
     unsafe {
-        if C0_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 20000000 {
+        if C0_COUNTER.fetch_add(1, Ordering::Relaxed) == 20000000 {
             let owned_trace_file = Box::from_raw(TRACE_FILE);
             owned_trace_file.finish().unwrap();
             exit(0);

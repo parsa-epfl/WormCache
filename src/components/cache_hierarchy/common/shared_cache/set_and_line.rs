@@ -307,8 +307,9 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                 // This function is only called when the private cache has a miss
                 // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
                 if !r.is_store() {
-                    let just_warmed = self.insert(block_id, core_id, ts, false, increase_touched_count);
-                    assert!(!just_warmed);    
+                    let just_warmed =
+                        self.insert(block_id, core_id, ts, false, increase_touched_count);
+                    assert!(!just_warmed);
                     SharedCacheLookupAndInsertResult::Inserted
                 } else {
                     SharedCacheLookupAndInsertResult::Miss

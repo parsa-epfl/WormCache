@@ -37,13 +37,16 @@ use crate::{
     qemu_api,
     util::get_monotonic_ts,
 };
-use once_cell::sync::OnceCell;
 use spin::Mutex as SpinMutex;
+
+use std::sync::OnceLock;
 
 static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 static mut PERIODIC_SNAPSHOT_INIT_INDEX: u64 = 0;
-static mut PERIODIC_SNAPSHOT_COUNT: u64 = 0;
+static PERIODIC_SNAPSHOT_COUNT: AtomicU64 = AtomicU64::new(0);
 static mut PERIODIC_SNAPSHOT_REQUIRED_COUNT: u64 = 0xffff_ffff_ffff_ffff;
 
 static mut PERIODIC_SNAPSHOT_THRESHOLD: u64 = 0xffff_ffff_ffff_ffff;
@@ -51,7 +54,7 @@ static mut PERIODIC_SNAPSHOT_INTERVAL: u64 = 0xffff_ffff_ffff_ffff;
 static mut PERIODIC_SNAPSHOT_CURRENT_CYCLES: u64 = 0;
 static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
 
-static mut SNAPSHOT_PREFIX: String = String::new();
+static SNAPSHOT_PREFIX: OnceLock<String> = OnceLock::new();
 
 unsafe extern "C" fn event_loop_callback() {
     let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
@@ -76,10 +79,10 @@ unsafe extern "C" fn event_loop_callback() {
 
     qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), false);
 
-    PERIODIC_SNAPSHOT_COUNT += 1;
+    let snapshot_count = PERIODIC_SNAPSHOT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
-    if PERIODIC_SNAPSHOT_COUNT >= PERIODIC_SNAPSHOT_REQUIRED_COUNT {
-        println!("Generate {} snapshots. Quit.", PERIODIC_SNAPSHOT_COUNT);
+    if snapshot_count >= PERIODIC_SNAPSHOT_REQUIRED_COUNT {
+        println!("Generate {} snapshots. Quit.", snapshot_count);
         let mut miss_file = std::fs::File::create("statistics.final.csv").unwrap();
         miss_file
             .write_fmt(format_args!("{}\n", Statistics::get_header()))
@@ -101,7 +104,7 @@ unsafe extern "C" fn event_loop_callback() {
 }
 
 // add a global file to record the statistics for each quantum.
-static STATISTICS_QUANTUM_FILE: OnceCell<SpinMutex<File>> = once_cell::sync::OnceCell::new();
+static STATISTICS_QUANTUM_FILE: OnceLock<SpinMutex<File>> = OnceLock::new();
 
 // Remember, this function will be used as a quantum callback.
 unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
@@ -125,8 +128,8 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
 
         let snapshot_name = format!(
             "{}_{}",
-            SNAPSHOT_PREFIX.clone(),
-            PERIODIC_SNAPSHOT_COUNT + PERIODIC_SNAPSHOT_INIT_INDEX
+            SNAPSHOT_PREFIX.get().unwrap(),
+            PERIODIC_SNAPSHOT_COUNT.load(Ordering::Relaxed) + PERIODIC_SNAPSHOT_INIT_INDEX
         );
         let snapshot_info = (snapshot_name, PERIODIC_SNAPSHOT_CURRENT_CYCLES);
 
@@ -150,10 +153,11 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
             // manually call serialize function of all plugins.
             std::fs::create_dir_all(&snapshot_info.0).unwrap();
             PluginList::serialize(&snapshot_info.0);
-            PERIODIC_SNAPSHOT_COUNT += 1;
+            let snapshot_count = PERIODIC_SNAPSHOT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            1;
 
-            if PERIODIC_SNAPSHOT_COUNT >= PERIODIC_SNAPSHOT_REQUIRED_COUNT {
-                println!("Generate {} snapshots. Quit.", PERIODIC_SNAPSHOT_COUNT);
+            if snapshot_count >= PERIODIC_SNAPSHOT_REQUIRED_COUNT {
+                println!("Generate {} snapshots. Quit.", snapshot_count);
                 let mut miss_file = std::fs::File::create("statistics.final.csv").unwrap();
                 miss_file
                     .write_fmt(format_args!("{}\n", Statistics::get_header()))
@@ -196,7 +200,7 @@ pub unsafe fn init(
     PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
     PERIODIC_SNAPSHOT_REQUIRED_COUNT = required_count;
     PERIODIC_SNAPSHOT_INTERVAL = interval;
-    SNAPSHOT_PREFIX = prefix;
+    SNAPSHOT_PREFIX.set(prefix).unwrap();
     PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
     PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT = no_qemu_snapshot;
 

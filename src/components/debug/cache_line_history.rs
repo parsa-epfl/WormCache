@@ -31,7 +31,7 @@
 
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 use crate::components::cache_hierarchy::common::SharerList;
 
@@ -118,8 +118,8 @@ pub struct CacheLineCoherenceHistory {
     history: DashMap<u64, SingleCacheLineCoherenceHistory>,
 }
 
-static mut GLOBAL_HISTORY: Lazy<CacheLineCoherenceHistory> =
-    Lazy::new(CacheLineCoherenceHistory::new);
+static GLOBAL_HISTORY: LazyLock<CacheLineCoherenceHistory> =
+    LazyLock::new(CacheLineCoherenceHistory::new);
 
 impl Default for CacheLineCoherenceHistory {
     fn default() -> Self {
@@ -169,17 +169,15 @@ impl CacheLineCoherenceHistory {
             // I believe the compiler will optimize this function out.
             return;
         }
-        unsafe {
-            GLOBAL_HISTORY.record(
-                block_id, operation, cache_id, timestamp, refilled, sharers, line,
-            );
-        }
+        GLOBAL_HISTORY.record(
+            block_id, operation, cache_id, timestamp, refilled, sharers, line,
+        );
     }
 
     #[inline]
     pub fn global_get_block_history(
         block_id: u64,
     ) -> Option<Ref<'static, u64, SingleCacheLineCoherenceHistory>> {
-        unsafe { GLOBAL_HISTORY.history.get(&block_id) }
+        GLOBAL_HISTORY.history.get(&block_id)
     }
 }
