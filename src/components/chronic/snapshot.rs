@@ -55,6 +55,7 @@ static mut PERIODIC_SNAPSHOT_CURRENT_CYCLES: u64 = 0;
 static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
 
 static SNAPSHOT_PREFIX: OnceLock<String> = OnceLock::new();
+static QEMU_SNAPSHOT_FORMAT: OnceLock<String> = OnceLock::new();
 
 unsafe extern "C" fn event_loop_callback() {
     let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
@@ -77,7 +78,9 @@ unsafe extern "C" fn event_loop_callback() {
 
     let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
 
-    qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), false);
+    let use_xdelta = QEMU_SNAPSHOT_FORMAT.get().unwrap().contains("xdelta");
+
+    qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), use_xdelta);
 
     let snapshot_count = PERIODIC_SNAPSHOT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -196,11 +199,13 @@ pub unsafe fn init(
     prefix: String,
     init_index: u64,
     no_qemu_snapshot: bool,
+    snapshot_format: String,
 ) {
     PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
     PERIODIC_SNAPSHOT_REQUIRED_COUNT = required_count;
     PERIODIC_SNAPSHOT_INTERVAL = interval;
     SNAPSHOT_PREFIX.set(prefix).unwrap();
+    QEMU_SNAPSHOT_FORMAT.set(snapshot_format).unwrap();
     PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
     PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT = no_qemu_snapshot;
 

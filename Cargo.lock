@@ -976,7 +976,6 @@ dependencies = [
  "gcd",
  "hdrhistogram",
  "libc",
- "once_cell",
  "perf-event",
  "plugin_helper",
  "rand",
