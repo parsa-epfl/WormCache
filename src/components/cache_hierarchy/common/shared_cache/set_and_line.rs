@@ -253,17 +253,15 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                 // update the timestamp and the modified bit.
                 if ts > hit_block.ts {
                     hit_block.ts = ts;
+                    if is_modified {
+                        // This cache line's permission should have been taken by the private cache.
+                        // So it should not be modified in the shared cache.
+                        assert!(!hit_block.modified);
+                        hit_block.modified = is_modified;
+                    }
+    
+                    hit_block.last_accessor = core_id;
                 }
-
-                if is_modified {
-                    // This cache line's permission should have been taken by the private cache.
-                    // So it should not be modified in the shared cache.
-                    assert!(!hit_block.modified);
-                    hit_block.modified = is_modified;
-                }
-
-                hit_block.last_accessor = core_id;
-
                 return false;
             }
         }
