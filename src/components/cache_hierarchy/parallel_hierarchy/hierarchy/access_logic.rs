@@ -2,8 +2,7 @@ use crate::{
     components::{
         cache_hierarchy::{
             common::{
-                CacheHierarchyAccessResult, PrivateCacheEvictedSlot, PrivateCachePokeResult,
-                PrivateCaches, SharedCache, SharedCacheLookupResult,
+                CacheAccessType, CacheHierarchyAccessResult, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
@@ -13,7 +12,7 @@ use crate::{
             statistics::{EventType, Statistics},
         },
     },
-    parameter,
+    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE},
 };
 
 use super::ParallelMemoryHierarchy;
@@ -133,7 +132,20 @@ impl<
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
-            let shared_cache_result = if FILL_SCACHE_ON_FILLING_PCACHE && !is_store {
+            let bring_into_shared_cache = if FILL_SCACHE_ON_FILLING_PCACHE {
+                match r.access_type {
+                    CacheAccessType::InstructionFetch => true,
+                    CacheAccessType::DataRead  => !ENABLE_EXCLUSIVE_CACHE_STATE,
+                    CacheAccessType::DataWrite => false,
+                    CacheAccessType::PageWalkRead => true,
+                    CacheAccessType::PrefetchRead => !ENABLE_EXCLUSIVE_CACHE_STATE,
+                    CacheAccessType::PrefetchWrite => false,
+                }
+            } else {
+                false
+            };
+
+            let shared_cache_result = if bring_into_shared_cache {
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
