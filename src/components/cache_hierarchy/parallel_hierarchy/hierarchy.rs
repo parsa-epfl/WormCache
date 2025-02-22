@@ -77,17 +77,17 @@ pub struct ParallelMemoryHierarchy<
 }
 
 impl<
-        MMU: AbstractMMU,
-        PCache: PrivateCaches,
-        SCache: SharedCache,
-        const PRECISE_COHERENCE_RECONSTRUCTION: bool,
-        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-        const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
-        const DIRECTORY_SHARD_COUNT: usize,
-        const CORE_COUNT: usize,
-    >
+    MMU: AbstractMMU,
+    PCache: PrivateCaches,
+    SCache: SharedCache,
+    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const DIRECTORY_SHARD_COUNT: usize,
+    const CORE_COUNT: usize,
+>
     ParallelMemoryHierarchy<
         MMU,
         PCache,
@@ -131,8 +131,13 @@ impl<
             if parameter::ENABLE_CACHE_LINE_HISTORY {
                 let his = CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap();
                 his.value().print_history();
-                println!("Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: false, Share List: {:?}",
-                    CacheOperationType::Drop, cache_id, ts, sharer.iter_ones().collect::<Vec<usize>>() );
+                println!(
+                    "Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: false, Share List: {:?}",
+                    CacheOperationType::Drop,
+                    cache_id,
+                    ts,
+                    sharer.iter_ones().collect::<Vec<usize>>()
+                );
             }
             panic!();
         }

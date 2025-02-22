@@ -39,8 +39,8 @@ use crate::parameter;
 use crate::util::get_monotonic_ts;
 
 use super::super::super::common::{
-    statistics::ZeroSharedCacheSetStatistics, ParallelSingleSharedCache,
-    ParallelUnifiedPrivateCache,
+    ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
+    statistics::ZeroSharedCacheSetStatistics,
 };
 use super::ParallelMemoryHierarchy;
 

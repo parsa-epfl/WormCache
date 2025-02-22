@@ -37,18 +37,18 @@ use crate::{
     arch::AArch64,
     components::{
         cache_hierarchy::{
+            CacheBlockRequest, MemoryHierarchy,
             common::{
                 CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult,
             },
             mmu::{self, AbstractMMU, MMUTranslationResult},
-            CacheBlockRequest, MemoryHierarchy,
         },
         debug::statistics::{EventType, Statistics},
     },
     parameter,
 };
 
-use super::super::common::{statistics::ZeroSharedCacheSetStatistics, SerialSingleSharedCache};
+use super::super::common::{SerialSingleSharedCache, statistics::ZeroSharedCacheSetStatistics};
 
 pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
     pub shared_cache: SerialSingleSharedCache<

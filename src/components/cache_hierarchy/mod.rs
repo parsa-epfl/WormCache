@@ -44,8 +44,8 @@ mod single_cache_hierarchy;
 use common::CacheAccessType;
 use common::CacheHierarchyAccessResult;
 use mmu::MMUTranslationResult;
-pub use parallel_hierarchy::hierarchy;
 pub use parallel_hierarchy::ParallelCacheHierarchyPlugin;
+pub use parallel_hierarchy::hierarchy;
 
 pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 

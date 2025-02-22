@@ -1,9 +1,9 @@
 use serde_json;
 
+use worm_cache::checkpoint::FlexusParameter;
 use worm_cache::checkpoint::process_cache_hierarchy;
 use worm_cache::checkpoint::process_frontend;
 use worm_cache::checkpoint::process_mmus;
-use worm_cache::checkpoint::FlexusParameter;
 
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();

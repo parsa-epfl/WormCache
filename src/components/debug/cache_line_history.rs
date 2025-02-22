@@ -29,8 +29,8 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
+use dashmap::mapref::one::Ref;
 use std::sync::LazyLock;
 
 use crate::components::cache_hierarchy::common::SharerList;
@@ -84,7 +84,12 @@ impl SingleCacheLineCoherenceHistory {
         for (operation, core_id, timestamp, refilled, share_list, line_number) in &self.history {
             println!(
                 "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}, Share List: {:?}, line: {}",
-                operation, core_id, timestamp, refilled, share_list.iter_ones().collect::<Vec<usize>>(), line_number
+                operation,
+                core_id,
+                timestamp,
+                refilled,
+                share_list.iter_ones().collect::<Vec<usize>>(),
+                line_number
             );
         }
     }
@@ -107,7 +112,12 @@ impl SingleCacheLineCoherenceHistory {
                     &self.history[i];
                 println!(
                     "Operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: {}, Share List: {:?}, line: {}",
-                    operation, core_id, timestamp, refilled, share_list.iter_ones().collect::<Vec<usize>>(), line_number
+                    operation,
+                    core_id,
+                    timestamp,
+                    refilled,
+                    share_list.iter_ones().collect::<Vec<usize>>(),
+                    line_number
                 );
             }
         }

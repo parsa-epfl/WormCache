@@ -338,11 +338,7 @@ impl TAGEPredictor {
         let max: i8 = (1 << (nbits - 1)) - 1;
         let min: i8 = -max - 1;
         if taken {
-            if cnt < max {
-                cnt + 1
-            } else {
-                cnt
-            }
+            if cnt < max { cnt + 1 } else { cnt }
         } else if cnt > min {
             cnt - 1
         } else {

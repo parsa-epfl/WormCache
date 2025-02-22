@@ -30,7 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use worm_cache::components::{
-    bp::{fetch::FetchUnit, BranchResolutionResult, BranchType},
+    bp::{BranchResolutionResult, BranchType, fetch::FetchUnit},
     debug::statistics::Statistics,
 };
 

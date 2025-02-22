@@ -32,8 +32,8 @@
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
 use super::{
-    statistics::SharedCacheSetStatistics, SharedCache, SharedCacheLookupAndInsertResult,
-    SharedCacheLookupResult, SharedCacheSet,
+    SharedCache, SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
+    statistics::SharedCacheSetStatistics,
 };
 
 use std::cell::UnsafeCell;
@@ -193,12 +193,12 @@ pub struct ReplicatedSharedCache<
 }
 
 impl<
-        S: SharedCacheSetStatistics,
-        const CORE_COUNT: usize,
-        const SET: usize,
-        const WAY: usize,
-        const EXCLUSIVE: bool,
-    > SharedCache for ReplicatedSharedCache<S, CORE_COUNT, SET, WAY, EXCLUSIVE>
+    S: SharedCacheSetStatistics,
+    const CORE_COUNT: usize,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+> SharedCache for ReplicatedSharedCache<S, CORE_COUNT, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {

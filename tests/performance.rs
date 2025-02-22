@@ -33,14 +33,14 @@
 
 use perf_event::Builder;
 
-use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
+use worm_cache::components::cache_hierarchy::CacheBlockRequest;
+use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
 use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
 use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
+use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
-use worm_cache::components::cache_hierarchy::CacheBlockRequest;
-use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::debug::statistics::Statistics;
 
 use worm_cache::parameter;

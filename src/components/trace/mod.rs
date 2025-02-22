@@ -47,30 +47,28 @@ static C0_COUNTER: AtomicU64 = AtomicU64::new(0);
 use crate::qemu_api;
 
 unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, host_va: *mut ffi::c_void) {
-    if vcpu_idx != 0 {
-        return;
-    }
-
-    let host_va_u64 = host_va as u64;
-    let pc = qemu_api::qemu_plugin_read_pc_vpn() << 12 | host_va_u64 & 0xfff;
-    let instruction_literal = unsafe { *(host_va as *mut u32) };
-
-    // write the instruction to the trace file.
     unsafe {
+        if vcpu_idx != 0 {
+            return;
+        }
+
+        let host_va_u64 = host_va as u64;
+        let pc = qemu_api::qemu_plugin_read_pc_vpn() << 12 | host_va_u64 & 0xfff;
+        let instruction_literal = *(host_va as *mut u32);
+
+        // write the instruction to the trace file.
         //writeln!(*TRACE_FILE, "{:x} {:x}\n", pc, instruction_literal).unwrap();
         (*TRACE_FILE)
             .write_all(&format!("i {:x} {:x}\n", pc, instruction_literal).into_bytes())
             .unwrap();
-    };
 
-    // increment the counter.
-    unsafe {
+        // increment the counter.
         if C0_COUNTER.fetch_add(1, Ordering::Relaxed) == 20000000 {
             let owned_trace_file = Box::from_raw(TRACE_FILE);
             owned_trace_file.finish().unwrap();
             exit(0);
         }
-    };
+    }
 }
 
 unsafe extern "C" fn _vcpu_mem_access(
@@ -79,14 +77,16 @@ unsafe extern "C" fn _vcpu_mem_access(
     vaddr: u64,
     _: *mut ffi::c_void, // should be NULL.
 ) {
-    let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
-    let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
+    unsafe {
+        let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
+        let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
-    if !is_device {
-        let _is_store = qemu_api::qemu_plugin_mem_is_store(info);
-        let _paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
-    } else {
-        // TODO: check the I/O event
+        if !is_device {
+            let _is_store = qemu_api::qemu_plugin_mem_is_store(info);
+            let _paddr = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler) as usize;
+        } else {
+            // TODO: check the I/O event
+        }
     }
 }
 
@@ -104,29 +104,31 @@ impl super::Plugin for TracePlugin {
     }
 
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
-        let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
+        unsafe {
+            let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
 
-        if n_instruction == 0 {
-            return;
-        }
+            if n_instruction == 0 {
+                return;
+            }
 
-        // bind the memory callback.
-        for i in 0..n_instruction {
-            let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
-            let host_va_instruction = qemu_api::qemu_plugin_insn_haddr(inst);
-            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
-                inst,
-                Some(vcpu_insn_exec),
-                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                host_va_instruction,
-            );
-            // qemu_api::qemu_plugin_register_vcpu_mem_cb(
-            //     inst,
-            //     Some(vcpu_mem_access),
-            //     qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-            //     qemu_api::qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
-            //     std::ptr::null_mut(),
-            // );
+            // bind the memory callback.
+            for i in 0..n_instruction {
+                let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+                let host_va_instruction = qemu_api::qemu_plugin_insn_haddr(inst);
+                qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                    inst,
+                    Some(vcpu_insn_exec),
+                    qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                    host_va_instruction,
+                );
+                // qemu_api::qemu_plugin_register_vcpu_mem_cb(
+                //     inst,
+                //     Some(vcpu_mem_access),
+                //     qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                //     qemu_api::qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
+                //     std::ptr::null_mut(),
+                // );
+            }
         }
     }
 

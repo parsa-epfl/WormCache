@@ -105,8 +105,8 @@ fn test_resizable_llc() {
     use worm_cache::{
         checkpoint::FlexusParameter,
         components::cache_hierarchy::{
-            common::{statistics::ZeroSharedCacheSetStatistics, CacheAccessType},
             CacheBlockRequest,
+            common::{CacheAccessType, statistics::ZeroSharedCacheSetStatistics},
         },
     };
     // Fix the seed.
@@ -230,15 +230,15 @@ fn test_resizable_llc() {
 fn test_resize_cache_hierarchy() {
     use rand::SeedableRng;
     use worm_cache::{
-        checkpoint::{process_cache_hierarchy, FlexusParameter},
+        checkpoint::{FlexusParameter, process_cache_hierarchy},
         components::cache_hierarchy::{
+            CacheBlockRequest, MemoryHierarchy,
             common::{
-                statistics::ZeroSharedCacheSetStatistics, CacheAccessType,
-                ParallelHarvardPrivateCache,
+                CacheAccessType, ParallelHarvardPrivateCache,
+                statistics::ZeroSharedCacheSetStatistics,
             },
             hierarchy::ParallelMemoryHierarchy,
             mmu::NoMMU,
-            CacheBlockRequest, MemoryHierarchy,
         },
     };
 

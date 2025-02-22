@@ -33,12 +33,13 @@ use std::collections::HashMap;
 
 use crate::{
     components::cache_hierarchy::{
+        CacheBlockRequest, MemoryHierarchy,
         common::{
-            statistics::ZeroSharedCacheSetStatistics, CacheAccessType, CacheHierarchyAccessResult,
-            ParallelSingleSharedCache, ParallelUnifiedPrivateCache, PrivateCaches, SharedCache,
+            CacheAccessType, CacheHierarchyAccessResult, ParallelSingleSharedCache,
+            ParallelUnifiedPrivateCache, PrivateCaches, SharedCache,
+            statistics::ZeroSharedCacheSetStatistics,
         },
         mmu::NoMMU,
-        CacheBlockRequest, MemoryHierarchy,
     },
     parameter,
 };

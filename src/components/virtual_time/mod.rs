@@ -62,16 +62,20 @@ unsafe extern "C" fn user_vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block
 ) {
-    (*ICOUNT_PLUGIN).increase_user_icount(vcpu_idx as u8, size as u64);
-    Statistics::global_record_by(vcpu_idx, EventType::Instruction, false, size as u64);
+    unsafe {
+        (*ICOUNT_PLUGIN).increase_user_icount(vcpu_idx as u8, size as u64);
+        Statistics::global_record_by(vcpu_idx, EventType::Instruction, false, size as u64);
+    }
 }
 
 unsafe extern "C" fn kernel_vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block
 ) {
-    (*ICOUNT_PLUGIN).increase_kernel_icount(vcpu_idx as u8, size as u64);
-    Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
+    unsafe {
+        (*ICOUNT_PLUGIN).increase_kernel_icount(vcpu_idx as u8, size as u64);
+        Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
+    }
 }
 
 pub struct VirtualTimePlugin {}
@@ -223,25 +227,27 @@ impl super::Plugin for VirtualTimePlugin {
     }
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {
-        let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);
-        let size = qemu_api::qemu_plugin_tb_n_insns(tb);
-        // I need to get the first instruction's PC to see if it is a user or kernel space.
-        let pc = qemu_api::qemu_plugin_insn_vaddr(first_instruction);
-        if pc & 0x8000_0000_0000_0000 == 0 {
-            // user space
-            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
-                first_instruction,
-                Some(user_vcpu_insn_exec),
-                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                size as *mut ffi::c_void,
-            );
-        } else {
-            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
-                first_instruction,
-                Some(kernel_vcpu_insn_exec),
-                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                size as *mut ffi::c_void,
-            );
+        unsafe {
+            let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);
+            let size = qemu_api::qemu_plugin_tb_n_insns(tb);
+            // I need to get the first instruction's PC to see if it is a user or kernel space.
+            let pc = qemu_api::qemu_plugin_insn_vaddr(first_instruction);
+            if pc & 0x8000_0000_0000_0000 == 0 {
+                // user space
+                qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                    first_instruction,
+                    Some(user_vcpu_insn_exec),
+                    qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                    size as *mut ffi::c_void,
+                );
+            } else {
+                qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                    first_instruction,
+                    Some(kernel_vcpu_insn_exec),
+                    qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                    size as *mut ffi::c_void,
+                );
+            }
         }
     }
 

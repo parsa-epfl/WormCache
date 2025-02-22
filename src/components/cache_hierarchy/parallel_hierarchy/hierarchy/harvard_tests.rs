@@ -38,8 +38,8 @@ use crate::parameter;
 use crate::util::get_monotonic_ts;
 
 use super::super::super::common::{
-    statistics::ZeroSharedCacheSetStatistics, ParallelHarvardPrivateCache,
-    ParallelSingleSharedCache,
+    ParallelHarvardPrivateCache, ParallelSingleSharedCache,
+    statistics::ZeroSharedCacheSetStatistics,
 };
 use super::ParallelMemoryHierarchy;
 

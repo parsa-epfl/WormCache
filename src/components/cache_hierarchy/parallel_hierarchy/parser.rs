@@ -75,9 +75,9 @@ pub type SharedCacheStatisticsWithPlugin =
 
 use super::{
     super::common::{
-        statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
         ParallelHarvardPrivateCache, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
         SerialHarvardPrivateCache, SerialSingleSharedCache, SerialUnifiedPrivateCache,
+        statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
     },
     hierarchy,
 };

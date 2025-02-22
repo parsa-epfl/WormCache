@@ -40,8 +40,8 @@ use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::super::CCell;
 
 use super::{
-    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
     SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
+    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
 };
 use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutex;
@@ -67,12 +67,12 @@ pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, cons
 }
 
 impl<
-        S: SharedCacheSetStatistics,
-        G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
-        const SET: usize,
-        const WAY: usize,
-        const EXCLUSIVE: bool,
-    > SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
+    S: SharedCacheSetStatistics,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+> SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
     pub fn from_serialize_helper(
         helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>,
@@ -101,12 +101,12 @@ impl<
 }
 
 impl<
-        S: SharedCacheSetStatistics,
-        G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
-        const SET: usize,
-        const WAY: usize,
-        const EXCLUSIVE: bool,
-    > super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
+    S: SharedCacheSetStatistics,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+> super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {

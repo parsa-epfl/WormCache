@@ -39,8 +39,8 @@ use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
 use crate::parameter;
 
 use super::super::super::common::{
-    statistics::ZeroSharedCacheSetStatistics, ParallelHarvardPrivateCache,
-    ParallelSingleSharedCache,
+    ParallelHarvardPrivateCache, ParallelSingleSharedCache,
+    statistics::ZeroSharedCacheSetStatistics,
 };
 use super::ParallelMemoryHierarchy;
 

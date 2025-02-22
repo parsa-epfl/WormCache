@@ -105,11 +105,11 @@ pub struct UnifiedPrivateCaches<
 }
 
 impl<
-        G: CCell<PrivateCacheSet> + std::fmt::Debug,
-        const CORE_COUNT: usize,
-        const SET: usize,
-        const ASSO: usize,
-    > PrivateCaches for UnifiedPrivateCaches<G, CORE_COUNT, SET, ASSO>
+    G: CCell<PrivateCacheSet> + std::fmt::Debug,
+    const CORE_COUNT: usize,
+    const SET: usize,
+    const ASSO: usize,
+> PrivateCaches for UnifiedPrivateCaches<G, CORE_COUNT, SET, ASSO>
 {
     const DIRECTORY_SET: usize = SET;
 

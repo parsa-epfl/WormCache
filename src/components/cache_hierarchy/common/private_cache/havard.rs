@@ -63,12 +63,12 @@ pub struct HarvardPerCorePrivateCacheSerdeHelper {
 }
 
 impl<
-        G: CCell<PrivateCacheSet> + std::fmt::Debug,
-        const I_SET: usize,
-        const I_ASSO: usize,
-        const D_SET: usize,
-        const D_ASSO: usize,
-    > HarvardPerCorePrivateCache<G, I_SET, I_ASSO, D_SET, D_ASSO>
+    G: CCell<PrivateCacheSet> + std::fmt::Debug,
+    const I_SET: usize,
+    const I_ASSO: usize,
+    const D_SET: usize,
+    const D_ASSO: usize,
+> HarvardPerCorePrivateCache<G, I_SET, I_ASSO, D_SET, D_ASSO>
 {
     pub fn new() -> Self {
         Self {
@@ -122,13 +122,13 @@ pub struct HarvardPrivateCaches<
 }
 
 impl<
-        G: CCell<PrivateCacheSet> + std::fmt::Debug,
-        const CORE_COUNT: usize,
-        const I_SET: usize,
-        const I_ASSO: usize,
-        const D_SET: usize,
-        const D_ASSO: usize,
-    > PrivateCaches for HarvardPrivateCaches<G, CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
+    G: CCell<PrivateCacheSet> + std::fmt::Debug,
+    const CORE_COUNT: usize,
+    const I_SET: usize,
+    const I_ASSO: usize,
+    const D_SET: usize,
+    const D_ASSO: usize,
+> PrivateCaches for HarvardPrivateCaches<G, CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
 {
     const DIRECTORY_SET: usize = gcd::binary_usize(I_SET, D_SET);
 
@@ -260,15 +260,12 @@ impl<
 
     fn information() -> String {
         format!(
-            "Type: HarvardPrivateCache, Core Count: {}, ICache Set: {}, ICache Associativity: {}, DCache Set: {}, DCache Associativity: {}, Is Parallel: {}", 
+            "Type: HarvardPrivateCache, Core Count: {}, ICache Set: {}, ICache Associativity: {}, DCache Set: {}, DCache Associativity: {}, Is Parallel: {}",
             CORE_COUNT,
-
             I_SET,
             I_ASSO,
-
             D_SET,
             D_ASSO,
-
             G::support_parallel_access()
         )
     }

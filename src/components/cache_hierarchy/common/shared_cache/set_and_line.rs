@@ -39,8 +39,8 @@ use crate::components::{
 };
 
 use super::{
-    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
     SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
+    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

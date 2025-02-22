@@ -1,12 +1,12 @@
 use crate::{
     components::{
         cache_hierarchy::{
+            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
                 CacheAccessType, CacheHierarchyAccessResult, PrivateCacheEvictedSlot,
                 PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
-            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
         },
         debug::{
             cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
@@ -19,17 +19,17 @@ use crate::{
 use super::ParallelMemoryHierarchy;
 
 impl<
-        MMU: AbstractMMU,
-        PCache: PrivateCaches,
-        SCache: SharedCache,
-        const PRECISE_COHERENCE_RECONSTRUCTION: bool,
-        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-        const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
-        const DIRECTORY_SHARD_COUNT: usize,
-        const CORE_COUNT: usize,
-    > MemoryHierarchy
+    MMU: AbstractMMU,
+    PCache: PrivateCaches,
+    SCache: SharedCache,
+    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const DIRECTORY_SHARD_COUNT: usize,
+    const CORE_COUNT: usize,
+> MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
         PCache,
@@ -352,7 +352,8 @@ impl<
             miss_directory_guard.sharers.set(p_cache_id, true);
 
             if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION {
-                self.shared_cache.insert(core_id, block_id, ts, false, false);
+                self.shared_cache
+                    .insert(core_id, block_id, ts, false, false);
             }
 
             // get the lock of the private cache for refilling.
@@ -720,7 +721,8 @@ impl<
                 }
 
                 if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
-                    self.shared_cache.insert(core_id, block_id, ts, modified_replica, true);
+                    self.shared_cache
+                        .insert(core_id, block_id, ts, modified_replica, true);
                 }
 
                 // Then, we need to add self to the directory.
