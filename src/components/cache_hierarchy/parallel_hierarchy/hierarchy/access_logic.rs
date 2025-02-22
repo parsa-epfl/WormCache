@@ -140,8 +140,8 @@ impl<
                 let lookup_result = self.shared_cache.lookup_and_insert_on_miss(r, ts, true);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit => true,
-                    SharedCacheLookupResult::Miss => false,
+                    SharedCacheLookupResult::Hit => Some(true),
+                    SharedCacheLookupResult::Miss => Some(false),
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -150,7 +150,7 @@ impl<
                                 is_os,
                             );
                         }
-                        false
+                        Some(false)
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -160,15 +160,15 @@ impl<
                                 is_os,
                             );
                         }
-                        false
+                        None
                     }
                 }
             } else {
                 let lookup_result = self.shared_cache.lookup(r, ts);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit => true,
-                    SharedCacheLookupResult::Miss => false,
+                    SharedCacheLookupResult::Hit => Some(true),
+                    SharedCacheLookupResult::Miss => Some(false),
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -177,7 +177,7 @@ impl<
                                 is_os,
                             );
                         }
-                        false
+                        Some(false)
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -187,7 +187,7 @@ impl<
                                 is_os,
                             );
                         }
-                        false
+                        None
                     }
                 }
             };
@@ -263,41 +263,43 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            if shared_cache_result {
-                return CacheHierarchyAccessResult::HitInSharedCache;
-            } else {
-                if !is_prefetch && self.with_statistics {
-                    if is_page_walk {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToPTW,
-                            is_os,
-                        );
-                    } else if is_instruction {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToInstructionFetch,
-                            is_os,
-                        );
-                    } else if is_store {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToDataWrite,
-                            is_os,
-                        );
-                    } else {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToDataRead,
-                            is_os,
-                        );
+            return match shared_cache_result {
+                Some(true) => CacheHierarchyAccessResult::HitInSharedCache,
+                Some(false) => {
+                    if !is_prefetch && self.with_statistics {
+                        if is_page_walk {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToPTW,
+                                is_os,
+                            );
+                        } else if is_instruction {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToInstructionFetch,
+                                is_os,
+                            );
+                        } else if is_store {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToDataWrite,
+                                is_os,
+                            );
+                        } else {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToDataRead,
+                                is_os,
+                            );
+                        }
+    
+                        Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);    
                     }
-
-                    Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
-                }
-
-                return CacheHierarchyAccessResult::Miss;
-            }
+                    
+                    CacheHierarchyAccessResult::Miss
+                },
+                None => CacheHierarchyAccessResult::Unknown,
+            };
         }
 
         if is_prefetch {

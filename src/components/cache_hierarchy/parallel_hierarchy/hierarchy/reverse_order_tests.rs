@@ -36,7 +36,6 @@ use crate::{
         common::{
             statistics::ZeroSharedCacheSetStatistics, CacheAccessType, CacheHierarchyAccessResult,
             ParallelSingleSharedCache, ParallelUnifiedPrivateCache, PrivateCaches, SharedCache,
-            SharedCacheLookupResult,
         },
         mmu::NoMMU,
         CacheBlockRequest, MemoryHierarchy,

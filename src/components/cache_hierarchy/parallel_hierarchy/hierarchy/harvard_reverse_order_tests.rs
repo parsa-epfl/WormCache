@@ -33,7 +33,6 @@ use std::collections::HashMap;
 
 use crate::components::cache_hierarchy::common::{
     CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, SharedCache,
-    SharedCacheLookupResult,
 };
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};

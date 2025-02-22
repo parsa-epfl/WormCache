@@ -57,10 +57,11 @@ pub enum SharedCacheLookupAndInsertResult {
 
 pub trait SharedCache {
     fn new() -> Self;
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> bool; // (is_hit)
 
     // Check whether the cache line is in the cache. Do not update the cache.
     fn peek(&self, request: &CacheBlockRequest) -> bool; // (is_hit)
+
+    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult;
 
     // Conduct a normal lookup operation to the shared cache, including:
     // 1. Peek

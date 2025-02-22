@@ -116,7 +116,7 @@ impl<
         }
     }
 
-    fn invalidate(&self, _core_id: u32, block_id: u64, ts: u64) -> bool {
+    fn invalidate(&self, _core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx].inner().invalidate(block_id, ts);
         return self.blocks[set_idx].inner().invalidate(block_id, ts);

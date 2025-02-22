@@ -583,3 +583,66 @@ fn share_directory_entry_inseter_ts_update() {
         CacheHierarchyAccessResult::MissDueToPermission
     );
 }
+
+#[test]
+fn write_to_llc_cannot_invalidate_larger_ts() {
+    use crate::components::cache_hierarchy::common::SharedCache;
+
+    let mh = MH::new(true, 0, false);
+    let block_id = 1043;
+
+    // Core 0 reads, at 30.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+            },
+            30
+        ),
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 0 evicts the cache line in the following requests.
+    // Note that after this operation, the cache line is in the shared cache with a timestamp larger than 30.
+    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+        let block_id = block_id + (i + 1) as u64 * PCACHE_SET as u64;
+        assert_eq!(
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    is_os: false,
+                },
+                40 + i as u64 * 10
+            ),
+            CacheHierarchyAccessResult::Miss
+        );
+    }
+
+    // Then core 1 writes the cache line at the timestamp 10.
+    // It should not be a hit in the shared cache, because the result is unknown.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+            },
+            10
+        ),
+        CacheHierarchyAccessResult::Unknown
+    );
+
+    // And the cache line is still in the LLC.
+    assert!(mh.shared_cache.peek(&CacheBlockRequest {
+        core_id: 0,
+        block_id,
+        access_type: CacheAccessType::DataRead,
+        is_os: false,
+    }));
+}

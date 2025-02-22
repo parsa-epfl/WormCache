@@ -131,23 +131,31 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             .position(|p| p.block_id_with_v == internal_block_id)
     }
 
-    pub fn invalidate(&mut self, block_id: u64, ts: u64) -> bool {
+    pub fn invalidate(&mut self, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = self.index_of(block_id) {
-            let hit_block = &mut self.blocks[hit_block];
-            // let res = Some(hit_block.modified);
-            hit_block.block_id_with_v = 0;
-            hit_block.ts = 0;
-
             if self.recent_evict_ts < ts {
                 self.recent_evict_ts = ts;
             }
 
-            return true;
+            let hit_block = &mut self.blocks[hit_block];
+
+            return if hit_block.ts < ts {
+                hit_block.block_id_with_v = 0;
+                hit_block.ts = 0;
+
+                SharedCacheLookupResult::Hit
+            } else {
+                SharedCacheLookupResult::Unknown(hit_block.ts as u32 - ts as u32)
+            }
         }
 
         // otherwise, it is a miss.
-        false
+        if self.touched_count < WAY {
+            SharedCacheLookupResult::ColdMiss
+        } else {
+            SharedCacheLookupResult::Miss
+        }
     }
 
     #[inline]
@@ -159,50 +167,64 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         let access_type = r.access_type.clone();
         let is_os = r.is_os();
 
-        match if EXCLUSIVE {
-            self.invalidate(block_id, ts)
+        if EXCLUSIVE {
+            let result = self.invalidate(block_id, ts);
+            // increase the statistics.
+            match result {
+                SharedCacheLookupResult::Hit => {
+                    self.statistics.record(access_type, is_os, true);
+                },
+                SharedCacheLookupResult::Miss => {
+                    self.statistics.record(access_type, is_os, false);
+                },
+                SharedCacheLookupResult::ColdMiss => {
+                    self.statistics.record(access_type, is_os, false);
+                },
+                SharedCacheLookupResult::Unknown(_) => {},
+            }
+
+            return result;
         } else {
             if let Some(hit_block) = self.index_of(block_id) {
                 let hit_block = &mut self.blocks[hit_block];
                 if r.is_store() {
-                    // The cache line should be transferred to the accessor.
-                    hit_block.block_id_with_v = 0;
-                    hit_block.ts = 0;
-
+                    // In any case, the invaildation should be recorded.
                     if self.recent_evict_ts < ts {
                         self.recent_evict_ts = ts;
                     }
+
+                    if ts > hit_block.ts {
+                        // The cache line should be transferred to the accessor.
+                        hit_block.block_id_with_v = 0;
+                        hit_block.ts = 0;
+
+                        return SharedCacheLookupResult::Hit;
+                    }
+
+                    return SharedCacheLookupResult::Unknown(hit_block.ts as u32 - ts as u32);
                 } else {
-                    if ts >= hit_block.ts {
+                    if ts > hit_block.ts {
                         // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                         hit_block.ts = ts;
-                    }
 
-                    hit_block.last_accessor = core_id;
+                        hit_block.last_accessor = core_id;
 
                     // Accessed by a higher-level, meaning that the block is not dirty anymore.
-                    hit_block.modified = false;
-                }
-                true
-            } else {
-                false
-            }
-        } {
-            true => {
-                self.statistics.record(access_type, is_os, true);
-                SharedCacheLookupResult::Hit
-            }
-            false => {
-                if ts < self.recent_evict_ts {
-                    SharedCacheLookupResult::Unknown((self.recent_evict_ts - ts) as u32)
-                } else {
-                    self.statistics.record(access_type, is_os, false);
-                    if self.touched_count < WAY {
-                        SharedCacheLookupResult::ColdMiss
-                    } else {
-                        SharedCacheLookupResult::Miss
+                        hit_block.modified = false;
+                        self.statistics.record(access_type, is_os, true);
+                        return SharedCacheLookupResult::Hit;
                     }
+
+                    return SharedCacheLookupResult::Unknown(hit_block.ts as u32 - ts as u32);
                 }
+            }
+
+            self.statistics.record(access_type, is_os, false);
+
+            if self.touched_count < WAY {
+                SharedCacheLookupResult::ColdMiss
+            } else {
+                SharedCacheLookupResult::Miss
             }
         }
     }
@@ -343,7 +365,7 @@ fn minimum_can_find_invalid() {
     }
 
     // now, we invalid set 0.
-    assert_eq!(set.invalidate(0, ts), true);
+    assert_eq!(set.invalidate(0, ts), SharedCacheLookupResult::Hit);
     ts += 1;
 
     // Now if we refill, we will hit the first place.

@@ -83,7 +83,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         }
     }
 
-    fn invalidate(&mut self, block_id: u64, ts: u64) -> bool {
+    fn invalidate(&mut self, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx].invalidate(block_id, ts)
     }
@@ -210,7 +210,7 @@ impl<
         pcache.blocks[set_idx].index_of(request.block_id).is_some()
     }
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> bool {
+    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.invalidate(block_id, ts)
     }
