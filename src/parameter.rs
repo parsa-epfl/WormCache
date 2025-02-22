@@ -228,6 +228,18 @@ pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = true;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_CLEAN_EVICTION));
 
 /**
+ * SHARED_CACHE_FILL_ON_REPLICA_CREATION
+ *
+ * Whether the shared cache is filled on a replica creation in private cache.
+ *
+ * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
+ */
+pub const SHARED_CACHE_FILL_ON_REPLICA_CREATION: bool = true;
+static_assertions::const_assert!(
+    !(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_REPLICA_CREATION)
+);
+
+/**
  * DIRECTORY_SHARD_COUNT
  *
  * The number of sets of the directory. It should be much larger than the number of sets of all private caches to prevent directory contention.
