@@ -166,7 +166,9 @@ impl<
             .lookup_and_insert(r, ts, increase_touched_count);
 
         match result {
-            SharedCacheLookupAndInsertResult::Hit => SharedCacheLookupResult::Hit,
+            SharedCacheLookupAndInsertResult::Hit(modified) => {
+                SharedCacheLookupResult::Hit(modified)
+            }
             SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
                 if just_warmed {

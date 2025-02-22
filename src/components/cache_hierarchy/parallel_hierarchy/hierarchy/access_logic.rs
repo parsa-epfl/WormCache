@@ -135,7 +135,7 @@ impl<
             let bring_into_shared_cache = if FILL_SCACHE_ON_FILLING_PCACHE {
                 match r.access_type {
                     CacheAccessType::InstructionFetch => true,
-                    CacheAccessType::DataRead  => !ENABLE_EXCLUSIVE_CACHE_STATE,
+                    CacheAccessType::DataRead => !ENABLE_EXCLUSIVE_CACHE_STATE,
                     CacheAccessType::DataWrite => false,
                     CacheAccessType::PageWalkRead => true,
                     CacheAccessType::PrefetchRead => !ENABLE_EXCLUSIVE_CACHE_STATE,
@@ -152,8 +152,8 @@ impl<
                 let lookup_result = self.shared_cache.lookup_and_insert_on_miss(r, ts, true);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit => Some(true),
-                    SharedCacheLookupResult::Miss => Some(false),
+                    SharedCacheLookupResult::Hit(modified) => (Some(true), modified),
+                    SharedCacheLookupResult::Miss => (Some(false), false),
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -162,7 +162,7 @@ impl<
                                 is_os,
                             );
                         }
-                        Some(false)
+                        (Some(false), false)
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -172,15 +172,15 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        (None, false)
                     }
                 }
             } else {
                 let lookup_result = self.shared_cache.lookup(r, ts);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit => Some(true),
-                    SharedCacheLookupResult::Miss => Some(false),
+                    SharedCacheLookupResult::Hit(modified) => (Some(true), modified),
+                    SharedCacheLookupResult::Miss => (Some(false), false),
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -189,7 +189,7 @@ impl<
                                 is_os,
                             );
                         }
-                        Some(false)
+                        (Some(false), false)
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -199,7 +199,7 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        (None, false)
                     }
                 }
             };
@@ -212,7 +212,7 @@ impl<
                 miss_directory_guard.recent_writer_ts = ts;
             }
 
-            let modified = is_store;
+            let modified = is_store || shared_cache_result.1; // If this is a write operation, or the replica in LLC is modified, the private cache line should be modified.
 
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
@@ -275,7 +275,7 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            return match shared_cache_result {
+            return match shared_cache_result.0 {
                 Some(true) => CacheHierarchyAccessResult::HitInSharedCache,
                 Some(false) => {
                     if !is_prefetch && self.with_statistics {
@@ -304,12 +304,12 @@ impl<
                                 is_os,
                             );
                         }
-    
-                        Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);    
+
+                        Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
                     }
                     
                     CacheHierarchyAccessResult::Miss
-                },
+                }
                 None => CacheHierarchyAccessResult::Unknown,
             };
         }

@@ -114,7 +114,9 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         let set_idx = (r.block_id % SET as u64) as usize;
         let res = self.blocks[set_idx].lookup_and_insert(r, ts, increase_touched_count);
         match res {
-            SharedCacheLookupAndInsertResult::Hit => SharedCacheLookupResult::Hit,
+            SharedCacheLookupAndInsertResult::Hit(modified) => {
+                SharedCacheLookupResult::Hit(modified)
+            }
             SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
             SharedCacheLookupAndInsertResult::InsertedAndCold(_) => {
                 SharedCacheLookupResult::ColdMiss

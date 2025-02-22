@@ -40,7 +40,7 @@ use serde::Serialize;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupResult {
-    Hit,
+    Hit(bool), // (is_dirty)
     Miss,
     ColdMiss,
     Unknown(u32), // timestamp difference
@@ -48,7 +48,7 @@ pub enum SharedCacheLookupResult {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupAndInsertResult {
-    Hit,
+    Hit(bool), // (is_dirty)
     Miss,
     InsertedAndCold(bool), // (just_warmed)
     Inserted,
