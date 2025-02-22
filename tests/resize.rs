@@ -258,6 +258,7 @@ fn test_resize_cache_hierarchy() {
         true,
         true,
         true,
+        true,
         65536,
         { CORE_COUNT },
     >;
@@ -266,6 +267,7 @@ fn test_resize_cache_hierarchy() {
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 128, 8, 128, 8>,
         ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 128, 16, false>,
+        true,
         true,
         true,
         true,

@@ -140,14 +140,14 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
             let hit_block = &mut self.blocks[hit_block];
 
-            return if hit_block.ts < ts {
+            return if hit_block.ts <= ts {
                 hit_block.block_id_with_v = 0;
                 hit_block.ts = 0;
 
-                SharedCacheLookupResult::Hit
+                SharedCacheLookupResult::Hit(hit_block.modified)
             } else {
                 SharedCacheLookupResult::Unknown(hit_block.ts as u32 - ts as u32)
-            }
+            };
         }
 
         // otherwise, it is a miss.
@@ -171,16 +171,16 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             let result = self.invalidate(block_id, ts);
             // increase the statistics.
             match result {
-                SharedCacheLookupResult::Hit => {
+                SharedCacheLookupResult::Hit(_) => {
                     self.statistics.record(access_type, is_os, true);
-                },
+                }
                 SharedCacheLookupResult::Miss => {
                     self.statistics.record(access_type, is_os, false);
-                },
+                }
                 SharedCacheLookupResult::ColdMiss => {
                     self.statistics.record(access_type, is_os, false);
-                },
-                SharedCacheLookupResult::Unknown(_) => {},
+                }
+                SharedCacheLookupResult::Unknown(_) => {}
             }
 
             return result;
@@ -193,26 +193,27 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                         self.recent_evict_ts = ts;
                     }
 
-                    if ts > hit_block.ts {
+                    if ts >= hit_block.ts {
                         // The cache line should be transferred to the accessor.
                         hit_block.block_id_with_v = 0;
                         hit_block.ts = 0;
 
-                        return SharedCacheLookupResult::Hit;
+                        return SharedCacheLookupResult::Hit(hit_block.modified);
                     }
 
                     return SharedCacheLookupResult::Unknown(hit_block.ts as u32 - ts as u32);
                 } else {
-                    if ts > hit_block.ts {
+                    if ts >= hit_block.ts {
                         // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                         hit_block.ts = ts;
 
                         hit_block.last_accessor = core_id;
 
-                    // Accessed by a higher-level, meaning that the block is not dirty anymore.
+                        // Accessed by a higher-level, meaning that the block is not dirty anymore.
+                        let was_modified = hit_block.modified;
                         hit_block.modified = false;
                         self.statistics.record(access_type, is_os, true);
-                        return SharedCacheLookupResult::Hit;
+                        return SharedCacheLookupResult::Hit(was_modified);
                     }
 
                     return SharedCacheLookupResult::Unknown(hit_block.ts as u32 - ts as u32);
@@ -251,7 +252,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                 panic!("Error: the incoming block is already in the shared cache.");
             } else {
                 // update the timestamp and the modified bit.
-                if ts > hit_block.ts {
+                if ts >= hit_block.ts {
                     hit_block.ts = ts;
                     if is_modified {
                         // This cache line's permission should have been taken by the private cache.
@@ -259,7 +260,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                         assert!(!hit_block.modified);
                         hit_block.modified = is_modified;
                     }
-    
+
                     hit_block.last_accessor = core_id;
                 }
                 return false;
@@ -322,7 +323,9 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         let core_id = r.core_id;
 
         match result {
-            SharedCacheLookupResult::Hit => SharedCacheLookupAndInsertResult::Hit,
+            SharedCacheLookupResult::Hit(modified) => {
+                SharedCacheLookupAndInsertResult::Hit(modified)
+            }
             SharedCacheLookupResult::Miss => {
                 // This function is only called when the private cache has a miss
                 // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
@@ -338,9 +341,13 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             SharedCacheLookupResult::ColdMiss => {
                 // This function is only called when the private cache has a miss
                 // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
-
-                let just_warmed = self.insert(block_id, core_id, ts, false, increase_touched_count);
-                SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
+                if !r.is_store() {
+                    let just_warmed =
+                        self.insert(block_id, core_id, ts, false, increase_touched_count);
+                    SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
+                } else {
+                    SharedCacheLookupAndInsertResult::Miss
+                }
             }
             SharedCacheLookupResult::Unknown(diff) => {
                 SharedCacheLookupAndInsertResult::Unknown(diff)
@@ -363,7 +370,7 @@ fn minimum_can_find_invalid() {
     }
 
     // now, we invalid set 0.
-    assert_eq!(set.invalidate(0, ts), SharedCacheLookupResult::Hit);
+    assert_eq!(set.invalidate(0, ts), SharedCacheLookupResult::Hit(false));
     ts += 1;
 
     // Now if we refill, we will hit the first place.

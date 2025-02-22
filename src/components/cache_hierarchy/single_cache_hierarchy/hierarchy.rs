@@ -148,7 +148,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         Statistics::global_record(
             core_id,
             match res {
-                SharedCacheLookupResult::Hit => EventType::SharedCacheAccess,
+                SharedCacheLookupResult::Hit(_) => EventType::SharedCacheAccess,
                 SharedCacheLookupResult::Miss => EventType::SharedCacheMiss,
                 SharedCacheLookupResult::ColdMiss => EventType::SharedCacheColdMiss,
                 SharedCacheLookupResult::Unknown(_) => EventType::UnknownSharedCacheMisses,
@@ -173,7 +173,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         }
 
         match res {
-            SharedCacheLookupResult::Hit => CacheHierarchyAccessResult::HitInSharedCache,
+            SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::Unknown(_) => CacheHierarchyAccessResult::Unknown,

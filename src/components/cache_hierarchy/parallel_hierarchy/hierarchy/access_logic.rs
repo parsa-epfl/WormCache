@@ -2,7 +2,8 @@ use crate::{
     components::{
         cache_hierarchy::{
             common::{
-                CacheAccessType, CacheHierarchyAccessResult, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
+                CacheAccessType, CacheHierarchyAccessResult, PrivateCacheEvictedSlot,
+                PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
@@ -25,6 +26,7 @@ impl<
         const FILL_SCACHE_ON_FILLING_PCACHE: bool,
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+        const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
         const DIRECTORY_SHARD_COUNT: usize,
         const CORE_COUNT: usize,
     > MemoryHierarchy
@@ -36,6 +38,7 @@ impl<
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
+        FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
         CORE_COUNT,
     >
@@ -307,7 +310,7 @@ impl<
 
                         Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
                     }
-                    
+
                     CacheHierarchyAccessResult::Miss
                 }
                 None => CacheHierarchyAccessResult::Unknown,
@@ -347,6 +350,10 @@ impl<
             // add myself to the sharer list.
             miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers.set(p_cache_id, true);
+
+            if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION {
+                self.shared_cache.insert(core_id, block_id, ts, false, false);
+            }
 
             // get the lock of the private cache for refilling.
             let mut set_for_refill_lock = self.private_caches.get_set_for_fill(r);
@@ -619,6 +626,9 @@ impl<
                 miss_directory_guard.update_lru_ts(ts);
                 miss_directory_guard.sharers = incoming_sharer;
 
+                // Because a write operation has happened, we need to invalidate the shared cache.
+                self.shared_cache.invalidate(core_id, block_id, ts);
+
                 // We have a new write exposed to the directory.
                 if PRECISE_COHERENCE_RECONSTRUCTION {
                     assert!(miss_directory_guard.recent_writer_ts <= ts);
@@ -641,6 +651,7 @@ impl<
             } else {
                 // You need to find currently whether there are cores that have modified permission.
                 let mut find_writable_replica = false;
+                let mut modified_replica = false;
                 let mut set_for_refill_lock = None;
 
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
@@ -689,6 +700,10 @@ impl<
                                 return CacheHierarchyAccessResult::Unknown;
                             }
 
+                            if entry.is_modified() {
+                                modified_replica = true;
+                            }
+
                             // Alright, we find the modifier of this cache line.
                             set.request_sharer(*index, ts);
                             find_writable_replica = true;
@@ -702,6 +717,10 @@ impl<
 
                 if find_writable_replica {
                     assert!(!miss_directory_guard.shared);
+                }
+
+                if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
+                    self.shared_cache.insert(core_id, block_id, ts, modified_replica, true);
                 }
 
                 // Then, we need to add self to the directory.

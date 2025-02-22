@@ -62,6 +62,7 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
+    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
 > {
@@ -83,6 +84,7 @@ impl<
         const FILL_SCACHE_ON_FILLING_PCACHE: bool,
         const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
         const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+        const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
         const DIRECTORY_SHARD_COUNT: usize,
         const CORE_COUNT: usize,
     >
@@ -94,6 +96,7 @@ impl<
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
+        FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
         CORE_COUNT,
     >
@@ -204,13 +207,14 @@ impl<
 
     pub fn information() -> String {
         format!(
-            "Private Cache: {}\nShared Cache: {}\nPrecise Coherence Reconstruction: {} \n Fill Shared Cache on Filling Private Cache: {} \n Fill Shared Cache on Private Cache Clean Eviction: {} \n Fill Shared Cache on Private Cache Dirty Eviction: {}",
+            "Private Cache: {}\nShared Cache: {}\nPrecise Coherence Reconstruction: {} \nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
             PCache::information(),
             SCache::information(),
             PRECISE_COHERENCE_RECONSTRUCTION,
             FILL_SCACHE_ON_FILLING_PCACHE,
             FILL_SCACLE_ON_PCACHE_EVICTION,
-            FILL_SCACHE_ON_PCACHE_WRITEBACK
+            FILL_SCACHE_ON_PCACHE_WRITEBACK,
+            FILL_SCACLE_ON_PCACPE_REPLICA_CREATION
         )
     }
 
