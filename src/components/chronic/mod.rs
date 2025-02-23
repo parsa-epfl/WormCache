@@ -81,6 +81,11 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
             .map(|x| x.parse::<bool>().unwrap())
             .unwrap_or(false);
 
+        let shapshot_format: String = options
+            .get("qemu_snapshot_format")
+            .unwrap_or(&"zstd".to_string())
+            .clone();
+
         unsafe {
             snapshot::init(
                 init_threshold,
@@ -89,6 +94,7 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
                 prefix,
                 init_index,
                 no_qemu_snapshot,
+                shapshot_format,
             );
         }
     } else if mode == "measure" {

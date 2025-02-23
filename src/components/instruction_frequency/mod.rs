@@ -41,22 +41,24 @@ impl super::super::Plugin for InstructionFrequencyPlugin {
     }
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {
-        let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
+        unsafe {
+            let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
 
-        if n_instruction == 0 {
-            return;
-        }
+            if n_instruction == 0 {
+                return;
+            }
 
-        for i in 0..n_instruction {
-            let insn = qemu_api::qemu_plugin_tb_get_insn(tb, i);
-            let insn_addr = qemu_api::qemu_plugin_insn_vaddr(insn);
+            for i in 0..n_instruction {
+                let insn = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+                let insn_addr = qemu_api::qemu_plugin_insn_vaddr(insn);
 
-            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
-                insn,
-                Some(vcpu_insn_exec),
-                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                insn_addr as *mut ffi::c_void,
-            );
+                qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                    insn,
+                    Some(vcpu_insn_exec),
+                    qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                    insn_addr as *mut ffi::c_void,
+                );
+            }
         }
     }
 

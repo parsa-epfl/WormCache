@@ -1,33 +1,35 @@
 use crate::{
     components::{
         cache_hierarchy::{
+            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
-                CacheHierarchyAccessResult, PrivateCacheEvictedSlot, PrivateCachePokeResult,
-                PrivateCaches, SharedCache, SharedCacheLookupResult,
+                CacheAccessType, CacheHierarchyAccessResult, PrivateCacheEvictedSlot,
+                PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
-            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
         },
         debug::{
             cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
             statistics::{EventType, Statistics},
         },
     },
-    parameter,
+    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE},
 };
 
 use super::ParallelMemoryHierarchy;
 
 impl<
-        MMU: AbstractMMU,
-        PCache: PrivateCaches,
-        SCache: SharedCache,
-        const PRECISE_COHERENCE_RECONSTRUCTION: bool,
-        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-        const DIRECTORY_SHARD_COUNT: usize,
-    > MemoryHierarchy
+    MMU: AbstractMMU,
+    PCache: PrivateCaches,
+    SCache: SharedCache,
+    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const DIRECTORY_SHARD_COUNT: usize,
+    const CORE_COUNT: usize,
+> MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
         PCache,
@@ -36,7 +38,9 @@ impl<
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
+        FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
+        CORE_COUNT,
     >
 {
     fn access_memory_pblock_id(
@@ -131,17 +135,28 @@ impl<
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
-            let shared_cache_result = if FILL_SCACHE_ON_FILLING_PCACHE {
+            let bring_into_shared_cache = if FILL_SCACHE_ON_FILLING_PCACHE {
+                match r.access_type {
+                    CacheAccessType::InstructionFetch => true,
+                    CacheAccessType::DataRead => !ENABLE_EXCLUSIVE_CACHE_STATE,
+                    CacheAccessType::DataWrite => false,
+                    CacheAccessType::PageWalkRead => true,
+                    CacheAccessType::PrefetchRead => !ENABLE_EXCLUSIVE_CACHE_STATE,
+                    CacheAccessType::PrefetchWrite => false,
+                }
+            } else {
+                false
+            };
+
+            let shared_cache_result = if bring_into_shared_cache {
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
-                let lookup_result = self
-                    .shared_cache
-                    .lookup_and_insert_on_miss(r, ts, true, false);
+                let lookup_result = self.shared_cache.lookup_and_insert_on_miss(r, ts, true);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
-                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::Hit(modified) => (Some(true), modified),
+                    SharedCacheLookupResult::Miss => (Some(false), false),
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -150,7 +165,7 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        (Some(false), false)
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -160,15 +175,15 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        (None, false)
                     }
                 }
             } else {
-                let lookup_result = self.shared_cache.lookup(r, ts, true);
+                let lookup_result = self.shared_cache.lookup(r, ts);
 
                 match lookup_result {
-                    SharedCacheLookupResult::Hit(is_dirty) => Some(is_dirty),
-                    SharedCacheLookupResult::Miss => None,
+                    SharedCacheLookupResult::Hit(modified) => (Some(true), modified),
+                    SharedCacheLookupResult::Miss => (Some(false), false),
                     SharedCacheLookupResult::ColdMiss => {
                         if self.with_statistics {
                             Statistics::global_record(
@@ -177,7 +192,7 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        (Some(false), false)
                     }
                     SharedCacheLookupResult::Unknown(_) => {
                         if self.with_statistics {
@@ -187,7 +202,7 @@ impl<
                                 is_os,
                             );
                         }
-                        None
+                        (None, false)
                     }
                 }
             };
@@ -200,7 +215,7 @@ impl<
                 miss_directory_guard.recent_writer_ts = ts;
             }
 
-            let modified = is_store;
+            let modified = is_store || shared_cache_result.1; // If this is a write operation, or the replica in LLC is modified, the private cache line should be modified.
 
             let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
                 modified
@@ -244,6 +259,7 @@ impl<
                     evicted_block_id,
                     ts,
                     evicted_line_is_modified,
+                    is_os,
                 );
             }
 
@@ -262,41 +278,43 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            if shared_cache_result.is_some() {
-                return CacheHierarchyAccessResult::HitInSharedCache;
-            } else {
-                if !is_prefetch && self.with_statistics {
-                    if is_page_walk {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToPTW,
-                            is_os,
-                        );
-                    } else if is_instruction {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToInstructionFetch,
-                            is_os,
-                        );
-                    } else if is_store {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToDataWrite,
-                            is_os,
-                        );
-                    } else {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheMissDueToDataRead,
-                            is_os,
-                        );
+            return match shared_cache_result.0 {
+                Some(true) => CacheHierarchyAccessResult::HitInSharedCache,
+                Some(false) => {
+                    if !is_prefetch && self.with_statistics {
+                        if is_page_walk {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToPTW,
+                                is_os,
+                            );
+                        } else if is_instruction {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToInstructionFetch,
+                                is_os,
+                            );
+                        } else if is_store {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToDataWrite,
+                                is_os,
+                            );
+                        } else {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToDataRead,
+                                is_os,
+                            );
+                        }
+
+                        Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
                     }
 
-                    Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
+                    CacheHierarchyAccessResult::Miss
                 }
-
-                return CacheHierarchyAccessResult::Miss;
-            }
+                None => CacheHierarchyAccessResult::Unknown,
+            };
         }
 
         if is_prefetch {
@@ -332,6 +350,10 @@ impl<
             // add myself to the sharer list.
             miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers.set(p_cache_id, true);
+
+            if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION {
+                self.shared_cache.insert(core_id, block_id, ts, false, true);
+            }
 
             // get the lock of the private cache for refilling.
             let mut set_for_refill_lock = self.private_caches.get_set_for_fill(r);
@@ -604,6 +626,9 @@ impl<
                 miss_directory_guard.update_lru_ts(ts);
                 miss_directory_guard.sharers = incoming_sharer;
 
+                // Because a write operation has happened, we need to invalidate the shared cache.
+                self.shared_cache.invalidate(core_id, block_id, ts);
+
                 // We have a new write exposed to the directory.
                 if PRECISE_COHERENCE_RECONSTRUCTION {
                     assert!(miss_directory_guard.recent_writer_ts <= ts);
@@ -626,6 +651,7 @@ impl<
             } else {
                 // You need to find currently whether there are cores that have modified permission.
                 let mut find_writable_replica = false;
+                let mut modified_replica = false;
                 let mut set_for_refill_lock = None;
 
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
@@ -674,6 +700,10 @@ impl<
                                 return CacheHierarchyAccessResult::Unknown;
                             }
 
+                            if entry.is_modified() {
+                                modified_replica = true;
+                            }
+
                             // Alright, we find the modifier of this cache line.
                             set.request_sharer(*index, ts);
                             find_writable_replica = true;
@@ -687,6 +717,11 @@ impl<
 
                 if find_writable_replica {
                     assert!(!miss_directory_guard.shared);
+                }
+
+                if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
+                    self.shared_cache
+                        .insert(core_id, block_id, ts, modified_replica, true);
                 }
 
                 // Then, we need to add self to the directory.
@@ -759,6 +794,7 @@ impl<
                 evicted_block_id,
                 ts,
                 is_modified,
+                is_os,
             );
         }
 

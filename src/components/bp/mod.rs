@@ -109,15 +109,23 @@ impl BranchResolutionResult {
     }
 }
 
-static mut FETCH_UNIT: *mut fetch::FetchUnit<{ parameter::CORE_COUNT }> = std::ptr::null_mut();
+const ALLOCATED_CORE: usize = if parameter::MEASURE_HALF_OF_CORES {
+    parameter::CORE_COUNT / 2
+} else {
+    parameter::CORE_COUNT
+};
+
+static mut FETCH_UNIT: *mut fetch::FetchUnit<{ ALLOCATED_CORE }> = std::ptr::null_mut();
 
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
-    if parameter::MEASURE_HALF_OF_CORES && vcpu_index >= parameter::CORE_COUNT as u32 / 2 {
-        return;
-    }
+    unsafe {
+        if parameter::MEASURE_HALF_OF_CORES && vcpu_index >= parameter::CORE_COUNT as u32 / 2 {
+            return;
+        }
 
-    let result = BranchResolutionResult::from_u32(flags);
-    (*FETCH_UNIT).train(vcpu_index as usize, pc, result, target)
+        let result = BranchResolutionResult::from_u32(flags);
+        (*FETCH_UNIT).train(vcpu_index as usize, pc, result, target)
+    }
 }
 
 pub struct BranchPredictorPlugin {}
@@ -159,6 +167,10 @@ impl Plugin for BranchPredictorPlugin {
         file.write_all(json.as_bytes()).unwrap();
 
         file.finish().unwrap();
+
+        // unsafe {
+        //     (*FETCH_UNIT).dump_training_trace(name);
+        // }
     }
 
     fn deserialize(name: &str) {

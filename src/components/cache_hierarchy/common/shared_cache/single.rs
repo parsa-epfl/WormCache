@@ -40,8 +40,8 @@ use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::super::CCell;
 
 use super::{
-    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
     SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
+    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
 };
 use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutex;
@@ -67,14 +67,16 @@ pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, cons
 }
 
 impl<
-        S: SharedCacheSetStatistics,
-        G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
-        const SET: usize,
-        const WAY: usize,
-        const EXCLUSIVE: bool,
-    > SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
+    S: SharedCacheSetStatistics,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+> SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
-    fn from_serialize_helper(helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>) -> Self {
+    pub fn from_serialize_helper(
+        helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>,
+    ) -> Self {
         let mut blocks = Vec::with_capacity(SET);
         for block in helper.blocks {
             blocks.push(G::new(SharedCacheSet::from_without_statistics(block)));
@@ -86,7 +88,7 @@ impl<
         }
     }
 
-    fn to_serialize_helper(&self) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> {
+    pub fn to_serialize_helper(&self) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> {
         SingleSharedCacheSerdeHelper {
             blocks: self
                 .blocks
@@ -99,12 +101,12 @@ impl<
 }
 
 impl<
-        S: SharedCacheSetStatistics,
-        G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
-        const SET: usize,
-        const WAY: usize,
-        const EXCLUSIVE: bool,
-    > super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
+    S: SharedCacheSetStatistics,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+> super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {
@@ -114,21 +116,21 @@ impl<
         }
     }
 
-    fn invalidate(&self, _core_id: u32, block_id: u64, ts: u64) -> Option<bool> {
+    fn invalidate(&self, _core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
         self.blocks[set_idx].inner().invalidate(block_id, ts);
         return self.blocks[set_idx].inner().invalidate(block_id, ts);
     }
 
-    fn lookup(
-        &self,
-        r: &CacheBlockRequest,
-        ts: u64,
-        abandon_dirty: bool,
-    ) -> SharedCacheLookupResult {
+    fn peek(&self, r: &CacheBlockRequest) -> bool {
+        let set_idx = (r.block_id % SET as u64) as usize;
+        self.blocks[set_idx].inner().index_of(r.block_id).is_some()
+    }
+
+    fn lookup(&self, r: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
 
-        self.blocks[set_idx].inner().lookup(r, ts, abandon_dirty)
+        self.blocks[set_idx].inner().lookup(r, ts)
     }
 
     fn insert(
@@ -156,21 +158,18 @@ impl<
         &self,
         r: &CacheBlockRequest,
         ts: u64,
-        abandon_dirty: bool,
         increase_touched_count: bool,
     ) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
-        let result = self.blocks[set_idx].inner().lookup_and_insert(
-            r,
-            ts,
-            abandon_dirty,
-            increase_touched_count,
-        );
+        let result = self.blocks[set_idx]
+            .inner()
+            .lookup_and_insert(r, ts, increase_touched_count);
 
         match result {
-            SharedCacheLookupAndInsertResult::Hit(is_dirty) => {
-                SharedCacheLookupResult::Hit(is_dirty)
+            SharedCacheLookupAndInsertResult::Hit(modified) => {
+                SharedCacheLookupResult::Hit(modified)
             }
+            SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
                 if just_warmed {
                     self.warmed_sets.fetch_add(1, Ordering::Relaxed);

@@ -32,8 +32,8 @@
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter};
 
-use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
+use std::sync::LazyLock;
 
 use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 
@@ -163,6 +163,8 @@ pub struct Statistics {
     per_core: [UnsafeCell<PerCoreStatistics>; CORE_COUNT],
 }
 
+unsafe impl Sync for Statistics {}
+
 impl Default for Statistics {
     fn default() -> Self {
         Self::new()
@@ -227,28 +229,22 @@ impl Statistics {
     }
 }
 
-static mut GLOBAL_STATISTICS: Lazy<Statistics> = Lazy::new(Statistics::new);
+static GLOBAL_STATISTICS: LazyLock<Statistics> = LazyLock::new(Statistics::new);
 
 impl Statistics {
     #[inline]
     pub fn global_record(core_id: u32, event: EventType, is_os: bool) {
-        unsafe {
-            GLOBAL_STATISTICS.record(core_id, event, is_os);
-        }
+        GLOBAL_STATISTICS.record(core_id, event, is_os);
     }
 
     #[inline]
     pub fn global_record_by(core_id: u32, event: EventType, is_os: bool, increment: u64) {
-        unsafe {
-            GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
-        }
+        GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
     }
 
     #[inline]
     pub fn global_set(core_id: u32, event: EventType, is_os: bool, value: u64) {
-        unsafe {
-            GLOBAL_STATISTICS.set(core_id, event, is_os, value);
-        }
+        GLOBAL_STATISTICS.set(core_id, event, is_os, value);
     }
 
     pub fn global_query_record(core_id: u32, event: EventType) -> (u64, u64, u64) {
@@ -262,7 +258,7 @@ impl Statistics {
     }
 
     pub fn global_get_line_for_all_cores(ts: u64) -> Vec<String> {
-        unsafe { GLOBAL_STATISTICS.get_line_for_all_cores(ts) }
+        GLOBAL_STATISTICS.get_line_for_all_cores(ts)
     }
 
     pub fn global_one_line_statistics() -> String {

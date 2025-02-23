@@ -62,9 +62,15 @@ impl SingleSharedCacheSerdeHelper {
 
             let block_id = block.block_id_with_v >> 1;
             if block_id == line.block_id() {
-                if is_valid && line.ts > block.ts {
+                if !is_valid {
+                    block.block_id_with_v = (line.block_id() << 1) | 1;
                     block.ts = line.ts;
                     block.modified = line.modified;
+                    block.last_accessor = accessor;
+                } else if is_valid && line.ts > block.ts {
+                    block.ts = line.ts;
+                    block.modified = line.modified;
+                    block.last_accessor = accessor;
                 }
 
                 return;
@@ -81,6 +87,10 @@ impl SingleSharedCacheSerdeHelper {
 
     pub fn resize(&mut self, flexus_configuration: &FlexusParameter) {
         assert!(self.blocks.len() % flexus_configuration.l2_sets == 0);
+
+        if flexus_configuration.no_resizing {
+            assert!(self.blocks.len() == flexus_configuration.l2_sets);
+        }
 
         let mut new_blocks = vec![];
 
@@ -108,12 +118,20 @@ impl SingleSharedCacheSerdeHelper {
             set.blocks.sort_by_key(|block| block.ts);
             set.blocks.reverse();
 
+            if flexus_configuration.no_resizing {
+                assert!(
+                    set.blocks.len() <= flexus_configuration.l2_associativity,
+                    "Shared cache set is too large",
+                );
+            }
+
             set.blocks.truncate(flexus_configuration.l2_associativity);
         }
 
         self.blocks = new_blocks;
     }
 
+    #[allow(dead_code)]
     pub fn export(&self, folder_name: &String, flexus_configuration: &FlexusParameter) {
         let mut file = std::fs::File::create(format!("{}/sys-L2-cache.json", folder_name)).unwrap();
 
@@ -173,6 +191,40 @@ impl SingleSharedCacheSerdeHelper {
                 "Shared cache slice {} is exported to {}/sys-L2-cache-slice-{}.json",
                 slice_idx, folder_name, slice_idx
             );
+        }
+    }
+}
+
+impl SingleSharedCacheSerdeHelper {
+    pub fn assert_eq(&self, other: &Self) {
+        // set count should be the same.
+        if self.blocks.len() != other.blocks.len() {
+            panic!("Size mismatch");
+        }
+
+        let mut set_idx = 0;
+
+        // Now comparing each set.
+        for (a, b) in self.blocks.iter().zip(other.blocks.iter()) {
+            if a.blocks.len() != b.blocks.len() {
+                panic!("Set {} size mishatch", set_idx);
+            }
+
+            let mut way_idx = 0;
+
+            for (a_block, b_block) in a.blocks.iter().zip(b.blocks.iter()) {
+                if a_block.block_id_with_v != b_block.block_id_with_v
+                    || a_block.ts != b_block.ts
+                    || a_block.modified != b_block.modified
+                    || a_block.last_accessor != b_block.last_accessor
+                {
+                    panic!("Set {} way {} mismatch", set_idx, way_idx);
+                }
+
+                way_idx += 1;
+            }
+
+            set_idx += 1;
         }
     }
 }
@@ -366,10 +418,12 @@ fn test_resize() {
         dtlb_associativity: 1,
         stlb_sets: 1,
         stlb_associativity: 1,
+        stlb_inclusion: crate::checkpoint::FlexusSTLBInclusion::Inclusive,
         directory: crate::checkpoint::FlexusDirectoryType::Infinite,
         directory_slice_count: 1,
         btb_sets: 1,
         btb_associativity: 1,
+        no_resizing: false,
     });
 
     assert_eq!(shared_cache.blocks.len(), 1);
@@ -380,4 +434,70 @@ fn test_resize() {
     assert_eq!(shared_cache.blocks[0].blocks[0].block_id_with_v, 0b11101);
     assert_eq!(shared_cache.blocks[0].blocks[1].ts, 4);
     assert_eq!(shared_cache.blocks[0].blocks[1].block_id_with_v, 0b11111);
+}
+
+#[test]
+fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
+    let mut shared_cache = SingleSharedCacheSerdeHelper {
+        blocks: vec![
+            SharedCacheSet {
+                blocks: vec![SharedCacheBlock {
+                    block_id_with_v: 0b100,
+                    ts: 0,
+                    modified: false,
+                    last_accessor: 0,
+                }],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+            SharedCacheSet {
+                blocks: vec![],
+                touched_count: 0,
+                recent_evict_ts: 0,
+                access_count: 0,
+            },
+        ],
+        warmed_sets: 0,
+    };
+
+    shared_cache.process_evicted_cache_line(
+        &PrivateCacheLine {
+            block_id_with_v: 0b101,
+            ts: 3,
+            write_ts: 3,
+            is_instruction: false,
+            writeable: false,
+            modified: false,
+        },
+        0,
+    );
+
+    // Do a resize, and we should expect that block 0b101 is kept.
+    shared_cache.resize(&FlexusParameter {
+        l2_sets: 1,
+        l2_associativity: 1,
+        l2_slice_count: 1,
+        l1i_sets: 1,
+        l1i_associativity: 1,
+        l1d_sets: 1,
+        l1d_associativity: 1,
+        itlb_sets: 1,
+        itlb_associativity: 1,
+        dtlb_sets: 1,
+        dtlb_associativity: 1,
+        stlb_sets: 1,
+        stlb_associativity: 1,
+        stlb_inclusion: crate::checkpoint::FlexusSTLBInclusion::Inclusive,
+        directory: crate::checkpoint::FlexusDirectoryType::Infinite,
+        directory_slice_count: 1,
+        btb_sets: 1,
+        btb_associativity: 1,
+        no_resizing: false,
+    });
+
+    assert_eq!(shared_cache.blocks.len(), 1);
+    assert_eq!(shared_cache.blocks[0].blocks.len(), 1);
+    assert_eq!(shared_cache.blocks[0].blocks[0].ts, 3);
+    assert_eq!(shared_cache.blocks[0].blocks[0].block_id_with_v, 0b101);
 }

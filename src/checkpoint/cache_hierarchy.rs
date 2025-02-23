@@ -1,6 +1,6 @@
 use super::FlexusParameter;
 use serde_json;
-use shared_cache::SingleSharedCacheSerdeHelper;
+pub use shared_cache::SingleSharedCacheSerdeHelper;
 use zstd::stream::read::Decoder;
 
 use crate::components::cache_hierarchy::common::{
@@ -122,6 +122,10 @@ pub fn process_cache_hierarchy(
     let decoder = Decoder::new(file).unwrap();
 
     let mut shared_cache: SingleSharedCacheSerdeHelper = serde_json::from_reader(decoder).unwrap();
+
+    if flexus_configuration.no_resizing {
+        assert!(private_cache.get_evicted_lines().is_empty());
+    }
 
     for (_, (line, accessor)) in private_cache.get_evicted_lines().iter() {
         shared_cache.process_evicted_cache_line(line, *accessor);

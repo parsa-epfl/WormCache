@@ -1,4 +1,4 @@
-mod cache_hierarchy;
+pub mod cache_hierarchy;
 mod frontend;
 mod mmu;
 
@@ -12,6 +12,12 @@ use serde::{Deserialize, Serialize};
 pub enum FlexusDirectoryType {
     Infinite,
     Standard { sets: usize, associativity: usize },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum FlexusSTLBInclusion {
+    Inclusive,
+    Exclusive,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -34,10 +40,14 @@ pub struct FlexusParameter {
 
     pub stlb_sets: usize,
     pub stlb_associativity: usize,
+    pub stlb_inclusion: FlexusSTLBInclusion,
 
     pub directory: FlexusDirectoryType,
     pub directory_slice_count: usize,
 
     pub btb_sets: usize,
     pub btb_associativity: usize,
+
+    #[serde(skip)]
+    pub no_resizing: bool,
 }

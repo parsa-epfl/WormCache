@@ -48,7 +48,8 @@ pub enum SharedCacheLookupResult {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupAndInsertResult {
-    Hit(bool),             // (is_dirty)
+    Hit(bool), // (is_dirty)
+    Miss,
     InsertedAndCold(bool), // (just_warmed)
     Inserted,
     Unknown(u32), // timestamp difference
@@ -56,15 +57,17 @@ pub enum SharedCacheLookupAndInsertResult {
 
 pub trait SharedCache {
     fn new() -> Self;
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> Option<bool>; // (is_modified)
 
-    // abandon_dirty is here to create a replica to the private cache.
-    fn lookup(
-        &self,
-        request: &CacheBlockRequest,
-        ts: u64,
-        abandon_dirty: bool,
-    ) -> SharedCacheLookupResult; // (is_modified)
+    // Check whether the cache line is in the cache. Do not update the cache.
+    fn peek(&self, request: &CacheBlockRequest) -> bool; // (is_hit)
+
+    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult;
+
+    // Conduct a normal lookup operation to the shared cache, including:
+    // 1. Peek
+    // 2. For read, throw dirty information
+    // 3. For write, invalid the cache line.
+    fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult;
 
     fn insert(
         &self,
@@ -75,13 +78,13 @@ pub trait SharedCache {
         increase_touched_count: bool,
     );
 
+    // A combine with lookup and insert. If the cache line is not in the cache and it is a read, insert it.
     fn lookup_and_insert_on_miss(
         &self,
         request: &CacheBlockRequest,
         ts: u64,
-        abandon_dirty: bool,
         increase_touched_count: bool,
-    ) -> SharedCacheLookupResult; // the lookup result: (is_modified)
+    ) -> SharedCacheLookupResult;
 
     fn warmed_sets_count(&self) -> usize;
 

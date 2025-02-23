@@ -139,15 +139,15 @@ fn paddr_reader(addr: u64) -> u64 {
     buf
 }
 impl<
-        const I_T_A: usize,
-        const I_T_S: usize,
-        const D_T_A: usize,
-        const D_T_S: usize,
-        const S_ENABLED: bool,
-        const S_T_A: usize,
-        const S_T_S: usize,
-        const NO_HUGE_PAGE: bool,
-    >
+    const I_T_A: usize,
+    const I_T_S: usize,
+    const D_T_A: usize,
+    const D_T_S: usize,
+    const S_ENABLED: bool,
+    const S_T_A: usize,
+    const S_T_S: usize,
+    const NO_HUGE_PAGE: bool,
+>
     MemoryManagementUnit<
         arch::AArch64,
         I_T_A,
@@ -200,15 +200,15 @@ impl<
 }
 
 impl<
-        const I_T_A: usize,
-        const I_T_S: usize,
-        const D_T_A: usize,
-        const D_T_S: usize,
-        const S_ENABLED: bool,
-        const S_T_A: usize,
-        const S_T_S: usize,
-        const NO_HUGE_PAGE: bool,
-    > AbstractMMU
+    const I_T_A: usize,
+    const I_T_S: usize,
+    const D_T_A: usize,
+    const D_T_S: usize,
+    const S_ENABLED: bool,
+    const S_T_A: usize,
+    const S_T_S: usize,
+    const NO_HUGE_PAGE: bool,
+> AbstractMMU
     for MemoryManagementUnit<
         arch::AArch64,
         I_T_A,

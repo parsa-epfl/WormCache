@@ -75,9 +75,9 @@ pub type SharedCacheStatisticsWithPlugin =
 
 use super::{
     super::common::{
-        statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
         ParallelHarvardPrivateCache, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
         SerialHarvardPrivateCache, SerialSingleSharedCache, SerialUnifiedPrivateCache,
+        statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
     },
     hierarchy,
 };
@@ -118,7 +118,9 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    { ALLOCATED_CORE_COUNT },
 >;
 
 #[allow(dead_code)]
@@ -141,7 +143,9 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    { ALLOCATED_CORE_COUNT },
 >;
 
 #[allow(dead_code)]
@@ -162,7 +166,9 @@ type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    { ALLOCATED_CORE_COUNT },
 >;
 
 #[allow(dead_code)]
@@ -185,7 +191,9 @@ type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    { ALLOCATED_CORE_COUNT },
 >;
 
 impl CacheModelParser<true, true> for DummyParser {

@@ -34,7 +34,7 @@ use serde_with::serde_as;
 
 use super::MMUFlushMode;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum AddressSpaceID {
     Global,
     NonGlobal(u16),

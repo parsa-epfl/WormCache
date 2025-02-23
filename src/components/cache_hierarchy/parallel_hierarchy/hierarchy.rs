@@ -62,9 +62,11 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
+    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
+    const CORE_COUNT: usize,
 > {
-    mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
+    mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
     directory: Directory<DIRECTORY_SHARD_COUNT>,
@@ -75,15 +77,17 @@ pub struct ParallelMemoryHierarchy<
 }
 
 impl<
-        MMU: AbstractMMU,
-        PCache: PrivateCaches,
-        SCache: SharedCache,
-        const PRECISE_COHERENCE_RECONSTRUCTION: bool,
-        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-        const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-        const DIRECTORY_SHARD_COUNT: usize,
-    >
+    MMU: AbstractMMU,
+    PCache: PrivateCaches,
+    SCache: SharedCache,
+    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const DIRECTORY_SHARD_COUNT: usize,
+    const CORE_COUNT: usize,
+>
     ParallelMemoryHierarchy<
         MMU,
         PCache,
@@ -92,7 +96,9 @@ impl<
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
+        FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
+        CORE_COUNT,
     >
 {
     pub fn new(with_statistics: bool, _quantum_size: u64, directory_run_gc: bool) -> Self {
@@ -113,6 +119,7 @@ impl<
         block_id: u64,
         ts: u64,
         modified: (bool, u64),
+        is_os: bool,
     ) {
         let directory_entry = directory_set_guard.get_or_create(block_id);
 
@@ -124,8 +131,13 @@ impl<
             if parameter::ENABLE_CACHE_LINE_HISTORY {
                 let his = CacheLineCoherenceHistory::global_get_block_history(block_id).unwrap();
                 his.value().print_history();
-                println!("Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: false, Share List: {:?}",
-                    CacheOperationType::Drop, cache_id, ts, sharer.iter_ones().collect::<Vec<usize>>() );
+                println!(
+                    "Failed operation: {:?}, Cache ID: {}, Timestamp: {}, Refilled: false, Share List: {:?}",
+                    CacheOperationType::Drop,
+                    cache_id,
+                    ts,
+                    sharer.iter_ones().collect::<Vec<usize>>()
+                );
             }
             panic!();
         }
@@ -163,7 +175,7 @@ impl<
                 Statistics::global_record(
                     PCache::find_cache_info_by_cache_id(cache_id).0,
                     EventType::SharedCacheAccess,
-                    false,
+                    is_os,
                 );
             }
 
@@ -200,13 +212,14 @@ impl<
 
     pub fn information() -> String {
         format!(
-            "Private Cache: {}\nShared Cache: {}\nPrecise Coherence Reconstruction: {} \n Fill Shared Cache on Filling Private Cache: {} \n Fill Shared Cache on Private Cache Clean Eviction: {} \n Fill Shared Cache on Private Cache Dirty Eviction: {}",
+            "Private Cache: {}\nShared Cache: {}\nPrecise Coherence Reconstruction: {} \nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
             PCache::information(),
             SCache::information(),
             PRECISE_COHERENCE_RECONSTRUCTION,
             FILL_SCACHE_ON_FILLING_PCACHE,
             FILL_SCACLE_ON_PCACHE_EVICTION,
-            FILL_SCACHE_ON_PCACHE_WRITEBACK
+            FILL_SCACHE_ON_PCACHE_WRITEBACK,
+            FILL_SCACLE_ON_PCACPE_REPLICA_CREATION
         )
     }
 

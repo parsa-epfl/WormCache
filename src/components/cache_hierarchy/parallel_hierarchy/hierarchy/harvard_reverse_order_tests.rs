@@ -33,15 +33,14 @@ use std::collections::HashMap;
 
 use crate::components::cache_hierarchy::common::{
     CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, SharedCache,
-    SharedCacheLookupResult,
 };
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
 use crate::parameter;
 
 use super::super::super::common::{
-    statistics::ZeroSharedCacheSetStatistics, ParallelHarvardPrivateCache,
-    ParallelSingleSharedCache,
+    ParallelHarvardPrivateCache, ParallelSingleSharedCache,
+    statistics::ZeroSharedCacheSetStatistics,
 };
 use super::ParallelMemoryHierarchy;
 
@@ -66,7 +65,9 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    32,
 >;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -90,22 +91,16 @@ impl MH {
             return BlockPosition::InPrivateCache(private_owner);
         }
 
-        if matches!(
-            // self.shared_cache
-            //     .lookup(0, block_id, 0, 0, false, CacheAccessType::DataRead, false)
-            //     .0,
-            self.shared_cache.lookup(
-                &CacheBlockRequest {
-                    core_id: 0,
-                    block_id,
-                    access_type: CacheAccessType::DataRead,
-                    is_os: false,
-                },
-                0,
-                false,
-            ),
-            SharedCacheLookupResult::Hit(_)
-        ) {
+        if
+        // self.shared_cache
+        //     .lookup(0, block_id, 0, 0, false, CacheAccessType::DataRead, false)
+        //     .0,
+        self.shared_cache.peek(&CacheBlockRequest {
+            core_id: 0,
+            block_id,
+            access_type: CacheAccessType::DataRead,
+            is_os: false,
+        }) {
             return BlockPosition::InSharedCache;
         }
         BlockPosition::NotInCache

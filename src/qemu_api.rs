@@ -11,7 +11,7 @@
 pub const _INTTYPES_H: u32 = 1;
 pub const _FEATURES_H: u32 = 1;
 pub const _DEFAULT_SOURCE: u32 = 1;
-pub const __GLIBC_USE_ISOC2X: u32 = 0;
+pub const __GLIBC_USE_ISOC23: u32 = 0;
 pub const __USE_ISOC11: u32 = 1;
 pub const __USE_ISOC99: u32 = 1;
 pub const __USE_ISOC95: u32 = 1;
@@ -29,12 +29,13 @@ pub const __WORDSIZE: u32 = 64;
 pub const __WORDSIZE_TIME64_COMPAT32: u32 = 1;
 pub const __SYSCALL_WORDSIZE: u32 = 64;
 pub const __TIMESIZE: u32 = 64;
+pub const __USE_TIME_BITS64: u32 = 1;
 pub const __USE_MISC: u32 = 1;
 pub const __USE_ATFILE: u32 = 1;
 pub const __USE_FORTIFY_LEVEL: u32 = 0;
 pub const __GLIBC_USE_DEPRECATED_GETS: u32 = 0;
 pub const __GLIBC_USE_DEPRECATED_SCANF: u32 = 0;
-pub const __GLIBC_USE_C2X_STRTOL: u32 = 0;
+pub const __GLIBC_USE_C23_STRTOL: u32 = 0;
 pub const _STDC_PREDEF_H: u32 = 1;
 pub const __STDC_IEC_559__: u32 = 1;
 pub const __STDC_IEC_60559_BFP__: u32 = 201404;
@@ -43,7 +44,7 @@ pub const __STDC_IEC_60559_COMPLEX__: u32 = 201404;
 pub const __STDC_ISO_10646__: u32 = 201706;
 pub const __GNU_LIBRARY__: u32 = 6;
 pub const __GLIBC__: u32 = 2;
-pub const __GLIBC_MINOR__: u32 = 39;
+pub const __GLIBC_MINOR__: u32 = 40;
 pub const _SYS_CDEFS_H: u32 = 1;
 pub const __glibc_c99_flexarr_available: u32 = 1;
 pub const __LDOUBLE_REDIRECTS_TO_FLOAT128_ABI: u32 = 0;
@@ -51,10 +52,10 @@ pub const __HAVE_GENERIC_SELECTION: u32 = 1;
 pub const _STDINT_H: u32 = 1;
 pub const __GLIBC_USE_LIB_EXT2: u32 = 0;
 pub const __GLIBC_USE_IEC_60559_BFP_EXT: u32 = 0;
-pub const __GLIBC_USE_IEC_60559_BFP_EXT_C2X: u32 = 0;
+pub const __GLIBC_USE_IEC_60559_BFP_EXT_C23: u32 = 0;
 pub const __GLIBC_USE_IEC_60559_EXT: u32 = 0;
 pub const __GLIBC_USE_IEC_60559_FUNCS_EXT: u32 = 0;
-pub const __GLIBC_USE_IEC_60559_FUNCS_EXT_C2X: u32 = 0;
+pub const __GLIBC_USE_IEC_60559_FUNCS_EXT_C23: u32 = 0;
 pub const __GLIBC_USE_IEC_60559_TYPES_EXT: u32 = 0;
 pub const _BITS_TYPES_H: u32 = 1;
 pub const _BITS_TYPESIZES_H: u32 = 1;
@@ -874,7 +875,7 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the\n page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a\n specific page table entry. For huge pages or translation error, you will see\n -1 in the array ahead of time.\n\n This function can be only called from threads that run a vCPU. Otherwise, it\n will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way\n to optimize the storage.\n"]
     pub fn qemu_plugin_hwaddr_translate_walk_trace(hwaddr: *const qemu_plugin_hwaddr)
-        -> *const u64;
+    -> *const u64;
 }
 unsafe extern "C" {
     #[doc = " qemu_plugin_read_physical_memory - returns the value of the given physical\n memory address.\n\n This function calls cpu_physical_memory_rw to read the physical memory.\n\n This function will not trigger memory access plugin."]
@@ -922,7 +923,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[doc = " qemu_plugin_savevm - save the VM state.\n @name: the name of the snapshot.\n\n This function is a wrapper of the QEMU function `save_snapshot`.\n It prints the error directly to the console."]
-    pub fn qemu_plugin_savevm(name: *const ::std::os::raw::c_char);
+    pub fn qemu_plugin_savevm(name: *const ::std::os::raw::c_char, use_xdelta: bool);
 }
 pub type qemu_plugin_event_loop_poll_cb_t = ::std::option::Option<unsafe extern "C" fn()>;
 unsafe extern "C" {
@@ -971,5 +972,5 @@ pub type qemu_plugin_flushing_local_tlb_t = ::std::option::Option<
 >;
 unsafe extern "C" {
     pub fn qemu_plugin_register_flushing_local_tlb_cb(cb: qemu_plugin_flushing_local_tlb_t)
-        -> bool;
+    -> bool;
 }

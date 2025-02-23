@@ -30,14 +30,14 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use perf_event::Builder;
-use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
+use worm_cache::components::cache_hierarchy::CacheBlockRequest;
+use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
 use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
 use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
+use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
-use worm_cache::components::cache_hierarchy::CacheBlockRequest;
-use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::debug::statistics::Statistics;
 
 use worm_cache::parameter;
@@ -59,7 +59,9 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    1,
 >;
 
 #[allow(dead_code)]

@@ -74,7 +74,7 @@ pub fn init_heap_array<T: Sized + std::fmt::Debug, const N: usize>(
     res.into_boxed_slice().try_into().unwrap()
 }
 
-use libc::{clock_gettime, timespec, CLOCK_MONOTONIC};
+use libc::{CLOCK_MONOTONIC, clock_gettime, timespec};
 
 pub fn get_monotonic_ts() -> u64 {
     let mut ts = timespec {

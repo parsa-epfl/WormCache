@@ -37,16 +37,18 @@ use crate::{
     arch::AArch64,
     components::{
         cache_hierarchy::{
-            common::{CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult},
-            mmu::{self, AbstractMMU, MMUTranslationResult},
             CacheBlockRequest, MemoryHierarchy,
+            common::{
+                CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult,
+            },
+            mmu::{self, AbstractMMU, MMUTranslationResult},
         },
         debug::statistics::{EventType, Statistics},
     },
     parameter,
 };
 
-use super::super::common::{statistics::ZeroSharedCacheSetStatistics, SerialSingleSharedCache};
+use super::super::common::{SerialSingleSharedCache, statistics::ZeroSharedCacheSetStatistics};
 
 pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
     pub shared_cache: SerialSingleSharedCache<
@@ -128,7 +130,6 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         let is_os = request.is_os();
         let core_id = request.core_id;
         let block_id = request.block_id;
-        let access_type = request.access_type.clone();
 
         Statistics::global_record(core_id, EventType::DataAccess, is_os);
         Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
@@ -137,11 +138,10 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             &CacheBlockRequest {
                 core_id,
                 block_id,
-                access_type,
+                access_type: CacheAccessType::DataRead, // Read does not have impact on the tag array.
                 is_os,
             },
             ts,
-            true,
             true,
         );
 

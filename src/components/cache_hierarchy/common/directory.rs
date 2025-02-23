@@ -34,8 +34,8 @@ use serde::Deserialize;
 use spin::mutex::SpinMutex;
 use spin::mutex::SpinMutexGuard;
 
-use bitvec::prelude::*;
 use bitvec::BitArr;
+use bitvec::prelude::*;
 use serde::Serialize;
 use zstd::{Decoder, Encoder};
 
