@@ -373,7 +373,6 @@ fn serialize_a_set(set: &PrivateCacheSet, number_of_set: usize) -> Vec<FlexusCac
     return sorted_lines
         .iter()
         .filter(|line| line.block_id_with_v & 0x1 == 1)
-        .rev()
         .map(|line| FlexusCacheLine {
             tag: (line.block_id_with_v >> 1) >> set_bits,
             writable: line.modified,

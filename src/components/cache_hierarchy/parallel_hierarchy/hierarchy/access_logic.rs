@@ -352,8 +352,7 @@ impl<
             miss_directory_guard.sharers.set(p_cache_id, true);
 
             if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION {
-                self.shared_cache
-                    .insert(core_id, block_id, ts, false, true);
+                self.shared_cache.insert(core_id, block_id, ts, false, true);
             }
 
             // get the lock of the private cache for refilling.
