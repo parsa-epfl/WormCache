@@ -63,6 +63,11 @@ use parameter::PluginList;
 use rustc_hash::FxHashMap;
 
 use std::ffi;
+use std::io::Write;
+
+#[unsafe(link_section = ".rodata")]
+#[unsafe(no_mangle)]
+static PARAMETER_RS: &str = include_str!("./parameter.rs");
 
 #[allow(non_upper_case_globals)]
 #[unsafe(no_mangle)]
@@ -199,6 +204,12 @@ unsafe extern "C" fn qemu_plugin_install(
         }
 
         chronic_behavior_init(&options);
+
+        // Dump the PARAMETER_RS to a log file.
+        let mut log_file = std::fs::File::create("parameter.rs").unwrap();
+        log_file.write_all(PARAMETER_RS.as_bytes()).unwrap();
+        drop(log_file);
+
         0
     }
 }
