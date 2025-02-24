@@ -433,9 +433,7 @@ impl TAGEPredictor {
         result: BranchResolutionResult,
         _target: u64,
     ) -> BranchPredictorResult {
-        // we only update the predictor when the branch is conditional, but we update the history all the time.
-        let is_conditional = result.branch_type == BranchType::Conditional;
-        assert!(is_conditional);
+        // we only update the predictor when the branch is predicted as conditional.
         let taken = result.is_taken;
         let prediction_result = self.is_cond_taken(pc);
         let mut allocation = prediction_result.result != taken && prediction_result.bank > 0;
@@ -593,7 +591,11 @@ impl TAGEPredictor {
         // });
 
         // before returning, update the history.
-        self.update_history(pc, taken);
+
+        if result.branch_type == BranchType::Conditional {
+            // Only update the history for conditional branches.
+            self.update_history(pc, taken);
+        }
 
         if prediction_result.result != taken {
             return BranchPredictorResult::Mispredict;
