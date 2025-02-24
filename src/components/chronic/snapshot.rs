@@ -120,23 +120,23 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
         PERIODIC_SNAPSHOT_CURRENT_CYCLES += diff;
 
         if PERIODIC_SNAPSHOT_CURRENT_CYCLES >= PERIODIC_SNAPSHOT_THRESHOLD {
-            let mut miss_file = STATISTICS_QUANTUM_FILE.get().unwrap().lock();
-            // dump the statistics.
-            for core_id in 0..parameter::CORE_COUNT {
-                Statistics::global_set(
-                    core_id as u32,
-                    EventType::TargetLocalCycle,
-                    false,
-                    qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
-                );
-            }
+            // let mut miss_file = STATISTICS_QUANTUM_FILE.get().unwrap().lock();
+            // // dump the statistics.
+            // for core_id in 0..parameter::CORE_COUNT {
+            //     Statistics::global_set(
+            //         core_id as u32,
+            //         EventType::TargetLocalCycle,
+            //         false,
+            //         qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+            //     );
+            // }
 
-            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                miss_file.write_all(stat.as_bytes()).unwrap();
-                miss_file.write_all(b"\n").unwrap();
-            }
+            // for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+            //     miss_file.write_all(stat.as_bytes()).unwrap();
+            //     miss_file.write_all(b"\n").unwrap();
+            // }
 
-            drop(miss_file);
+            // drop(miss_file);
 
             let snapshot_name = format!(
                 "{}_{}",
