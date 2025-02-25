@@ -38,8 +38,8 @@ use super::{
 
 use std::cell::UnsafeCell;
 
-impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCLUSIVE: bool>
-    SharedCacheSet<WAY, SET, EXCLUSIVE, S>
+impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCLUSIVE: bool, const PRECISE_TS: bool>
+    SharedCacheSet<WAY, SET, EXCLUSIVE, PRECISE_TS, S>
 {
     fn _fold(&self, other: &Self) -> Self {
         // take the two arrays, combine them, and sort them by the timestamp. Only keel the elements with highest timestamp.
@@ -59,6 +59,8 @@ impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCL
 
             access_count: self.access_count + other.access_count,
 
+            // modifying_history: vec![],
+
             // clean the statistics
             statistics: Default::default(),
         }
@@ -70,12 +72,13 @@ struct PrivateSharedCache<
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
+    const PRECISE_TS: bool,
 > {
-    blocks: Box<[SharedCacheSet<WAY, SET, EXCLUSIVE, S>; SET]>,
+    blocks: Box<[SharedCacheSet<WAY, SET, EXCLUSIVE, PRECISE_TS, S>; SET]>,
 }
 
-impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
-    PrivateSharedCache<S, SET, WAY, EXCLUSIVE>
+impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool, const PRECISE_TS: bool>
+    PrivateSharedCache<S, SET, WAY, EXCLUSIVE, PRECISE_TS>
 {
     fn new() -> Self {
         Self {
@@ -83,9 +86,9 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         }
     }
 
-    fn invalidate(&mut self, block_id: u64, ts: u64) -> SharedCacheLookupResult {
+    fn invalidate(&mut self, block_id: u64, ts: u64, core_id: u32) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].invalidate(block_id, ts)
+        self.blocks[set_idx].invalidate(block_id, ts, core_id)
     }
 
     fn lookup(&mut self, r: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
@@ -122,8 +125,8 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
                 SharedCacheLookupResult::ColdMiss
             }
             SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
-            SharedCacheLookupAndInsertResult::Unknown(unknown) => {
-                SharedCacheLookupResult::Unknown(unknown)
+            SharedCacheLookupAndInsertResult::Unknown(unknown, is_modified) => {
+                SharedCacheLookupResult::Unknown(unknown, is_modified)
             }
         }
     }
@@ -188,8 +191,9 @@ pub struct ReplicatedSharedCache<
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
+    const COHERENCE_FOLLOW_TS: bool,
 > {
-    blocks: [UnsafeCell<PrivateSharedCache<S, SET, WAY, EXCLUSIVE>>; CORE_COUNT],
+    blocks: [UnsafeCell<PrivateSharedCache<S, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>>; CORE_COUNT],
 }
 
 impl<
@@ -198,7 +202,8 @@ impl<
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
-> SharedCache for ReplicatedSharedCache<S, CORE_COUNT, SET, WAY, EXCLUSIVE>
+    const COHERENCE_FOLLOW_TS: bool,
+> SharedCache for ReplicatedSharedCache<S, CORE_COUNT, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>
 {
     fn new() -> Self {
         Self {
@@ -214,7 +219,7 @@ impl<
 
     fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
-        pcache.invalidate(block_id, ts)
+        pcache.invalidate(block_id, ts, core_id)
     }
 
     fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {

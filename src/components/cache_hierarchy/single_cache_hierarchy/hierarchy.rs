@@ -56,6 +56,7 @@ pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
+        false,
     >,
 
     mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
@@ -151,7 +152,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
                 SharedCacheLookupResult::Hit(_) => EventType::SharedCacheAccess,
                 SharedCacheLookupResult::Miss => EventType::SharedCacheMiss,
                 SharedCacheLookupResult::ColdMiss => EventType::SharedCacheColdMiss,
-                SharedCacheLookupResult::Unknown(_) => EventType::UnknownSharedCacheMisses,
+                SharedCacheLookupResult::Unknown(_, _) => EventType::UnknownSharedCacheMisses,
             },
             is_os,
         );
@@ -176,7 +177,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
-            SharedCacheLookupResult::Unknown(_) => CacheHierarchyAccessResult::Unknown,
+            SharedCacheLookupResult::Unknown(_, _) => CacheHierarchyAccessResult::Unknown,
         }
     }
 

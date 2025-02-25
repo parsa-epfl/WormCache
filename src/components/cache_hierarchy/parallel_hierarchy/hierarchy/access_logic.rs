@@ -148,63 +148,41 @@ impl<
                 false
             };
 
+            // For MESI coherence protocol, we need to change the access type to write to get the writable permission.
+            let request_to_llc = CacheBlockRequest {
+                core_id,
+                block_id,
+                access_type: match r.access_type {
+                    CacheAccessType::InstructionFetch => CacheAccessType::InstructionFetch,
+                    CacheAccessType::DataRead => {
+                        if ENABLE_EXCLUSIVE_CACHE_STATE {
+                            CacheAccessType::DataWrite
+                        } else {
+                            CacheAccessType::DataRead
+                        }
+                    }
+                    CacheAccessType::DataWrite => CacheAccessType::DataWrite,
+                    CacheAccessType::PageWalkRead => CacheAccessType::PageWalkRead,
+                    CacheAccessType::PrefetchRead => {
+                        if ENABLE_EXCLUSIVE_CACHE_STATE {
+                            CacheAccessType::PrefetchWrite
+                        } else {
+                            CacheAccessType::PrefetchRead
+                        }
+                    }
+                    CacheAccessType::PrefetchWrite => CacheAccessType::PrefetchWrite,
+                },
+                is_os,
+            };
+
             let shared_cache_result = if bring_into_shared_cache {
                 // here we take the ownership of the cache line from the shared cache to the private cache.
                 // So abandon_dirty is true.
                 // We also don't need to write through to the LLC, so the is_store is false.
-                let lookup_result = self.shared_cache.lookup_and_insert_on_miss(r, ts, true);
-
-                match lookup_result {
-                    SharedCacheLookupResult::Hit(modified) => (Some(true), modified),
-                    SharedCacheLookupResult::Miss => (Some(false), false),
-                    SharedCacheLookupResult::ColdMiss => {
-                        if self.with_statistics {
-                            Statistics::global_record(
-                                core_id,
-                                EventType::SharedCacheColdMiss,
-                                is_os,
-                            );
-                        }
-                        (Some(false), false)
-                    }
-                    SharedCacheLookupResult::Unknown(_) => {
-                        if self.with_statistics {
-                            Statistics::global_record(
-                                core_id,
-                                EventType::UnknownSharedCacheMisses,
-                                is_os,
-                            );
-                        }
-                        (None, false)
-                    }
-                }
+                self.shared_cache
+                    .lookup_and_insert_on_miss(&request_to_llc, ts, true)
             } else {
-                let lookup_result = self.shared_cache.lookup(r, ts);
-
-                match lookup_result {
-                    SharedCacheLookupResult::Hit(modified) => (Some(true), modified),
-                    SharedCacheLookupResult::Miss => (Some(false), false),
-                    SharedCacheLookupResult::ColdMiss => {
-                        if self.with_statistics {
-                            Statistics::global_record(
-                                core_id,
-                                EventType::SharedCacheColdMiss,
-                                is_os,
-                            );
-                        }
-                        (Some(false), false)
-                    }
-                    SharedCacheLookupResult::Unknown(_) => {
-                        if self.with_statistics {
-                            Statistics::global_record(
-                                core_id,
-                                EventType::UnknownSharedCacheMisses,
-                                is_os,
-                            );
-                        }
-                        (None, false)
-                    }
-                }
+                self.shared_cache.lookup(&request_to_llc, ts)
             };
 
             miss_directory_guard.update_lru_ts(ts);
@@ -212,15 +190,29 @@ impl<
             miss_directory_guard.insertion_ts = ts; // this is the moment when the block is inserted to the directory.
 
             if is_store && PRECISE_COHERENCE_RECONSTRUCTION {
-                miss_directory_guard.recent_writer_ts = ts;
+                if miss_directory_guard.recent_writer_ts < ts {
+                    miss_directory_guard.recent_writer_ts = ts;
+                }
             }
 
-            let modified = is_store || shared_cache_result.1; // If this is a write operation, or the replica in LLC is modified, the private cache line should be modified.
+            let modified = match shared_cache_result {
+                SharedCacheLookupResult::Hit(is_modified) => is_store || is_modified,
+                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => is_store,
+                SharedCacheLookupResult::Unknown(_, _) => false,
+            };
 
-            let writable = if !parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
-                modified
-            } else {
-                !is_instruction && !is_page_walk
+            let writable = match shared_cache_result {
+                SharedCacheLookupResult::Hit(is_modified) => {
+                    if is_modified {
+                        true
+                    } else {
+                        request_to_llc.is_store()
+                    }
+                }
+                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                    request_to_llc.is_store()
+                }
+                SharedCacheLookupResult::Unknown(_, _) => false,
             };
 
             // directory keep the writable information.
@@ -278,9 +270,9 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            return match shared_cache_result.0 {
-                Some(true) => CacheHierarchyAccessResult::HitInSharedCache,
-                Some(false) => {
+            return match shared_cache_result {
+                SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
                     if !is_prefetch && self.with_statistics {
                         if is_page_walk {
                             Statistics::global_record(
@@ -313,7 +305,7 @@ impl<
 
                     CacheHierarchyAccessResult::Miss
                 }
-                None => CacheHierarchyAccessResult::Unknown,
+                SharedCacheLookupResult::Unknown(_, _) => CacheHierarchyAccessResult::Unknown,
             };
         }
 
@@ -564,9 +556,19 @@ impl<
                     }
                 }
 
+                // Because a write operation has happened, we need to invalidate the shared cache.
+                let shared_cahce_invalidation_result =
+                    self.shared_cache.invalidate(core_id, block_id, ts);
+
+                let llc_invalidation_successful = match shared_cahce_invalidation_result {
+                    SharedCacheLookupResult::Hit(_) => true,
+                    SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => true,
+                    SharedCacheLookupResult::Unknown(_, _) => false,
+                };
+
                 let set_for_refill_lock = set_for_refill_lock.unwrap();
 
-                let evicted = if incoming_sharer.count_ones() == 0 {
+                let evicted = if incoming_sharer.count_ones() == 0 && llc_invalidation_successful {
                     // The writable permission is allocated.
                     miss_directory_guard.shared = false;
 
@@ -625,9 +627,6 @@ impl<
                 // update the directory.
                 miss_directory_guard.update_lru_ts(ts);
                 miss_directory_guard.sharers = incoming_sharer;
-
-                // Because a write operation has happened, we need to invalidate the shared cache.
-                self.shared_cache.invalidate(core_id, block_id, ts);
 
                 // We have a new write exposed to the directory.
                 if PRECISE_COHERENCE_RECONSTRUCTION {
