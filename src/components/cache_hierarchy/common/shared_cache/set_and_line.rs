@@ -68,21 +68,30 @@ pub struct SharedCacheSet<
     pub access_count: u64,
 
     pub statistics: S,
-
     // #[serde(skip)]
     // pub modifying_history: Vec<(u64, u64, u32, bool, bool)>, // (block_id, ts, core_id, to_what, succeed), recorded on a cache line's modified state is updated.
 }
 
-impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, const COHERENCE_FOLLOW_TS: bool, S: SharedCacheSetStatistics> Default
-    for SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>
+impl<
+    const WAY: usize,
+    const SET: usize,
+    const EXCLUSIVE: bool,
+    const COHERENCE_FOLLOW_TS: bool,
+    S: SharedCacheSetStatistics,
+> Default for SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, const COHERENCE_FOLLOW_TS: bool, S: SharedCacheSetStatistics>
-    SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>
+impl<
+    const WAY: usize,
+    const SET: usize,
+    const EXCLUSIVE: bool,
+    const COHERENCE_FOLLOW_TS: bool,
+    S: SharedCacheSetStatistics,
+> SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>
 {
     pub fn new() -> Self {
         Self {
@@ -99,13 +108,18 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, const COHERENCE_
             access_count: 0,
 
             // modifying_history: vec![],
-
             statistics: S::default(),
         }
     }
 
     pub fn from_without_statistics(
-        other: SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, ZeroSharedCacheSetStatistics>,
+        other: SharedCacheSet<
+            WAY,
+            SET,
+            EXCLUSIVE,
+            COHERENCE_FOLLOW_TS,
+            ZeroSharedCacheSetStatistics,
+        >,
     ) -> Self {
         Self {
             blocks: other.blocks,
@@ -119,7 +133,8 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, const COHERENCE_
 
     pub fn without_statistics(
         &self,
-    ) -> SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, ZeroSharedCacheSetStatistics> {
+    ) -> SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, ZeroSharedCacheSetStatistics>
+    {
         SharedCacheSet {
             blocks: self.blocks.clone(),
             touched_count: self.touched_count,

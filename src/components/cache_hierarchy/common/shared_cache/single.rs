@@ -62,8 +62,14 @@ pub struct SingleSharedCache<
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, const EXCLUSIVE: bool, const COHERENCE_FOLLOW_TS: bool> {
-    blocks: Vec<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, ZeroSharedCacheSetStatistics>>,
+pub struct SingleSharedCacheSerdeHelper<
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+    const COHERENCE_FOLLOW_TS: bool,
+> {
+    blocks:
+        Vec<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, ZeroSharedCacheSetStatistics>>,
     warmed_sets: usize,
 }
 
@@ -90,7 +96,9 @@ impl<
         }
     }
 
-    pub fn to_serialize_helper(&self) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS> {
+    pub fn to_serialize_helper(
+        &self,
+    ) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS> {
         SingleSharedCacheSerdeHelper {
             blocks: self
                 .blocks
@@ -121,8 +129,12 @@ impl<
 
     fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].inner().invalidate(block_id, ts, core_id);
-        return self.blocks[set_idx].inner().invalidate(block_id, ts, core_id);
+        self.blocks[set_idx]
+            .inner()
+            .invalidate(block_id, ts, core_id);
+        return self.blocks[set_idx]
+            .inner()
+            .invalidate(block_id, ts, core_id);
     }
 
     fn peek(&self, r: &CacheBlockRequest) -> bool {
@@ -244,8 +256,32 @@ impl<
     }
 }
 
-pub type ParallelSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool, const COHERENCE_FOLLOW_TS: bool> =
-    SingleSharedCache<S, SpinMutex<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>>, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>;
+pub type ParallelSingleSharedCache<
+    S,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+    const COHERENCE_FOLLOW_TS: bool,
+> = SingleSharedCache<
+    S,
+    SpinMutex<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>>,
+    SET,
+    WAY,
+    EXCLUSIVE,
+    COHERENCE_FOLLOW_TS,
+>;
 
-pub type SerialSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool,  const COHERENCE_FOLLOW_TS: bool> =
-    SingleSharedCache<S, UnsafeCell<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>>, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>;
+pub type SerialSingleSharedCache<
+    S,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+    const COHERENCE_FOLLOW_TS: bool,
+> = SingleSharedCache<
+    S,
+    UnsafeCell<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>>,
+    SET,
+    WAY,
+    EXCLUSIVE,
+    COHERENCE_FOLLOW_TS,
+>;

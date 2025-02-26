@@ -38,8 +38,13 @@ use super::{
 
 use std::cell::UnsafeCell;
 
-impl<S: SharedCacheSetStatistics, const WAY: usize, const SET: usize, const EXCLUSIVE: bool, const PRECISE_TS: bool>
-    SharedCacheSet<WAY, SET, EXCLUSIVE, PRECISE_TS, S>
+impl<
+    S: SharedCacheSetStatistics,
+    const WAY: usize,
+    const SET: usize,
+    const EXCLUSIVE: bool,
+    const PRECISE_TS: bool,
+> SharedCacheSet<WAY, SET, EXCLUSIVE, PRECISE_TS, S>
 {
     fn _fold(&self, other: &Self) -> Self {
         // take the two arrays, combine them, and sort them by the timestamp. Only keel the elements with highest timestamp.
@@ -77,8 +82,13 @@ struct PrivateSharedCache<
     blocks: Box<[SharedCacheSet<WAY, SET, EXCLUSIVE, PRECISE_TS, S>; SET]>,
 }
 
-impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool, const PRECISE_TS: bool>
-    PrivateSharedCache<S, SET, WAY, EXCLUSIVE, PRECISE_TS>
+impl<
+    S: SharedCacheSetStatistics,
+    const SET: usize,
+    const WAY: usize,
+    const EXCLUSIVE: bool,
+    const PRECISE_TS: bool,
+> PrivateSharedCache<S, SET, WAY, EXCLUSIVE, PRECISE_TS>
 {
     fn new() -> Self {
         Self {
@@ -193,7 +203,8 @@ pub struct ReplicatedSharedCache<
     const EXCLUSIVE: bool,
     const COHERENCE_FOLLOW_TS: bool,
 > {
-    blocks: [UnsafeCell<PrivateSharedCache<S, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>>; CORE_COUNT],
+    blocks:
+        [UnsafeCell<PrivateSharedCache<S, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>>; CORE_COUNT],
 }
 
 impl<
