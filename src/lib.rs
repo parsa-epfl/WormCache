@@ -111,13 +111,16 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
                 print!("{}", c as u8 as char);
                 i += 1;
             }
+
+            panic!();
         }
 
         let name = converted_name.unwrap();
 
+        let name = format!("{}.uarch", name);
         // create a folder for the name.
-        std::fs::create_dir_all(name).unwrap();
-        PluginList::serialize(name);
+        std::fs::create_dir_all(&name).unwrap();
+        PluginList::serialize(&name);
     }
 }
 
@@ -125,7 +128,8 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
     unsafe {
         let name = ffi::CStr::from_ptr(name).to_str().unwrap();
-        PluginList::deserialize(name);
+        let name = format!("{}.uarch", name);
+        PluginList::deserialize(&name);
     }
 }
 
