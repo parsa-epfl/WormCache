@@ -292,12 +292,9 @@ fn load_tlb_json(value: serde_json::Value, is_instruction: bool) -> SerializedTL
         let mut fully_assoaicative_tlb: FullyAssociativeTLB = serde_json::from_value(value).unwrap();
 
         // process the deferred insertions in the TLB.
-        fully_assoaicative_tlb.handle_deferred_insertion();
-        // remove the invalid entries.
-        fully_assoaicative_tlb.collect_garbage();
+        fully_assoaicative_tlb.run_lru();
 
         // do the type conversion.
-
         let entries: Vec<_> = fully_assoaicative_tlb
             .elements.into_iter().map(|(hash, entry)| {
                 let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
@@ -356,7 +353,7 @@ pub fn process_mmus(
     let i_tlbs: Vec<SerializedTLB> = match mmus.clone() {
         serde_json::Value::Array(vec) => vec
             .iter()
-            .map(|mmu| load_tlb_json(mmu.clone(), true))
+            .map(|mmu| load_tlb_json(mmu["itlb"].clone(), true))
             .collect::<Vec<_>>(),
         _ => panic!("The MMU checkpoint is not an array."),
     };
@@ -364,7 +361,7 @@ pub fn process_mmus(
     let d_tlbs: Vec<SerializedTLB> = match mmus.clone() {
         serde_json::Value::Array(vec) => vec
             .iter()
-            .map(|mmu| load_tlb_json(mmu.clone(), false))
+            .map(|mmu| load_tlb_json(mmu["dtlb"].clone(), false))
             .collect::<Vec<_>>(),
         _ => panic!("The MMU checkpoint is not an array."),
     };

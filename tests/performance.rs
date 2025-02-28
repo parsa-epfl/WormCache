@@ -248,3 +248,39 @@ fn test_64_way_tlb_access_time() {
     println!("FA TLB: {}", hit);
     assert!(ave_count < 90);
 }
+
+#[test]
+fn test_64_way_tlb_defer_insertion_time() {
+    let mut counter = Builder::new().build().unwrap();
+
+    let mut ts: u64 = 1;
+    let mut vpn = 42;
+
+    let mut tlb_set = FullyAssociativeTLB::new(64);
+
+    // populate elements
+    for _ in 0..64 {
+        tlb_set.insert(vpn, NonGlobal(1), ts, vpn);
+        ts += 1;
+        vpn += 1;
+    }
+
+    counter.enable().unwrap();
+
+    for _ in 0..2048 {
+        for _ in 0..64 {
+            tlb_set.deferred_insert(vpn, NonGlobal(1), ts, vpn * 12);
+            ts += 1;
+            vpn += 1;
+            vpn %= 64;
+        }
+    }
+
+    counter.disable().unwrap();
+
+    let count = counter.read().unwrap();
+    let ave_count = count / (64 * 2048);
+
+    println!("FA TLB Insertion: {}", ave_count);
+    assert!(ave_count < 80);
+}

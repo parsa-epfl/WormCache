@@ -31,9 +31,6 @@ pub struct FunctionalWarmingMMU<
     htbl_1g: HashMap<u64, (AddressSpaceID, u64)>,
     last_ttbr: u64,
     arch: std::marker::PhantomData<ARCH>,
-
-    insertion_since_last_igc: usize,
-    insertion_since_last_dgc: usize,
 }
 
 fn paddr_reader(addr: u64) -> u64 {
@@ -65,22 +62,11 @@ impl<
         self.stlb.insert(vpn, asid, ppn, ts, is_instruction);
 
         if is_instruction {
-            self.itlb.insert(vpn, asid, ts, ppn);
-            self.insertion_since_last_igc += 1;
-            if self.insertion_since_last_igc == 512 {
-                self.itlb.collect_garbage();
-                self.insertion_since_last_igc = 0;
-            }
-
+            self.itlb.deferred_insert(vpn, asid, ts, ppn);
             // Set the L0 ITLB.
             self.l0_itlb = (vpn, asid, ppn);
         } else {
-            self.dtlb.insert(vpn, asid, ts, ppn);
-            self.insertion_since_last_dgc += 1;
-            if self.insertion_since_last_dgc == 512 {
-                self.dtlb.collect_garbage();
-                self.insertion_since_last_dgc = 0;
-            }
+            self.dtlb.deferred_insert(vpn, asid, ts, ppn);
         }
     }
 
@@ -123,8 +109,6 @@ impl<
             htbl_1g: HashMap::default(),
             last_ttbr: u64::MAX,
             arch: std::marker::PhantomData,
-            insertion_since_last_igc: 0,
-            insertion_since_last_dgc: 0,
         }
     }
 
@@ -160,7 +144,7 @@ impl<
         }
 
         // First, we check the L2 TLB.
-        if let Some(ppn) = self.stlb.peek(vpn, asid) {
+        if let Some((ppn, asid)) = self.stlb.peek_and_increase_ts_on_hit(vpn, asid, ts) {
             if is_instruction {
                 self.itlb.deferred_insert(vpn, asid, ts, ppn);
             } else {
@@ -178,7 +162,7 @@ impl<
 
         // Alrignt. Then we have to check the L1 TLB, which has higher associativity.
         if is_instruction {
-            self.itlb.handle_deferred_insertion();
+            self.itlb.run_lru();
             if let Some(ppn) = self.itlb.lookup(vpn, raw_asid as u16, ts) {
                 if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
                     let walker_pa = self.page_walk(va, tcr);
@@ -189,7 +173,7 @@ impl<
                 return MMUTranslationResult::Hit(ppn);
             }
         } else {
-            self.dtlb.handle_deferred_insertion();
+            self.dtlb.run_lru();
             if let Some(ppn) = self.dtlb.lookup(vpn, raw_asid as u16, ts) {
                 if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
                     let walker_pa = self.page_walk(va, tcr);
@@ -234,6 +218,8 @@ impl<
     }
 
     fn flush(&mut self, mode: super::MMUFlushMode) {
+        // invalid l0_itlb
+        self.l0_itlb = (0, AddressSpaceID::NonGlobal(0), 0);
         self.itlb.flush(mode);
         self.dtlb.flush(mode);
         self.stlb.flush(mode);
