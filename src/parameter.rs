@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 4;
+pub const CORE_COUNT: usize = 128;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -75,12 +75,16 @@ pub const USE_SERIAL_CACHE_MODEL: bool = false;
 pub const CACHE_LINE_SIZE: usize = 64;
 static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
 
+
+// Use FullyAssociativeTLB
+pub const USE_FULLY_ASSOCIATIVE_L1_TLB: bool = true;
+
 // ITLB
 
 pub const ITLB_ASSO: usize = 64;
 
 pub const ITLB_SET: usize = 1;
-
+static_assertions::const_assert!(!(ITLB_SET != 1 && USE_FULLY_ASSOCIATIVE_L1_TLB));
 static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 
 // DTLB
@@ -88,17 +92,18 @@ static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 pub const DTLB_ASSO: usize = 64;
 
 pub const DTLB_SET: usize = 1;
-
+static_assertions::const_assert!(!(DTLB_SET != 1 && USE_FULLY_ASSOCIATIVE_L1_TLB));
 static_assertions::const_assert!(DTLB_SET.is_power_of_two());
 
 pub const STLB_ENABLED: bool = true;
+static_assertions::const_assert!(!(STLB_ENABLED != true && USE_FULLY_ASSOCIATIVE_L1_TLB));
 
 /**
  * STLB_ASSO
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 4;
+pub const STLB_ASSO: usize = 8;
 
 /**
  * STLB_SET
@@ -106,13 +111,13 @@ pub const STLB_ASSO: usize = 4;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 1024;
+pub const STLB_SET: usize = 4096;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
 pub const NO_HUGE_PAGE: bool = true;
 
-pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = false;
+pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = true;
 
 /**
  * USE_UNIFIED_CACHE
@@ -145,7 +150,7 @@ static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
  * The associativity of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
+pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -153,7 +158,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 4096;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -162,7 +167,7 @@ static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
  * The associativity of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
+pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -170,7 +175,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 256;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 4096;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -185,7 +190,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 64 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 1024 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -272,7 +277,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 1024;
+pub const BTB_SET: usize = 8192;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
