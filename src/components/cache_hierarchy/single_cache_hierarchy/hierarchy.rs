@@ -220,7 +220,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
     }
 }
 
-type AArch64MMU = mmu::MemoryManagementUnit<
+type AArch64MMU = mmu::OrdinaryMMU<
     AArch64,
     { parameter::ITLB_ASSO },
     { parameter::ITLB_SET },

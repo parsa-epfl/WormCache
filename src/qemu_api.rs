@@ -922,8 +922,12 @@ unsafe extern "C" {
     pub fn qemu_plugin_get_quantum_size() -> u64;
 }
 unsafe extern "C" {
-    #[doc = " qemu_plugin_savevm - save the VM state.\n @name: the name of the snapshot.\n\n This function is a wrapper of the QEMU function `save_snapshot`.\n It prints the error directly to the console."]
-    pub fn qemu_plugin_savevm(name: *const ::std::os::raw::c_char, use_xdelta: bool);
+    #[doc = " qemu_plugin_savevm - save the VM state.\n @name: the name of the snapshot.\n @use_xdelta: whether to use xdelta to save the snapshot.\n @xdelta_source_name: the name of the source snapshot when using xdelta. Can be null for other cases.\n\n This function is a wrapper of the QEMU function `save_snapshot`.\n It prints the error directly to the console."]
+    pub fn qemu_plugin_savevm(
+        name: *const ::std::os::raw::c_char,
+        use_xdelta: bool,
+        xdelta_source_name: *const ::std::os::raw::c_char,
+    );
 }
 pub type qemu_plugin_event_loop_poll_cb_t = ::std::option::Option<unsafe extern "C" fn()>;
 unsafe extern "C" {

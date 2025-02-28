@@ -29,7 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::components::cache_hierarchy::mmu;
+use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
  *
@@ -54,6 +54,10 @@ use crate::{arch::AArch64, components::cache_hierarchy::MemoryHierarchy};
 
 pub trait CacheModelParser<const SERIAL_CACHE_MODEL: bool, const UNIFIED_CACHE_MODEL: bool> {
     type Output: MemoryHierarchy;
+}
+
+pub trait MMUParser<const USE_FULLY_ASSOCIATIVE_L1_TLB: bool> {
+    type Output: AbstractMMU;
 }
 
 pub struct DummyParser;
@@ -88,17 +92,44 @@ pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT
 };
 
-type AArch64MMU = mmu::MemoryManagementUnit<
-    AArch64,
-    { parameter::ITLB_ASSO },
-    { parameter::ITLB_SET },
-    { parameter::DTLB_ASSO },
-    { parameter::DTLB_SET },
-    { parameter::STLB_ENABLED },
-    { parameter::STLB_ASSO },
-    { parameter::STLB_SET },
-    { parameter::NO_HUGE_PAGE },
->;
+impl MMUParser<true> for DummyParser {
+    type Output = mmu::FunctionalWarmingMMU<
+        AArch64,
+        { parameter::ITLB_ASSO },
+        { parameter::DTLB_ASSO },
+        {
+            if parameter::STLB_ENABLED {
+                parameter::STLB_ASSO
+            } else {
+                0
+            }
+        },
+        {
+            if parameter::STLB_ENABLED {
+                parameter::STLB_SET
+            } else {
+                0
+            }
+        },
+        { parameter::NO_HUGE_PAGE },
+    >;
+}
+
+impl MMUParser<false> for DummyParser {
+    type Output = mmu::OrdinaryMMU<
+        AArch64,
+        { parameter::ITLB_ASSO },
+        { parameter::ITLB_SET },
+        { parameter::DTLB_ASSO },
+        { parameter::DTLB_SET },
+        { parameter::STLB_ENABLED },
+        { parameter::STLB_ASSO },
+        { parameter::STLB_SET },
+        { parameter::NO_HUGE_PAGE }
+    >;
+}
+
+type AArch64MMU = <DummyParser as MMUParser<{ parameter::USE_FULLY_ASSOCIATIVE_L1_TLB }>>::Output;
 
 #[allow(dead_code)]
 type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<

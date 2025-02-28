@@ -29,7 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, ffi::CString};
 
 use crate::{
     components::debug::statistics::{EventType, Statistics},
@@ -56,6 +56,7 @@ static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
 
 static SNAPSHOT_PREFIX: OnceLock<String> = OnceLock::new();
 static QEMU_SNAPSHOT_FORMAT: OnceLock<String> = OnceLock::new();
+static QEMU_SNAPSHOT_XDELTA_SOURCE_NAME: OnceLock<String> = OnceLock::new();
 
 unsafe extern "C" fn event_loop_callback() {
     unsafe {
@@ -80,8 +81,14 @@ unsafe extern "C" fn event_loop_callback() {
         let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
 
         let use_xdelta = QEMU_SNAPSHOT_FORMAT.get().unwrap().contains("xdelta");
+        let xdelta_source_name = if use_xdelta {
+            let xdelta_source_name = QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.get().unwrap();
+            CString::new(xdelta_source_name.clone()).unwrap()
+        } else {
+            CString::new("").unwrap()
+        };
 
-        qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), use_xdelta);
+        qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), use_xdelta, xdelta_source_name.as_ptr());
 
         let snapshot_count = PERIODIC_SNAPSHOT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -210,6 +217,7 @@ pub unsafe fn init(
     init_index: u64,
     no_qemu_snapshot: bool,
     snapshot_format: String,
+    xdelta_source_snapshot_name: String,
 ) {
     unsafe {
         PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
@@ -219,6 +227,7 @@ pub unsafe fn init(
         QEMU_SNAPSHOT_FORMAT.set(snapshot_format).unwrap();
         PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
         PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT = no_qemu_snapshot;
+        QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.set(xdelta_source_snapshot_name).unwrap();
 
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
             quantum_checking_callback
