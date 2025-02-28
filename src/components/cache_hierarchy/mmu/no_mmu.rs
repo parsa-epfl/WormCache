@@ -13,7 +13,7 @@ impl AbstractMMU for NoMMU {
         _: u64,
         _: bool,
     ) -> MMUTranslationResult {
-        MMUTranslationResult::Hit(va)
+        MMUTranslationResult::Hit(va, 0)
     }
 
     fn lookup(&mut self, _: u64, _: u64, _: bool) -> Option<u64> {

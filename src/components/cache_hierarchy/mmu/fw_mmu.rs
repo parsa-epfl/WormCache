@@ -1,9 +1,8 @@
-use std::ffi::c_void;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    arch::{self, aarch64::ptw}, parameter, qemu_api
+    arch, parameter
 };
 
 use rustc_hash::FxHashMap as HashMap;
@@ -29,27 +28,17 @@ pub struct FunctionalWarmingMMU<
     dtlb: FullyAssociativeTLB,
     htbl_2m: HashMap<u64, (AddressSpaceID, u64)>,
     htbl_1g: HashMap<u64, (AddressSpaceID, u64)>,
-    last_ttbr: u64,
     arch: std::marker::PhantomData<ARCH>,
 }
 
-fn paddr_reader(addr: u64) -> u64 {
-    // make addr aligned with 8.
-    let addr = addr & !0b111;
-    let mut buf: u64 = 0;
-    unsafe {
-        qemu_api::qemu_plugin_read_physical_memory(addr, 8, &mut buf as *mut u64 as *mut c_void);
-    }
-    buf
-}
-
 impl<
+    ARCH: arch::ISA,
     const I_T_A: usize,
     const D_T_A: usize,
     const S_T_A: usize,
     const S_T_S: usize,
     const NO_HUGE_PAGE: bool,
-> FunctionalWarmingMMU<arch::AArch64, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
+> FunctionalWarmingMMU<ARCH, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
 {
     fn refill_4k_tlb(
         &mut self,
@@ -63,41 +52,20 @@ impl<
 
         if is_instruction {
             self.itlb.deferred_insert(vpn, asid, ts, ppn);
-            // Set the L0 ITLB.
-            self.l0_itlb = (vpn, asid, ppn);
         } else {
             self.dtlb.deferred_insert(vpn, asid, ts, ppn);
         }
     }
-
-    #[allow(dead_code)]
-    fn page_walk(&self, va: u64, tcr: u64) -> u64 {
-        let ptw_result = {
-            let t1_size = 64 - ((tcr >> 16) & 0b111111);
-            let t0_size = 64 - (tcr & 0b111111);
-
-            assert!(t0_size == 48); // the lower 48-bit VA are used for translation.
-            assert!(t1_size == 48); // the OS should take over all spaces.
-
-            let which_ttbr_for_base = if va < (1 << 48) { 0 } else { 1 };
-            let ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(which_ttbr_for_base) };
-            let vpn = va >> 12;
-            ptw(ttbr, tcr, vpn << 12, paddr_reader)
-        };
-
-        let ppn = ptw_result.paddr >> 12;
-
-        ppn << 12 | (va & 0xfff)
-    }
 }
 
 impl<
+    ARCH: arch::ISA,
     const I_T_A: usize,
     const D_T_A: usize,
     const S_T_A: usize,
     const S_T_S: usize,
     const NO_HUGE_PAGE: bool,
-> AbstractMMU for FunctionalWarmingMMU<arch::AArch64, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
+> AbstractMMU for FunctionalWarmingMMU<ARCH, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
 {
     fn new() -> Self {
         Self {
@@ -107,7 +75,6 @@ impl<
             dtlb: FullyAssociativeTLB::new(D_T_A),
             htbl_2m: HashMap::default(),
             htbl_1g: HashMap::default(),
-            last_ttbr: u64::MAX,
             arch: std::marker::PhantomData,
         }
     }
@@ -119,94 +86,92 @@ impl<
         ts: u64,
         is_instruction: bool,
     ) -> MMUTranslationResult {
-        let tcr = unsafe { qemu_api::qemu_plugin_read_tcr_el1() };
-        // How do we decide whether this is a kernel space or a user space?
-        // I have to read the two granules.
-        let which_ttbr_for_asid = if tcr >> 22 & 0b1 == 1 { 1 } else { 0 };
-
         let vpn = va >> 12;
-        let raw_asid =
-            unsafe { (qemu_api::qemu_plugin_read_ttbr_el1(which_ttbr_for_asid) >> 48) as u16 };
+        let raw_asid = ARCH::get_asid();
 
-        let asid = tlb::AddressSpaceID::NonGlobal(raw_asid); // We will start with a non-global ASID. It can still match the global ASID.
+        let trial_asid = tlb::AddressSpaceID::NonGlobal(raw_asid); // We will start with a non-global ASID. It can still match the global ASID.
 
         if is_instruction {
             // check the L0 ITLB.
-            if self.l0_itlb.0 == vpn && self.l0_itlb.1 == asid {
+            if self.l0_itlb.0 == vpn && self.l0_itlb.1 == trial_asid {
+                let pa = self.l0_itlb.2 << 12 | (va & 0xfff);
                 if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                    let walker_pa = self.page_walk(va, tcr);
-                    let pa = self.l0_itlb.2 << 12 | (va & 0xfff);
-                    assert_eq!(pa, walker_pa);
+                    assert_eq!(pa, ARCH::translate_in_pt(va));
                 }
 
-                return MMUTranslationResult::Hit(self.l0_itlb.2);
+                return MMUTranslationResult::Hit(pa, 0);
             }
         }
 
         // First, we check the L2 TLB.
-        if let Some((ppn, asid)) = self.stlb.peek_and_increase_ts_on_hit(vpn, asid, ts) {
-            if is_instruction {
-                self.itlb.deferred_insert(vpn, asid, ts, ppn);
+        if let Some((ppn, asid, stlb_ts)) = self.stlb.peek(vpn, trial_asid) {
+            let update_ts = if is_instruction {
+                self.itlb.deferred_insert(vpn, asid, ts, ppn)
             } else {
-                self.dtlb.deferred_insert(vpn, asid, ts, ppn);
+                self.dtlb.deferred_insert(vpn, asid, ts, ppn)
+            };
+
+            if update_ts {
+                *stlb_ts = ts;
             }
+
+            let pa = ppn << 12 | (va & 0xfff);
 
             if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                let walker_pa = self.page_walk(va, tcr);
-                let pa = ppn << 12 | (va & 0xfff);
-                assert_eq!(pa, walker_pa);
+                assert_eq!(pa, ARCH::translate_in_pt(va));
             }
 
-            return MMUTranslationResult::Hit(ppn);
+            if is_instruction {
+                self.l0_itlb = (vpn, trial_asid, ppn);
+            }
+
+            return MMUTranslationResult::Hit(pa, 2);
         }
 
         // Alrignt. Then we have to check the L1 TLB, which has higher associativity.
         if is_instruction {
             self.itlb.run_lru();
             if let Some(ppn) = self.itlb.lookup(vpn, raw_asid as u16, ts) {
+                let pa = ppn << 12 | (va & 0xfff);
+
                 if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                    let walker_pa = self.page_walk(va, tcr);
-                    let pa = ppn << 12 | (va & 0xfff);
-                    assert_eq!(pa, walker_pa);
+                    assert_eq!(pa, ARCH::translate_in_pt(va));
                 }
 
-                return MMUTranslationResult::Hit(ppn);
+                if is_instruction {
+                    self.l0_itlb = (vpn, trial_asid, ppn);
+                }
+
+                return MMUTranslationResult::Hit(pa, 1);
             }
         } else {
             self.dtlb.run_lru();
             if let Some(ppn) = self.dtlb.lookup(vpn, raw_asid as u16, ts) {
+                let pa = ppn << 12 | (va & 0xfff);
+
                 if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                    let walker_pa = self.page_walk(va, tcr);
-                    let pa = ppn << 12 | (va & 0xfff);
-                    assert_eq!(pa, walker_pa);
+                    assert_eq!(self.l0_itlb.2, ARCH::translate_in_pt(va));
                 }
                 
-                return MMUTranslationResult::Hit(ppn);
+                return MMUTranslationResult::Hit(pa, 1);
             }
         }
 
-        let ptw_result = {
-            let t1_size = 64 - ((tcr >> 16) & 0b111111);
-            let t0_size = 64 - (tcr & 0b111111);
-
-            assert!(t0_size == 48); // the lower 48-bit VA are used for translation.
-            assert!(t1_size == 48); // the OS should take over all spaces.
-
-            let which_ttbr_for_base = if va < (1 << 48) { 0 } else { 1 };
-            let ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(which_ttbr_for_base) };
-            ptw(ttbr, tcr, vpn << 12, paddr_reader)
-        };
+        let ptw_result = ARCH::ptw(va);
 
         let asid = if ptw_result.is_global {
             AddressSpaceID::Global
         } else {
-            asid
+            trial_asid
         };
 
-        // based on the ptw_result, we refill each TLB correspondingly.
-        self.refill_4k_tlb(vpn, asid, ptw_result.paddr >> 12, ts, is_instruction);
-
+        
         if ptw_result.cacheable {
+            // based on the ptw_result, we refill each TLB correspondingly.
+            self.refill_4k_tlb(vpn, asid, ptw_result.paddr >> 12, ts, is_instruction);
+            if is_instruction {
+                self.l0_itlb = (vpn, trial_asid, ptw_result.paddr >> 12);
+            }
             MMUTranslationResult::Miss(ptw_result.paddr, ptw_result.traces)
         } else {
             MMUTranslationResult::MissNotCacheable(ptw_result.paddr)

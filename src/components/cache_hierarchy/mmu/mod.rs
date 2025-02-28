@@ -48,10 +48,11 @@ pub enum MMUFlushMode {
     ByVPNAndASID(u64, u64, AddressSpaceID), // (VPN, Page number, ASID)
 }
 
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum MMUTranslationResult {
-    Hit(u64),              // PPN
-    Miss(u64, [u64; 4]),   // PPN, walk traces
-    MissNotCacheable(u64), // PPN
+    Hit(u64, u32),              // PA
+    Miss(u64, [u64; 4]),   // PA, walk traces
+    MissNotCacheable(u64), // PA
 }
 
 pub trait AbstractMMU {
@@ -78,3 +79,7 @@ pub use ordinary_mmu::OrdinaryMMU;
 pub use tlb::TLB;
 pub use tlb::FullyAssociativeTLB;
 pub use fw_mmu::FunctionalWarmingMMU;
+
+
+#[cfg(test)]
+mod test;

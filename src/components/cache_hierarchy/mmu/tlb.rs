@@ -158,28 +158,12 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
         }
     }
 
-    pub fn peek(&self, vpn: u64, asid: AddressSpaceID) -> Option<(u64, AddressSpaceID)> {
-        let set_index = vpn % SET_COUNT as u64;
-        let set = &self.entries[set_index as usize];
-        for entry in set.entries.iter() {
-            if entry.valid && entry.vpn == vpn && entry.asid.check(&asid) {
-                return Some((entry.ppn, entry.asid));
-            }
-        }
-        None
-    }
-
-    pub fn peek_and_increase_ts_on_hit(&mut self, vpn: u64, asid: AddressSpaceID, ts: u64) -> Option<(u64, AddressSpaceID)> {
+    pub fn peek(&mut self, vpn: u64, asid: AddressSpaceID) -> Option<(u64, AddressSpaceID, &mut u64)> {
         let set_index = vpn % SET_COUNT as u64;
         let set = &mut self.entries[set_index as usize];
         for entry in set.entries.iter_mut() {
             if entry.valid && entry.vpn == vpn && entry.asid.check(&asid) {
-                assert!(
-                    entry.ts <= ts,
-                    "TLB entry is older than the current timestamp.",
-                );
-                entry.ts = ts;
-                return Some((entry.ppn, entry.asid));
+                return Some((entry.ppn, entry.asid, &mut entry.ts));
             }
         }
         None
@@ -454,7 +438,7 @@ impl FullyAssociativeTLB {
     }
 
     #[inline]
-    pub fn deferred_insert(&mut self, vpn: u64, asid: AddressSpaceID, ts: u64, ppn: u64) {
+    pub fn deferred_insert(&mut self, vpn: u64, asid: AddressSpaceID, ts: u64, ppn: u64) -> bool {
         let hash = Self::pack_hash(vpn, asid);
         if self
             .elements
@@ -462,12 +446,19 @@ impl FullyAssociativeTLB {
             .is_none()
         {
             self.deferred_elements_exist = true;
+            return false;
         }
+        true
     }
 
     #[inline]
     pub fn run_lru(&mut self) {
         self.deferred_elements_exist = false;
+
+        if self.elements.len() <= self.associativity {
+            return;
+        }
+
         // Keep the most recent `asso` entries.
         let mut ts_stack = VecDeque::new();
         for (_, entry) in self.elements.iter() {
@@ -476,13 +467,11 @@ impl FullyAssociativeTLB {
 
         ts_stack.make_contiguous().sort_unstable();
 
-        if ts_stack.len() <= self.associativity {
-            return;
-        }
-
         let threshold = ts_stack[ts_stack.len() - self.associativity];
 
         self.elements.retain(|_, entry| entry.ts >= threshold);
+
+        assert!(self.elements.len() <= self.associativity);
     }
 
     pub fn flush(&mut self, mode: MMUFlushMode) {

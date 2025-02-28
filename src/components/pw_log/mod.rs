@@ -32,7 +32,7 @@
 use rustc_hash::FxHashMap;
 
 use super::Plugin;
-use crate::arch::aarch64;
+use crate::arch::{aarch64, ISA};
 use crate::qemu_api;
 use std::ffi::{self, c_void};
 
@@ -71,15 +71,14 @@ unsafe extern "C" fn vcpu_mem_access(
             }
 
             let va = vaddr;
-            let is_kernel = (va & 0xFFFF000000000000) != 0;
+            // let is_kernel = (va & 0xFFFF000000000000) != 0;
             let _ttbr0 = qemu_api::qemu_plugin_read_ttbr_el1(0);
             let _ttbr1 = qemu_api::qemu_plugin_read_ttbr_el1(1);
-            let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
-            let tcr = qemu_api::qemu_plugin_read_tcr_el1();
+            // let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
+            // let tcr = qemu_api::qemu_plugin_read_tcr_el1();
 
-            // println!("Data at {:x}, TTBR0: {:x}, TTBR1: {:x}, selected TTBR: {:x}, TCR: {:x}", va, ttbr0, ttbr1, ttbr, tcr);
 
-            let res = aarch64::ptw(ttbr, tcr, va, paddr_reader);
+            let res = aarch64::AArch64::ptw(va);
 
             assert!(
                 res.paddr == paddr as u64,
@@ -92,16 +91,6 @@ unsafe extern "C" fn vcpu_mem_access(
             // TODO: check the I/O event
         }
     }
-}
-
-fn paddr_reader(addr: u64) -> u64 {
-    // make addr aligned with 8.
-    let addr = addr & !0b111;
-    let mut buf: u64 = 0;
-    unsafe {
-        qemu_api::qemu_plugin_read_physical_memory(addr, 8, &mut buf as *mut u64 as *mut c_void);
-    }
-    buf
 }
 
 unsafe extern "C" fn vcpu_insn_exec(

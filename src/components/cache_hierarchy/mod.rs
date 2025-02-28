@@ -136,7 +136,7 @@ pub trait MemoryHierarchy {
         let translation = self.translate(request, ts);
 
         let translated_request = match translation {
-            MMUTranslationResult::MissNotCacheable(paddr) | MMUTranslationResult::Hit(paddr) => {
+            MMUTranslationResult::MissNotCacheable(paddr) | MMUTranslationResult::Hit(paddr, _) => {
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
 
                 let block_id = if let Some(pa) = pa {
