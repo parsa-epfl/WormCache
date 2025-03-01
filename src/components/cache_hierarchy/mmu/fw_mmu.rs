@@ -1,9 +1,6 @@
-
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    arch, parameter
-};
+use crate::{arch, parameter};
 
 use rustc_hash::FxHashMap as HashMap;
 
@@ -105,15 +102,13 @@ impl<
 
         // First, we check the L2 TLB.
         if let Some((ppn, asid, stlb_ts)) = self.stlb.peek(vpn, trial_asid) {
-            let update_ts = if is_instruction {
+            if is_instruction {
                 self.itlb.deferred_insert(vpn, asid, ts, ppn)
             } else {
                 self.dtlb.deferred_insert(vpn, asid, ts, ppn)
             };
 
-            if update_ts {
-                *stlb_ts = ts;
-            }
+            *stlb_ts = ts;
 
             let pa = ppn << 12 | (va & 0xfff);
 
@@ -150,9 +145,9 @@ impl<
                 let pa = ppn << 12 | (va & 0xfff);
 
                 if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                    assert_eq!(self.l0_itlb.2, ARCH::translate_in_pt(va));
+                    assert_eq!(pa, ARCH::translate_in_pt(va));
                 }
-                
+
                 return MMUTranslationResult::Hit(pa, 1);
             }
         }
@@ -165,7 +160,6 @@ impl<
             trial_asid
         };
 
-        
         if ptw_result.cacheable {
             // based on the ptw_result, we refill each TLB correspondingly.
             self.refill_4k_tlb(vpn, asid, ptw_result.paddr >> 12, ts, is_instruction);
