@@ -47,10 +47,12 @@ impl<
     ) {
         self.stlb.insert(vpn, asid, ppn, ts, is_instruction);
 
-        if is_instruction {
-            self.itlb.deferred_insert(vpn, asid, ts, ppn);
-        } else {
-            self.dtlb.deferred_insert(vpn, asid, ts, ppn);
+        if parameter::L1TLB_ENABLED {
+            if is_instruction {
+                self.itlb.deferred_insert(vpn, asid, ts, ppn);
+            } else {
+                self.dtlb.deferred_insert(vpn, asid, ts, ppn);
+            }
         }
     }
 }
@@ -102,11 +104,13 @@ impl<
 
         // First, we check the L2 TLB.
         if let Some((ppn, asid, stlb_ts)) = self.stlb.peek(vpn, trial_asid) {
-            if is_instruction {
-                self.itlb.deferred_insert(vpn, asid, ts, ppn)
-            } else {
-                self.dtlb.deferred_insert(vpn, asid, ts, ppn)
-            };
+            if parameter::L1TLB_ENABLED {
+                if is_instruction {
+                    self.itlb.deferred_insert(vpn, asid, ts, ppn)
+                } else {
+                    self.dtlb.deferred_insert(vpn, asid, ts, ppn)
+                };
+            }
 
             *stlb_ts = ts;
 
@@ -123,32 +127,34 @@ impl<
             return MMUTranslationResult::Hit(pa, 2);
         }
 
-        // Alrignt. Then we have to check the L1 TLB, which has higher associativity.
-        if is_instruction {
-            self.itlb.run_lru();
-            if let Some(ppn) = self.itlb.lookup(vpn, raw_asid as u16, ts) {
-                let pa = ppn << 12 | (va & 0xfff);
+        if parameter::L1TLB_ENABLED {
+            // Alrignt. Then we have to check the L1 TLB, which has higher associativity.
+            if is_instruction {
+                self.itlb.run_lru();
+                if let Some(ppn) = self.itlb.lookup(vpn, raw_asid as u16, ts) {
+                    let pa = ppn << 12 | (va & 0xfff);
 
-                if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                    assert_eq!(pa, ARCH::translate_in_pt(va));
+                    if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                        assert_eq!(pa, ARCH::translate_in_pt(va));
+                    }
+
+                    if is_instruction {
+                        self.l0_itlb = (vpn, trial_asid, ppn);
+                    }
+
+                    return MMUTranslationResult::Hit(pa, 1);
                 }
+            } else {
+                self.dtlb.run_lru();
+                if let Some(ppn) = self.dtlb.lookup(vpn, raw_asid as u16, ts) {
+                    let pa = ppn << 12 | (va & 0xfff);
 
-                if is_instruction {
-                    self.l0_itlb = (vpn, trial_asid, ppn);
+                    if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                        assert_eq!(pa, ARCH::translate_in_pt(va));
+                    }
+
+                    return MMUTranslationResult::Hit(pa, 1);
                 }
-
-                return MMUTranslationResult::Hit(pa, 1);
-            }
-        } else {
-            self.dtlb.run_lru();
-            if let Some(ppn) = self.dtlb.lookup(vpn, raw_asid as u16, ts) {
-                let pa = ppn << 12 | (va & 0xfff);
-
-                if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                    assert_eq!(pa, ARCH::translate_in_pt(va));
-                }
-
-                return MMUTranslationResult::Hit(pa, 1);
             }
         }
 

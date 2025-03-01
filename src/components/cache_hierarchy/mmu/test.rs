@@ -1,6 +1,6 @@
 use rand::SeedableRng;
 
-use crate::{arch::ISA, components::cache_hierarchy::mmu::AbstractMMU};
+use crate::{arch::ISA, components::cache_hierarchy::mmu::AbstractMMU, parameter};
 
 struct FakeISA {}
 
@@ -61,6 +61,11 @@ fn test_equivalence_of_two_tlbs() {
 
 #[test]
 fn test_equivalence_of_two_mmus() {
+    if ! parameter::L1TLB_ENABLED {
+        return;
+    }
+
+
     // There are two MMUs in this project:
     // - OrdinaryMMU
     // - FunctionalWarmingMMU

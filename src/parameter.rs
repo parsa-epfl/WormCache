@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 128;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +52,7 @@ pub const CORE_COUNT: usize = 128;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = true;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -77,14 +77,14 @@ static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
 
 
 // Use FullyAssociativeTLB
-pub const USE_FULLY_ASSOCIATIVE_L1_TLB: bool = true;
+pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
 
 // ITLB
 
 pub const ITLB_ASSO: usize = 64;
 
 pub const ITLB_SET: usize = 1;
-static_assertions::const_assert!(!(ITLB_SET != 1 && USE_FULLY_ASSOCIATIVE_L1_TLB));
+static_assertions::const_assert!(!(ITLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
 static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 
 // DTLB
@@ -92,11 +92,14 @@ static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 pub const DTLB_ASSO: usize = 64;
 
 pub const DTLB_SET: usize = 1;
-static_assertions::const_assert!(!(DTLB_SET != 1 && USE_FULLY_ASSOCIATIVE_L1_TLB));
+static_assertions::const_assert!(!(DTLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
 static_assertions::const_assert!(DTLB_SET.is_power_of_two());
 
+// A debugging flag to see whether we should warm the L1 TLB.
+pub const L1TLB_ENABLED: bool = false;
+
 pub const STLB_ENABLED: bool = true;
-static_assertions::const_assert!(!(STLB_ENABLED != true && USE_FULLY_ASSOCIATIVE_L1_TLB));
+static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIVE_L1TLB));
 
 /**
  * STLB_ASSO
@@ -117,7 +120,7 @@ static_assertions::const_assert!(STLB_SET.is_power_of_two());
 // No huge pages?
 pub const NO_HUGE_PAGE: bool = true;
 
-pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = true;
+pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = false;
 
 /**
  * USE_UNIFIED_CACHE

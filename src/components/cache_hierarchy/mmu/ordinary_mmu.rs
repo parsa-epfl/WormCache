@@ -51,10 +51,12 @@ impl<
         ts: u64,
         is_instruction: bool,
     ) {
-        if is_instruction {
-            self.itlb.insert(vpn, asid, ppn, ts, is_instruction);
-        } else {
-            self.dtlb.insert(vpn, asid, ppn, ts, is_instruction);
+        if parameter::L1TLB_ENABLED {
+            if is_instruction {
+                self.itlb.insert(vpn, asid, ppn, ts, is_instruction);
+            } else {
+                self.dtlb.insert(vpn, asid, ppn, ts, is_instruction);
+            }
         }
 
         if S_ENABLED {
@@ -94,9 +96,11 @@ impl<
             self.htlb_1gb.clear();
         }
 
-        // Forward the flush to each TLB.
-        self.itlb.flush(mode);
-        self.dtlb.flush(mode);
+        if parameter::L1TLB_ENABLED {
+            // Forward the flush to each TLB.
+            self.itlb.flush(mode);
+            self.dtlb.flush(mode);
+        }
 
         if S_ENABLED {
             self.stlb.flush(mode);
@@ -124,9 +128,19 @@ impl<
             Statistics::global_record(core_id, EventType::TLBAccessDueToData, is_kernel);
         }
 
-        // First, check the L1 TLB.
-        if is_instruction {
-            if let Some(ppn) = self.itlb.lookup(vpn, asid, ts, is_instruction) {
+        if parameter::L1TLB_ENABLED {
+            // First, check the L1 TLB.
+            if is_instruction {
+                if let Some(ppn) = self.itlb.lookup(vpn, asid, ts, is_instruction) {
+                    let pa = ppn << 12 | (va & 0xfff);
+
+                    if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
+                        assert_eq!(pa, ARCH::translate_in_pt(va));
+                    }
+
+                    return MMUTranslationResult::Hit(pa, 1);
+                }
+            } else if let Some(ppn) = self.dtlb.lookup(vpn, asid, ts, is_instruction) {
                 let pa = ppn << 12 | (va & 0xfff);
 
                 if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
@@ -135,14 +149,6 @@ impl<
 
                 return MMUTranslationResult::Hit(pa, 1);
             }
-        } else if let Some(ppn) = self.dtlb.lookup(vpn, asid, ts, is_instruction) {
-            let pa = ppn << 12 | (va & 0xfff);
-
-            if parameter::COMPARE_TRANSLATION_RESULT_WITH_WALKER {
-                assert_eq!(pa, ARCH::translate_in_pt(va));
-            }
-
-            return MMUTranslationResult::Hit(pa, 1);
         }
 
         if S_ENABLED {
@@ -154,11 +160,13 @@ impl<
                     assert_eq!(pa, ARCH::translate_in_pt(va));
                 }
 
-                // Insert the result into L1 TLB.
-                if is_instruction {
-                    self.itlb.insert(vpn, asid, ppn, ts, is_instruction);
-                } else {
-                    self.dtlb.insert(vpn, asid, ppn, ts, is_instruction);
+                if parameter::L1TLB_ENABLED {
+                    // Insert the result into L1 TLB.
+                    if is_instruction {
+                        self.itlb.insert(vpn, asid, ppn, ts, is_instruction);
+                    } else {
+                        self.dtlb.insert(vpn, asid, ppn, ts, is_instruction);
+                    }
                 }
 
                 return MMUTranslationResult::Hit(pa, 2);

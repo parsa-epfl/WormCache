@@ -129,7 +129,7 @@ impl MMUParser<false> for DummyParser {
     >;
 }
 
-type AArch64MMU = <DummyParser as MMUParser<{ parameter::USE_FULLY_ASSOCIATIVE_L1_TLB }>>::Output;
+type AArch64MMU = <DummyParser as MMUParser<{ parameter::USE_HIGHLY_ASSOCIATIVE_L1TLB }>>::Output;
 
 #[allow(dead_code)]
 type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
