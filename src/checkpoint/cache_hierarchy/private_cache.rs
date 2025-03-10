@@ -470,9 +470,32 @@ fn serialize_directory_slices(
                 .collect()
         }
         FlexusDirectoryType::Standard {
-            sets: _,
-            associativity: _,
-        } => unimplemented!(),
+            sets,
+            associativity,
+        } => {
+            assert!(sets % slice_count == 0);
+            assert!(sets == directory.len()); // The directory must be resized ahead of time.
+
+            let set_per_slice = sets / slice_count;
+
+            let mut slices = Vec::from_iter(std::iter::repeat_with(
+                || Vec::from_iter(std::iter::repeat_with(Vec::new).take(set_per_slice)),
+            ).take(slice_count));
+
+            for (set_idx, set) in directory.iter().enumerate() {
+                assert!(set.len() <= associativity);
+
+                let slice_idx = set_idx % slice_count;
+                let new_set_index = set_idx / slice_count;
+
+                slices[slice_idx][new_set_index] = set
+                    .iter()
+                    .map(|entry| entry.to_flexus_directory_entry())
+                    .collect();
+            }
+
+            todo!()
+        },
     }
 }
 
