@@ -494,7 +494,12 @@ fn serialize_directory_slices(
                     .collect();
             }
 
-            todo!()
+            slices
+                .into_iter()
+                .map(|slice| {
+                    serde_json::to_value(slice).unwrap()
+                })
+                .collect()
         },
     }
 }
