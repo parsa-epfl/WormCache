@@ -31,6 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
+use crate::components::cache_hierarchy::common::InfiniteDirectorySet;
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
@@ -69,7 +70,7 @@ pub struct ParallelMemoryHierarchy<
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
-    directory: Directory<DIRECTORY_SHARD_COUNT>,
+    directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>,DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -114,14 +115,18 @@ impl<
 
     pub fn handle_eviction<const SET: usize>(
         &self,
-        directory_set_guard: &mut impl DerefMut<Target = DirectorySet<SET>>,
+        directory_set_guard: &mut impl DerefMut<Target = InfiniteDirectorySet<SET>>,
         cache_id: usize,
         block_id: u64,
         ts: u64,
         modified: (bool, u64),
         is_os: bool,
     ) {
-        let directory_entry = directory_set_guard.get_or_create(block_id);
+        let directory_entry = {
+            let tmp = directory_set_guard.get_or_create(block_id);
+            assert!(tmp.1.is_none());
+            tmp.0
+        };
 
         // we cancel the element of this block in the directory.
         let sharer = directory_entry.sharers;

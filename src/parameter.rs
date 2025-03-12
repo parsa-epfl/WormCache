@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 64;
+pub const CORE_COUNT: usize = 128;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +52,7 @@ pub const CORE_COUNT: usize = 64;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = false;
+pub const MEASURE_HALF_OF_CORES: bool = true;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -106,7 +106,7 @@ static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIV
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 8;
+pub const STLB_ASSO: usize = 4;
 
 /**
  * STLB_SET
@@ -114,7 +114,7 @@ pub const STLB_ASSO: usize = 8;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 4096;
+pub const STLB_SET: usize = 1024;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -161,7 +161,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 4096;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 128;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -178,7 +178,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 4096;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 128;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -250,15 +250,40 @@ static_assertions::const_assert!(
 );
 
 /**
+ * INFINITE_DIRECTORY
+ * 
+ * Whether the directory is infinite.
+ * 
+ * If true, the directory will not evict any entry.
+ */
+pub const INFINITE_DIRECTORY: bool = false;
+
+/**
  * DIRECTORY_SHARD_COUNT
  *
  * The number of sets of the directory. It should be much larger than the number of sets of all private caches to prevent directory contention.
  *
- * It should be a power of 2.
+ * It should be a power of 2. Only applies to the infinite directory.
  *
 */
 pub const DIRECTORY_SHARD_COUNT: usize = 32768;
 static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
+
+/**
+ * DIRECTORY_ASSOCIAVITY
+ *
+ * The associativity of the directory.
+ *
+ */
+pub const DIRECTORY_ASSOCIAVITY: usize = 16;
+
+/**
+ * DIRECTORY_OVERPROVISIONG_FACTOR
+ * 
+ * The overprovisioning factor of the directory.
+ */
+pub const DIRECOTRY_SET: usize = 512 * CORE_COUNT;
+static_assertions::const_assert!(DIRECOTRY_SET.is_power_of_two());
 
 /**
 * ADJACENT_LINE_PREFETCHING
@@ -280,7 +305,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 8192;
+pub const BTB_SET: usize = 4096;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
@@ -288,7 +313,7 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 4;
+pub const BTB_ASSO: usize = 3;
 
 /**
  * BP_RAS_COUNT
@@ -323,7 +348,6 @@ use crate::components::Plugin;
 #[derive(PluginHelper)]
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
-    _pb: crate::BranchPredictorPlugin,
     _vt: crate::VirtualTimePlugin,
     // _mk: crate::MarkerPlugin,
     _lm: crate::ParallelCacheHierarchyPlugin,

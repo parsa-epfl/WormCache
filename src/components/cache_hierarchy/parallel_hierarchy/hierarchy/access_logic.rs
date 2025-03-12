@@ -3,7 +3,7 @@ use crate::{
         cache_hierarchy::{
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
-                CacheAccessType, CacheHierarchyAccessResult, PrivateCacheEvictedSlot,
+                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
                 PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
@@ -96,7 +96,7 @@ impl<
             }
         };
 
-        let miss_directory_guard = miss_directory_set_guard.get_or_create(block_id);
+        let (miss_directory_guard, evicted) = miss_directory_set_guard.get_or_create(block_id);
 
         let sharers = miss_directory_guard.sharers;
 
@@ -135,6 +135,45 @@ impl<
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
+            if let Some(evicted_directory_entry) = evicted {
+                // trigger eviction to the private cache.
+                let mut acquired_sets = self.private_caches.get_set_guard_by_sharer_list(
+                    evicted_directory_entry.0,
+                    evicted_directory_entry.1.sharers,
+                );
+
+                // invalidte these blocks. 
+                for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
+                    if let Some(index) = index {
+                        let entry = &set.lines[*index];
+                        assert_eq!(entry.block_id(), evicted_directory_entry.0);
+                        set.invalidate(*index);
+
+                        if self.with_statistics {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::PrivateCacheInvalidation,
+                                is_os,
+                            );
+                        }
+
+                        CacheLineCoherenceHistory::global_record_history(
+                            evicted_directory_entry.0,
+                            CacheOperationType::Invalidate(p_cache_id),
+                            *replica_cache_id,
+                            ts,
+                            false,
+                            evicted_directory_entry.1.sharers,
+                            line!(),
+                        )
+                    }
+                }
+
+                // write this back to the shared cache.
+                self.shared_cache
+                    .insert(core_id, evicted_directory_entry.0, ts, false, true);
+            }
+
             let bring_into_shared_cache = if FILL_SCACHE_ON_FILLING_PCACHE {
                 match r.access_type {
                     CacheAccessType::InstructionFetch => true,
