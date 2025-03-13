@@ -16,6 +16,12 @@ pub struct BackReferencedEntry {
     anti_reference: Vec<(usize, usize, usize, usize)>,
 }
 
+impl BackReferencedEntry {
+    fn sharer_count(&self) -> usize {
+        self.sharers.iter().filter(|b| **b).count()
+    }
+}
+
 pub struct ExportedDirectoryEntry {
     tag: u64,
     sharers: Vec<bool>,
@@ -97,7 +103,12 @@ pub fn resize_directory(
     // Step 2: Apply LRUs.
     res.into_iter()
         .map(|mut set| {
-            set.sort_by(|a, b| b.1.ts.cmp(&a.1.ts));
+            // Flexus uses a different replacement policy. Instead of LRU, it uses the one with the least number of sharers.
+            set.sort_by(|a, b| {
+                b.1.sharer_count().cmp(
+                    &a.1.sharer_count(),
+                )
+            });
 
             if directory_associativity <= set.len() {
                 for evicted_entry in set.drain(directory_associativity..) {
