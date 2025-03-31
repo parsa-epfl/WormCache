@@ -38,6 +38,7 @@ use crate::{
 };
 
 use serde_json::json;
+use spin::Mutex;
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -49,6 +50,10 @@ static MEASURE_TURN: AtomicU64 = AtomicU64::new(0);
 static mut CURRENT_CYCLE_COUNT: u64 = 0;
 static mut MEASURE_NEXT_THRESHOLD: u64 = 0;
 static MEASURE_PREFIX: OnceLock<String> = OnceLock::new();
+
+use std::process::{Child, Command};
+
+static PERF_COMMAND: OnceLock<Mutex<Child>> = OnceLock::new();
 
 unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
     unsafe {
@@ -192,6 +197,21 @@ unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
                     miss_file.write_all(stat.as_bytes()).unwrap();
                     miss_file.write_all(b"\n").unwrap();
                 }
+
+                {
+                    use nix::sys::signal::{self, Signal};
+                    use nix::unistd::Pid;
+
+                    // Alright, before quitting, we need to send SIGINT to the perf command.
+                    // Send SIGINT to the perf command.
+                    let mut perf_command = PERF_COMMAND.get().unwrap().lock();
+                    let perf_pid = perf_command.id() as i32;
+                    let perf_pid = Pid::from_raw(perf_pid);
+                    signal::kill(perf_pid, Signal::SIGINT).unwrap();
+                    // Wait for the perf command to finish.
+                    perf_command.wait().unwrap();
+                }
+
                 std::process::exit(0);
             }
 
@@ -213,4 +233,36 @@ pub unsafe fn init(init_threshold: u64, interval: u64, count: u64, prefix: Strin
             on_icount_periodic_checking
         )));
     }
+}
+
+pub fn on_finish_loading_snapshot() {
+    // Start a process with perf event. I also need to be able to send SIGINT to the process.
+    let list_of_events = vec![
+        "instructions",
+        "ls_dmnd_fills_from_sys.lcl_l2",
+        "ls_dmnd_fills_from_sys.int_cache",
+        "ls_dmnd_fills_from_sys.ext_cache_local",
+        "ls_dmnd_fills_from_sys.mem_io_local",
+    ];
+
+    PERF_COMMAND
+        .set({
+            let mut process = Command::new("perf");
+
+            process
+                .arg("stat")
+                .arg("-o")
+                .arg("perf.log")
+                .arg("-p")
+                .arg(format!("{}", std::process::id()));
+
+            for event in list_of_events {
+                process.arg("-e").arg(event);
+            }
+
+            let process = process.spawn().expect("Failed to start perf");
+
+            Mutex::new(process)
+        })
+        .unwrap();
 }

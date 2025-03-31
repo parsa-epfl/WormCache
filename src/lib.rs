@@ -45,6 +45,7 @@ use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::SingleCacheHierarchyPlugin;
 use components::chronic::chronic_behavior_init;
+use components::chronic::on_finish_loading_snapshot;
 #[allow(unused_imports)]
 use components::instruction_frequency::InstructionFrequencyPlugin;
 #[allow(unused_imports)]
@@ -133,6 +134,9 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
         let name = format!("{}.uarch", name);
         PluginList::deserialize(&name);
     }
+
+    // This function is called after the snapshot is loaded.
+    on_finish_loading_snapshot();
 }
 
 #[unsafe(no_mangle)]
