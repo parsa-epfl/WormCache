@@ -30,9 +30,10 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use core::ffi;
-use std::io::Write;
+use std::{ffi::CString, io::Write};
 
 use rustc_hash::FxHashMap;
+use spin::mutex::SpinMutex;
 
 use crate::{
     parameter::{self, ENABLE_STATISTICS},
@@ -202,6 +203,40 @@ unsafe extern "C" fn vcpu_invalid_tlb(
     }
 }
 
+static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
+
+unsafe extern "C" fn event_loop_callback() {
+    unsafe {
+        let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
+        if snapshot_info_guard.is_none() {
+            return;
+        }
+
+        let mut snapshot_info_guard = snapshot_info_guard.unwrap();
+
+        if snapshot_info_guard.is_none() {
+            return;
+        }
+
+        let snapshot_info = snapshot_info_guard.take().unwrap();
+
+        println!(
+            "Snapshot request: {}",
+            &snapshot_info.0
+        );
+
+        let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
+
+        qemu_api::qemu_plugin_savevm(
+            c_snapshot_name.as_ptr(),
+            false,
+            CString::new("").unwrap().as_ptr(),
+        );
+
+        std::process::exit(0);
+    }
+}
+
 pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::super::Plugin for ParallelCacheHierarchyPlugin {
@@ -213,6 +248,18 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             mode, "vtime",
             "Pure vtime is enabled. Memory Hierarchy should be disabled."
         );
+
+        let pure_fill_mode = mode == "pure_fill";
+
+        if pure_fill_mode {
+            unsafe {
+                assert!(qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(
+                    event_loop_callback
+                )));
+            }
+        }
+
+        let prefix = options.get("prefix").unwrap_or(&"".to_string()).clone();
 
         unsafe {
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
@@ -245,10 +292,12 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         println!("{}", HierarchyForPlugin::information());
 
         // this thread peridocally dumps the statistics.
-        std::thread::spawn(|| {
+        std::thread::spawn(move || {
             if !ENABLE_STATISTICS {
                 return;
             }
+
+            let snapshot_name = format!("{}_{}", prefix, "warmed");
 
             // open a csv file.
             let mut warmed_rate = std::fs::File::create("shared_cache_warm_count.csv").unwrap();
@@ -258,17 +307,35 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                 .unwrap();
 
             loop {
+                let warmed_set = unsafe { (*PLUGIN).get_scache_warmed_set_count() };
+
                 warmed_rate
                     .write_all(
-                        format!(
-                            "{},{},{}\n",
-                            get_monotonic_ts(),
-                            unsafe { (*PLUGIN).get_scache_warmed_set_count() },
-                            unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
-                        )
+                        format!("{},{},{}\n", get_monotonic_ts(), warmed_set, unsafe {
+                            (*PLUGIN).get_scache_warmed_slots_count()
+                        })
                         .as_bytes(),
                     )
                     .unwrap();
+
+                if pure_fill_mode {
+                    if warmed_set == parameter::SHARED_CACHE_SET {
+                        let snapshot_info = (snapshot_name.clone(), 0);
+
+                        let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
+                        if snapshot_info_guard.is_none() {
+                            std::thread::sleep(std::time::Duration::from_secs(10));
+                            continue;
+                        }
+
+                        let mut snapshot_info_guard = snapshot_info_guard.unwrap();
+
+                        if snapshot_info_guard.is_none() {
+                            *snapshot_info_guard = Some(snapshot_info);
+                            println!("All the sets are warmed up. Create a snapshot.");
+                        }
+                    }
+                }
 
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
