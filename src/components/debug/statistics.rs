@@ -102,6 +102,8 @@ pub enum EventType {
             // - For directional branch, it is a miss if the direction prediction is right but the target prediction is wrong.
             // - For indirect branch, it is a miss if the target prediction is wrong.
             // - For return, it is a miss if the target prediction (provided by the RAS) is wrong.
+
+    WaitForInterrupt,
 }
 
 #[repr(align(64))]
