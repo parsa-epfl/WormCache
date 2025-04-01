@@ -30,7 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use core::ffi;
-use std::{ffi::CString, io::Write};
+use std::{ffi::CString, io::Write, sync::OnceLock};
 
 use rustc_hash::FxHashMap;
 use spin::mutex::SpinMutex;
@@ -220,10 +220,7 @@ unsafe extern "C" fn event_loop_callback() {
 
         let snapshot_info = snapshot_info_guard.take().unwrap();
 
-        println!(
-            "Snapshot request: {}",
-            &snapshot_info.0
-        );
+        println!("Snapshot request: {}", &snapshot_info.0);
 
         let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
 
@@ -235,6 +232,30 @@ unsafe extern "C" fn event_loop_callback() {
 
         std::process::exit(0);
     }
+}
+
+static SNAPSHOT_NAME: OnceLock<String> = OnceLock::new();
+
+unsafe extern "C" fn quantum_checking_callback(_: u64) -> bool {
+    let warmed_set = unsafe { (*PLUGIN).get_scache_warmed_set_count() };
+
+    if warmed_set == parameter::SHARED_CACHE_SET as usize {
+        let snapshot_info = (SNAPSHOT_NAME.get().unwrap().clone(), 0);
+
+        let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
+        if snapshot_info_guard.is_none() {
+            return false;
+        }
+
+        let mut snapshot_info_guard = snapshot_info_guard.unwrap();
+
+        if snapshot_info_guard.is_none() {
+            *snapshot_info_guard = Some(snapshot_info);
+            println!("All the sets are warmed up. Create a snapshot.");
+            return true; // suggest a interrupt.
+        }
+    }
+    return false;
 }
 
 pub struct ParallelCacheHierarchyPlugin {}
@@ -256,10 +277,17 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                 assert!(qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(
                     event_loop_callback
                 )));
+
+                assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
+                    quantum_checking_callback
+                )));
             }
         }
 
         let prefix = options.get("prefix").unwrap_or(&"".to_string()).clone();
+        SNAPSHOT_NAME
+            .set(format!("{}_{}", prefix, "warmed"))
+            .unwrap();
 
         unsafe {
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
@@ -297,8 +325,6 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                 return;
             }
 
-            let snapshot_name = format!("{}_{}", prefix, "warmed");
-
             // open a csv file.
             let mut warmed_rate = std::fs::File::create("shared_cache_warm_count.csv").unwrap();
 
@@ -317,25 +343,6 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                         .as_bytes(),
                     )
                     .unwrap();
-
-                if pure_fill_mode {
-                    if warmed_set == parameter::SHARED_CACHE_SET {
-                        let snapshot_info = (snapshot_name.clone(), 0);
-
-                        let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
-                        if snapshot_info_guard.is_none() {
-                            std::thread::sleep(std::time::Duration::from_secs(10));
-                            continue;
-                        }
-
-                        let mut snapshot_info_guard = snapshot_info_guard.unwrap();
-
-                        if snapshot_info_guard.is_none() {
-                            *snapshot_info_guard = Some(snapshot_info);
-                            println!("All the sets are warmed up. Create a snapshot.");
-                        }
-                    }
-                }
 
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
