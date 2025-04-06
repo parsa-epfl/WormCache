@@ -123,7 +123,14 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
         let name = format!("{}.uarch", name);
         // create a folder for the name.
         std::fs::create_dir_all(&name).unwrap();
+        let current_time = std::time::SystemTime::now();
         PluginList::serialize(&name);
+        let elapsed_time = std::time::SystemTime::now()
+            .duration_since(current_time)
+            .unwrap()
+            .as_millis();
+
+        println!("Serialized the plugin data in {} ms.", elapsed_time);
     }
 }
 

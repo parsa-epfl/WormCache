@@ -32,7 +32,7 @@
 use std::{fs::File, io::Write, ffi::CString};
 
 use crate::{
-    components::debug::statistics::{EventType, Statistics},
+    components::{chronic::snapshot, debug::statistics::{EventType, Statistics}},
     parameter::{self, PluginList},
     qemu_api,
     util::get_monotonic_ts,
@@ -57,6 +57,8 @@ static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
 static SNAPSHOT_PREFIX: OnceLock<String> = OnceLock::new();
 static QEMU_SNAPSHOT_FORMAT: OnceLock<String> = OnceLock::new();
 static QEMU_SNAPSHOT_XDELTA_SOURCE_NAME: OnceLock<String> = OnceLock::new();
+
+static SNAPSHOT_LATENCY: OnceLock<SpinMutex<Vec<u64>>> = OnceLock::new();
 
 unsafe extern "C" fn event_loop_callback() {
     unsafe {
@@ -88,7 +90,18 @@ unsafe extern "C" fn event_loop_callback() {
             CString::new("").unwrap()
         };
 
+        // get the current timestamp in miliseconds
+        let current_time = std::time::SystemTime::now();
         qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), use_xdelta, xdelta_source_name.as_ptr());
+        let elapsed_time = std::time::SystemTime::now()
+            .duration_since(current_time)
+            .unwrap()
+            .as_millis();
+
+        // record the snapshot latency
+        let mut snapshot_latency = SNAPSHOT_LATENCY.get().unwrap().lock();
+        snapshot_latency.push(elapsed_time as u64);
+        drop(snapshot_latency);
 
         let snapshot_count = PERIODIC_SNAPSHOT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -113,6 +126,18 @@ unsafe extern "C" fn event_loop_callback() {
                 miss_file.write_all(stat.as_bytes()).unwrap();
                 miss_file.write_all(b"\n").unwrap();
             }
+
+            // dump the snapshot latency
+            let mut miss_file = std::fs::File::create("snapshot_latency.csv").unwrap();
+            miss_file
+                .write_fmt(format_args!("{}\n", "Snapshot Latency (ms)"))
+                .unwrap();
+            let snapshot_latency = SNAPSHOT_LATENCY.get().unwrap().lock();
+            for latency in snapshot_latency.iter() {
+                miss_file.write_fmt(format_args!("{}\n", latency)).unwrap();
+            }
+            miss_file.flush().unwrap();
+            drop(miss_file);
             std::process::exit(0);
         }
     }
@@ -251,5 +276,8 @@ pub unsafe fn init(
             .lock()
             .write_fmt(format_args!("{}\n", Statistics::get_header()))
             .unwrap();
+
+        SNAPSHOT_LATENCY.set(SpinMutex::new(Vec::new()))
+            .expect("Failed to set the snapshot latency file.");
     }
 }
