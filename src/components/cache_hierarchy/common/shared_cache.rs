@@ -43,7 +43,7 @@ pub enum SharedCacheLookupResult {
     Hit(bool), // (is_dirty)
     Miss,
     ColdMiss,
-    Unknown(u32), // timestamp difference
+    Unknown(u32, bool), // timestamp difference, is_dirty
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -52,7 +52,7 @@ pub enum SharedCacheLookupAndInsertResult {
     Miss,
     InsertedAndCold(bool), // (just_warmed)
     Inserted,
-    Unknown(u32), // timestamp difference
+    Unknown(u32, bool), // timestamp difference, is_dirty
 }
 
 pub trait SharedCache {

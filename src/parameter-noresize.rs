@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 16;
+pub const CORE_COUNT: usize = 32;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +52,7 @@ pub const CORE_COUNT: usize = 16;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = false;
+pub const MEASURE_HALF_OF_CORES: bool = true;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);

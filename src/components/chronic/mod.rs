@@ -86,6 +86,11 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
             .unwrap_or(&"zstd".to_string())
             .clone();
 
+        let xdelta_snapshot_source: String = options
+            .get("xdelta3_source_snapshot_name")
+            .unwrap_or(&"snapshot".to_string())
+            .clone();
+
         unsafe {
             snapshot::init(
                 init_threshold,
@@ -95,6 +100,7 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
                 init_index,
                 no_qemu_snapshot,
                 shapshot_format,
+                xdelta_snapshot_source
             );
         }
     } else if mode == "measure" {
@@ -134,6 +140,9 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
     if mode != "vtime" {
         statistics::init();
     }
-
     // Add more chronic behaviors here.
+}
+
+pub fn on_finish_loading_snapshot() {
+    dump_statistics::on_finish_loading_snapshot();
 }

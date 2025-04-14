@@ -45,6 +45,7 @@ use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::SingleCacheHierarchyPlugin;
 use components::chronic::chronic_behavior_init;
+use components::chronic::on_finish_loading_snapshot;
 #[allow(unused_imports)]
 use components::instruction_frequency::InstructionFrequencyPlugin;
 #[allow(unused_imports)]
@@ -57,6 +58,8 @@ use components::touch_once::TouchOnePlugin;
 use components::trace::TracePlugin;
 #[allow(unused_imports)]
 use components::virtual_time::VirtualTimePlugin;
+#[allow(unused_imports)]
+use components::wfi::WaitForInterruptCounterPlugin;
 
 use components::Plugin;
 use parameter::PluginList;
@@ -111,13 +114,23 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
                 print!("{}", c as u8 as char);
                 i += 1;
             }
+
+            panic!();
         }
 
         let name = converted_name.unwrap();
 
+        let name = format!("{}.uarch", name);
         // create a folder for the name.
-        std::fs::create_dir_all(name).unwrap();
-        PluginList::serialize(name);
+        std::fs::create_dir_all(&name).unwrap();
+        let current_time = std::time::SystemTime::now();
+        PluginList::serialize(&name);
+        let elapsed_time = std::time::SystemTime::now()
+            .duration_since(current_time)
+            .unwrap()
+            .as_millis();
+
+        println!("Serialized the plugin data in {} ms.", elapsed_time);
     }
 }
 
@@ -125,8 +138,12 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
     unsafe {
         let name = ffi::CStr::from_ptr(name).to_str().unwrap();
-        PluginList::deserialize(name);
+        let name = format!("{}.uarch", name);
+        PluginList::deserialize(&name);
     }
+
+    // This function is called after the snapshot is loaded.
+    on_finish_loading_snapshot();
 }
 
 #[unsafe(no_mangle)]

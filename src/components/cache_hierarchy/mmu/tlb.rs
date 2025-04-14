@@ -29,8 +29,10 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use std::collections::VecDeque;
 
 use super::MMUFlushMode;
 
@@ -102,8 +104,8 @@ impl<const ASSO: usize> TLBSet<ASSO> {
                     "TLB entry is older than the current timestamp.",
                 );
                 // assert!(entry.is_instruction == is_instruction);
-                entry.is_instruction = is_instruction;
                 entry.ts = ts;
+                entry.is_instruction = is_instruction;
                 return Some(entry.ppn);
             }
         }
@@ -154,6 +156,17 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
         Self {
             entries: (0..SET_COUNT).map(|_| TLBSet::new()).collect(),
         }
+    }
+
+    pub fn peek(&mut self, vpn: u64, asid: AddressSpaceID) -> Option<(u64, AddressSpaceID, &mut u64)> {
+        let set_index = vpn % SET_COUNT as u64;
+        let set = &mut self.entries[set_index as usize];
+        for entry in set.entries.iter_mut() {
+            if entry.valid && entry.vpn == vpn && entry.asid.check(&asid) {
+                return Some((entry.ppn, entry.asid, &mut entry.ts));
+            }
+        }
+        None
     }
 
     pub fn lookup(
@@ -318,5 +331,275 @@ mod tests {
                 Some(i)
             );
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FullyAssociativeTLBEntry {
+    pub ts: u64,
+    pub ppn: u64,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FullyAssociativeTLB {
+    pub elements: FxHashMap<u64, FullyAssociativeTLBEntry>,
+    associativity: usize,
+    deferred_elements_exist: bool,
+}
+
+impl FullyAssociativeTLB {
+    pub fn new(asso: usize) -> Self {
+        Self {
+            elements: FxHashMap::default(),
+            associativity: asso,
+            deferred_elements_exist: false,
+        }
+    }
+
+    #[inline]
+    pub fn pack_hash(vpn: u64, asid: AddressSpaceID) -> u64 {
+        // We have 48-bit VA and 16-bit ASID.
+        // The VPN has been removed from the page offset, which is 12 bits. As a result, the VPN is 36 bits.
+        // We need one additional bit for the kernel, so 37 bits in the VPN
+        // ASID has to be 16 bits. One additional bit for the global state, so 17 bits.
+        // So in total, we have 54 bits.
+        // Hash[0]: global
+        // Hash[37:1]: VPN
+        // Hash[53:38]: ASID
+
+        let vpn = vpn & 0x1FFFFFFFFF;
+        match asid {
+            AddressSpaceID::Global => (vpn << 1) | 0x1,
+            AddressSpaceID::NonGlobal(asid) => (vpn << 1) | ((asid as u64) << 38),
+        }
+    }
+
+    #[inline]
+    pub fn unpack_hash(hash: u64) -> (u64, AddressSpaceID) {
+        let vpn = (hash >> 1) & 0x1FFFFFFFFF;
+        // run sign extension of 37th bit
+        let vpn = if (vpn & (1 << 36)) != 0 {
+            vpn | 0xF_FFFF_FFFF_0000 // stay 48 bits
+        } else {
+            vpn
+        };
+
+        let asid = match hash & 0x1 {
+            0 => AddressSpaceID::NonGlobal((hash >> 38) as u16),
+            1 => AddressSpaceID::Global,
+            _ => unreachable!(),
+        };
+        (vpn, asid)
+    }
+
+    #[inline]
+    pub fn lookup(&mut self, vpn: u64, asid: u16, ts: u64) -> Option<u64> {
+        assert!(!self.deferred_elements_exist);
+        let is_os = vpn >> 51 == 1;
+
+        let hash = if is_os {
+            Self::pack_hash(vpn, AddressSpaceID::Global)
+        } else {
+            Self::pack_hash(vpn, AddressSpaceID::NonGlobal(asid))
+        };
+
+        if let Some(entry) = self.elements.get_mut(&hash) {
+            entry.ts = ts;
+            return Some(entry.ppn);
+        }
+
+        if !is_os {
+            // We try the global ASID
+            let hash = Self::pack_hash(vpn, AddressSpaceID::Global);
+            if let Some(entry) = self.elements.get_mut(&hash) {
+                entry.ts = ts;
+                return Some(entry.ppn);
+            }
+        }
+
+        None
+    }
+
+    // conservative insertion. It should be only used for testing.
+    #[inline]
+    pub fn insert(&mut self, vpn: u64, asid: AddressSpaceID, ts: u64, ppn: u64) {
+        assert!(!self.deferred_elements_exist);
+        let hash = Self::pack_hash(vpn, asid);
+        if let Some(entry) = self.elements.get_mut(&hash) {
+            entry.ts = ts;
+            return;
+        }
+
+        self.elements
+            .insert(hash, FullyAssociativeTLBEntry { ts, ppn });
+
+        self.run_lru();
+    }
+
+    #[inline]
+    pub fn deferred_insert(&mut self, vpn: u64, asid: AddressSpaceID, ts: u64, ppn: u64) -> bool {
+        let hash = Self::pack_hash(vpn, asid);
+        if self
+            .elements
+            .insert(hash, FullyAssociativeTLBEntry { ts, ppn })
+            .is_none()
+        {
+            self.deferred_elements_exist = true;
+            return false;
+        }
+        true
+    }
+
+    #[inline]
+    pub fn run_lru(&mut self) {
+        self.deferred_elements_exist = false;
+
+        if self.elements.len() <= self.associativity {
+            return;
+        }
+
+        // Keep the most recent `asso` entries.
+        let mut ts_stack = VecDeque::new();
+        for (_, entry) in self.elements.iter() {
+            ts_stack.push_back(entry.ts);
+        }
+
+        ts_stack.make_contiguous().sort_unstable();
+
+        let threshold = ts_stack[ts_stack.len() - self.associativity];
+
+        self.elements.retain(|_, entry| entry.ts >= threshold);
+
+        assert!(self.elements.len() <= self.associativity);
+    }
+
+    pub fn flush(&mut self, mode: MMUFlushMode) {
+        match mode {
+            MMUFlushMode::All => {
+                self.elements.clear();
+            }
+            MMUFlushMode::ByASID(required_asid) => {
+                self.elements.retain(|hash, _| {
+                    let asid = match hash & 0x3FFFFF0000000 {
+                        0 => AddressSpaceID::Global,
+                        _ => AddressSpaceID::NonGlobal((hash >> 38) as u16),
+                    };
+                    asid != required_asid
+                });
+            }
+            MMUFlushMode::ByVPN(vpn, page_count) => {
+                for each_page in 0..page_count {
+                    let vpn = vpn + each_page;
+                    let hash = Self::pack_hash(vpn, AddressSpaceID::Global);
+                    self.elements.remove(&hash);
+                    let hash = Self::pack_hash(vpn, AddressSpaceID::NonGlobal(0));
+                    self.elements.remove(&hash);
+                }
+            }
+            MMUFlushMode::ByVPNAndASID(vpn, page_count, address_space_id) => {
+                let asid = match address_space_id {
+                    AddressSpaceID::Global => AddressSpaceID::Global,
+                    AddressSpaceID::NonGlobal(asid) => AddressSpaceID::NonGlobal(asid),
+                };
+                for each_page in 0..page_count {
+                    let vpn = vpn + each_page;
+                    let hash = Self::pack_hash(vpn, asid);
+                    self.elements.remove(&hash);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod fa_tlb_tests {
+    use super::*;
+
+    #[test]
+    fn test_fa_tlbset_insert_and_lookup() {
+        let mut tlbset: FullyAssociativeTLB = FullyAssociativeTLB::new(4);
+        tlbset.insert(1, AddressSpaceID::NonGlobal(1), 1, 1);
+        assert_eq!(tlbset.lookup(1, 1, 2), Some(1));
+    }
+
+    #[test]
+    fn test_fa_tlbset_replacement_policy() {
+        let mut tlbset: FullyAssociativeTLB = FullyAssociativeTLB::new(4);
+        tlbset.insert(1, AddressSpaceID::NonGlobal(1), 1, 1);
+        tlbset.insert(2, AddressSpaceID::NonGlobal(2), 2, 2);
+        tlbset.insert(3, AddressSpaceID::NonGlobal(3), 3, 3);
+        tlbset.insert(4, AddressSpaceID::NonGlobal(4), 4, 4);
+        tlbset.insert(5, AddressSpaceID::NonGlobal(5), 5, 5); // This should replace the first entry
+
+        // The first entry should be replaced, so the lookup should return None
+        assert_eq!(tlbset.lookup(1, 1, 2), None);
+    }
+
+    #[test]
+    fn test_deferred_insertion() {
+        let mut tlbset: FullyAssociativeTLB = FullyAssociativeTLB::new(4);
+        tlbset.deferred_insert(1, AddressSpaceID::NonGlobal(1), 1, 1);
+        tlbset.deferred_insert(2, AddressSpaceID::NonGlobal(2), 2, 2);
+        tlbset.deferred_insert(3, AddressSpaceID::NonGlobal(3), 3, 3);
+        tlbset.deferred_insert(4, AddressSpaceID::NonGlobal(4), 4, 4);
+        tlbset.deferred_insert(5, AddressSpaceID::NonGlobal(5), 5, 5);
+
+        tlbset.run_lru();
+
+        assert_eq!(tlbset.lookup(1, 1, 2), None);
+
+        assert_eq!(tlbset.lookup(2, 2, 2), Some(2));
+    }
+
+    #[test]
+    fn test_fa_tlb_lru_promotion() {
+        let mut tlbset: FullyAssociativeTLB = FullyAssociativeTLB::new(4);
+
+        tlbset.insert(1, AddressSpaceID::NonGlobal(1), 1, 1);
+        tlbset.insert(2, AddressSpaceID::NonGlobal(2), 2, 2);
+        tlbset.insert(3, AddressSpaceID::NonGlobal(3), 3, 3);
+        tlbset.insert(4, AddressSpaceID::NonGlobal(4), 4, 4);
+
+        // Access the first entry to promote it to the MRU position
+        tlbset.lookup(1, 1, 5);
+
+        // Insert a new entry, causing the first entry to be replaced
+        tlbset.insert(5, AddressSpaceID::NonGlobal(5), 6, 5);
+
+        // The second entry should have been replaced, so the lookup should return None
+        assert_eq!(tlbset.lookup(2, 2, 2), None);
+    }
+
+    #[test]
+    fn test_fa_tlb_hash() {
+        // We start with a simple 48-bit VPN and 16-bit ASID.
+        // It is a userspace address, so the global bit is 0.
+        let hash = FullyAssociativeTLB::pack_hash(0x0FFFFFFFFF, AddressSpaceID::NonGlobal(0x3333));
+        let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
+        assert_eq!(vpn, 0x0FFFFFFFFF);
+        assert_eq!(asid, AddressSpaceID::NonGlobal(0x3333));
+
+        // Then, test an kernel address, with high 16bit set to 1.
+        let hash = FullyAssociativeTLB::pack_hash(0xFFFFFFFFFFFFF, AddressSpaceID::Global);
+        let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
+        assert_eq!(vpn, 0xFFFFFFFFFFFFF);
+        assert_eq!(asid, AddressSpaceID::Global);
+    }
+
+    #[test]
+    fn test_fa_tlb_hit_insertion() {
+        let mut tlbset = FullyAssociativeTLB::new(4);
+
+        tlbset.insert(1, AddressSpaceID::NonGlobal(1), 1, 1);
+        tlbset.insert(2, AddressSpaceID::NonGlobal(2), 2, 2);
+        tlbset.insert(3, AddressSpaceID::NonGlobal(3), 3, 3);
+        tlbset.insert(4, AddressSpaceID::NonGlobal(4), 4, 4);
+
+        // Insert an existing entry.
+        tlbset.insert(2, AddressSpaceID::NonGlobal(2), 5, 5);
+
+        // Is vpn 1 still a hit?
+        assert_eq!(tlbset.lookup(1, 1, 6), Some(1));
     }
 }

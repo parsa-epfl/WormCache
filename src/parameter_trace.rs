@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 16;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -106,7 +106,7 @@ static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIV
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 4;
+pub const STLB_ASSO: usize = 8;
 
 /**
  * STLB_SET
@@ -114,7 +114,7 @@ pub const STLB_ASSO: usize = 4;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 1024;
+pub const STLB_SET: usize = 4096;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -161,7 +161,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 4096;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -178,7 +178,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 4096;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -193,7 +193,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 32 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 128 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -280,7 +280,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 4096;
+pub const BTB_SET: usize = 8192;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
@@ -288,7 +288,7 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 3;
+pub const BTB_ASSO: usize = 4;
 
 /**
  * BP_RAS_COUNT

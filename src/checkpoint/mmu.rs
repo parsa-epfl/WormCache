@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::{
     checkpoint::FlexusSTLBInclusion,
-    components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry},
+    components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry, FullyAssociativeTLB},
 };
 use rustc_hash::FxHashMap;
 
@@ -284,6 +284,36 @@ impl FlexusMMU {
     }
 }
 
+fn load_tlb_json(value: serde_json::Value, is_instruction: bool) -> SerializedTLB {
+    if let Ok(result) = serde_json::from_value(value.clone()) {
+        result
+    } else {
+        // Well, this is a newer version of the checkpoint. It is a FullyAssociativeTLB.
+        let mut fully_assoaicative_tlb: FullyAssociativeTLB = serde_json::from_value(value).unwrap();
+
+        // process the deferred insertions in the TLB.
+        fully_assoaicative_tlb.run_lru();
+
+        // do the type conversion.
+        let entries: Vec<_> = fully_assoaicative_tlb
+            .elements.into_iter().map(|(hash, entry)| {
+                let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
+                TLBEntry {
+                    vpn,
+                    asid,
+                    ppn: entry.ppn,
+                    ts: entry.ts,
+                    valid: true,
+                    is_instruction
+                }
+            }).collect();
+
+        SerializedTLB {
+            entries: vec![SerializedTLBSet { entries }]
+        }
+    }
+}
+
 pub fn process_mmus(
     checkpoint_folder: &String,
     flexus_configuration: &FlexusParameter,
@@ -323,7 +353,7 @@ pub fn process_mmus(
     let i_tlbs: Vec<SerializedTLB> = match mmus.clone() {
         serde_json::Value::Array(vec) => vec
             .iter()
-            .map(|mmu| serde_json::from_value(mmu["itlb"].clone()).unwrap())
+            .map(|mmu| load_tlb_json(mmu["itlb"].clone(), true))
             .collect::<Vec<_>>(),
         _ => panic!("The MMU checkpoint is not an array."),
     };
@@ -331,7 +361,7 @@ pub fn process_mmus(
     let d_tlbs: Vec<SerializedTLB> = match mmus.clone() {
         serde_json::Value::Array(vec) => vec
             .iter()
-            .map(|mmu| serde_json::from_value(mmu["dtlb"].clone()).unwrap())
+            .map(|mmu| load_tlb_json(mmu["dtlb"].clone(), false))
             .collect::<Vec<_>>(),
         _ => panic!("The MMU checkpoint is not an array."),
     };

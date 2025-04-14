@@ -24,6 +24,7 @@ perf-event = "0.4.8"
 zstd = "0.13.1"
 hdrhistogram = "7.5.4"
 serde_with = "3.9.0"
+nix = { version="0.29.0", features = ["signal"] }
 
 [lib]
 crate-type=["rlib", "cdylib"]

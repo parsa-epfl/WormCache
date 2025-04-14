@@ -31,15 +31,27 @@
 
 pub mod aarch64;
 
+pub enum PageSize {
+    _4KB,
+    _2MB,
+    _1GB,
+}
+
+pub struct TranslationResult {
+    pub paddr: u64,
+    pub is_global: bool,
+    pub page_size: PageSize,
+    pub traces: [u64; 4],
+    pub cacheable: bool,
+}
+
 // This is a really dirty hack to use enum as a type parameter...
-pub trait ISA {}
+pub trait ISA {
+    fn get_asid() -> u16;
+    fn ptw(va: u64) -> TranslationResult;
+    fn translate_in_pt(va: u64) -> u64 {
+        (Self::ptw(va).paddr >> 12) << 12 | (va & 0xfff)
+    }
+}
 
-#[derive(Debug)]
-pub struct AArch64;
-
-impl ISA for AArch64 {}
-
-#[derive(Debug)]
-pub struct RV64G;
-
-impl ISA for RV64G {}
+pub use aarch64::AArch64;

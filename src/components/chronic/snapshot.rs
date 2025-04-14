@@ -29,10 +29,10 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, ffi::CString};
 
 use crate::{
-    components::debug::statistics::{EventType, Statistics},
+    components::{chronic::snapshot, debug::statistics::{EventType, Statistics}},
     parameter::{self, PluginList},
     qemu_api,
     util::get_monotonic_ts,
@@ -56,6 +56,9 @@ static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
 
 static SNAPSHOT_PREFIX: OnceLock<String> = OnceLock::new();
 static QEMU_SNAPSHOT_FORMAT: OnceLock<String> = OnceLock::new();
+static QEMU_SNAPSHOT_XDELTA_SOURCE_NAME: OnceLock<String> = OnceLock::new();
+
+static SNAPSHOT_LATENCY: OnceLock<SpinMutex<Vec<u64>>> = OnceLock::new();
 
 unsafe extern "C" fn event_loop_callback() {
     unsafe {
@@ -80,8 +83,25 @@ unsafe extern "C" fn event_loop_callback() {
         let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
 
         let use_xdelta = QEMU_SNAPSHOT_FORMAT.get().unwrap().contains("xdelta");
+        let xdelta_source_name = if use_xdelta {
+            let xdelta_source_name = QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.get().unwrap();
+            CString::new(xdelta_source_name.clone()).unwrap()
+        } else {
+            CString::new("").unwrap()
+        };
 
-        qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), use_xdelta);
+        // get the current timestamp in miliseconds
+        let current_time = std::time::SystemTime::now();
+        qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), use_xdelta, xdelta_source_name.as_ptr());
+        let elapsed_time = std::time::SystemTime::now()
+            .duration_since(current_time)
+            .unwrap()
+            .as_millis();
+
+        // record the snapshot latency
+        let mut snapshot_latency = SNAPSHOT_LATENCY.get().unwrap().lock();
+        snapshot_latency.push(elapsed_time as u64);
+        drop(snapshot_latency);
 
         let snapshot_count = PERIODIC_SNAPSHOT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -106,6 +126,18 @@ unsafe extern "C" fn event_loop_callback() {
                 miss_file.write_all(stat.as_bytes()).unwrap();
                 miss_file.write_all(b"\n").unwrap();
             }
+
+            // dump the snapshot latency
+            let mut miss_file = std::fs::File::create("snapshot_latency.csv").unwrap();
+            miss_file
+                .write_fmt(format_args!("{}\n", "Snapshot Latency (ms)"))
+                .unwrap();
+            let snapshot_latency = SNAPSHOT_LATENCY.get().unwrap().lock();
+            for latency in snapshot_latency.iter() {
+                miss_file.write_fmt(format_args!("{}\n", latency)).unwrap();
+            }
+            miss_file.flush().unwrap();
+            drop(miss_file);
             std::process::exit(0);
         }
     }
@@ -120,23 +152,23 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
         PERIODIC_SNAPSHOT_CURRENT_CYCLES += diff;
 
         if PERIODIC_SNAPSHOT_CURRENT_CYCLES >= PERIODIC_SNAPSHOT_THRESHOLD {
-            let mut miss_file = STATISTICS_QUANTUM_FILE.get().unwrap().lock();
-            // dump the statistics.
-            for core_id in 0..parameter::CORE_COUNT {
-                Statistics::global_set(
-                    core_id as u32,
-                    EventType::TargetLocalCycle,
-                    false,
-                    qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
-                );
-            }
+            // let mut miss_file = STATISTICS_QUANTUM_FILE.get().unwrap().lock();
+            // // dump the statistics.
+            // for core_id in 0..parameter::CORE_COUNT {
+            //     Statistics::global_set(
+            //         core_id as u32,
+            //         EventType::TargetLocalCycle,
+            //         false,
+            //         qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+            //     );
+            // }
 
-            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                miss_file.write_all(stat.as_bytes()).unwrap();
-                miss_file.write_all(b"\n").unwrap();
-            }
+            // for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+            //     miss_file.write_all(stat.as_bytes()).unwrap();
+            //     miss_file.write_all(b"\n").unwrap();
+            // }
 
-            drop(miss_file);
+            // drop(miss_file);
 
             let snapshot_name = format!(
                 "{}_{}",
@@ -210,6 +242,7 @@ pub unsafe fn init(
     init_index: u64,
     no_qemu_snapshot: bool,
     snapshot_format: String,
+    xdelta_source_snapshot_name: String,
 ) {
     unsafe {
         PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
@@ -219,6 +252,7 @@ pub unsafe fn init(
         QEMU_SNAPSHOT_FORMAT.set(snapshot_format).unwrap();
         PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
         PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT = no_qemu_snapshot;
+        QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.set(xdelta_source_snapshot_name).unwrap();
 
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
             quantum_checking_callback
@@ -242,5 +276,8 @@ pub unsafe fn init(
             .lock()
             .write_fmt(format_args!("{}\n", Statistics::get_header()))
             .unwrap();
+
+        SNAPSHOT_LATENCY.set(SpinMutex::new(Vec::new()))
+            .expect("Failed to set the snapshot latency file.");
     }
 }

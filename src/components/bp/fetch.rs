@@ -74,8 +74,8 @@ impl PerCoreFetchUnit {
 
         let tage_miss = if btb_result.1 == BranchType::Conditional {
             self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict
-        } else if btb_result.1 != BranchType::NonBranch {
-            self.tage.update_history(pc, true); // This has to be done for non-conditional branches.
+        } else if result.branch_type != BranchType::NonBranch {
+            self.tage.update_history(pc, result.is_taken); // This has to be done for non-conditional branches.
             false // No way to train the TAGE predictor for non-conditional branches.
         } else {
             false

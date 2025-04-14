@@ -16,6 +16,12 @@ pub struct BackReferencedEntry {
     anti_reference: Vec<(usize, usize, usize, usize)>,
 }
 
+impl BackReferencedEntry {
+    fn sharer_count(&self) -> usize {
+        self.sharers.iter().filter(|b| **b).count()
+    }
+}
+
 pub struct ExportedDirectoryEntry {
     tag: u64,
     sharers: Vec<bool>,
@@ -94,12 +100,20 @@ pub fn resize_directory(
         directory_set.push((tag, entry));
     }
 
+    let mut number_of_evicted_directory_entry = 0;
+
     // Step 2: Apply LRUs.
-    res.into_iter()
+    let res = res.into_iter()
         .map(|mut set| {
-            set.sort_by(|a, b| b.1.ts.cmp(&a.1.ts));
+            // Flexus uses a different replacement policy. Instead of LRU, it uses the one with the least number of sharers.
+            set.sort_by(|a, b| {
+                b.1.sharer_count().cmp(
+                    &a.1.sharer_count(),
+                )
+            });
 
             if directory_associativity <= set.len() {
+                number_of_evicted_directory_entry += set.len() - directory_associativity;
                 for evicted_entry in set.drain(directory_associativity..) {
                     let mut line_to_evict = PrivateCacheLine {
                         block_id_with_v: (evicted_entry.0 << 1 | 1),
@@ -162,7 +176,15 @@ pub fn resize_directory(
                 })
                 .collect()
         })
-        .collect()
+        .collect();
+
+    println!(
+        "Number of evicted directory entries: {}, in {}%",
+        number_of_evicted_directory_entry, number_of_evicted_directory_entry as f64 / (directory_set * directory_associativity) as f64 * 100.0
+    );
+
+    res
+    
 }
 
 fn render_infinite_directory(
@@ -470,9 +492,37 @@ fn serialize_directory_slices(
                 .collect()
         }
         FlexusDirectoryType::Standard {
-            sets: _,
-            associativity: _,
-        } => unimplemented!(),
+            sets,
+            associativity,
+        } => {
+            assert!(sets % slice_count == 0);
+            assert!(sets == directory.len()); // The directory must be resized ahead of time.
+
+            let set_per_slice = sets / slice_count;
+
+            let mut slices = Vec::from_iter(std::iter::repeat_with(
+                || Vec::from_iter(std::iter::repeat_with(Vec::new).take(set_per_slice)),
+            ).take(slice_count));
+
+            for (set_idx, set) in directory.iter().enumerate() {
+                assert!(set.len() <= associativity);
+
+                let slice_idx = set_idx % slice_count;
+                let new_set_index = set_idx / slice_count;
+
+                slices[slice_idx][new_set_index] = set
+                    .iter()
+                    .map(|entry| entry.to_flexus_directory_entry())
+                    .collect();
+            }
+
+            slices
+                .into_iter()
+                .map(|slice| {
+                    serde_json::to_value(slice).unwrap()
+                })
+                .collect()
+        },
     }
 }
 
