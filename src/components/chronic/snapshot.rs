@@ -29,10 +29,10 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, io::Write, ffi::CString};
+use std::{fs::File, io::Write};
 
 use crate::{
-    components::{chronic::snapshot, debug::statistics::{EventType, Statistics}},
+    components::debug::statistics::{EventType, Statistics},
     parameter::{self, PluginList},
     qemu_api,
     util::get_monotonic_ts,
@@ -82,17 +82,20 @@ unsafe extern "C" fn event_loop_callback() {
 
         let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
 
-        let use_xdelta = QEMU_SNAPSHOT_FORMAT.get().unwrap().contains("xdelta");
-        let xdelta_source_name = if use_xdelta {
-            let xdelta_source_name = QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.get().unwrap();
-            CString::new(xdelta_source_name.clone()).unwrap()
-        } else {
-            CString::new("").unwrap()
-        };
+        // let use_xdelta = QEMU_SNAPSHOT_FORMAT.get().unwrap().contains("xdelta");
+        // let xdelta_source_name = if use_xdelta {
+        //     let xdelta_source_name = QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.get().unwrap();
+        //     CString::new(xdelta_source_name.clone()).unwrap()
+        // } else {
+        //     CString::new("").unwrap()
+        // };
 
         // get the current timestamp in miliseconds
         let current_time = std::time::SystemTime::now();
-        qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), use_xdelta, xdelta_source_name.as_ptr());
+        qemu_api::qemu_plugin_savevm(
+            c_snapshot_name.as_ptr(), 
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_DELTA
+        );
         let elapsed_time = std::time::SystemTime::now()
             .duration_since(current_time)
             .unwrap()

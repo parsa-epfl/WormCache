@@ -875,7 +875,7 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the\n page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a\n specific page table entry. For huge pages or translation error, you will see\n -1 in the array ahead of time.\n\n This function can be only called from threads that run a vCPU. Otherwise, it\n will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way\n to optimize the storage.\n"]
     pub fn qemu_plugin_hwaddr_translate_walk_trace(hwaddr: *const qemu_plugin_hwaddr)
-    -> *const u64;
+        -> *const u64;
 }
 unsafe extern "C" {
     #[doc = " qemu_plugin_read_physical_memory - returns the value of the given physical\n memory address.\n\n This function calls cpu_physical_memory_rw to read the physical memory.\n\n This function will not trigger memory access plugin."]
@@ -921,12 +921,21 @@ unsafe extern "C" {
     #[doc = " qemu_plugin_get_quantum_size - return the quantum size.\n\n Return 0 if the quantum is not enabled."]
     pub fn qemu_plugin_get_quantum_size() -> u64;
 }
+pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_INTERNAL_RAW:
+    qemu_plugin_snapshot_format_t = 0;
+pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_RAW:
+    qemu_plugin_snapshot_format_t = 1;
+pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_ZSTD:
+    qemu_plugin_snapshot_format_t = 2;
+pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_ZSTD_BASE : qemu_plugin_snapshot_format_t = 4 ;
+pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_DELTA:
+    qemu_plugin_snapshot_format_t = 5;
+pub type qemu_plugin_snapshot_format_t = ::std::os::raw::c_uint;
 unsafe extern "C" {
     #[doc = " qemu_plugin_savevm - save the VM state.\n @name: the name of the snapshot.\n @use_xdelta: whether to use xdelta to save the snapshot.\n @xdelta_source_name: the name of the source snapshot when using xdelta. Can be null for other cases.\n\n This function is a wrapper of the QEMU function `save_snapshot`.\n It prints the error directly to the console."]
     pub fn qemu_plugin_savevm(
         name: *const ::std::os::raw::c_char,
-        use_xdelta: bool,
-        xdelta_source_name: *const ::std::os::raw::c_char,
+        format: qemu_plugin_snapshot_format_t,
     );
 }
 pub type qemu_plugin_event_loop_poll_cb_t = ::std::option::Option<unsafe extern "C" fn()>;
@@ -976,5 +985,5 @@ pub type qemu_plugin_flushing_local_tlb_t = ::std::option::Option<
 >;
 unsafe extern "C" {
     pub fn qemu_plugin_register_flushing_local_tlb_cb(cb: qemu_plugin_flushing_local_tlb_t)
-    -> bool;
+        -> bool;
 }
