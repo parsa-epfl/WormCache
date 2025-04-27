@@ -30,7 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use core::ffi;
-use std::{ffi::CString, io::Write, sync::OnceLock};
+use std::{io::Write, sync::OnceLock};
 
 use rustc_hash::FxHashMap;
 use spin::mutex::SpinMutex;
@@ -226,8 +226,7 @@ unsafe extern "C" fn event_loop_callback() {
 
         qemu_api::qemu_plugin_savevm(
             c_snapshot_name.as_ptr(),
-            false,
-            CString::new("").unwrap().as_ptr(),
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_ZSTD_BASE,
         );
 
         std::process::exit(0);
