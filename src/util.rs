@@ -74,7 +74,7 @@ pub fn init_heap_array<T: Sized + std::fmt::Debug, const N: usize>(
     res.into_boxed_slice().try_into().unwrap()
 }
 
-use libc::{CLOCK_MONOTONIC, clock_gettime, timespec};
+use libc::{CLOCK_MONOTONIC_RAW, clock_gettime, timespec};
 
 pub fn get_monotonic_ts() -> u64 {
     let mut ts = timespec {
@@ -82,7 +82,7 @@ pub fn get_monotonic_ts() -> u64 {
         tv_nsec: 0,
     };
     unsafe {
-        assert!(clock_gettime(CLOCK_MONOTONIC, &mut ts) == 0);
+        assert!(clock_gettime(CLOCK_MONOTONIC_RAW, &mut ts) == 0);
     }
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
