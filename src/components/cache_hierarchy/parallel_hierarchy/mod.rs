@@ -38,7 +38,7 @@ use spin::mutex::SpinMutex;
 use crate::{
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
-    util::get_monotonic_ts,
+    timestamp::get_ts, util::get_monotonic_ts
 };
 
 use super::{MemoryAccessRequest, MemoryHierarchy, common::CacheAccessType};
@@ -79,7 +79,7 @@ unsafe extern "C" fn vcpu_mem_access(
                 let ip10ps = qemu_api::qemu_plugin_get_vcpu_ip10ps(vcpu_idx);
                 ((offset * 10000) / ip10ps) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
             } else {
-                get_monotonic_ts()
+                get_ts()
             };
 
             if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
@@ -138,7 +138,7 @@ unsafe extern "C" fn vcpu_insn_exec(
             let ip10ps = qemu_api::qemu_plugin_get_vcpu_ip10ps(vcpu_idx);
             ((offset * 10000) / ip10ps) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
         } else {
-            get_monotonic_ts()
+            get_ts()
         };
 
         if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {

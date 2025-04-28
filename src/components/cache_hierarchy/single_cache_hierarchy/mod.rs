@@ -41,6 +41,7 @@ use crate::{
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
     util::get_monotonic_ts,
+    timestamp::get_ts,
 };
 
 use super::common::L0InstructionCache;
@@ -85,7 +86,7 @@ unsafe extern "C" fn vcpu_mem_access(
                         is_os,
                     },
                     Some(pa),
-                    get_monotonic_ts(),
+                    get_ts(),
                 );
             };
         } else {
@@ -119,7 +120,7 @@ unsafe extern "C" fn vcpu_insn_exec(
                     access_type: CacheAccessType::InstructionFetch,
                     is_os,
                 },
-                get_monotonic_ts(),
+                get_ts(),
             );
         }
     }

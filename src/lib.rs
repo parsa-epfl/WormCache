@@ -128,6 +128,7 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
         std::fs::create_dir_all(&name).unwrap();
         let current_time = std::time::SystemTime::now();
         PluginList::serialize(&name);
+        timestamp::serialize(&name);
         let elapsed_time = std::time::SystemTime::now()
             .duration_since(current_time)
             .unwrap()
@@ -143,10 +144,15 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
         let name = ffi::CStr::from_ptr(name).to_str().unwrap();
         let name = format!("{}.uarch", name);
         PluginList::deserialize(&name);
+
+        // Handling the timestamp.
+        timestamp::initialize();
+        timestamp::deserialize(&name);
     }
 
     // This function is called after the snapshot is loaded.
     on_finish_loading_snapshot();
+
 }
 
 #[unsafe(no_mangle)]
