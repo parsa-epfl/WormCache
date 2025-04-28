@@ -37,6 +37,8 @@ pub mod components;
 mod qemu_api;
 mod util;
 
+pub mod timestamp;
+
 // Plugin
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
@@ -60,6 +62,7 @@ use components::trace::TracePlugin;
 use components::virtual_time::VirtualTimePlugin;
 #[allow(unused_imports)]
 use components::wfi::WaitForInterruptCounterPlugin;
+
 
 use components::Plugin;
 use parameter::PluginList;
