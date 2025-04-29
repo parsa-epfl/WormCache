@@ -147,6 +147,7 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
 
         // Handling the timestamp.
         timestamp::initialize();
+        components::chronic::on_loading_snapshot(&name);
         timestamp::deserialize(&name);
     }
 

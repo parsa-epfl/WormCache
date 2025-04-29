@@ -55,8 +55,7 @@ static mut PERIODIC_SNAPSHOT_CURRENT_CYCLES: u64 = 0;
 static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
 
 static SNAPSHOT_PREFIX: OnceLock<String> = OnceLock::new();
-static QEMU_SNAPSHOT_FORMAT: OnceLock<String> = OnceLock::new();
-static QEMU_SNAPSHOT_XDELTA_SOURCE_NAME: OnceLock<String> = OnceLock::new();
+static QEMU_SNAPSHOT_FORMAT: OnceLock<SpinMutex<String>> = OnceLock::new();
 
 static SNAPSHOT_LATENCY: OnceLock<SpinMutex<Vec<u64>>> = OnceLock::new();
 
@@ -82,19 +81,23 @@ unsafe extern "C" fn event_loop_callback() {
 
         let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
 
-        // let use_xdelta = QEMU_SNAPSHOT_FORMAT.get().unwrap().contains("xdelta");
-        // let xdelta_source_name = if use_xdelta {
-        //     let xdelta_source_name = QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.get().unwrap();
-        //     CString::new(xdelta_source_name.clone()).unwrap()
-        // } else {
-        //     CString::new("").unwrap()
-        // };
+        let snapshot_format = QEMU_SNAPSHOT_FORMAT.get().unwrap().lock().clone();
+
+        let snapshot_format = if snapshot_format == "zstd" {
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_ZSTD
+        } else if snapshot_format == "incremental" {
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_DELTA
+        } else if snapshot_format == "incremental_first_base" {
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_ZSTD_BASE
+        } else {
+            panic!("Unsupported snapshot format: {}", snapshot_format);
+        };
 
         // get the current timestamp in miliseconds
         let current_time = std::time::SystemTime::now();
         qemu_api::qemu_plugin_savevm(
             c_snapshot_name.as_ptr(), 
-            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_DELTA
+            snapshot_format
         );
         let elapsed_time = std::time::SystemTime::now()
             .duration_since(current_time)
@@ -244,18 +247,19 @@ pub unsafe fn init(
     prefix: String,
     init_index: u64,
     no_qemu_snapshot: bool,
-    snapshot_format: String,
-    xdelta_source_snapshot_name: String,
 ) {
     unsafe {
         PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
         PERIODIC_SNAPSHOT_REQUIRED_COUNT = required_count;
         PERIODIC_SNAPSHOT_INTERVAL = interval;
         SNAPSHOT_PREFIX.set(prefix).unwrap();
-        QEMU_SNAPSHOT_FORMAT.set(snapshot_format).unwrap();
         PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
         PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT = no_qemu_snapshot;
-        QEMU_SNAPSHOT_XDELTA_SOURCE_NAME.set(xdelta_source_snapshot_name).unwrap();
+
+        // make the default snapshot format to be incremental_first_base.
+        QEMU_SNAPSHOT_FORMAT
+            .set(SpinMutex::new("incremental_first_base".to_string()))
+            .expect("Failed to set the snapshot format.");
 
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
             quantum_checking_callback
@@ -282,5 +286,24 @@ pub unsafe fn init(
 
         SNAPSHOT_LATENCY.set(SpinMutex::new(Vec::new()))
             .expect("Failed to set the snapshot latency file.");
+    }
+}
+
+fn update_snapshot_type(snapshot_type: &str) {
+    let snapshot_format = QEMU_SNAPSHOT_FORMAT.get().unwrap();
+    let mut snapshot_format_guard = snapshot_format.lock();
+    *snapshot_format_guard = snapshot_type.to_string();
+}
+
+pub fn on_load_snapshot(name: &str) {
+    // If the snapshot is an incremental base, which means {name}.basemem.zstd and {name}.state.zstd exist, we change the snapshot type to incremental.
+    use std::fs;
+
+    // check if the snapshot file exists
+    let base_file = format!("{}.basemem.zstd", name);
+    let state_file = format!("{}.state.zstd", name);
+    if fs::metadata(&base_file).is_ok() && fs::metadata(&state_file).is_ok() {
+        update_snapshot_type("incremental");
+        println!("Detected incremental base snapshot: {}. Following snaphots are generaed with delta", name);
     }
 }
