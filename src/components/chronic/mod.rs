@@ -131,8 +131,8 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
     // Add more chronic behaviors here.
 }
 
-pub fn on_loading_snapshot(name: &str) {
-    snapshot::on_load_snapshot(name);
+pub fn on_loading_snapshot(snapshot_name: &str) {
+    snapshot::on_load_snapshot(snapshot_name);
 }
 
 pub fn on_finish_loading_snapshot() {

@@ -295,15 +295,15 @@ fn update_snapshot_type(snapshot_type: &str) {
     *snapshot_format_guard = snapshot_type.to_string();
 }
 
-pub fn on_load_snapshot(name: &str) {
+pub fn on_load_snapshot(snapshot_name: &str) {
     // If the snapshot is an incremental base, which means {name}.basemem.zstd and {name}.state.zstd exist, we change the snapshot type to incremental.
     use std::fs;
 
     // check if the snapshot file exists
-    let base_file = format!("{}.basemem.zstd", name);
-    let state_file = format!("{}.state.zstd", name);
+    let base_file = format!("{}.basemem.zstd", snapshot_name);
+    let state_file = format!("{}.state.zstd", snapshot_name);
     if fs::metadata(&base_file).is_ok() && fs::metadata(&state_file).is_ok() {
         update_snapshot_type("incremental");
-        println!("Detected incremental base snapshot: {}. Following snaphots are generaed with delta", name);
+        println!("Detected incremental base snapshot: {}. Following snaphots are generaed with delta", snapshot_name);
     }
 }

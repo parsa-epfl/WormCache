@@ -142,13 +142,13 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
     unsafe {
         let name = ffi::CStr::from_ptr(name).to_str().unwrap();
-        let name = format!("{}.uarch", name);
-        PluginList::deserialize(&name);
+        let folder_name = format!("{}.uarch", name);
+        PluginList::deserialize(&folder_name);
 
         // Handling the timestamp.
         timestamp::initialize();
         components::chronic::on_loading_snapshot(&name);
-        timestamp::deserialize(&name);
+        timestamp::deserialize(&folder_name);
     }
 
     // This function is called after the snapshot is loaded.
