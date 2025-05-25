@@ -95,10 +95,7 @@ unsafe extern "C" fn event_loop_callback() {
 
         // get the current timestamp in miliseconds
         let current_time = std::time::SystemTime::now();
-        qemu_api::qemu_plugin_savevm(
-            c_snapshot_name.as_ptr(), 
-            snapshot_format
-        );
+        qemu_api::qemu_plugin_savevm(c_snapshot_name.as_ptr(), snapshot_format);
         let elapsed_time = std::time::SystemTime::now()
             .duration_since(current_time)
             .unwrap()
@@ -284,7 +281,8 @@ pub unsafe fn init(
             .write_fmt(format_args!("{}\n", Statistics::get_header()))
             .unwrap();
 
-        SNAPSHOT_LATENCY.set(SpinMutex::new(Vec::new()))
+        SNAPSHOT_LATENCY
+            .set(SpinMutex::new(Vec::new()))
             .expect("Failed to set the snapshot latency file.");
     }
 }
@@ -296,6 +294,10 @@ fn update_snapshot_type(snapshot_type: &str) {
 }
 
 pub fn on_load_snapshot(snapshot_name: &str) {
+    if QEMU_SNAPSHOT_FORMAT.get().is_none() {
+        return;
+    }
+
     // If the snapshot is an incremental base, which means {name}.basemem.zstd and {name}.state.zstd exist, we change the snapshot type to incremental.
     use std::fs;
 
@@ -304,6 +306,9 @@ pub fn on_load_snapshot(snapshot_name: &str) {
     let state_file = format!("{}.state.zstd", snapshot_name);
     if fs::metadata(&base_file).is_ok() && fs::metadata(&state_file).is_ok() {
         update_snapshot_type("incremental");
-        println!("Detected incremental base snapshot: {}. Following snaphots are generaed with delta", snapshot_name);
+        println!(
+            "Detected incremental base snapshot: {}. Following snaphots are generaed with delta",
+            snapshot_name
+        );
     }
 }
