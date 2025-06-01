@@ -79,7 +79,7 @@ type MH = ParallelMemoryHierarchy<
 
 #[allow(dead_code)]
 fn test_hit_last() {
-    let mh = MH::new(true, 0, false);
+    let mut mh = MH::new(true, 0, false);
 
     let set_idx = 1;
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
@@ -120,7 +120,7 @@ pc:0,
 
 #[allow(dead_code)]
 fn testing_pcache_always_miss() {
-    let mh = MH::new(true, 0, false);
+    let mut mh = MH::new(true, 0, false);
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:
@@ -157,7 +157,7 @@ pc:0,
 
 #[allow(dead_code)]
 fn testing_always_miss() {
-    let mh = MH::new(true, 0, false);
+    let mut mh = MH::new(true, 0, false);
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:

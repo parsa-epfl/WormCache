@@ -116,7 +116,7 @@ impl CacheBlockRequest {
 
 pub trait MemoryHierarchy {
     fn access_memory_pblock_id(
-        &self,
+        &mut self,
         request: &CacheBlockRequest,
         ts: u64,
     ) -> CacheHierarchyAccessResult;
@@ -126,6 +126,8 @@ pub trait MemoryHierarchy {
     fn flush_mmu(&self, core_id: u32, info: mmu::MMUFlushMode);
 
     fn lookup_agt(&mut self, request: &CacheBlockRequest, ts: u64) -> Option<common::AccTableEntry>;
+
+    fn evict_agt(&mut self, request: &CacheBlockRequest) -> Option<AccTableEntry>;
 
     fn lookup_pht(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<usize>>;
 

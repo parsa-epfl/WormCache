@@ -125,6 +125,10 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         unreachable!()
     }
 
+    fn evict_agt(&mut self, _request: &CacheBlockRequest) -> Option<crate::components::cache_hierarchy::common::AccTableEntry> {
+        unreachable!()
+    }
+
     fn lookup_pht(&self, _request: &CacheBlockRequest, _ts: u64) -> Option<Vec<usize>> {
         unreachable!()
     }
@@ -134,7 +138,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
     }
 
     fn access_memory_pblock_id(
-        &self,
+        &mut self,
         request: &CacheBlockRequest,
         ts: u64,
     ) -> CacheHierarchyAccessResult {

@@ -49,6 +49,10 @@ impl<
         self.agt.lookup(&request, ts as usize)
     }
 
+    fn evict_agt(&mut self, request: &CacheBlockRequest) -> Option<AccTableEntry> {
+        self.agt.evict(&request)
+    }
+
     fn lookup_pht(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<usize>> {
         self.pht.lookup(&request, ts as usize)
     }
@@ -58,7 +62,7 @@ impl<
     }
 
     fn access_memory_pblock_id(
-        &self,
+        &mut self,
         r: &CacheBlockRequest,
         ts: u64,
     ) -> CacheHierarchyAccessResult {
@@ -87,6 +91,11 @@ impl<
             // we don't have to anything. Just return.
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
+
+        match self.evict_agt(&r) {
+            Some(entry) => self.insert_pht(&entry, core_id as usize),
+            None => {}
+        };
 
         let evicted_slot = match private_hit {
             PrivateCachePokeResult::Hit => unreachable!(),

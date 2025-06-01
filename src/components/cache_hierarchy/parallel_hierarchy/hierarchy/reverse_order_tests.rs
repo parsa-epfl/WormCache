@@ -132,8 +132,8 @@ pc: 0,
 #[test]
 #[should_panic(expected = "assertion failed: self.lines[idx_of_slot_to_fill].ts <= ts")]
 fn reversed_timestamp_from_the_same_core() {
-    // let mh = MH::new(true, 0, false);
-    let mh = MH::new(true, 0, false);
+    // let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new(true, 0, false);
     // Fill one cache set with some data.
     let mut ts = 100;
     // Fill one cache set with some data.
