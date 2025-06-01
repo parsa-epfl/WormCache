@@ -92,6 +92,7 @@ fn testing_pcache_always_miss() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -138,6 +139,7 @@ fn testing_pcache_always_hit() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -179,6 +181,7 @@ fn read_shared_cache_line() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             ts,
         );
@@ -195,6 +198,7 @@ fn read_shared_cache_line() {
             block_id,
             access_type: CacheAccessType::DataRead,
             is_os: false,
+            pc: 0,
         },
         ts,
     );

@@ -51,6 +51,8 @@ pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 
 use crate::parameter;
 use crate::parameter::ADJACENT_LINE_PREFETCHING;
+use crate::parameter::SMS_PREFETCHING;
+use common::AGT;
 
 #[derive(Clone)]
 pub struct MemoryAccessRequest {
@@ -58,6 +60,7 @@ pub struct MemoryAccessRequest {
     pub va: u64,
     pub access_type: CacheAccessType,
     pub is_os: bool,
+    pub pc: u64, // Program counter for the request, used in SMS prefetching.
 }
 
 impl MemoryAccessRequest {
@@ -85,6 +88,7 @@ pub struct CacheBlockRequest {
     pub block_id: u64,
     pub access_type: CacheAccessType,
     pub is_os: bool,
+    pub pc: u64, // Program counter for the request, used in SMS prefetching.
 }
 
 impl CacheBlockRequest {
@@ -150,6 +154,7 @@ pub trait MemoryHierarchy {
                     block_id,
                     access_type: request.access_type.clone(),
                     is_os: request.is_os,
+                    pc: request.pc, // Pass the program counter for SMS prefetching.
                 }
             }
             MMUTranslationResult::Miss(paddr, walk_trace) => {
@@ -164,6 +169,7 @@ pub trait MemoryHierarchy {
                         block_id: pte_block_id,
                         access_type: CacheAccessType::PageWalkRead,
                         is_os: request.is_os,
+                        pc: request.pc, // Pass the program counter for SMS prefetching.
                     };
                     self.access_memory_pblock_id(&request, ts);
                 }
@@ -181,6 +187,7 @@ pub trait MemoryHierarchy {
                     block_id,
                     access_type: request.access_type.clone(),
                     is_os: request.is_os,
+                    pc: request.pc, // Pass the program counter for SMS prefetching.
                 }
             }
         };
@@ -192,6 +199,11 @@ pub trait MemoryHierarchy {
             prefetch_request.block_id += 1;
             self.access_memory_pblock_id(&prefetch_request, ts);
         }
+
+        // if SMS_PREFETCHING && !request.is_instruction() {
+        //     let mut 
+        // }
+
         result
     }
 

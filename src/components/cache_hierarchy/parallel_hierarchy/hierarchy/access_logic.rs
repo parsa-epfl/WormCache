@@ -1,12 +1,9 @@
 use crate::{
     components::{
         cache_hierarchy::{
-            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
-                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
-                PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
-            },
-            mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
+                AGTTrait, CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
+            }, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
         },
         debug::{
             cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
@@ -22,6 +19,7 @@ impl<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
+    Agt: AGTTrait,
     const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
@@ -34,6 +32,7 @@ impl<
         MMU,
         PCache,
         SCache,
+        Agt,
         PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
@@ -55,6 +54,7 @@ impl<
         let is_page_walk = r.is_page_walk();
         let block_id = r.block_id;
         let is_prefetch = r.is_prefetch();
+        let pc  = r.pc;
 
         if !is_prefetch && self.with_statistics {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
@@ -212,6 +212,7 @@ impl<
                     CacheAccessType::PrefetchWrite => CacheAccessType::PrefetchWrite,
                 },
                 is_os,
+                pc,
             };
 
             let shared_cache_result = if bring_into_shared_cache {

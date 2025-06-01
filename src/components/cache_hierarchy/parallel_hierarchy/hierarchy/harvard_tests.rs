@@ -89,7 +89,8 @@ fn i_create_sharer_from_clean_d() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -109,7 +110,8 @@ fn i_create_sharer_from_clean_d() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::InstructionFetch,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -141,7 +143,8 @@ fn i_create_sharer_from_dirty_d() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -161,7 +164,8 @@ fn i_create_sharer_from_dirty_d() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -185,7 +189,8 @@ fn i_create_sharer_from_dirty_d() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::InstructionFetch,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -217,7 +222,8 @@ fn d_create_sharer_from_clean_i() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::InstructionFetch,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -237,7 +243,8 @@ fn d_create_sharer_from_clean_i() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -269,7 +276,8 @@ fn d_dirty_create_sharer_from_clean_i() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::InstructionFetch,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -289,7 +297,8 @@ fn d_dirty_create_sharer_from_clean_i() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),
@@ -309,7 +318,8 @@ fn d_dirty_create_sharer_from_clean_i() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os: false
+                is_os:false,
+pc: 0,
             },
             get_monotonic_ts()
         ),

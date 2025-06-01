@@ -30,6 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use perf_event::Builder;
+use worm_cache::components::cache_hierarchy::common::ParallelAGT;
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
@@ -56,6 +57,12 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_EXCLUSIVE },
         { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     >,
+    ParallelAGT<
+        1,
+        { parameter::SMS_ACC_TABLE_SIZE },
+        { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
     { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
@@ -76,7 +83,8 @@ fn test_hit_last() {
                 core_id: 0,
                 block_id: (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
                 access_type: CacheAccessType::DataRead,
-                is_os: false,
+                is_os:false,
+pc:0,
             },
             i as u64,
         );
@@ -96,7 +104,8 @@ fn test_hit_last() {
                 core_id: 0,
                 block_id: addr,
                 access_type: CacheAccessType::DataRead,
-                is_os: false,
+                is_os:false,
+pc:0,
             },
             ts,
         );
@@ -122,7 +131,8 @@ fn testing_pcache_always_miss() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    is_os: false,
+                    is_os:false,
+pc:0,
                 },
                 ts,
             );
@@ -158,7 +168,8 @@ fn testing_always_miss() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    is_os: false,
+                    is_os:false,
+pc:0,
                 },
                 ts,
             );

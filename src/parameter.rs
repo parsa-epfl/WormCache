@@ -268,6 +268,16 @@ static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
 
 /**
+ * SMS_PREFETCHING
+ * 
+ * Whether to use the SMS prefetcher for data
+*/
+pub const SMS_PREFETCHING: bool = false;
+pub const SMS_ACC_TABLE_SIZE: usize = 64;
+pub const SMS_FILTER_TABLE_SIZE: usize = 64;
+pub const SMS_OFF_BITW: usize = 12;
+
+/**
  * BP_GSHARE_SET
  *
  * The number of sets of the gshare branch predictor.

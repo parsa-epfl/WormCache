@@ -67,6 +67,9 @@ unsafe extern "C" fn vcpu_mem_access(
         let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
         let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
+        let vpn = qemu_api::qemu_plugin_read_pc_vpn();
+        let inst_vaddr = vpn << 12 | (_inst_host_addr as u64 & 0xfff);
+
         if !is_device {
             let is_store = qemu_api::qemu_plugin_mem_is_store(info);
 
@@ -84,6 +87,7 @@ unsafe extern "C" fn vcpu_mem_access(
                             CacheAccessType::DataRead
                         },
                         is_os,
+                        pc: inst_vaddr,
                     },
                     Some(pa),
                     get_ts(),
@@ -119,6 +123,7 @@ unsafe extern "C" fn vcpu_insn_exec(
                     va: vaddr,
                     access_type: CacheAccessType::InstructionFetch,
                     is_os,
+                    pc: vaddr,
                 },
                 get_ts(),
             );

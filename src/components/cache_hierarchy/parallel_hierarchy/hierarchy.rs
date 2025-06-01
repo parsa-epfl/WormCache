@@ -31,7 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
-use crate::components::cache_hierarchy::common::InfiniteDirectorySet;
+use crate::components::cache_hierarchy::common::{InfiniteDirectorySet};
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
@@ -39,7 +39,7 @@ use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::super::common::{Directory, DirectorySet, PrivateCaches, SharedCache};
+use super::super::common::{Directory, DirectorySet, PrivateCaches, SharedCache, AGTTrait};
 
 use std::cell::UnsafeCell;
 use std::ops::DerefMut;
@@ -59,6 +59,7 @@ pub struct ParallelMemoryHierarchy<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
+    Agt: AGTTrait, 
     const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
@@ -66,11 +67,15 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
+    const N_ACC: usize = 0,
+    const N_FILTER: usize = 0,
+    const OFF_BITW: usize = 0,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
     directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>,DIRECTORY_SHARD_COUNT>,
+    agt: Agt,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -81,6 +86,7 @@ impl<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
+    Agt: AGTTrait,
     const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
@@ -93,6 +99,7 @@ impl<
         MMU,
         PCache,
         SCache,
+        Agt,
         PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
@@ -108,6 +115,7 @@ impl<
             private_caches: PCache::new(),
             directory: Directory::new(),
             shared_cache: SCache::new(),
+            agt: Agt::new(),
             with_statistics,
             directory_run_gc,
         }
