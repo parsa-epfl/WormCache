@@ -24,6 +24,14 @@ pub struct FilterTableEntry {
 }
 
 #[derive(Debug)]
+pub struct PHTEntry {
+    tag: (usize, usize),    // (pc, offset)
+    lru_ts: usize,
+    pattern: usize,
+    valid: bool,
+}
+
+#[derive(Debug)]
 struct AGTPerCore<
     GAcc: CCell<AccTableEntry> + std::fmt::Debug,   // We dont need to use CCell?
     GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
@@ -33,6 +41,78 @@ struct AGTPerCore<
 > {
     acc_entries: Box<[GAcc; N_ACC]>, // Why do we need box here?
     filter_entries: Box<[GFilter; N_FILTER]>,
+}
+
+#[derive(Debug)]
+struct PHTPerCore<
+    GPht: CCell<PHTEntry> + std::fmt::Debug,
+    const N_PHT: usize,
+> {
+    pht_entries: Box<[GPht; N_PHT]>,
+}
+
+impl<
+    GPht: CCell<PHTEntry> + std::fmt::Debug,
+    const N_PHT: usize,
+> PHTPerCore<GPht, N_PHT> {
+    pub fn new() -> Self {
+        Self {
+            pht_entries: crate::util::init_heap_array(
+                |_| GPht::new(PHTEntry {
+                    tag: (0, 0),
+                    lru_ts: 0,
+                    pattern: 0,
+                    valid: false,
+                }),
+            ),
+        }
+    }
+
+    pub fn lookup(&self, pc: usize, offset: usize, ts: usize) -> Option<usize> {
+        let tag = (pc, offset);
+        for entry in self.pht_entries.iter() {
+            if entry.inner().tag == tag && entry.inner().valid {
+                entry.inner().lru_ts = ts;
+                return Some(entry.inner().pattern);
+            }
+        }
+        None
+    }
+
+    pub fn insert(&mut self, entry: &AccTableEntry) {
+        let tag = (entry.pc, entry.offset);
+        let mut lru_ts = self.pht_entries[0].inner().lru_ts;
+        let mut lru_idx = 0;
+        for (idx, pht_entry) in self.pht_entries.iter_mut().enumerate() {
+            if !pht_entry.inner().valid {
+                *pht_entry.inner() = PHTEntry {
+                    tag,
+                    lru_ts: entry.lru_ts,
+                    pattern: entry.pattern,
+                    valid: true,
+                };
+                return;
+            } else if pht_entry.inner().tag == tag {
+                // Update existing entry
+                pht_entry.inner().lru_ts = entry.lru_ts;
+                pht_entry.inner().pattern = entry.pattern;
+                return;
+            } else {
+                // Find the least recently used entry
+                if pht_entry.inner().lru_ts < lru_ts {
+                    lru_ts = pht_entry.inner().lru_ts;
+                    lru_idx = idx;
+                }
+            }
+        }
+        *self.pht_entries[lru_idx].inner() = PHTEntry {
+            tag: tag,
+            lru_ts: entry.lru_ts,
+            pattern: entry.pattern,
+            valid: true,
+        };
+    }
+
 }
 
 impl<
@@ -227,6 +307,12 @@ pub trait AGTTrait {
     fn evict(&mut self, request: &CacheBlockRequest) -> Option<AccTableEntry>;
 }
 
+pub trait PHTTrait {
+    fn new() -> Self;
+    fn lookup(&self, request: &CacheBlockRequest, ts: usize) -> Option<Vec<usize>>;
+    fn insert(&mut self, entry: &AccTableEntry, core_id: usize);
+}
+
 pub struct AGT<
     GAcc: CCell<AccTableEntry> + std::fmt::Debug,   // We dont need to use CCell?
     GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
@@ -236,6 +322,55 @@ pub struct AGT<
     const OFF_BITW: usize,
 > {
     tables: Box<[AGTPerCore<GAcc, GFilter, N_ACC, N_FILTER, OFF_BITW>; CORE_COUNT]>,
+}
+
+pub struct PHT<
+    GPht: CCell<PHTEntry> + std::fmt::Debug,
+    const CORE_COUNT: usize,
+    const N_PHT: usize,
+    const OFF_BITW: usize,
+> {
+    tables: Box<[PHTPerCore<GPht, N_PHT>; CORE_COUNT]>,
+}
+
+impl<
+    GPht: CCell<PHTEntry> + std::fmt::Debug,
+    const CORE_COUNT: usize,
+    const N_PHT: usize,
+    const OFF_BITW: usize,
+> PHTTrait for PHT<GPht, CORE_COUNT, N_PHT, OFF_BITW>
+{
+    fn new() -> Self {
+        Self {
+            tables: crate::util::init_heap_array(|_| PHTPerCore::<GPht, N_PHT>::new()),
+        }
+    }
+
+    fn lookup(&self, request: &CacheBlockRequest, ts: usize) -> Option<Vec<usize>> {
+        let core_id = request.core_id as usize;
+        assert!(core_id < CORE_COUNT, "Core ID out of bounds: {}", core_id);
+        let pc = request.pc as usize;
+        let adddr = request.block_id as usize;
+        let tag = adddr >> OFF_BITW;
+        let offset = adddr & ((1 << OFF_BITW) - 1);
+        let pattern = match self.tables[core_id].lookup(pc, offset, ts) {
+            Some(pattern) => pattern,
+            None => return None,
+        };
+        let max = 1 << OFF_BITW - 1;
+        let mut result = Vec::new();
+        for bit in 0..max {
+            if (pattern & (1 << bit)) != 0 {
+                let addr = tag << OFF_BITW + bit;
+                result.push(addr);
+            }
+        }
+        Some(result)
+    }
+
+    fn insert(&mut self, entry: &AccTableEntry, core_id: usize) {
+        self.tables[core_id].insert(entry);
+    }
 }
 
 impl<
@@ -278,3 +413,9 @@ pub type ParallelAGT<
     const N_FILTER: usize,
     const OFF_BITW: usize,
 > = AGT<SpinMutex<AccTableEntry>, SpinMutex<FilterTableEntry>, CORE_COUNT, N_ACC, N_FILTER, OFF_BITW>;
+
+pub type ParallelPHT<
+    const CORE_COUNT: usize,
+    const N_PHT: usize,
+    const OFF_BITW: usize,
+> = PHT<SpinMutex<PHTEntry>, CORE_COUNT, N_PHT, OFF_BITW>;

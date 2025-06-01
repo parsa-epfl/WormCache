@@ -36,7 +36,7 @@ use crate::{
         CacheBlockRequest, MemoryHierarchy,
         common::{
             CacheAccessType, CacheHierarchyAccessResult, ParallelSingleSharedCache,
-            ParallelUnifiedPrivateCache, PrivateCaches, SharedCache, ParallelAGT,
+            ParallelUnifiedPrivateCache, PrivateCaches, SharedCache, ParallelAGT, ParallelPHT,
             statistics::ZeroSharedCacheSetStatistics,
         },
         mmu::NoMMU,
@@ -62,6 +62,11 @@ type MH = ParallelMemoryHierarchy<
         32,
         { parameter::SMS_ACC_TABLE_SIZE },
         { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
+    ParallelPHT<
+        32,
+        { parameter::SMS_PHT_TABLE_SIZE },
         { parameter::SMS_OFF_BITW },
     >,
     true,

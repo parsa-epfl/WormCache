@@ -120,6 +120,19 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
 }
 
 impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
+
+    fn lookup_agt(&mut self, _request: &CacheBlockRequest, _ts: u64) -> Option<crate::components::cache_hierarchy::common::AccTableEntry> {
+        unreachable!()
+    }
+
+    fn lookup_pht(&self, _request: &CacheBlockRequest, _ts: u64) -> Option<Vec<usize>> {
+        unreachable!()
+    }
+
+    fn insert_pht(&mut self, _entry: &crate::components::cache_hierarchy::common::AccTableEntry, _core_id: usize) {
+        unreachable!()
+    }
+
     fn access_memory_pblock_id(
         &self,
         request: &CacheBlockRequest,

@@ -2,7 +2,7 @@ use crate::{
     components::{
         cache_hierarchy::{
             common::{
-                AGTTrait, CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
+                AGTTrait, AccTableEntry, CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PHTTrait, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
             }, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
         },
         debug::{
@@ -20,6 +20,7 @@ impl<
     PCache: PrivateCaches,
     SCache: SharedCache,
     Agt: AGTTrait,
+    Pht: PHTTrait,
     const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
@@ -33,6 +34,7 @@ impl<
         PCache,
         SCache,
         Agt,
+        Pht,
         PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
@@ -42,6 +44,19 @@ impl<
         CORE_COUNT,
     >
 {
+
+    fn lookup_agt(&mut self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry> {
+        self.agt.lookup(&request, ts as usize)
+    }
+
+    fn lookup_pht(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<usize>> {
+        self.pht.lookup(&request, ts as usize)
+    }
+
+    fn insert_pht(&mut self, entry: &AccTableEntry, core_id: usize) {
+        self.pht.insert(&entry, core_id);
+    }
+
     fn access_memory_pblock_id(
         &self,
         r: &CacheBlockRequest,

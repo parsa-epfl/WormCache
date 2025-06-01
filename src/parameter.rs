@@ -276,6 +276,7 @@ pub const SMS_PREFETCHING: bool = false;
 pub const SMS_ACC_TABLE_SIZE: usize = 64;
 pub const SMS_FILTER_TABLE_SIZE: usize = 64;
 pub const SMS_OFF_BITW: usize = 12;
+pub const SMS_PHT_TABLE_SIZE: usize = 64;
 
 /**
  * BP_GSHARE_SET

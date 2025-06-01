@@ -31,7 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
-use crate::components::cache_hierarchy::common::{InfiniteDirectorySet};
+use crate::components::cache_hierarchy::common::{InfiniteDirectorySet, PHTTrait};
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
@@ -60,6 +60,7 @@ pub struct ParallelMemoryHierarchy<
     PCache: PrivateCaches,
     SCache: SharedCache,
     Agt: AGTTrait, 
+    Pht: PHTTrait,
     const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
@@ -76,6 +77,7 @@ pub struct ParallelMemoryHierarchy<
     private_caches: PCache,
     directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>,DIRECTORY_SHARD_COUNT>,
     agt: Agt,
+    pht: Pht,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -87,6 +89,7 @@ impl<
     PCache: PrivateCaches,
     SCache: SharedCache,
     Agt: AGTTrait,
+    Pht: PHTTrait,
     const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
@@ -100,6 +103,7 @@ impl<
         PCache,
         SCache,
         Agt,
+        Pht,
         PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
@@ -116,6 +120,7 @@ impl<
             directory: Directory::new(),
             shared_cache: SCache::new(),
             agt: Agt::new(),
+            pht: Pht::new(),
             with_statistics,
             directory_run_gc,
         }

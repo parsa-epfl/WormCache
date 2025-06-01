@@ -44,6 +44,7 @@ use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCache
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
 use worm_cache::components::debug::statistics::Statistics;
+use worm_cache::components::cache_hierarchy::common::{ParallelAGT, ParallelPHT};
 
 use worm_cache::parameter;
 
@@ -60,6 +61,17 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
         { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
+    >,
+    ParallelAGT<
+        64,
+        { parameter::SMS_ACC_TABLE_SIZE },
+        { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
+    ParallelPHT<
+        64,
+        { parameter::SMS_PHT_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
     >,
     { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },

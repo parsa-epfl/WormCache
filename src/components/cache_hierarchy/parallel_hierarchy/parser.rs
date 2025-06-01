@@ -29,7 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::components::cache_hierarchy::common::{ParallelAGT};
+use crate::components::cache_hierarchy::common::{ParallelAGT, ParallelPHT};
 use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
@@ -153,6 +153,11 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
         { parameter::SMS_FILTER_TABLE_SIZE },
         { parameter::SMS_OFF_BITW },
     >,
+    ParallelPHT<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::SMS_PHT_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
     { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
@@ -185,6 +190,11 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
         { parameter::SMS_FILTER_TABLE_SIZE },
         { parameter::SMS_OFF_BITW },
     >,
+    ParallelPHT<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::SMS_PHT_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
     { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
@@ -213,6 +223,11 @@ type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
         { ALLOCATED_CORE_COUNT },
         { parameter::SMS_ACC_TABLE_SIZE },
         { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
+    ParallelPHT<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::SMS_PHT_TABLE_SIZE },
         { parameter::SMS_OFF_BITW },
     >,
     false,
@@ -245,6 +260,11 @@ type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
         { ALLOCATED_CORE_COUNT },
         { parameter::SMS_ACC_TABLE_SIZE },
         { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
+    ParallelPHT<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::SMS_PHT_TABLE_SIZE },
         { parameter::SMS_OFF_BITW },
     >,
     false,

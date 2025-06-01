@@ -30,7 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::components::cache_hierarchy::common::{
-    CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, ParallelAGT,
+    CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, ParallelAGT, ParallelPHT,
 };
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
@@ -65,6 +65,11 @@ type MH = ParallelMemoryHierarchy<
         32,
         { parameter::SMS_ACC_TABLE_SIZE },
         { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
+    ParallelPHT<
+        32,
+        { parameter::SMS_PHT_TABLE_SIZE },
         { parameter::SMS_OFF_BITW },
     >,
     true,

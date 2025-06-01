@@ -41,6 +41,7 @@ pub mod mmu;
 mod parallel_hierarchy;
 mod single_cache_hierarchy;
 
+use common::AccTableEntry;
 use common::CacheAccessType;
 use common::CacheHierarchyAccessResult;
 use mmu::MMUTranslationResult;
@@ -52,7 +53,6 @@ pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 use crate::parameter;
 use crate::parameter::ADJACENT_LINE_PREFETCHING;
 use crate::parameter::SMS_PREFETCHING;
-use common::AGT;
 
 #[derive(Clone)]
 pub struct MemoryAccessRequest {
@@ -125,9 +125,15 @@ pub trait MemoryHierarchy {
 
     fn flush_mmu(&self, core_id: u32, info: mmu::MMUFlushMode);
 
+    fn lookup_agt(&mut self, request: &CacheBlockRequest, ts: u64) -> Option<common::AccTableEntry>;
+
+    fn lookup_pht(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<usize>>;
+
+    fn insert_pht(&mut self, entry: &AccTableEntry, core_id: usize);
+
     #[inline]
     fn access_memory_with_va_and_pa(
-        &self,
+        &mut self,
         request: &MemoryAccessRequest,
         pa: Option<u64>,
         ts: u64,
@@ -197,19 +203,43 @@ pub trait MemoryHierarchy {
         if ADJACENT_LINE_PREFETCHING {
             let mut prefetch_request = translated_request.clone();
             prefetch_request.block_id += 1;
+            prefetch_request.access_type = match translated_request.is_store() {
+                true => CacheAccessType::PrefetchWrite,
+                false => CacheAccessType::PrefetchRead,
+            };
             self.access_memory_pblock_id(&prefetch_request, ts);
         }
 
-        // if SMS_PREFETCHING && !request.is_instruction() {
-        //     let mut 
-        // }
+        if SMS_PREFETCHING && !request.is_instruction() {
+            // prefetch the predicted blocks
+            match self.lookup_pht(&translated_request, ts) {
+                Some(predicted_blk_id) => {
+                    let mut prefetch_request = translated_request.clone();
+                    prefetch_request.access_type = match translated_request.is_store() {
+                        true => CacheAccessType::PrefetchWrite,
+                        false => CacheAccessType::PrefetchRead,
+                    };
+                    for blk_id in predicted_blk_id {
+                        prefetch_request.block_id = blk_id as u64;
+                        self.access_memory_pblock_id(&prefetch_request, ts);
+                    }
+
+                },
+                None => {},
+            }
+            
+            match self.lookup_agt(&translated_request, ts) {
+                Some(entry) => self.insert_pht(&entry, translated_request.core_id as usize),
+                None => {},
+            }
+        }
 
         result
     }
 
     #[inline]
     fn access_memory_with_va(
-        &self,
+        &mut self,
         request: &MemoryAccessRequest,
         ts: u64,
     ) -> CacheHierarchyAccessResult {

@@ -1,6 +1,7 @@
 use rand::Rng;
 use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
 use worm_cache::components::cache_hierarchy::common::SharedCache;
+use worm_cache::components::cache_hierarchy::common::{ParallelAGT, ParallelPHT};
 
 struct WorkingSet {
     starting_addr: u64,
@@ -256,6 +257,8 @@ fn test_resize_cache_hierarchy() {
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 32, 4, 32, 4>,
         ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 32, 8, false, true>,
+        ParallelAGT<{ CORE_COUNT }, 64, 64, 12>,
+        ParallelPHT<{ CORE_COUNT }, 64, 12>,
         true,
         true,
         true,
@@ -269,6 +272,8 @@ fn test_resize_cache_hierarchy() {
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 128, 8, 128, 8>,
         ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 128, 16, false, true>,
+        ParallelAGT<{ CORE_COUNT }, 64, 64, 12>,
+        ParallelPHT<{ CORE_COUNT }, 64, 12>,
         true,
         true,
         true,

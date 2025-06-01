@@ -30,7 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use perf_event::Builder;
-use worm_cache::components::cache_hierarchy::common::ParallelAGT;
+use worm_cache::components::cache_hierarchy::common::{ParallelAGT, ParallelPHT};
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
@@ -61,6 +61,11 @@ type MH = ParallelMemoryHierarchy<
         1,
         { parameter::SMS_ACC_TABLE_SIZE },
         { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
+    >,
+    ParallelPHT<
+        1,
+        { parameter::SMS_PHT_TABLE_SIZE },
         { parameter::SMS_OFF_BITW },
     >,
     { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
