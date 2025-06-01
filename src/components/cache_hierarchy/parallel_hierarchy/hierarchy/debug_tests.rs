@@ -32,7 +32,7 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
-use crate::components::cache_hierarchy::common::{CacheAccessType, CacheHierarchyAccessResult};
+use crate::components::cache_hierarchy::common::{CacheAccessType, CacheHierarchyAccessResult, ParallelAGT};
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
 use crate::parameter;
@@ -55,6 +55,12 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
         true,
+    >,
+    ParallelAGT<
+        32,
+        { parameter::SMS_ACC_TABLE_SIZE },
+        { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
     >,
     true,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },

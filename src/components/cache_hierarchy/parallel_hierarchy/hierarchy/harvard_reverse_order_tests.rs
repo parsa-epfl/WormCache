@@ -32,7 +32,7 @@
 use std::collections::HashMap;
 
 use crate::components::cache_hierarchy::common::{
-    CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, SharedCache,
+    CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, SharedCache, ParallelAGT
 };
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
@@ -61,6 +61,12 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
         true,
+    >,
+    ParallelAGT<
+        32,
+        { parameter::SMS_ACC_TABLE_SIZE },
+        { parameter::SMS_FILTER_TABLE_SIZE },
+        { parameter::SMS_OFF_BITW },
     >,
     true,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
