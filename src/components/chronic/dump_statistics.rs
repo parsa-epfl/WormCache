@@ -239,10 +239,10 @@ pub fn on_finish_loading_snapshot() {
     // Start a process with perf event. I also need to be able to send SIGINT to the process.
     let list_of_events = vec![
         "instructions",
-        "ls_dmnd_fills_from_sys.lcl_l2",
-        "ls_dmnd_fills_from_sys.int_cache",
-        "ls_dmnd_fills_from_sys.ext_cache_local",
-        "ls_dmnd_fills_from_sys.mem_io_local",
+        // "ls_dmnd_fills_from_sys.lcl_l2",
+        // "ls_dmnd_fills_from_sys.int_cache",
+        // "ls_dmnd_fills_from_sys.ext_cache_local",
+        // "ls_dmnd_fills_from_sys.mem_io_local",
     ];
 
     PERF_COMMAND

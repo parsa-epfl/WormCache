@@ -142,7 +142,7 @@ impl SharedCacheSetStatistics for SharedCacheSetMissStatistics {
                     self.ptw_miss_count += 1;
                 }
 
-                _ => panic!("Error: unsupported access type."),
+                _ => {},
             }
 
             if is_os {
@@ -160,7 +160,7 @@ impl SharedCacheSetStatistics for SharedCacheSetMissStatistics {
                     CacheAccessType::PageWalkRead => {
                         self.ptw_miss_count_k += 1;
                     }
-                    _ => panic!("Error: unsupported access type."),
+                    _ => {},
                 }
             } else {
                 self.miss_count_u += 1;
@@ -177,7 +177,7 @@ impl SharedCacheSetStatistics for SharedCacheSetMissStatistics {
                     CacheAccessType::PageWalkRead => {
                         self.ptw_miss_count_u += 1;
                     }
-                    _ => panic!("Error: unsupported access type."),
+                    _ => {},
                 }
             }
         }

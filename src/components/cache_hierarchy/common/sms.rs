@@ -71,39 +71,43 @@ impl<
     pub fn lookup(&self, pc: usize, offset: usize, ts: usize) -> Option<usize> {
         let tag = (pc, offset);
         for entry in self.pht_entries.iter() {
-            if entry.inner().tag == tag && entry.inner().valid {
-                entry.inner().lru_ts = ts;
-                return Some(entry.inner().pattern);
+            let mut lock_entry = entry.inner();
+            if lock_entry.tag == tag && lock_entry.valid {
+                lock_entry.lru_ts = ts;
+                return Some(lock_entry.pattern);
             }
+            drop(lock_entry);
         }
         None
     }
 
     pub fn insert(&mut self, entry: &AccTableEntry) {
         let tag = (entry.pc, entry.offset);
-        let mut lru_ts = self.pht_entries[0].inner().lru_ts;
+        let mut lru_ts =  usize::MAX;
         let mut lru_idx = 0;
         for (idx, pht_entry) in self.pht_entries.iter_mut().enumerate() {
-            if !pht_entry.inner().valid {
-                *pht_entry.inner() = PHTEntry {
+            let mut lock_entry = pht_entry.inner();
+            if !lock_entry.valid {
+                *lock_entry = PHTEntry {
                     tag,
                     lru_ts: entry.lru_ts,
                     pattern: entry.pattern,
                     valid: true,
                 };
                 return;
-            } else if pht_entry.inner().tag == tag {
+            } else if lock_entry.tag == tag {
                 // Update existing entry
-                pht_entry.inner().lru_ts = entry.lru_ts;
-                pht_entry.inner().pattern = entry.pattern;
+                lock_entry.lru_ts = entry.lru_ts;
+                lock_entry.pattern = entry.pattern;
                 return;
             } else {
                 // Find the least recently used entry
-                if pht_entry.inner().lru_ts < lru_ts {
-                    lru_ts = pht_entry.inner().lru_ts;
+                if lock_entry.lru_ts < lru_ts {
+                    lru_ts = lock_entry.lru_ts;
                     lru_idx = idx;
                 }
             }
+            drop(lock_entry);
         }
         *self.pht_entries[lru_idx].inner() = PHTEntry {
             tag: tag,
@@ -169,7 +173,7 @@ impl<
             None => {
                 match self.evict_filter(tag) {
                     true => None,
-                    false => unreachable!(),
+                    false => None,  // TODO: check, should this happen?
                 }
             }
         }
@@ -177,16 +181,17 @@ impl<
 
     fn evict_acc(&mut self, tag: usize) -> Option<AccTableEntry> {
         for entry in self.acc_entries.iter_mut() {
-            if entry.inner().tag == tag && entry.inner().valid {
+            let mut lock_entry = entry.inner();
+            if lock_entry.tag == tag && lock_entry.valid {
                 let evicted_entry = AccTableEntry {
-                    tag: entry.inner().tag,
-                    pc: entry.inner().pc,
-                    offset: entry.inner().offset,
-                    lru_ts: entry.inner().lru_ts,
-                    pattern: entry.inner().pattern,
+                    tag: lock_entry.tag,
+                    pc: lock_entry.pc,
+                    offset: lock_entry.offset,
+                    lru_ts: lock_entry.lru_ts,
+                    pattern: lock_entry.pattern,
                     valid: true,
                 };
-                *entry.inner() = AccTableEntry {
+                *lock_entry = AccTableEntry {
                     tag: 0,
                     pc: 0,
                     offset: 0,
@@ -196,14 +201,16 @@ impl<
                 };
                 return Some(evicted_entry);
             }
+            drop(lock_entry);
         }
         None
     }
 
     fn evict_filter(&mut self, tag: usize) -> bool {
         for entry in self.filter_entries.iter_mut() {
-            if entry.inner().tag == tag && entry.inner().valid {
-                *entry.inner() = FilterTableEntry {
+            let mut lock_entry = entry.inner();
+            if lock_entry.tag == tag && lock_entry.valid {
+                *lock_entry = FilterTableEntry {
                     tag: 0,
                     pc: 0,
                     offset: 0,
@@ -212,53 +219,59 @@ impl<
                 };
                 return true;
             }
+            drop(lock_entry);
         }
         false
     }
 
     fn lookup_acc(&mut self, tag: usize, offset: usize, ts: usize) -> bool {
         for entry in self.acc_entries.iter_mut() {
-            if entry.inner().tag == tag && entry.inner().valid {
-                entry.inner().pattern |= 1 << offset;
-                entry.inner().lru_ts = ts;
+            let mut lock_entry = entry.inner();
+            if lock_entry.tag == tag && lock_entry.valid {
+                lock_entry.pattern |= 1 << offset;
+                lock_entry.lru_ts = ts;
                 return true;
             }
+            drop(lock_entry);
         }
         false
     }
 
     fn insert_acc(&mut self, entry: AccTableEntry) -> Option<AccTableEntry> {
-        let mut lru_ts = self.acc_entries[0].inner().lru_ts;
+        let mut lru_ts = usize::MAX;
         let mut lru_idx = 0;
         for (idx, acc_entry) in self.acc_entries.iter().enumerate() {
-            if acc_entry.inner().valid == false {
-                *acc_entry.inner() = entry;
+            let mut lock_entry = acc_entry.inner();
+            if lock_entry.valid == false {
+                *lock_entry = entry;
                 return None;
             }
-            if acc_entry.inner().lru_ts < lru_ts {
-                lru_ts = acc_entry.inner().lru_ts;
+            if lock_entry.lru_ts < lru_ts {
+                lru_ts = lock_entry.lru_ts;
                 lru_idx = idx;
             }
         }
+        let mut lock_entry = self.acc_entries[lru_idx].inner();
         let evicted_entry = 
             AccTableEntry {
-                tag: self.acc_entries[lru_idx].inner().tag,
-                pc: self.acc_entries[lru_idx].inner().pc,
-                offset: self.acc_entries[lru_idx].inner().offset,
-                lru_ts: self.acc_entries[lru_idx].inner().lru_ts,
-                pattern: self.acc_entries[lru_idx].inner().pattern,
+                tag: lock_entry.tag,
+                pc: lock_entry.pc,
+                offset: lock_entry.offset,
+                lru_ts: lock_entry.lru_ts,
+                pattern: lock_entry.pattern,
                 valid: true,
             };
-        *self.acc_entries[lru_idx].inner() = entry;
+        *lock_entry = entry;
         return Some(evicted_entry);
     }
 
     fn lookup_filter(&mut self, tag: usize, pc: usize, offset: usize, ts: usize) -> Option<AccTableEntry> {
-        let mut lru_ts = self.filter_entries[0].inner().lru_ts;
+        let mut lru_ts = usize::MAX;
         let mut lru_idx = 0;
         for (idx, entry) in self.filter_entries.iter_mut().enumerate() {
-            if entry.inner().valid == false {
-                *entry.inner() = FilterTableEntry {
+            let mut lock_entry = entry.inner();
+            if lock_entry.valid == false {
+                *lock_entry = FilterTableEntry {
                     tag: tag,
                     pc: pc,
                     offset: offset,
@@ -267,24 +280,24 @@ impl<
                 };
                 return None;
             }
-            if entry.inner().tag == tag {
-                if entry.inner().offset == offset {
-                    entry.inner().lru_ts = ts;
+            if lock_entry.tag == tag {
+                if lock_entry.offset == offset {
+                    lock_entry.lru_ts = ts;
                     return None;
                 } else {
-                    let pattern: usize = (1 << entry.inner().offset) | (1 << offset);
+                    let pattern: usize = (1 << lock_entry.offset) | (1 << offset);
                     return Some(AccTableEntry {
-                        tag: entry.inner().tag,
-                        pc: entry.inner().pc,
-                        offset: entry.inner().offset,
+                        tag: lock_entry.tag,
+                        pc: lock_entry.pc,
+                        offset: lock_entry.offset,
                         lru_ts: ts,
                         pattern: pattern,
                         valid: true,
                     });
                 }
             } else {
-                if entry.inner().lru_ts < lru_ts{
-                    lru_ts = entry.inner().lru_ts;
+                if lock_entry.lru_ts < lru_ts{
+                    lru_ts = lock_entry.lru_ts;
                     lru_idx = idx;
                 }
             }
