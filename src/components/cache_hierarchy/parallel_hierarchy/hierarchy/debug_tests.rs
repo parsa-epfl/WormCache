@@ -74,6 +74,10 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
     32,
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::N_PHT},
+    {parameter::N_BLK},
 >;
 
 #[test]
@@ -88,7 +92,7 @@ fn read_evict_and_other_core_read_back() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             get_monotonic_ts(),
@@ -105,7 +109,7 @@ fn read_evict_and_other_core_read_back() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    is_os:false,
+                    is_os: false,
                     pc: 0,
                 },
                 get_monotonic_ts(),
@@ -210,7 +214,7 @@ fn write_write_read_then_old_write() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             200
@@ -225,7 +229,7 @@ fn write_write_read_then_old_write() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             125
@@ -246,7 +250,7 @@ fn write_read_then_early_read() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             100
@@ -261,7 +265,7 @@ fn write_read_then_early_read() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             150
@@ -276,7 +280,7 @@ fn write_read_then_early_read() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             50
@@ -297,7 +301,7 @@ fn read_then_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             100
@@ -312,7 +316,7 @@ fn read_then_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             150
@@ -337,7 +341,7 @@ fn write_read_after_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             100
@@ -352,7 +356,7 @@ fn write_read_after_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             150
@@ -367,7 +371,7 @@ fn write_read_after_write() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             200
@@ -388,7 +392,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             10
@@ -403,7 +407,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             20
@@ -418,7 +422,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             30
@@ -433,7 +437,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             15
@@ -448,7 +452,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             35
@@ -463,7 +467,7 @@ fn later_read_after_write_cancel_sharers() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             40
@@ -480,7 +484,7 @@ fn later_read_after_write_cancel_sharers() {
                     core_id: 1,
                     block_id: block_id + ((i + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64,
                     access_type: CacheAccessType::DataRead,
-                    is_os:false,
+                    is_os: false,
                     pc: 0,
                 },
                 (50 + i) as u64
@@ -501,7 +505,7 @@ fn write_evict_read_write() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             10
@@ -518,7 +522,7 @@ fn write_evict_read_write() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataWrite,
-                    is_os:false,
+                    is_os: false,
                     pc: 0,
                 },
                 20 + i as u64 * 10
@@ -536,7 +540,7 @@ fn write_evict_read_write() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             1024
@@ -552,7 +556,7 @@ fn write_evict_read_write() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             5
@@ -573,7 +577,7 @@ fn share_directory_entry_inseter_ts_update() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             30
@@ -588,7 +592,7 @@ fn share_directory_entry_inseter_ts_update() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             40
@@ -603,7 +607,7 @@ fn share_directory_entry_inseter_ts_update() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             20
@@ -620,7 +624,7 @@ fn share_directory_entry_inseter_ts_update() {
                 core_id: 2,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             25
@@ -643,7 +647,7 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
                 core_id: 0,
                 block_id,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             30
@@ -661,8 +665,8 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    is_os:false,
-                    pc: 0,
+                    is_os: false,
+                pc: 0,
                 },
                 40 + i as u64 * 10
             ),
@@ -678,7 +682,7 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
                 core_id: 1,
                 block_id,
                 access_type: CacheAccessType::DataWrite,
-                is_os:false,
+                is_os: false,
                 pc: 0,
             },
             10
@@ -691,7 +695,7 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
         core_id: 0,
         block_id,
         access_type: CacheAccessType::DataRead,
-        is_os:false,
+        is_os: false,
         pc: 0,
     }));
 }

@@ -75,6 +75,10 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
     1,
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::N_PHT},
+    {parameter::N_BLK},
 >;
 
 #[allow(dead_code)]
@@ -88,8 +92,8 @@ fn test_hit_last() {
                 core_id: 0,
                 block_id: (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
-pc:0,
+                is_os: false,
+                pc: 0,
             },
             i as u64,
         );
@@ -109,8 +113,8 @@ pc:0,
                 core_id: 0,
                 block_id: addr,
                 access_type: CacheAccessType::DataRead,
-                is_os:false,
-pc:0,
+                is_os: false,
+                pc: 0,
             },
             ts,
         );
@@ -136,8 +140,8 @@ fn testing_pcache_always_miss() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    is_os:false,
-pc:0,
+                    is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -173,8 +177,8 @@ fn testing_always_miss() {
                     core_id: 0,
                     block_id,
                     access_type: CacheAccessType::DataRead,
-                    is_os:false,
-pc:0,
+                    is_os: false,
+                    pc: 0,
                 },
                 ts,
             );

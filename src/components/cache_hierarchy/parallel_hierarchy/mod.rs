@@ -74,9 +74,10 @@ unsafe extern "C" fn vcpu_mem_access(
 
             let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
-            let inst_virtual_addr = inst_virtual_addr as u64;
-            let is_os = (inst_virtual_addr >> 48) & 1 == 1;
-            let offset = inst_virtual_addr >> 49;
+            let vpn = qemu_api::qemu_plugin_read_pc_vpn();
+            let pc = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
+            let is_os = (pc >> 48) & 1 == 1;
+            let offset = pc >> 49;
 
             let ts = if parameter::USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION {
                 let ip10ps = qemu_api::qemu_plugin_get_vcpu_ip10ps(vcpu_idx);
@@ -111,7 +112,7 @@ unsafe extern "C" fn vcpu_mem_access(
                             CacheAccessType::DataRead
                         },
                         is_os: is_os,
-                        pc: inst_vaddr, // Program counter for the request, used in SMS prefetching.
+                        pc: pc,
                     },
                     Some(pa),
                     ts,
@@ -162,7 +163,7 @@ unsafe extern "C" fn vcpu_insn_exec(
                     va: vaddr,
                     access_type: CacheAccessType::InstructionFetch,
                     is_os: vaddr >> 63 == 1,
-                    pc: vaddr, // Program counter for the request, used in SMS prefetching.
+                    pc: vaddr,
                 },
                 ts,
             );
