@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 16;
+pub const CORE_COUNT: usize = 1;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -153,7 +153,7 @@ static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
  * The associativity of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
+pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -161,7 +161,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -170,7 +170,7 @@ static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
  * The associativity of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
+pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -178,7 +178,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
