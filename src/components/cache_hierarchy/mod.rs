@@ -58,6 +58,7 @@ pub struct MemoryAccessRequest {
     pub va: u64,
     pub access_type: CacheAccessType,
     pub is_os: bool,
+    pub pc: u64,
 }
 
 impl MemoryAccessRequest {
@@ -85,6 +86,7 @@ pub struct CacheBlockRequest {
     pub block_id: u64,
     pub access_type: CacheAccessType,
     pub is_os: bool,
+    pub pc: u64,
 }
 
 impl CacheBlockRequest {
@@ -150,6 +152,7 @@ pub trait MemoryHierarchy {
                     block_id,
                     access_type: request.access_type.clone(),
                     is_os: request.is_os,
+                    pc: request.pc,
                 }
             }
             MMUTranslationResult::Miss(paddr, walk_trace) => {
@@ -164,6 +167,7 @@ pub trait MemoryHierarchy {
                         block_id: pte_block_id,
                         access_type: CacheAccessType::PageWalkRead,
                         is_os: request.is_os,
+                        pc: request.pc,
                     };
                     self.access_memory_pblock_id(&request, ts);
                 }
@@ -181,6 +185,7 @@ pub trait MemoryHierarchy {
                     block_id,
                     access_type: request.access_type.clone(),
                     is_os: request.is_os,
+                    pc: request.pc,
                 }
             }
         };
