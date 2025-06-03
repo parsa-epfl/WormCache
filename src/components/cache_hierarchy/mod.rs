@@ -51,6 +51,7 @@ pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 
 use crate::parameter;
 use crate::parameter::ADJACENT_LINE_PREFETCHING;
+use crate::parameter::SMS_PREFETCHING;
 
 #[derive(Clone)]
 pub struct MemoryAccessRequest {
@@ -110,6 +111,16 @@ impl CacheBlockRequest {
     pub fn is_page_walk(&self) -> bool {
         self.access_type == CacheAccessType::PageWalkRead
     }
+
+    pub fn get_prefetch_type(&self) -> CacheAccessType {
+        match self.access_type {
+            CacheAccessType::DataRead => CacheAccessType::PrefetchRead,
+            CacheAccessType::DataWrite => CacheAccessType::PrefetchWrite,
+            CacheAccessType::InstructionFetch => CacheAccessType::PrefetchRead,
+            _  => unreachable!(),
+        }
+    }
+
 }
 
 pub trait MemoryHierarchy {
@@ -122,6 +133,10 @@ pub trait MemoryHierarchy {
     fn translate(&self, request: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult;
 
     fn flush_mmu(&self, core_id: u32, info: mmu::MMUFlushMode);
+
+    fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64);
+
+    fn record_access(&self, request: &CacheBlockRequest, ts: u64);
 
     #[inline]
     fn access_memory_with_va_and_pa(
@@ -195,7 +210,12 @@ pub trait MemoryHierarchy {
         if ADJACENT_LINE_PREFETCHING {
             let mut prefetch_request = translated_request.clone();
             prefetch_request.block_id += 1;
+            prefetch_request.access_type = prefetch_request.get_prefetch_type();
             self.access_memory_pblock_id(&prefetch_request, ts);
+        }
+        if SMS_PREFETCHING && !request.is_instruction() {
+            self.prefetch_blocks(&translated_request, ts);
+            self.record_access(&translated_request, ts);
         }
         result
     }

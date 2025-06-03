@@ -51,6 +51,32 @@ impl<
         N_BLK,
     >
 {
+
+    fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
+        match self.pht.lookup(&request) {
+            Some(addrs) => {
+                for addr in addrs {
+                    let r = CacheBlockRequest {
+                        core_id: request.core_id,
+                        block_id: addr,
+                        access_type: request.get_prefetch_type(),
+                        is_os: request.is_os,
+                        pc: request.pc,
+                    };
+                    self.access_memory_pblock_id(&r, ts);
+                }
+            }
+            None => {},
+        }
+    }
+
+    fn record_access(&self, request: &CacheBlockRequest, ts: u64) {
+        match self.agt.record(&request, ts) {
+            Some(entry) => self.pht.insert(&entry, request.core_id as usize),
+            None => {},
+        }
+    }
+
     fn access_memory_pblock_id(
         &self,
         r: &CacheBlockRequest,
