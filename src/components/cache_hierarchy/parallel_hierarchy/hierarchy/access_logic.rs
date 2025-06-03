@@ -108,6 +108,15 @@ impl<
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
         }
 
+        // If we are here, it means that the private cache miss.
+        match self.agt.evict(&r) {
+            Some(evicted_entry) => {
+                // If we evict an entry, we need to update the PHT.
+                self.pht.insert(&evicted_entry, core_id as usize);
+            }
+            None => {},
+        }
+
         let evicted_slot = match private_hit {
             PrivateCachePokeResult::Hit => unreachable!(),
             PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
