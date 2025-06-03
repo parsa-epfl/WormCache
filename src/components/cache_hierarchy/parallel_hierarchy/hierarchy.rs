@@ -40,6 +40,8 @@ use crate::components::debug::statistics::{EventType, Statistics};
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
 use super::super::common::{Directory, DirectorySet, PrivateCaches, SharedCache};
+use super::super::common::agt::ParallelAGT;
+use super::super::common::pht::ParallelPHT;
 
 use std::cell::UnsafeCell;
 use std::ops::DerefMut;
@@ -66,11 +68,18 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const N_PHT: usize,
+    const N_BLK: usize,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
     directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>,DIRECTORY_SHARD_COUNT>,
+
+    agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
+    pht: ParallelPHT<CORE_COUNT, N_PHT, N_BLK>,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -88,6 +97,10 @@ impl<
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const N_PHT: usize,
+    const N_BLK: usize,
 >
     ParallelMemoryHierarchy<
         MMU,
@@ -100,6 +113,10 @@ impl<
         FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
         CORE_COUNT,
+        N_ACC,
+        N_FILTER,
+        N_PHT,
+        N_BLK,
     >
 {
     pub fn new(with_statistics: bool, _quantum_size: u64, directory_run_gc: bool) -> Self {
@@ -110,6 +127,8 @@ impl<
             shared_cache: SCache::new(),
             with_statistics,
             directory_run_gc,
+            agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
+            pht: ParallelPHT::<CORE_COUNT, N_PHT, N_BLK>::new(),
         }
     }
 

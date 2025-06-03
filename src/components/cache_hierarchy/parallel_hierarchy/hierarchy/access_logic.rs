@@ -29,6 +29,10 @@ impl<
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const N_PHT: usize,
+    const N_BLK: usize,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
@@ -41,6 +45,10 @@ impl<
         FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
         CORE_COUNT,
+        N_ACC,
+        N_FILTER,
+        N_PHT,
+        N_BLK,
     >
 {
     fn access_memory_pblock_id(
@@ -55,6 +63,7 @@ impl<
         let is_page_walk = r.is_page_walk();
         let block_id = r.block_id;
         let is_prefetch = r.is_prefetch();
+        let pc = r.pc;
 
         if !is_prefetch && self.with_statistics {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
@@ -212,6 +221,7 @@ impl<
                     CacheAccessType::PrefetchWrite => CacheAccessType::PrefetchWrite,
                 },
                 is_os,
+                pc,
             };
 
             let shared_cache_result = if bring_into_shared_cache {

@@ -153,6 +153,10 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
     { ALLOCATED_CORE_COUNT },
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::N_PHT},
+    {parameter::N_BLK},
 >;
 
 #[allow(dead_code)]
@@ -179,6 +183,10 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
     { ALLOCATED_CORE_COUNT },
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::N_PHT},
+    {parameter::N_BLK},
 >;
 
 #[allow(dead_code)]
@@ -203,6 +211,10 @@ type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
     { ALLOCATED_CORE_COUNT },
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::N_PHT},
+    {parameter::N_BLK},
 >;
 
 #[allow(dead_code)]
@@ -229,6 +241,10 @@ type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
     { ALLOCATED_CORE_COUNT },
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::N_PHT},
+    {parameter::N_BLK},
 >;
 
 impl CacheModelParser<true, true> for DummyParser {
