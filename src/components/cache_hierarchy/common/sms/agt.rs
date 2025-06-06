@@ -33,11 +33,20 @@ impl<
 
     pub fn record(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
         match self.acc_table.poke_and_update(&request, ts) {
-            true => return None,
+            true => {
+                println!("[AGT] Entry updated for request {}", request.block_id);
+                return None
+            },
             false => {
                 match self.filter_table.poke_and_update(&request, ts){
-                    Some(entry) => return self.acc_table.insert(&entry),
-                    None => return None,
+                    Some(entry) => {
+                        println!("[AGT] Entry upgraded to acc table for request {}", request.block_id);
+                        return self.acc_table.insert(&entry)
+                    },
+                    None => {
+                        println!("[AGT] Entry inserted into filter table for request {}", request.block_id);
+                        return None
+                    }
                 }
             }
         }

@@ -55,6 +55,7 @@ impl<
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
         match self.pht.lookup(&request) {
             Some(addrs) => {
+                println!("[PHT] Prefetching {} blocks for block {}", addrs.len(), request.block_id);
                 for addr in addrs {
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
@@ -66,14 +67,21 @@ impl<
                     self.access_memory_pblock_id(&r, ts);
                 }
             }
-            None => {},
+            None => {
+                println!("[PHT] No entry found for block {}", request.block_id);
+            },
         }
     }
 
     fn record_access(&self, request: &CacheBlockRequest, ts: u64) {
         match self.agt.record(&request, ts) {
-            Some(entry) => self.pht.insert(&entry, request.core_id as usize),
-            None => {},
+            Some(entry) => {
+                println!("[AGT] Entry {} recorded with eviction", request.block_id);
+                self.pht.insert(&entry, request.core_id as usize)
+            }
+            None => {
+                println!("[AGT] Entry {} recorded without eviction", request.block_id);
+            },
         }
     }
 
@@ -106,15 +114,6 @@ impl<
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
-        }
-
-        // If we are here, it means that the private cache miss.
-        match self.agt.evict(&r) {
-            Some(evicted_entry) => {
-                // If we evict an entry, we need to update the PHT.
-                self.pht.insert(&evicted_entry, core_id as usize);
-            }
-            None => {},
         }
 
         let evicted_slot = match private_hit {
