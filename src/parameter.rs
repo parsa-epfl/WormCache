@@ -270,11 +270,11 @@ pub const ADJACENT_LINE_PREFETCHING: bool = false;
 /**
 * Parameters for SMS Prefetching
 */
-pub const SMS_PREFETCHING: bool = false;
+pub const SMS_PREFETCHING: bool = true;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
-pub const N_FILTER: usize = 64; // Number of entries in the filter table.
-pub const N_PHT: usize = 64; // Number of entries in the pattern history table.
-pub const OFF_BITW: usize = 12;
+pub const N_FILTER: usize = 32; // Number of entries in the filter table.
+pub const N_PHT: usize = 4096; // Number of entries in the pattern history table.
+pub const OFF_BITW: usize = 11;
 pub const N_BLK: usize = 1 << OFF_BITW; // Number of blocks in the access table and filter table.
 
 /**
