@@ -13,7 +13,7 @@ use crate::{
             statistics::{EventType, Statistics},
         },
     },
-    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE},
+    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE, SMS_PREFETCHING},
 };
 
 use super::ParallelMemoryHierarchy;
@@ -126,6 +126,23 @@ impl<
                     let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);
+
+                    if SMS_PREFETCHING && !is_instruction {
+                        let dummy_req = CacheBlockRequest{
+                            core_id: core_id,
+                            block_id: potential_evicted_id,
+                            access_type: CacheAccessType::PrefetchRead, // Not needed
+                            is_os, // Not needed
+                            pc: 0, // Not needed
+                        };
+                        match self.agt.evict(&dummy_req) {
+                            Some(evicted_entry) => {
+                                self.pht.insert(&evicted_entry, core_id as usize);
+                            }
+                            None => {},
+                        }           
+                    }
+
                     (m_guard, Some((potential_evicted_id, e_guard)))
                 }
                 _ => {

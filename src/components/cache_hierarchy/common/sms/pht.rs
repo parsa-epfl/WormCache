@@ -73,6 +73,7 @@ impl<
     }
 
     pub fn update(&mut self, acc_entry: &AccTableEntry<N_BLK>) {
+        assert!(self.valid, "Cannot update invalid PHT entry");
         let mut write_pattern = [false; N_BLK];
         let mut read_pattern = [false; N_BLK];
         for i in 0..N_BLK {
@@ -80,6 +81,7 @@ impl<
                 read_pattern[i] = acc_entry.read_pattern[i];
                 write_pattern[i] = !acc_entry.read_pattern[i];
             } else {
+                assert!(!acc_entry.read_pattern[i], "Read Bit cannot be set while Access Bit Unset");
                 read_pattern[i] = false;
                 write_pattern[i] = false;
             }
@@ -87,7 +89,7 @@ impl<
         util::rotate_left::<bool, N_BLK>(&mut write_pattern, acc_entry.offset as usize);
         util::rotate_left::<bool, N_BLK>(&mut read_pattern, acc_entry.offset as usize);
         self.update_write_pattern(&write_pattern);
-        self.update_read_pattern(&acc_entry.read_pattern);
+        self.update_read_pattern(&read_pattern);
         self.ts = acc_entry.ts;
     }
 
@@ -139,6 +141,7 @@ impl<
         let mut empty_idx = 0;
         let mut lru_idx = 0;
         let mut lru_ts = u64::MAX;
+        assert!(acc_entry.valid, "Cannot insert invalid entry into PHT");
         
         for (i, entry) in self.entries.iter_mut().enumerate() {
             if entry.tag == tag && entry.valid {
@@ -193,7 +196,7 @@ impl<
         let tag = key >> PHT_SETS.trailing_zeros();
         match self.sets[set_idx  as usize].inner().lookup(tag, !request.is_store(), ts) {
             Some(mut bitvec) => {
-                util::rotate_right(&mut bitvec, offset as usize);
+                util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
                 let mut result = Vec::new();
                 for (i, &bit) in bitvec.iter().enumerate() {
                     if bit {

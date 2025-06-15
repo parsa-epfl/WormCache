@@ -73,6 +73,7 @@ impl<
         for  (i, locked_entry) in self.entries.iter().enumerate() {
             let mut current_entry = locked_entry.inner();
             if !current_entry.valid {
+                assert!(entry.valid, "Cannot insert invalid entry into FilterTable");
                 current_entry.replace(entry);
                 return;
             }

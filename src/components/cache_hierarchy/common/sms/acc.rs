@@ -79,6 +79,7 @@ impl<
         for (i, locked_entry) in self.entries.iter().enumerate() {
             let mut current_entry = locked_entry.inner();
             if !current_entry.valid {
+                assert!(entry.valid, "Cannot insert invalid entry into AccTable");
                 current_entry.replace(entry);
                 return None; // Entry was inserted, no eviction needed
             }
@@ -91,6 +92,7 @@ impl<
         let mut dropped_entry = self.entries[lru_idx].inner();
         let dropped_entry_clone = dropped_entry.clone();
         dropped_entry.replace(entry);
+        assert!(dropped_entry_clone.ts < dropped_entry.ts, "Cannot insert a block from past");
         Some(dropped_entry_clone)
     }
 
