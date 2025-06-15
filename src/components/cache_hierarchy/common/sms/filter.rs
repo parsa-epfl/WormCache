@@ -1,13 +1,16 @@
 use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::super::CCell;
 use super::acc::AccTableEntry;
+use super::util;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FilterTableEntry {
     pub tag: u64,
     pub pc: u64,
     pub offset: u64,
+    pub is_read: bool,
     pub ts: u64,
+    pub valid: bool,
 }
 
 impl FilterTableEntry {
@@ -16,36 +19,28 @@ impl FilterTableEntry {
             tag: 0,
             pc: 0,
             offset: 0,
+            is_read: false,
             ts: 0,
+            valid: false,
         }
     }
 
-    pub fn update(&mut self, ts: u64) {
-        self.ts = ts;
-    }
-
     pub fn replace(&mut self, new_entry: &FilterTableEntry) {
-        self.tag = new_entry.tag;
-        self.pc = new_entry.pc;
-        self.offset = new_entry.offset;
-        self.ts = new_entry.ts;
+        *self = *new_entry;
     }
 
     pub fn reset(&mut self) {
-        self.tag = 0;
-        self.pc = 0;
-        self.offset = 0;
-        self.ts = 0;
+        *self = Self::new();
     }
 }
 
 #[derive(Debug)]
 pub struct FilterTable<
     GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
-    const N_FILTER: usize,
-    const N_BLK: usize,
+    const N_FILTER: usize,  // Number of entries in the filter table
+    const N_BLK: usize,     // Number of blocks per spatial region
 > {
-    pub entries: Box<[GFilter; N_FILTER]>,
+    entries: Box<[GFilter; N_FILTER]>,
 }
 
 impl<
@@ -61,59 +56,79 @@ impl<
     }
 
     fn poke(&self, request: &CacheBlockRequest) -> Option<usize> {
-        let tag = request.block_id >> (N_BLK.trailing_zeros());
-        self.entries.iter().position(|x| x.inner().tag == tag)
+        let (base, _, _) = util::get_base_pc_offset(request, N_BLK);
+        for (i, locked_entry) in self.entries.iter().enumerate() {
+            let current_entry = locked_entry.inner();
+            if current_entry.valid && current_entry.tag == base {
+                return Some(i);
+            }
+            drop(current_entry);
+        }
+        None
     }
 
-    fn insert(&self, entry: FilterTableEntry) {
-        match self.entries.iter().enumerate().min_by_key(|&(_, e)| e.inner().ts) {
-            Some((index, _)) => {
-                self.entries[index].inner().replace(&entry);
+    fn insert(&self, entry: &FilterTableEntry) {
+        let mut lru_idx = 0;
+        let mut lru_ts = u64::MAX;
+        for  (i, locked_entry) in self.entries.iter().enumerate() {
+            let mut current_entry = locked_entry.inner();
+            if !current_entry.valid {
+                current_entry.replace(entry);
+                return;
             }
-            None => unreachable!(),
+            if current_entry.ts < lru_ts {  // current_entry.valid is true implicitly
+                lru_ts = current_entry.ts;
+                lru_idx = i;
+            }
+            drop(current_entry);
         }
+        // Replace the LRU entry with the new entry
+        self.entries[lru_idx].inner().replace(entry);
     }
 
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
-        let tag = request.block_id >> (N_BLK.trailing_zeros());
-        let pc = request.pc;
-        let offset = request.block_id % N_BLK as u64;
+        let (base, pc, offset) = util::get_base_pc_offset(request, N_BLK);
         match self.poke(request) {
-            Some(index) => {
-                let mut unlocked_entry = self.entries[index].inner();
-                if offset == unlocked_entry.offset {
-                    unlocked_entry.update(ts);
+            Some(idx) => {  // entry found, check further
+                let mut existing_entry = self.entries[idx].inner();
+                if offset == existing_entry.offset {    // nothing to do except update timestamp
+                    existing_entry.ts = ts;
                     return None;
-                } else {
-                    let mut entry = AccTableEntry::<N_BLK>::new();
-                    entry.tag = tag;
-                    entry.pc = unlocked_entry.pc;
-                    entry.offset = unlocked_entry.offset;
-                    entry.pattern[offset as usize] = true;
-                    entry.pattern[unlocked_entry.offset as usize] = true;
-                    entry.ts = ts;
-                    return Some(entry);
+                } else {    // must be promoted to acc entry, TODO: is there a more efficient way?
+                    let mut acc_entry = AccTableEntry::<N_BLK>::new();
+                    acc_entry.tag = existing_entry.tag;
+                    acc_entry.pc = existing_entry.pc;
+                    acc_entry.offset = existing_entry.offset;
+                    acc_entry.access_pattern[existing_entry.offset as usize] = true;
+                    acc_entry.access_pattern[offset as usize] = true;
+                    acc_entry.read_pattern[existing_entry.offset as usize] = existing_entry.is_read;
+                    acc_entry.read_pattern[offset as usize] = !request.is_store();
+                    acc_entry.ts = ts;
+                    acc_entry.valid = true;
+                    existing_entry.reset(); // reset the filter entry
+                    return Some(acc_entry);
                 }
             }
-            None => {
-                let mut entry = FilterTableEntry::new();
-                entry.tag = tag;
-                entry.pc = pc;
-                entry.offset = offset;
-                entry.ts = ts;
-                self.insert(entry);
+            None => {       // new entry must be allocated
+                let mut new_entry = FilterTableEntry::new();
+                new_entry.tag = base;
+                new_entry.pc = pc;
+                new_entry.offset = offset;
+                new_entry.is_read = !request.is_store();
+                new_entry.ts = ts;
+                new_entry.valid = true;
+
+                // Insert the new entry into the filter table
+                self.insert(&new_entry);
                 return None;
             }
         }
     }
 
     pub fn evict(&self, request: &CacheBlockRequest) {
-        let tag = request.block_id >> (N_BLK.trailing_zeros());
-        match self.entries.iter().position(|e| e.inner().tag == tag) {
-            Some(index) => {
-                self.entries[index].inner().reset();
-            }
-            None => {},
+        match self.poke(request) {
+            Some(idx) => self.entries[idx].inner().reset(),
+            None => {}
         }
     }
 }

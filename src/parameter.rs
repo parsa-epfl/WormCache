@@ -273,7 +273,8 @@ pub const ADJACENT_LINE_PREFETCHING: bool = false;
 pub const SMS_PREFETCHING: bool = true;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
-pub const N_PHT: usize = 4096; // Number of entries in the pattern history table.
+pub const PHT_SETS: usize = 1024;    // Number of sets in the PHT.
+pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
 pub const OFF_BITW: usize = 11;
 pub const N_BLK: usize = 1 << OFF_BITW; // Number of blocks in the access table and filter table.
 

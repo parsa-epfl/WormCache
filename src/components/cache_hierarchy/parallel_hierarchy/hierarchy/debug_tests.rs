@@ -65,7 +65,8 @@ type MH = ParallelMemoryHierarchy<
     32,
     {parameter::N_ACC},
     {parameter::N_FILTER},
-    {parameter::N_PHT},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
     {parameter::N_BLK},
 >;
 

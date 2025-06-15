@@ -155,7 +155,8 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { ALLOCATED_CORE_COUNT },
     {parameter::N_ACC},
     {parameter::N_FILTER},
-    {parameter::N_PHT},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
     {parameter::N_BLK},
 >;
 
@@ -185,7 +186,8 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { ALLOCATED_CORE_COUNT },
     {parameter::N_ACC},
     {parameter::N_FILTER},
-    {parameter::N_PHT},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
     {parameter::N_BLK},
 >;
 
@@ -213,7 +215,8 @@ type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { ALLOCATED_CORE_COUNT },
     {parameter::N_ACC},
     {parameter::N_FILTER},
-    {parameter::N_PHT},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
     {parameter::N_BLK},
 >;
 
@@ -243,7 +246,8 @@ type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { ALLOCATED_CORE_COUNT },
     {parameter::N_ACC},
     {parameter::N_FILTER},
-    {parameter::N_PHT},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
     {parameter::N_BLK},
 >;
 
