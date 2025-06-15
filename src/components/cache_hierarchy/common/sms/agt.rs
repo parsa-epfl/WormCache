@@ -5,15 +5,15 @@ use super::acc::{AccTable, AccTableEntry};
 use super::filter::{FilterTable, FilterTableEntry};
 
 #[derive(Debug)]
-pub struct AGTPerCore<
+struct AGTPerCore<
     GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
     GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
     const N_ACC: usize,
     const N_FILTER: usize,
     const N_BLK: usize,
 > {
-    pub acc_table: AccTable<GAcc, N_ACC, N_BLK>,
-    pub filter_table: FilterTable<GFilter, N_FILTER, N_BLK>,
+    acc_table: AccTable<GAcc, N_ACC, N_BLK>,
+    filter_table: FilterTable<GFilter, N_FILTER, N_BLK>,
 }
 
 impl<
@@ -24,41 +24,30 @@ impl<
     const N_BLK: usize,
 > AGTPerCore<GAcc, GFilter, N_ACC, N_FILTER, N_BLK>
 {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             acc_table: AccTable::new(),
             filter_table: FilterTable::new(),
         }
     }
 
-    pub fn record(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
-        match self.acc_table.poke_and_update(&request, ts) {
-            true => {
-                println!("[AGT] Entry updated for request {}", request.block_id);
-                return None
-            },
-            false => {
-                match self.filter_table.poke_and_update(&request, ts){
-                    Some(entry) => {
-                        println!("[AGT] Entry upgraded to acc table for request {}", request.block_id);
-                        return self.acc_table.insert(&entry)
-                    },
-                    None => {
-                        println!("[AGT] Entry inserted into filter table for request {}", request.block_id);
-                        return None
-                    }
-                }
+    fn record(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
+        if self.acc_table.poke_and_update(&request, ts) {
+            None
+        } else {
+            match self.filter_table.poke_and_update(&request, ts) {
+                Some(entry) => self.acc_table.insert(&entry),
+                None => None,
             }
         }
     }
 
-    pub fn evict(&self, request: &CacheBlockRequest) -> Option<AccTableEntry<N_BLK>> {
+    fn evict(&self, request: &CacheBlockRequest) -> Option<AccTableEntry<N_BLK>> {
         self.filter_table.evict(request);
         self.acc_table.evict(request)
     }
 }
 
-#[derive(Debug)]
 pub struct AGT<
     GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
     GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
@@ -67,7 +56,7 @@ pub struct AGT<
     const N_FILTER: usize,
     const N_BLK: usize,
 > {
-    pub tables: Box<[AGTPerCore<GAcc, GFilter, N_ACC, N_FILTER, N_BLK>; CORE_COUNT]>,
+    tables: Box<[AGTPerCore<GAcc, GFilter, N_ACC, N_FILTER, N_BLK>; CORE_COUNT]>,
 }
 
 impl<

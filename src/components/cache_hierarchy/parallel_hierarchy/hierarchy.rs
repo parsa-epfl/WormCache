@@ -72,7 +72,8 @@ pub struct ParallelMemoryHierarchy<
     const CORE_COUNT: usize,
     const N_ACC: usize,
     const N_FILTER: usize,
-    const N_PHT: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
     const N_BLK: usize,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
@@ -81,7 +82,7 @@ pub struct ParallelMemoryHierarchy<
     directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>,DIRECTORY_SHARD_COUNT>,
 
     agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
-    pht: ParallelPHT<CORE_COUNT, N_PHT, N_BLK>,
+    pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK>,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -101,7 +102,8 @@ impl<
     const CORE_COUNT: usize,
     const N_ACC: usize,
     const N_FILTER: usize,
-    const N_PHT: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
     const N_BLK: usize,
 >
     ParallelMemoryHierarchy<
@@ -117,7 +119,8 @@ impl<
         CORE_COUNT,
         N_ACC,
         N_FILTER,
-        N_PHT,
+        PHT_SETS,
+        PHT_WAYS,
         N_BLK,
     >
 {
@@ -130,7 +133,7 @@ impl<
             with_statistics,
             directory_run_gc,
             agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
-            pht: ParallelPHT::<CORE_COUNT, N_PHT, N_BLK>::new(),
+            pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK>::new(),
         }
     }
 
@@ -227,12 +230,9 @@ impl<
                 };
                 match self.agt.evict(&dummy_req) {
                     Some(evicted_entry) => {
-                        println!("[AGT] Evicted entry into PHT: {:?}", evicted_entry);
                         self.pht.insert(&evicted_entry, core_id as usize);
                     }
-                    None => {
-                        println!("[AGT] No entry evicted from AGT for request: {:?}", dummy_req.block_id);
-                    },
+                    None => {},
                 }
             }
 

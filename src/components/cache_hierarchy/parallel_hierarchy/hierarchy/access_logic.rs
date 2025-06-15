@@ -31,7 +31,8 @@ impl<
     const CORE_COUNT: usize,
     const N_ACC: usize,
     const N_FILTER: usize,
-    const N_PHT: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
     const N_BLK: usize,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
@@ -47,15 +48,15 @@ impl<
         CORE_COUNT,
         N_ACC,
         N_FILTER,
-        N_PHT,
+        PHT_SETS,
+        PHT_WAYS,
         N_BLK,
     >
 {
 
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
-        match self.pht.lookup(&request) {
+        match self.pht.lookup(&request, ts) {
             Some(addrs) => {
-                println!("[PHT] Prefetching {} blocks for block {}", addrs.len(), request.block_id);
                 for addr in addrs {
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
@@ -67,21 +68,16 @@ impl<
                     self.access_memory_pblock_id(&r, ts);
                 }
             }
-            None => {
-                println!("[PHT] No entry found for block {}", request.block_id);
-            },
+            None => {},
         }
     }
 
     fn record_access(&self, request: &CacheBlockRequest, ts: u64) {
         match self.agt.record(&request, ts) {
             Some(entry) => {
-                println!("[AGT] Entry {} recorded with eviction", request.block_id);
                 self.pht.insert(&entry, request.core_id as usize)
-            }
-            None => {
-                println!("[AGT] Entry {} recorded without eviction", request.block_id);
             },
+            None => {},
         }
     }
 
