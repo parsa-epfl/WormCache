@@ -213,7 +213,7 @@ pub trait MemoryHierarchy {
             prefetch_request.access_type = prefetch_request.get_prefetch_type();
             self.access_memory_pblock_id(&prefetch_request, ts);
         }
-        if SMS_PREFETCHING && !request.is_instruction() {
+        if SMS_PREFETCHING && !translated_request.is_instruction() {
             self.prefetch_blocks(&translated_request, ts);
             self.record_access(&translated_request, ts);
         }

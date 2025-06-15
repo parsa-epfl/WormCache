@@ -33,9 +33,7 @@ use zstd::{Decoder, Encoder};
 
 use crate::components::cache_hierarchy::common::InfiniteDirectorySet;
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
-use crate::components::cache_hierarchy::CacheBlockRequest;
-use crate::components::cache_hierarchy::CacheAccessType;
-use crate::parameter::{self, SMS_PREFETCHING};
+use crate::parameter::{self};
 
 use crate::components::debug::statistics::{EventType, Statistics};
 
@@ -218,22 +216,6 @@ impl<
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
                 self.shared_cache
                     .insert(core_id, block_id, ts, modified.0, true);
-            }
-
-            if SMS_PREFETCHING {
-                let dummy_req = CacheBlockRequest{
-                    core_id: core_id,
-                    block_id,
-                    access_type: CacheAccessType::PrefetchRead, // Not needed
-                    is_os, // Not needed
-                    pc: 0, // Not needed
-                };
-                match self.agt.evict(&dummy_req) {
-                    Some(evicted_entry) => {
-                        self.pht.insert(&evicted_entry, core_id as usize);
-                    }
-                    None => {},
-                }
             }
 
             if self.directory_run_gc {
