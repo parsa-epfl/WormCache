@@ -200,7 +200,7 @@ impl<
                 let mut result = Vec::new();
                 for (i, &bit) in bitvec.iter().enumerate() {
                     if bit {
-                        result.push(base + (i as u64));
+                        result.push(util::get_address(base, i as u64, N_BLK));
                     }
                 }
                 Some(result)

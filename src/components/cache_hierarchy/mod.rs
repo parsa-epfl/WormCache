@@ -116,7 +116,6 @@ impl CacheBlockRequest {
         match self.access_type {
             CacheAccessType::DataRead => CacheAccessType::PrefetchRead,
             CacheAccessType::DataWrite => CacheAccessType::PrefetchWrite,
-            CacheAccessType::InstructionFetch => CacheAccessType::PrefetchRead,
             _  => unreachable!(),
         }
     }

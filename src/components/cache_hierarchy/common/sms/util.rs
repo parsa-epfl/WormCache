@@ -7,6 +7,12 @@ pub fn get_base_pc_offset(request: &CacheBlockRequest, n_blk: usize) -> (u64, u6
     (base, pc, offset)
 }
 
+pub fn get_address(base: u64, offset: u64, n_blk: usize) -> u64 {
+    let index_len = n_blk.trailing_zeros();
+    assert!(index_len > 0);
+    (base << index_len) | offset
+}
+
 pub fn build_key(pc: u64, offset: u64, n_sets: usize) -> u64 {
     const PC_WIDTH: u64 = 16;
     const OFF_WIDTH: u64 = 0;                       // Use PC based indexing for now

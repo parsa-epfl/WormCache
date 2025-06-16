@@ -58,6 +58,9 @@ impl<
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
                 for addr in addrs {
+                    if addr == request.block_id {
+                        continue;
+                    }
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
                         block_id: addr,
@@ -109,7 +112,22 @@ impl<
 
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
+            if !is_instruction {
+                if is_prefetch {
+                    println!("[Prefetch] Hit in private cache for block {}", block_id);
+                } else {
+                    println!("[Normal] Hit in private cache for block {}", block_id);
+                }
+            }
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
+        }
+
+        if !is_instruction {
+            if is_prefetch {
+                println!("[Prefetch] Miss in private cache for block {}", block_id);
+            } else {
+                println!("[Normal] Miss in private cache for block {}", block_id);
+            }
         }
 
         let evicted_slot = match private_hit {
@@ -128,6 +146,7 @@ impl<
                         .fetch_two_entries(block_id, potential_evicted_id);
 
                     if SMS_PREFETCHING && !is_instruction {
+                        print!("[Prefetch] Evicted entry {} from AGT", potential_evicted_id);           
                         let dummy_req = CacheBlockRequest{
                             core_id: core_id,
                             block_id: potential_evicted_id,
@@ -138,9 +157,10 @@ impl<
                         match self.agt.evict(&dummy_req) {
                             Some(evicted_entry) => {
                                 self.pht.insert(&evicted_entry, core_id as usize);
+                                println!(" and inserted into PHT");
                             }
-                            None => {},
-                        }           
+                            None => {println!(" and not inserted into PHT");},
+                        }
                     }
 
                     (m_guard, Some((potential_evicted_id, e_guard)))
