@@ -137,6 +137,8 @@ pub trait MemoryHierarchy {
 
     fn record_access(&self, request: &CacheBlockRequest, ts: u64);
 
+    fn evict_sms(&self, core_id: u32, block_id: u64);
+
     #[inline]
     fn access_memory_with_va_and_pa(
         &self,

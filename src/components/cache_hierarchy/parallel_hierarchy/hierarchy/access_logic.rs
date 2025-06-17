@@ -84,6 +84,24 @@ impl<
         }
     }
 
+    fn evict_sms(&self, core_id: u32, block_id: u64) {
+        print!("[Prefetch] Evicted entry {} from AGT", block_id);           
+        let dummy_req = CacheBlockRequest{
+            core_id: core_id,
+            block_id: block_id,
+            access_type: CacheAccessType::PrefetchRead, // Not needed
+            is_os: false,   // Not needed
+            pc: 0,          // Not needed
+        };
+        match self.agt.evict(&dummy_req) {
+            Some(evicted_entry) => {
+                self.pht.insert(&evicted_entry, core_id as usize);
+                println!(" and inserted into PHT");
+            }
+            None => {println!(" and not inserted into PHT");},
+        }
+    }
+
     fn access_memory_pblock_id(
         &self,
         r: &CacheBlockRequest,
@@ -146,21 +164,7 @@ impl<
                         .fetch_two_entries(block_id, potential_evicted_id);
 
                     if SMS_PREFETCHING && !is_instruction {
-                        print!("[Prefetch] Evicted entry {} from AGT", potential_evicted_id);           
-                        let dummy_req = CacheBlockRequest{
-                            core_id: core_id,
-                            block_id: potential_evicted_id,
-                            access_type: CacheAccessType::PrefetchRead, // Not needed
-                            is_os, // Not needed
-                            pc: 0, // Not needed
-                        };
-                        match self.agt.evict(&dummy_req) {
-                            Some(evicted_entry) => {
-                                self.pht.insert(&evicted_entry, core_id as usize);
-                                println!(" and inserted into PHT");
-                            }
-                            None => {println!(" and not inserted into PHT");},
-                        }
+                        self.evict_sms(core_id, block_id);
                     }
 
                     (m_guard, Some((potential_evicted_id, e_guard)))
@@ -223,6 +227,12 @@ impl<
                     if let Some(index) = index {
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
+
+                        let core_id = (*replica_cache_id / 2) as u32;
+                        if SMS_PREFETCHING && !is_instruction {
+                            self.evict_sms(core_id, entry.block_id());
+                        }
+
                         set.invalidate(*index);
 
                         if self.with_statistics {
@@ -626,6 +636,12 @@ impl<
                         if !PRECISE_COHERENCE_RECONSTRUCTION || entry.access_ts() <= ts {
                             // invalid the directory entry.
                             incoming_sharer.set(*replica_cache_id, false);
+                            
+                            let core_id = (*replica_cache_id / 2) as u32;
+                            if SMS_PREFETCHING && !is_instruction {
+                                self.evict_sms(core_id, entry.block_id());
+                            }
+
                             // invalid the private cache entry.
                             set.invalidate(*index);
 
