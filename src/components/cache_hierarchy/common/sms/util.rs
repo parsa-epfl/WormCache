@@ -21,12 +21,12 @@ pub fn build_key(pc: u64, offset: u64, n_sets: usize) -> u64 {
 
     let pc = pc & ((1 << PC_WIDTH) - 1);
     let offset = offset & ((1 << OFF_WIDTH) - 1);
-    let mut key = (pc << OFF_WIDTH) | offset;
-    let mut tag = key >> index_len;
-    while tag > 0 {
-        key ^= tag & ((1 << index_len) - 1);
-        tag >>= index_len;
-    }
+    let key = (pc << OFF_WIDTH) | offset;
+    // let mut tag = key >> index_len;
+    // while tag > 0 {
+    //     key ^= tag & ((1 << index_len) - 1);
+    //     tag >>= index_len;
+    // }
     key
 }
 

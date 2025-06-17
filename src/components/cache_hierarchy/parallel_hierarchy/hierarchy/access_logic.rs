@@ -164,7 +164,7 @@ impl<
                         .fetch_two_entries(block_id, potential_evicted_id);
 
                     if SMS_PREFETCHING && !is_instruction {
-                        self.evict_sms(core_id, block_id);
+                        self.evict_sms(core_id, potential_evicted_id);
                     }
 
                     (m_guard, Some((potential_evicted_id, e_guard)))
