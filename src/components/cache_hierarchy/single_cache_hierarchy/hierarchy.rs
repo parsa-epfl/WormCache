@@ -129,6 +129,10 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         unimplemented!();
     }
 
+    fn evict_sms(&self, _core_id: u32, _block_id: u64) {
+        unimplemented!();
+    }
+
     fn access_memory_pblock_id(
         &self,
         request: &CacheBlockRequest,
