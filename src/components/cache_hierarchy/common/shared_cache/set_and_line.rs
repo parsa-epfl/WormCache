@@ -170,8 +170,11 @@ impl<
 
                 // self.modifying_history
                 //     .push((block_id, ts, core_id, false, true));
-
-                SharedCacheLookupResult::Hit(hit_block.modified, Some(evicted_id))
+                if evicted_id & 0x1 == 0 {
+                    SharedCacheLookupResult::Hit(hit_block.modified, None)
+                } else {
+                    SharedCacheLookupResult::Hit(hit_block.modified, Some(evicted_id))
+                }
             } else {
                 // self.modifying_history
                 //     .push((block_id, ts, core_id, false, false));
@@ -227,8 +230,11 @@ impl<
 
                     // self.modifying_history
                     //     .push((block_id, ts, core_id, false, true));
-
-                    return SharedCacheLookupResult::Hit(hit_block.modified, Some(evicted_id));
+                    if evicted_id & 0x1 == 0 {
+                        return SharedCacheLookupResult::Hit(hit_block.modified, None)
+                    } else {
+                        return SharedCacheLookupResult::Hit(hit_block.modified, Some(evicted_id))
+                    }
                 } else {
                     // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                     hit_block.ts = ts;
@@ -356,7 +362,8 @@ impl<
         // self.modifying_history
         //     .push((block_id, ts, core_id, is_modified, true));
         // push the evicted line to the history.
-        if evicted_id == 0 {
+        
+        if evicted_id & 0x1 == 0 {
             (result, None)
         } else {
             (result, Some(evicted_id))
