@@ -234,8 +234,11 @@ impl<
                 }
 
                 // write this back to the shared cache.
-                self.shared_cache
+                let res = self.shared_cache
                     .insert(core_id, evicted_directory_entry.0, ts, false, true);
+                if let Some(evicted_id) = res {
+                    self.evict_sms(core_id,evicted_id);
+                } 
             }
 
             let bring_into_shared_cache = if FILL_SCACHE_ON_FILLING_PCACHE {
@@ -289,6 +292,12 @@ impl<
                 self.shared_cache.lookup(&request_to_llc, ts)
             };
 
+            match shared_cache_result {
+                SharedCacheLookupResult::Hit(_, Some(evicted_id)) => self.evict_sms(core_id, evicted_id),
+                SharedCacheLookupResult::Miss(Some(evicted_id)) => self.evict_sms(core_id, evicted_id),
+                _ => {},
+            }
+
             miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers.set(p_cache_id, true);
             miss_directory_guard.insertion_ts = ts; // this is the moment when the block is inserted to the directory.
@@ -300,20 +309,20 @@ impl<
             }
 
             let modified = match shared_cache_result {
-                SharedCacheLookupResult::Hit(is_modified) => is_store || is_modified,
-                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => is_store,
+                SharedCacheLookupResult::Hit(is_modified, _) => is_store || is_modified,
+                SharedCacheLookupResult::Miss(_) | SharedCacheLookupResult::ColdMiss => is_store,
                 SharedCacheLookupResult::Unknown(_, _) => false,
             };
 
             let writable = match shared_cache_result {
-                SharedCacheLookupResult::Hit(is_modified) => {
+                SharedCacheLookupResult::Hit(is_modified, _) => {
                     if is_modified {
                         true
                     } else {
                         request_to_llc.is_store()
                     }
                 }
-                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                SharedCacheLookupResult::Miss(_) | SharedCacheLookupResult::ColdMiss => {
                     request_to_llc.is_store()
                 }
                 SharedCacheLookupResult::Unknown(_, _) => false,
@@ -375,8 +384,8 @@ impl<
             }
 
             return match shared_cache_result {
-                SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
-                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                SharedCacheLookupResult::Hit(_, _) => CacheHierarchyAccessResult::HitInSharedCache,
+                SharedCacheLookupResult::Miss(_) | SharedCacheLookupResult::ColdMiss => {
                     if !is_prefetch && self.with_statistics {
                         if is_page_walk {
                             Statistics::global_record(
@@ -448,7 +457,10 @@ impl<
             miss_directory_guard.sharers.set(p_cache_id, true);
 
             if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION {
-                self.shared_cache.insert(core_id, block_id, ts, false, true);
+                let res = self.shared_cache.insert(core_id, block_id, ts, false, true);
+                if let Some(evicted_id) = res {
+                    self.evict_sms(core_id, evicted_id);
+                }
             }
 
             // get the lock of the private cache for refilling.
@@ -668,8 +680,17 @@ impl<
                     self.shared_cache.invalidate(core_id, block_id, ts);
 
                 let llc_invalidation_successful = match shared_cahce_invalidation_result {
-                    SharedCacheLookupResult::Hit(_) => true,
-                    SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => true,
+                    SharedCacheLookupResult::Hit(_, evicted_id) => {
+                        if let Some(id) = evicted_id {
+                            self.evict_sms(core_id, id);
+                        }
+                        true
+                    },
+                    SharedCacheLookupResult::Miss(None) | SharedCacheLookupResult::ColdMiss => true,
+                    SharedCacheLookupResult::Miss(Some(evicted_id)) => {
+                        self.evict_sms(core_id, evicted_id);
+                        true
+                    }
                     SharedCacheLookupResult::Unknown(_, _) => false,
                 };
 
@@ -826,8 +847,11 @@ impl<
                 }
 
                 if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
-                    self.shared_cache
+                    let res = self.shared_cache
                         .insert(core_id, block_id, ts, modified_replica, true);
+                    if let Some(evicted_id) = res {
+                        self.evict_sms(core_id, evicted_id);
+                    }
                 }
 
                 // Then, we need to add self to the directory.

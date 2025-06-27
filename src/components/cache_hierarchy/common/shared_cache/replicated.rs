@@ -127,14 +127,14 @@ impl<
         let set_idx = (r.block_id % SET as u64) as usize;
         let res = self.blocks[set_idx].lookup_and_insert(r, ts, increase_touched_count);
         match res {
-            SharedCacheLookupAndInsertResult::Hit(modified) => {
-                SharedCacheLookupResult::Hit(modified)
+            SharedCacheLookupAndInsertResult::Hit(modified, evicted_id) => {
+                SharedCacheLookupResult::Hit(modified, evicted_id)
             }
-            SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
+            SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss(None),
             SharedCacheLookupAndInsertResult::InsertedAndCold(_) => {
                 SharedCacheLookupResult::ColdMiss
             }
-            SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
+            SharedCacheLookupAndInsertResult::Inserted(evicted_id) => SharedCacheLookupResult::Miss(evicted_id),
             SharedCacheLookupAndInsertResult::Unknown(unknown, is_modified) => {
                 SharedCacheLookupResult::Unknown(unknown, is_modified)
             }
@@ -247,9 +247,10 @@ impl<
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) {
+    ) -> Option<u64> {
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.insert(block_id, core_id, ts, is_modified, increase_touched_count);
+        None
     }
 
     fn lookup_and_insert_on_miss(

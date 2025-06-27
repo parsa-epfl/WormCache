@@ -155,7 +155,7 @@ impl<
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) {
+    ) -> Option<u64> {
         let set_idx = (block_id % SET as u64) as usize;
         let just_warmed = self.blocks[set_idx].inner().insert(
             block_id,
@@ -164,9 +164,10 @@ impl<
             is_modified,
             increase_touched_count,
         );
-        if just_warmed {
+        if just_warmed.0 {
             self.warmed_sets.fetch_add(1, Ordering::Relaxed);
         }
+        just_warmed.1
     }
 
     fn lookup_and_insert_on_miss(
@@ -181,17 +182,17 @@ impl<
             .lookup_and_insert(r, ts, increase_touched_count);
 
         match result {
-            SharedCacheLookupAndInsertResult::Hit(modified) => {
-                SharedCacheLookupResult::Hit(modified)
+            SharedCacheLookupAndInsertResult::Hit(modified, evicted_id) => {
+                SharedCacheLookupResult::Hit(modified, evicted_id)
             }
-            SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
+            SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss(None),
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
                 if just_warmed {
                     self.warmed_sets.fetch_add(1, Ordering::Relaxed);
                 }
                 SharedCacheLookupResult::ColdMiss
             }
-            SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
+            SharedCacheLookupAndInsertResult::Inserted(evicted_id) => SharedCacheLookupResult::Miss(evicted_id),
             SharedCacheLookupAndInsertResult::Unknown(diff, is_modified) => {
                 SharedCacheLookupResult::Unknown(diff, is_modified)
             }

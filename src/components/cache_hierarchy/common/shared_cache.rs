@@ -40,18 +40,18 @@ use serde::Serialize;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupResult {
-    Hit(bool), // (is_dirty)
-    Miss,
+    Hit(bool, Option<u64>), // (is_dirty, was_invalidated, invalidated_block_id), can be invalidated on a write
+    Miss(Option<u64>),  // was anything evicted
     ColdMiss,
     Unknown(u32, bool), // timestamp difference, is_dirty
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupAndInsertResult {
-    Hit(bool), // (is_dirty)
+    Hit(bool, Option<u64>), // (is_dirty, was_invalidated, invalidated_block_id)
     Miss,
     InsertedAndCold(bool), // (just_warmed)
-    Inserted,
+    Inserted(Option<u64>),    // (was_evicted, evicted_block_id)
     Unknown(u32, bool), // timestamp difference, is_dirty
 }
 
@@ -69,6 +69,7 @@ pub trait SharedCache {
     // 3. For write, invalid the cache line.
     fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult;
 
+    // Return evicted_block_id
     fn insert(
         &self,
         core_id: u32,
@@ -76,7 +77,7 @@ pub trait SharedCache {
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    );
+    ) -> Option<u64>;
 
     // A combine with lookup and insert. If the cache line is not in the cache and it is a read, insert it.
     fn lookup_and_insert_on_miss(

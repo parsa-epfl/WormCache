@@ -164,13 +164,14 @@ impl<
             let hit_block = &mut self.blocks[hit_block];
 
             return if hit_block.ts <= ts || !COHERENCE_FOLLOW_TS {
+                let evicted_id = hit_block.block_id_with_v >> 1;
                 hit_block.block_id_with_v = 0;
                 hit_block.ts = 0;
 
                 // self.modifying_history
                 //     .push((block_id, ts, core_id, false, true));
 
-                SharedCacheLookupResult::Hit(hit_block.modified)
+                SharedCacheLookupResult::Hit(hit_block.modified, Some(evicted_id))
             } else {
                 // self.modifying_history
                 //     .push((block_id, ts, core_id, false, false));
@@ -185,7 +186,7 @@ impl<
         if self.touched_count < WAY {
             SharedCacheLookupResult::ColdMiss
         } else {
-            SharedCacheLookupResult::Miss
+            SharedCacheLookupResult::Miss(None)
         }
     }
 
@@ -220,13 +221,14 @@ impl<
                     // The cache line should be transferred to the accessor.
                     // If the cache line has larger ts, it should exists in the cache, thus should be invalid
                     // If the cache line has smaller ts, it should be invalid as well.
+                    let evicted_id  = hit_block.block_id_with_v >> 1;
                     hit_block.block_id_with_v = 0;
                     hit_block.ts = 0;
 
                     // self.modifying_history
                     //     .push((block_id, ts, core_id, false, true));
 
-                    return SharedCacheLookupResult::Hit(hit_block.modified);
+                    return SharedCacheLookupResult::Hit(hit_block.modified, Some(evicted_id));
                 } else {
                     // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                     hit_block.ts = ts;
@@ -241,7 +243,7 @@ impl<
                     //     .push((block_id, ts, core_id, false, true));
 
                     self.statistics.record(access_type, is_os, true);
-                    return SharedCacheLookupResult::Hit(was_modified);
+                    return SharedCacheLookupResult::Hit(was_modified, None);
                 }
             }
         }
@@ -251,11 +253,11 @@ impl<
         if self.touched_count < WAY {
             SharedCacheLookupResult::ColdMiss
         } else {
-            SharedCacheLookupResult::Miss
+            SharedCacheLookupResult::Miss(None)
         }
     }
 
-    // return whether this cache set is just warmed.
+    // return whether this cache set is just warmed. (+whether a block was evicted and its id)
     #[inline]
     pub fn insert(
         &mut self,
@@ -264,7 +266,7 @@ impl<
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) -> bool {
+    ) -> (bool, Option<u64>) {
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
         if let Some(hit_block) = self.index_of(block_id) {
@@ -305,7 +307,7 @@ impl<
 
                     hit_block.last_accessor = core_id;
                 }
-                return false;
+                return (false, None);
             }
         }
 
@@ -333,13 +335,14 @@ impl<
 
         // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
         if oldest_block.ts > ts {
-            return result;
+            return (result, None);
         }
 
         // self.modifying_history
         //     .push((oldest_block.block_id_with_v >> 1, ts, core_id, false, true));
 
         // otherwise, we replace the oldest block.
+        let evicted_id = oldest_block.block_id_with_v >> 1;
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = is_modified;
         oldest_block.ts = ts;
@@ -353,7 +356,11 @@ impl<
         // self.modifying_history
         //     .push((block_id, ts, core_id, is_modified, true));
         // push the evicted line to the history.
-        result
+        if evicted_id == 0 {
+            (result, None)
+        } else {
+            (result, Some(evicted_id))
+        }
     }
 
     #[inline]
@@ -370,17 +377,18 @@ impl<
         let core_id = r.core_id;
 
         match result {
-            SharedCacheLookupResult::Hit(modified) => {
-                SharedCacheLookupAndInsertResult::Hit(modified)
+            SharedCacheLookupResult::Hit(modified, invalid_id) => {
+                SharedCacheLookupAndInsertResult::Hit(modified, invalid_id)
             }
-            SharedCacheLookupResult::Miss => {
+            SharedCacheLookupResult::Miss(invalid_id) => {
                 // This function is only called when the private cache has a miss
                 // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
+                assert!(invalid_id == None);
                 if !r.is_store() {
                     let just_warmed =
                         self.insert(block_id, core_id, ts, false, increase_touched_count);
-                    assert!(!just_warmed);
-                    SharedCacheLookupAndInsertResult::Inserted
+                    assert!(!just_warmed.0);
+                    SharedCacheLookupAndInsertResult::Inserted(just_warmed.1)
                 } else {
                     SharedCacheLookupAndInsertResult::Miss
                 }
@@ -391,7 +399,8 @@ impl<
                 if !r.is_store() {
                     let just_warmed =
                         self.insert(block_id, core_id, ts, false, increase_touched_count);
-                    SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
+                    assert!(just_warmed.1 == None);
+                    SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed.0)
                 } else {
                     SharedCacheLookupAndInsertResult::Miss
                 }
@@ -412,14 +421,14 @@ fn minimum_can_find_invalid() {
 
     // push 8 elements inside.
     for i in 0..8 {
-        assert_eq!(set.insert(i, 0, ts, false, true), i == 7);
+        assert_eq!(set.insert(i, 0, ts, false, true).0, i == 7);
         ts += 1;
     }
 
     // now, we invalid set 0.
     assert_eq!(
         set.invalidate(0, ts, 0),
-        SharedCacheLookupResult::Hit(false)
+        SharedCacheLookupResult::Hit(false, None)
     );
     ts += 1;
 
@@ -440,7 +449,7 @@ fn minimum_can_find_invalid() {
     ts += 1;
 
     // If we now insert another one, line[1] will be replaced.
-    assert_eq!(set.insert(10, 0, ts, false, true), false);
+    assert_eq!(set.insert(10, 0, ts, false, true).0, false);
 
     assert_eq!(
         set.blocks[1],
@@ -481,7 +490,7 @@ fn cold_miss_exist() {
 
     // fill the cache.
     for i in 0..8 {
-        assert_eq!(set.insert(i + 10, 0, ts, false, true), i == 7);
+        assert_eq!(set.insert(i + 10, 0, ts, false, true).0, i == 7);
         ts += 1;
     }
 
@@ -497,6 +506,6 @@ fn cold_miss_exist() {
             },
             ts,
         ),
-        SharedCacheLookupResult::Miss,
+        SharedCacheLookupResult::Miss(None),
     );
 }
