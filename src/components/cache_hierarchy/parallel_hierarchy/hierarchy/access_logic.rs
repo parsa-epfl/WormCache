@@ -73,7 +73,6 @@ impl<
                     };
                     self.shared_cache.lookup_and_insert_on_miss(&r, ts, true);
                 }
-                assert!(cnt > 0, "No blocks prefetched for request: {}", request.block_id);
                 if self.with_statistics {
                     Statistics::global_record(
                         request.core_id,
