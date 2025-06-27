@@ -68,7 +68,7 @@ impl<
                         is_os: request.is_os,
                         pc: request.pc,
                     };
-                    self.access_memory_pblock_id(&r, ts);
+                    self.shared_cache.lookup_and_insert_on_miss(&r, ts, true);
                 }
             }
             None => {},
@@ -130,22 +130,7 @@ impl<
 
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
-            if !is_instruction {
-                if is_prefetch {
-                    println!("[Prefetch] Hit in private cache for block {}", block_id);
-                } else {
-                    println!("[Normal] Hit in private cache for block {}", block_id);
-                }
-            }
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
-        }
-
-        if !is_instruction {
-            if is_prefetch {
-                println!("[Prefetch] Miss in private cache for block {}", block_id);
-            } else {
-                println!("[Normal] Miss in private cache for block {}", block_id);
-            }
         }
 
         let evicted_slot = match private_hit {
@@ -162,10 +147,6 @@ impl<
                     let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);
-
-                    if SMS_PREFETCHING && !is_instruction {
-                        self.evict_sms(core_id, potential_evicted_id);
-                    }
 
                     (m_guard, Some((potential_evicted_id, e_guard)))
                 }
@@ -229,9 +210,6 @@ impl<
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
 
                         let core_id = (*replica_cache_id / 2) as u32;
-                        if SMS_PREFETCHING && !is_instruction {
-                            self.evict_sms(core_id, entry.block_id());
-                        }
 
                         set.invalidate(*index);
 
@@ -638,9 +616,6 @@ impl<
                             incoming_sharer.set(*replica_cache_id, false);
                             
                             let core_id = (*replica_cache_id / 2) as u32;
-                            if SMS_PREFETCHING && !is_instruction {
-                                self.evict_sms(core_id, entry.block_id());
-                            }
 
                             // invalid the private cache entry.
                             set.invalidate(*index);
@@ -947,6 +922,12 @@ impl<
                     is_os,
                 );
             }
+        }
+
+        // this request has accessed the shared cache, so prefetch
+        if SMS_PREFETCHING && !is_instruction && !is_prefetch {
+            self.prefetch_blocks(&r, ts);
+            self.record_access(&r, ts);
         }
 
         res

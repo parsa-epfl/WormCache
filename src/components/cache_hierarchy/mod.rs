@@ -50,8 +50,7 @@ pub use parallel_hierarchy::hierarchy;
 pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 
 use crate::parameter;
-use crate::parameter::ADJACENT_LINE_PREFETCHING;
-use crate::parameter::SMS_PREFETCHING;
+use crate::parameter::{ADJACENT_LINE_PREFETCHING, ENABLE_EXCLUSIVE_CACHE_STATE};
 
 #[derive(Clone)]
 pub struct MemoryAccessRequest {
@@ -114,7 +113,13 @@ impl CacheBlockRequest {
 
     pub fn get_prefetch_type(&self) -> CacheAccessType {
         match self.access_type {
-            CacheAccessType::DataRead => CacheAccessType::PrefetchRead,
+            CacheAccessType::DataRead => {
+                if ENABLE_EXCLUSIVE_CACHE_STATE {
+                    CacheAccessType::PrefetchWrite
+                } else {
+                    CacheAccessType::PrefetchRead
+                }
+            }
             CacheAccessType::DataWrite => CacheAccessType::PrefetchWrite,
             _  => unreachable!(),
         }
@@ -213,10 +218,6 @@ pub trait MemoryHierarchy {
             prefetch_request.block_id += 1;
             prefetch_request.access_type = prefetch_request.get_prefetch_type();
             self.access_memory_pblock_id(&prefetch_request, ts);
-        }
-        if SMS_PREFETCHING && !translated_request.is_instruction() {
-            self.prefetch_blocks(&translated_request, ts);
-            self.record_access(&translated_request, ts);
         }
         result
     }
