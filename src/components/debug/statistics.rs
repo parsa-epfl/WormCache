@@ -104,6 +104,8 @@ pub enum EventType {
             // - For return, it is a miss if the target prediction (provided by the RAS) is wrong.
 
     WaitForInterrupt,
+    PrefetchReqs,
+    PrefetchBlks,
 }
 
 #[repr(align(64))]

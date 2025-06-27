@@ -57,10 +57,13 @@ impl<
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
+                println!("Prefetching {} blocks for request: {}", addrs.len(), request.block_id);
+                let mut cnt = 0;
                 for addr in addrs {
                     if addr == request.block_id {
                         continue;
                     }
+                    cnt += 1;
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
                         block_id: addr,
@@ -70,12 +73,26 @@ impl<
                     };
                     self.shared_cache.lookup_and_insert_on_miss(&r, ts, true);
                 }
+                assert!(cnt > 0, "No blocks prefetched for request: {}", request.block_id);
+                if self.with_statistics {
+                    Statistics::global_record(
+                        request.core_id,
+                        EventType::PrefetchReqs,
+                        request.is_os(),
+                    );
+                    Statistics::global_record_by(
+                        request.core_id,
+                        EventType::PrefetchBlks,
+                        request.is_os(),
+                        cnt);
+                }
             }
             None => {},
         }
     }
 
     fn record_access(&self, request: &CacheBlockRequest, ts: u64) {
+        println!("Recording request: {}", request.block_id);
         match self.agt.record(&request, ts) {
             Some(entry) => {
                 self.pht.insert(&entry, request.core_id as usize)
@@ -85,6 +102,8 @@ impl<
     }
 
     fn evict_sms(&self, core_id: u32, block_id: u64) {
+        assert!(block_id != 0, "Block ID should not be zero for eviction.");
+        println!("Evicting SMS for core {} and block ID {}", core_id, block_id);
         let dummy_req = CacheBlockRequest{
             core_id: core_id,
             block_id: block_id,
