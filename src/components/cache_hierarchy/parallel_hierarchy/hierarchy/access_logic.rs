@@ -85,7 +85,6 @@ impl<
     }
 
     fn evict_sms(&self, core_id: u32, block_id: u64) {
-        print!("[Prefetch] Evicted entry {} from AGT", block_id);           
         let dummy_req = CacheBlockRequest{
             core_id: core_id,
             block_id: block_id,
@@ -96,9 +95,8 @@ impl<
         match self.agt.evict(&dummy_req) {
             Some(evicted_entry) => {
                 self.pht.insert(&evicted_entry, core_id as usize);
-                println!(" and inserted into PHT");
             }
-            None => {println!(" and not inserted into PHT");},
+            None => {},
         }
     }
 
