@@ -193,7 +193,7 @@ unsafe extern "C" fn qemu_plugin_install(
 
         // Now, we collect the options.
         for i in 0..argc as usize {
-            let arg = ffi::CStr::from_ptr(*argv.offset(i as isize) as *const u8)
+            let arg = ffi::CStr::from_ptr(*argv.offset(i as isize) as *const i8)
                 .to_str()
                 .unwrap();
             let mut iter = arg.split("=");
