@@ -97,6 +97,7 @@ impl CacheBlockRequest {
 
     pub fn is_store(&self) -> bool {
         self.access_type == CacheAccessType::DataWrite
+            || self.access_type == CacheAccessType::PrefetchWrite
     }
 
     pub fn is_prefetch(&self) -> bool {
@@ -114,7 +115,7 @@ impl CacheBlockRequest {
 
     pub fn get_prefetch_type(&self) -> CacheAccessType {
         match self.access_type {
-            CacheAccessType::DataRead => CacheAccessType::PrefetchRead,
+            CacheAccessType::DataRead => CacheAccessType::PrefetchWrite,
             CacheAccessType::DataWrite => CacheAccessType::PrefetchWrite,
             _  => unreachable!(),
         }
@@ -207,6 +208,31 @@ pub trait MemoryHierarchy {
         };
 
         let result = self.access_memory_pblock_id(&translated_request, ts);
+        if !translated_request.is_instruction() {
+            match result {
+                CacheHierarchyAccessResult::HitInSelfPrivateCache => {
+                    println!("Hit in self private cache: {:?}", translated_request.block_id);
+                },
+                CacheHierarchyAccessResult::MissDueToPermission => {
+                    println!("[Weird] Miss due to permission for block: {:?}", translated_request.block_id);
+                },
+                CacheHierarchyAccessResult::HitInOtherPrivateCache => {
+                    println!("[Weird] Miss in other private cache: {:?}", translated_request.block_id);
+                },
+                CacheHierarchyAccessResult::MissInPrivateCache => {
+                    println!("Miss in private cache: {:?}", translated_request.block_id);
+                },
+                CacheHierarchyAccessResult::HitInSharedCache => {
+                    println!("Hit in shared cache: {:?}", translated_request.block_id);
+                },
+                CacheHierarchyAccessResult::Miss => {
+                    println!("Miss in shared cache: {:?}", translated_request.block_id);
+                },
+                CacheHierarchyAccessResult::Unknown => {
+                    println!("Unknown access result for block: {:?}", translated_request.block_id);
+                }
+            }
+        }
 
         if ADJACENT_LINE_PREFETCHING {
             let mut prefetch_request = translated_request.clone();
