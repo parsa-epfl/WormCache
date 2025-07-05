@@ -69,6 +69,7 @@ impl MemoryAccessRequest {
 
     pub fn is_store(&self) -> bool {
         self.access_type == CacheAccessType::DataWrite
+            || self.access_type == CacheAccessType::PrefetchWrite
     }
 
     pub fn is_prefetch(&self) -> bool {

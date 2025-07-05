@@ -218,7 +218,7 @@ impl<
 
                         set.invalidate(*index);
 
-                        if self.with_statistics {
+                        if !is_prefetch && self.with_statistics {
                             Statistics::global_record(
                                 core_id,
                                 EventType::PrivateCacheInvalidation,
@@ -418,11 +418,7 @@ impl<
             };
         }
 
-        if is_prefetch {
-            return CacheHierarchyAccessResult::Miss;
-        }
-
-        if self.with_statistics {
+        if !is_prefetch && self.with_statistics {
             if is_instruction {
                 Statistics::global_record(
                     core_id,
@@ -482,7 +478,7 @@ impl<
             if ts < miss_directory_guard.insertion_ts {
                 // This access is earlier than the directory creation.
                 // Its result should be unknowl
-                if self.with_statistics {
+                if !is_prefetch && self.with_statistics {
                     Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
                     Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
                 }
@@ -583,7 +579,7 @@ impl<
                     // Now, release the lock of the private cache.
                     drop(acquired_sets);
 
-                    if self.with_statistics {
+                    if !is_prefetch && self.with_statistics {
                         // The truth is that we don't know whether this is a miss or hit, because a previous write operation has cleaned the history.
                         Statistics::global_record(
                             core_id,
@@ -628,7 +624,7 @@ impl<
                             // invalid the private cache entry.
                             set.invalidate(*index);
 
-                            if self.with_statistics {
+                            if !is_prefetch && self.with_statistics {
                                 Statistics::global_record(
                                     core_id,
                                     EventType::PrivateCacheInvalidation,
@@ -723,7 +719,7 @@ impl<
                         // This memory access is supposed to access the shared cache, but now it is served by other private cache.
                         // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
                         // This might have triggered a shared cache miss.
-                        if self.with_statistics {
+                        if !is_prefetch && self.with_statistics {
                             Statistics::global_record(
                                 core_id,
                                 EventType::UnknownSharedCacheMisses,
@@ -795,7 +791,7 @@ impl<
 
                                 drop(acquired_sets);
 
-                                if self.with_statistics {
+                                if !is_prefetch && self.with_statistics {
                                     // This read happens after a early arrival write operation, so
                                     // we don't know the state of this cache line for this specific case.
                                     Statistics::global_record(
@@ -852,7 +848,7 @@ impl<
                         // We decide to create a replica for this cache line, so we expand this directory life time.
                         miss_directory_guard.insertion_ts = ts;
 
-                        if self.with_statistics {
+                        if !is_prefetch && self.with_statistics {
                             // This memory access is supposed to access the shared cache, but now it is served by other private cache.
                             // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
                             // This might have triggered a shared cache miss.
@@ -912,7 +908,7 @@ impl<
             );
         }
 
-        if self.with_statistics {
+        if !is_prefetch && self.with_statistics {
             Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
             if is_instruction {
