@@ -290,6 +290,11 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             .set(format!("{}_{}", prefix, "warmed"))
             .unwrap();
 
+        let warm_ratio = options.get("warm_ratio").unwrap_or(&"1.0".to_string()).clone();
+        let warm_ratio: f64 = warm_ratio.parse().unwrap();
+        assert!(warm_ratio >= 0.0 && warm_ratio <= 1.0);
+        WARM_RATIO.set(warm_ratio).unwrap();
+
         unsafe {
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
             let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
