@@ -927,7 +927,8 @@ pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_RAW
     qemu_plugin_snapshot_format_t = 1;
 pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_ZSTD:
     qemu_plugin_snapshot_format_t = 2;
-pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_ZSTD_BASE : qemu_plugin_snapshot_format_t = 4 ;
+pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_BASE:
+    qemu_plugin_snapshot_format_t = 4;
 pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_DELTA:
     qemu_plugin_snapshot_format_t = 5;
 pub type qemu_plugin_snapshot_format_t = ::std::os::raw::c_uint;
