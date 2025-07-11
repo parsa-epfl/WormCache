@@ -68,6 +68,11 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
     64,
+    64,
+    32,
+    1024,
+    16,
+    32,
 >;
 
 #[test]
@@ -92,6 +97,7 @@ fn testing_pcache_always_miss() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -138,6 +144,7 @@ fn testing_pcache_always_hit() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -179,6 +186,7 @@ fn read_shared_cache_line() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             ts,
         );
@@ -195,6 +203,7 @@ fn read_shared_cache_line() {
             block_id,
             access_type: CacheAccessType::DataRead,
             is_os: false,
+            pc: 0,
         },
         ts,
     );
