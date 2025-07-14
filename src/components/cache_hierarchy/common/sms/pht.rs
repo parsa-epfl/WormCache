@@ -48,8 +48,8 @@ impl<
                 self.write_pattern[i] = 1;
             }
         }
-        util::rotate_left::<u8, N_BLK>(&mut self.write_pattern, acc_entry.offset as usize);
-        util::rotate_left::<u8, N_BLK>(&mut self.read_pattern, acc_entry.offset as usize);
+        // util::rotate_left::<u8, N_BLK>(&mut self.write_pattern, acc_entry.offset as usize);
+        // util::rotate_left::<u8, N_BLK>(&mut self.read_pattern, acc_entry.offset as usize);
     }
 
     fn update_write_pattern(&mut self, write_pattern: &[bool; N_BLK]) {
@@ -86,8 +86,8 @@ impl<
                 write_pattern[i] = false;
             }
         }
-        util::rotate_left::<bool, N_BLK>(&mut write_pattern, acc_entry.offset as usize);
-        util::rotate_left::<bool, N_BLK>(&mut read_pattern, acc_entry.offset as usize);
+        // util::rotate_left::<bool, N_BLK>(&mut write_pattern, acc_entry.offset as usize);
+        // util::rotate_left::<bool, N_BLK>(&mut read_pattern, acc_entry.offset as usize);
         self.update_write_pattern(&write_pattern);
         self.update_read_pattern(&read_pattern);
         self.ts = acc_entry.ts;
@@ -192,11 +192,11 @@ impl<
     pub fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<u64>> {
         let (base, pc, offset) = util::get_base_pc_offset(request, N_BLK);
         let key = util::build_key(pc, offset, PHT_SETS);
-        let set_idx = key & (1 << PHT_SETS.trailing_zeros() - 1);
+        let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
         match self.sets[set_idx  as usize].inner().lookup(tag, !request.is_store(), ts) {
-            Some(mut bitvec) => {
-                util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
+            Some(bitvec) => {
+                // util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
                 let mut result = Vec::new();
                 for (i, &bit) in bitvec.iter().enumerate() {
                     if bit {
@@ -211,7 +211,7 @@ impl<
 
     pub fn insert(&self, entry: &AccTableEntry<N_BLK>) {
         let key = util::build_key(entry.pc, entry.offset, PHT_SETS);
-        let set_idx = key & (1 << PHT_SETS.trailing_zeros() - 1);
+        let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
         self.sets[set_idx as usize].inner().insert(tag, entry);
     }
