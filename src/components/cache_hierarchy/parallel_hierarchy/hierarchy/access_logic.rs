@@ -960,6 +960,8 @@ impl<
         self.shared_cache.serialize(name, numa_node_id);
         println!("Serialize MMUs");
         self.serialize_mmus(name, numa_node_id);
+        println!("Serialize PHTs");
+        self.pht.serialize(name, numa_node_id);
     }
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize) {
@@ -971,5 +973,7 @@ impl<
         self.shared_cache.deserialize(name, numa_node_id);
         println!("Deserialize MMUs");
         self.deserialize_mmus(name, numa_node_id);
+        println!("Deserialize PHTs");
+        self.pht.deserialize(name, numa_node_id);
     }
 }

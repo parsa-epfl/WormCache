@@ -1,17 +1,19 @@
 
+use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutex;
 use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::super::CCell;
 use super::acc::AccTableEntry;
 use super::util;
+use zstd::{Decoder, Encoder};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PHTEntry<
     const N_BLK: usize,
 > {
     pub tag: u64,
-    pub write_pattern: [u8; N_BLK],
-    pub read_pattern: [u8; N_BLK],
+    pub write_pattern: Vec<u8>,
+    pub read_pattern: Vec<u8>,
     pub ts: u64,
     pub valid: bool,
 }
@@ -22,8 +24,12 @@ impl<
     pub fn new() -> Self {
         Self {
             tag: 0,
-            write_pattern: [0; N_BLK],
-            read_pattern: [0; N_BLK],
+            write_pattern: Vec::from_iter(
+                std::iter::repeat(1).take(N_BLK)
+            ),
+            read_pattern: Vec::from_iter(
+                std::iter::repeat(1).take(N_BLK)
+            ),
             ts: 0,
             valid: false,
         }
@@ -107,12 +113,12 @@ impl<
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PHTSet<
     const PHT_WAYS: usize,
     const N_BLK: usize,
 > {
-    pub entries: Box<[PHTEntry<N_BLK>; PHT_WAYS]>,
+    pub entries: Vec<PHTEntry<N_BLK>>,
 }
 
 impl<
@@ -122,7 +128,9 @@ impl<
 {
     pub fn new() -> Self {
         Self {
-            entries: crate::util::init_heap_array(|_| PHTEntry::<N_BLK>::new()),
+            entries: Vec::from_iter(
+                std::iter::repeat(PHTEntry::<N_BLK>::new()).take(PHT_WAYS)
+            ),
         }
     }
 
@@ -176,6 +184,15 @@ pub struct PHTPerCore<
     pub sets: Box<[G; PHT_SETS]>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct PHTPerCoreSerdeHelper<
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
+    const N_BLK: usize,
+> {
+    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK>>
+}
+
 impl<
     G: CCell<PHTSet<PHT_WAYS, N_BLK>> + std::fmt::Debug,
     const PHT_SETS: usize,
@@ -186,6 +203,26 @@ impl<
     pub fn new() -> Self {
         Self {
             sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK>::new())),
+        }
+    }
+
+    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK>) -> Self {
+        let mut sets = Vec::with_capacity(PHT_SETS);
+        for set in helper.sets {
+            sets.push(G::new(set));
+        }
+        Self {
+            sets: sets.into_boxed_slice().try_into().unwrap(),
+        }
+    }
+
+    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK> {
+        PHTPerCoreSerdeHelper {
+            sets: self
+                .sets
+                .iter()
+                .map(|set| set.inner().clone())
+                .collect(),
         }
     }
 
@@ -248,6 +285,47 @@ impl<
 
     pub fn insert(&self, entry: &AccTableEntry<N_BLK>, core_id: usize) {
         self.tables[core_id].insert(entry);
+    }
+
+    pub fn serialize(&self, name: &str, numa_node_id: usize) {
+        let helper = self
+            .tables
+            .iter()
+            .map(|table| table.to_serialize_helper())
+            .collect::<Vec<_>>();
+
+        let file = 
+            std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "pht", numa_node_id))
+                .unwrap();
+
+        let mut file = Encoder::new(file, 0).unwrap();
+
+        serde_json::to_writer(&mut file, &helper).unwrap();
+
+        file.finish().unwrap();
+    }
+
+    pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        let file =
+            std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "pht", numa_node_id));
+
+        if file.is_err() {
+            println!(
+                "Cannot load the PHT. Error: {:?}",
+                file.err()
+            );
+            return;
+        }
+
+        let file = file.unwrap();
+        let mut file = Decoder::new(file).unwrap();
+
+        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK>> =
+            serde_json::from_reader(&mut file).unwrap();
+
+        for (table, helper) in self.tables.iter_mut().zip(helper.into_iter()) {
+            *table = PHTPerCore::from_serialize_helper(helper);
+        }
     }
 
 }
