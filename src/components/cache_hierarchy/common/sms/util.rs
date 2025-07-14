@@ -15,7 +15,7 @@ pub fn get_address(base: u64, offset: u64, n_blk: usize) -> u64 {
 
 pub fn build_key(pc: u64, offset: u64, n_sets: usize) -> u64 {
     const PC_WIDTH: u64 = 16;
-    const OFF_WIDTH: u64 = 0;                       // Use PC based indexing for now
+    const OFF_WIDTH: u64 = 5;
     let index_len = n_sets.trailing_zeros();
     assert!(PC_WIDTH + OFF_WIDTH > index_len.into());
 

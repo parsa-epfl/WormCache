@@ -92,7 +92,9 @@ impl<
         match self.poke(request) {
             Some(idx) => {  // entry found, check further
                 let mut existing_entry = self.entries[idx].inner();
-                if offset == existing_entry.offset {    // nothing to do except update timestamp
+                if offset == existing_entry.offset {
+                    existing_entry.pc = pc;
+                    existing_entry.is_read = !request.is_store();
                     existing_entry.ts = ts;
                     return None;
                 } else {    // must be promoted to acc entry, TODO: is there a more efficient way?
