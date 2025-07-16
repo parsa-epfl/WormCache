@@ -1,17 +1,20 @@
 
 use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutex;
-use crate::components::cache_hierarchy::CacheBlockRequest;
+use crate::{components::cache_hierarchy::CacheBlockRequest};
 use super::super::CCell;
 use super::acc::AccTableEntry;
 use super::util;
 use zstd::{Decoder, Encoder};
 
+// Store all three types of patterns even if not used
+// TODO: can be optimized later
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PHTEntry<
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
+    const SAT_CNT: bool,
 > {
     pub tag: u64,
     pub access_pattern: Vec<u8>,
@@ -25,7 +28,8 @@ impl<
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
-> PHTEntry<N_BLK, ROT, SEP_RDWR> {
+    const SAT_CNT: bool,
+> PHTEntry<N_BLK, ROT, SEP_RDWR, SAT_CNT> {
     pub fn new() -> Self {
         Self {
             tag: 0,
@@ -77,11 +81,17 @@ impl<
             util::PatternType::Read => &mut self.read_pattern,
             util::PatternType::Write => &mut self.write_pattern,
         };
-        for (i, &bit) in pattern.iter().enumerate() {
-            match (bit, target_pattern[i]) {
-                (true, v) if v < 3 => target_pattern[i] += 1,
-                (false, v) if v > 0 => target_pattern[i] -= 1,
-                _ => {}
+        if SAT_CNT {
+            for (i, &bit) in pattern.iter().enumerate() {
+                match (bit, target_pattern[i]) {
+                    (true, v) if v < 3 => target_pattern[i] += 1,
+                    (false, v) if v > 0 => target_pattern[i] -= 1,
+                    _ => {}
+                }
+            }
+        } else {
+            for (i, &bit) in pattern.iter().enumerate() {
+                target_pattern[i] = if bit { 2 } else { 1 };
             }
         }
     }
@@ -142,8 +152,9 @@ pub struct PHTSet<
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
+    const SAT_CNT: bool,
 > {
-    pub entries: Vec<PHTEntry<N_BLK, ROT, SEP_RDWR>>,
+    pub entries: Vec<PHTEntry<N_BLK, ROT, SEP_RDWR, SAT_CNT>>,
 }
 
 impl<
@@ -151,12 +162,13 @@ impl<
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
-> PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR>
+    const SAT_CNT: bool,
+> PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>
 {
     pub fn new() -> Self {
         Self {
             entries: Vec::from_iter(
-                std::iter::repeat(PHTEntry::<N_BLK, ROT, SEP_RDWR>::new()).take(PHT_WAYS)
+                std::iter::repeat(PHTEntry::<N_BLK, ROT, SEP_RDWR, SAT_CNT>::new()).take(PHT_WAYS)
             ),
         }
     }
@@ -203,12 +215,13 @@ impl<
 
 #[derive(Debug)]
 pub struct PHTPerCore<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
+    const SAT_CNT: bool,
 > {
     pub sets: Box<[G; PHT_SETS]>,
 }
@@ -220,26 +233,28 @@ pub struct PHTPerCoreSerdeHelper<
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
+    const SAT_CNT: bool,
 > {
-    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR>>
+    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>>
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
-> PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR>
+    const SAT_CNT: bool,
+> PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>
 {
     pub fn new() -> Self {
         Self {
-            sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR>::new())),
+            sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>::new())),
         }
     }
 
-    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR>) -> Self {
+    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>) -> Self {
         let mut sets = Vec::with_capacity(PHT_SETS);
         for set in helper.sets {
             sets.push(G::new(set));
@@ -249,7 +264,7 @@ impl<
         }
     }
 
-    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR> {
+    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT> {
         PHTPerCoreSerdeHelper {
             sets: self
                 .sets
@@ -305,30 +320,32 @@ impl<
 }
 
 pub struct PHT<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
+    const SAT_CNT: bool,
 > {
-    pub tables: Box<[PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR>; CORE_COUNT]>,
+    pub tables: Box<[PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>; CORE_COUNT]>,
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
-> PHT<G, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR>
+    const SAT_CNT: bool,
+> PHT<G, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>
 {
     pub fn new() -> Self {
         Self {
-            tables: crate::util::init_heap_array(|_| PHTPerCore::<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR>::new()),
+            tables: crate::util::init_heap_array(|_| PHTPerCore::<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>::new()),
         }
     }
 
@@ -374,7 +391,7 @@ impl<
         let file = file.unwrap();
         let mut file = Decoder::new(file).unwrap();
 
-        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR>> =
+        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> =
             serde_json::from_reader(&mut file).unwrap();
 
         for (table, helper) in self.tables.iter_mut().zip(helper.into_iter()) {
@@ -391,4 +408,5 @@ pub type ParallelPHT<
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
-> = PHT<SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR>>, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR>;
+    const SAT_CNT: bool,
+> = PHT<SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>>, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>;

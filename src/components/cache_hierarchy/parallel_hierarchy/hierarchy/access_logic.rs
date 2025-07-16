@@ -33,6 +33,7 @@ impl<
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
+    const SAT_CNT: bool,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
@@ -52,6 +53,7 @@ impl<
         N_BLK,
         ROT,
         SEP_RDWR,
+        SAT_CNT,
     >
 {
 
