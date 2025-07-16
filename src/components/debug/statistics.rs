@@ -104,6 +104,11 @@ pub enum EventType {
             // - For return, it is a miss if the target prediction (provided by the RAS) is wrong.
 
     WaitForInterrupt,
+    PfL1,
+    PfL2,
+    PfMem,
+    PfUnk,
+    Pf0,Pf1,Pf2,Pf3,Pf4,Pf5,Pf6,Pf7,Pf8,Pf9,Pf10,Pf11,Pf12,Pf13,Pf14,Pf15,Pf16,Pf17,Pf18,Pf19,Pf20,Pf21,Pf22,Pf23,Pf24,Pf25,Pf26,Pf27,Pf28,Pf29,Pf30,Pf31,
 }
 
 #[repr(align(64))]
