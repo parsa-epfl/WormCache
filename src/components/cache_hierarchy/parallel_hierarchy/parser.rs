@@ -158,6 +158,7 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     {parameter::PHT_SETS},
     {parameter::PHT_WAYS},
     {parameter::N_BLK},
+    {parameter::ROT},
 >;
 
 #[allow(dead_code)]
@@ -189,6 +190,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     {parameter::PHT_SETS},
     {parameter::PHT_WAYS},
     {parameter::N_BLK},
+    {parameter::ROT},
 >;
 
 #[allow(dead_code)]
@@ -218,6 +220,7 @@ type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     {parameter::PHT_SETS},
     {parameter::PHT_WAYS},
     {parameter::N_BLK},
+    {parameter::ROT},
 >;
 
 #[allow(dead_code)]
@@ -249,6 +252,7 @@ type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     {parameter::PHT_SETS},
     {parameter::PHT_WAYS},
     {parameter::N_BLK},
+    {parameter::ROT},
 >;
 
 impl CacheModelParser<true, true> for DummyParser {

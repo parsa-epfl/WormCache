@@ -10,6 +10,7 @@ use zstd::{Decoder, Encoder};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PHTEntry<
     const N_BLK: usize,
+    const ROT: bool,
 > {
     pub tag: u64,
     pub write_pattern: Vec<u8>,
@@ -20,7 +21,8 @@ pub struct PHTEntry<
 
 impl<
     const N_BLK: usize,
-> PHTEntry<N_BLK> {
+    const ROT: bool,
+> PHTEntry<N_BLK, ROT> {
     pub fn new() -> Self {
         Self {
             tag: 0,
@@ -54,25 +56,23 @@ impl<
                 self.write_pattern[i] = 1;
             }
         }
-        // util::rotate_left::<u8, N_BLK>(&mut self.write_pattern, acc_entry.offset as usize);
-        // util::rotate_left::<u8, N_BLK>(&mut self.read_pattern, acc_entry.offset as usize);
-    }
-
-    fn update_write_pattern(&mut self, write_pattern: &[bool; N_BLK]) {
-        for (i, &bit) in write_pattern.iter().enumerate() {
-            match (bit, self.write_pattern[i]) {
-                (true, v) if v < 3 => self.write_pattern[i] += 1,
-                (false, v) if v > 0 => self.write_pattern[i] -= 1,
-                _ => {}
-            }
+        if ROT {
+            util::rotate_left_vec::<u8>(&mut self.write_pattern, acc_entry.offset as usize);
+            util::rotate_left_vec::<u8>(&mut self.read_pattern, acc_entry.offset as usize);
         }
+
     }
 
-    fn update_read_pattern(&mut self, read_pattern: &[bool; N_BLK]) {
-        for (i, &bit) in read_pattern.iter().enumerate() {
-            match (bit, self.read_pattern[i]) {
-                (true, v) if v < 3 => self.read_pattern[i] += 1,
-                (false, v) if v > 0 => self.read_pattern[i] -= 1,
+    fn update_pattern(&mut self, pattern: &[bool; N_BLK], rd_wr: bool) {
+        let target_pattern = if rd_wr {
+            &mut self.read_pattern
+        } else {
+            &mut self.write_pattern
+        };
+        for (i, &bit) in pattern.iter().enumerate() {
+            match (bit, target_pattern[i]) {
+                (true, v) if v < 3 => target_pattern[i] += 1,
+                (false, v) if v > 0 => target_pattern[i] -= 1,
                 _ => {}
             }
         }
@@ -92,10 +92,12 @@ impl<
                 write_pattern[i] = false;
             }
         }
-        // util::rotate_left::<bool, N_BLK>(&mut write_pattern, acc_entry.offset as usize);
-        // util::rotate_left::<bool, N_BLK>(&mut read_pattern, acc_entry.offset as usize);
-        self.update_write_pattern(&write_pattern);
-        self.update_read_pattern(&read_pattern);
+        if ROT {
+            util::rotate_left_arr::<bool, N_BLK>(&mut write_pattern, acc_entry.offset as usize);
+            util::rotate_left_arr::<bool, N_BLK>(&mut read_pattern, acc_entry.offset as usize);
+        }
+        self.update_pattern(&write_pattern, false);
+        self.update_pattern(&read_pattern, true);
         self.ts = acc_entry.ts;
     }
 
@@ -117,19 +119,21 @@ impl<
 pub struct PHTSet<
     const PHT_WAYS: usize,
     const N_BLK: usize,
+    const ROT: bool,
 > {
-    pub entries: Vec<PHTEntry<N_BLK>>,
+    pub entries: Vec<PHTEntry<N_BLK, ROT>>,
 }
 
 impl<
     const PHT_WAYS: usize,
     const N_BLK: usize,
-> PHTSet<PHT_WAYS, N_BLK>
+    const ROT: bool,
+> PHTSet<PHT_WAYS, N_BLK, ROT>
 {
     pub fn new() -> Self {
         Self {
             entries: Vec::from_iter(
-                std::iter::repeat(PHTEntry::<N_BLK>::new()).take(PHT_WAYS)
+                std::iter::repeat(PHTEntry::<N_BLK, ROT>::new()).take(PHT_WAYS)
             ),
         }
     }
@@ -176,10 +180,11 @@ impl<
 
 #[derive(Debug)]
 pub struct PHTPerCore<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
+    const ROT: bool,
 > {
     pub sets: Box<[G; PHT_SETS]>,
 }
@@ -189,24 +194,26 @@ pub struct PHTPerCoreSerdeHelper<
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
+    const ROT: bool,
 > {
-    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK>>
+    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK, ROT>>
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
-> PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK>
+    const ROT: bool,
+> PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT>
 {
     pub fn new() -> Self {
         Self {
-            sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK>::new())),
+            sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK, ROT>::new())),
         }
     }
 
-    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK>) -> Self {
+    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT>) -> Self {
         let mut sets = Vec::with_capacity(PHT_SETS);
         for set in helper.sets {
             sets.push(G::new(set));
@@ -216,7 +223,7 @@ impl<
         }
     }
 
-    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK> {
+    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT> {
         PHTPerCoreSerdeHelper {
             sets: self
                 .sets
@@ -233,7 +240,7 @@ impl<
 
     #[inline]
     fn build_key(&self, pc: u64, offset: u64) -> u64 {
-        util::build_key::<N_BLK, PHT_SETS>(pc, offset)
+        util::build_key::<N_BLK, PHT_SETS, ROT>(pc, offset)
     }
 
     #[inline]
@@ -247,8 +254,10 @@ impl<
         let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
         match self.sets[set_idx  as usize].inner().lookup(tag, !request.is_store(), ts) {
-            Some(bitvec) => {
-                // util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
+            Some(mut bitvec) => {
+                if ROT {
+                    util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
+                }
                 let mut result = Vec::new();
                 for (i, &bit) in bitvec.iter().enumerate() {
                     if bit {
@@ -270,26 +279,28 @@ impl<
 }
 
 pub struct PHT<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
+    const ROT: bool,
 > {
-    pub tables: Box<[PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK>; CORE_COUNT]>,
+    pub tables: Box<[PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT>; CORE_COUNT]>,
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
-> PHT<G, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK>
+    const ROT: bool,
+> PHT<G, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT>
 {
     pub fn new() -> Self {
         Self {
-            tables: crate::util::init_heap_array(|_| PHTPerCore::<G, PHT_SETS, PHT_WAYS, N_BLK>::new()),
+            tables: crate::util::init_heap_array(|_| PHTPerCore::<G, PHT_SETS, PHT_WAYS, N_BLK, ROT>::new()),
         }
     }
 
@@ -335,7 +346,7 @@ impl<
         let file = file.unwrap();
         let mut file = Decoder::new(file).unwrap();
 
-        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK>> =
+        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT>> =
             serde_json::from_reader(&mut file).unwrap();
 
         for (table, helper) in self.tables.iter_mut().zip(helper.into_iter()) {
@@ -350,4 +361,5 @@ pub type ParallelPHT<
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
-> = PHT<SpinMutex<PHTSet<PHT_WAYS, N_BLK>>, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK>;
+    const ROT: bool,
+> = PHT<SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT>>, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT>;

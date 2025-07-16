@@ -68,6 +68,7 @@ type MH = ParallelMemoryHierarchy<
     {parameter::PHT_SETS},
     {parameter::PHT_WAYS},
     {parameter::N_BLK},
+    {parameter::ROT},
 >;
 
 #[test]
