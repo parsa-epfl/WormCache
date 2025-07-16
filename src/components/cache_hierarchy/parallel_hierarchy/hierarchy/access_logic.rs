@@ -61,13 +61,13 @@ impl<
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
                 let mut cnt = 0;
-                for addr in addrs {
-                    if addr == request.block_id {
+                for addr in &addrs {
+                    if *addr == request.block_id {
                         continue;
                     }
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
-                        block_id: addr,
+                        block_id: *addr,
                         access_type: request.get_prefetch_type(),
                         is_os: request.is_os,
                         pc: request.pc,
@@ -93,6 +93,7 @@ impl<
                 }
                 if self.with_statistics {
                     match cnt {
+                        0 => Statistics::global_record(request.core_id, EventType::Pf0, request.is_os),
                         1 => Statistics::global_record(request.core_id, EventType::Pf1, request.is_os),
                         2 => Statistics::global_record(request.core_id, EventType::Pf2, request.is_os),
                         3 => Statistics::global_record(request.core_id, EventType::Pf3, request.is_os),
@@ -124,7 +125,11 @@ impl<
                         29 => Statistics::global_record(request.core_id, EventType::Pf29, request.is_os),
                         30 => Statistics::global_record(request.core_id, EventType::Pf30, request.is_os),
                         31 => Statistics::global_record(request.core_id, EventType::Pf31, request.is_os),
-                        _ => unreachable!()
+                        _ => {
+                            unreachable!("[E] {} prefetches by trigger addr = {}, pc = {}, PF addrs = {:?}",
+                                cnt, request.block_id, request.pc, addrs
+                            );
+                        },
                     }
                 }
             }
@@ -139,6 +144,22 @@ impl<
     fn record_access(&self, request: &CacheBlockRequest, ts: u64) {
         match self.agt.record(&request, ts) {
             Some(entry) => {
+                let mut a_blks = Vec::new();
+                for (i, &bit) in entry.access_pattern.iter().enumerate() {
+                    if bit {
+                        a_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
+                    }
+                }
+                println!("[PHT-A], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, a_blks);
+
+                let mut r_blks = Vec::new();
+                for (i, &bit) in entry.read_pattern.iter().enumerate() {
+                    if bit {
+                        r_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
+                    }
+                }
+                println!("[PHT-R], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, r_blks);
+
                 self.pht.insert(&entry, request.core_id as usize)
             },
             None => {},
@@ -154,8 +175,24 @@ impl<
             pc: 0,          // Not needed
         };
         match self.agt.evict(&dummy_req) {
-            Some(evicted_entry) => {
-                self.pht.insert(&evicted_entry, core_id as usize);
+            Some(entry) => {
+                let mut a_blks = Vec::new();
+                for (i, &bit) in entry.access_pattern.iter().enumerate() {
+                    if bit {
+                        a_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
+                    }
+                }
+                println!("[PHT-A], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, a_blks);
+
+                let mut r_blks = Vec::new();
+                for (i, &bit) in entry.read_pattern.iter().enumerate() {
+                    if bit {
+                        r_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
+                    }
+                }
+                println!("[PHT-R], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, r_blks);
+
+                self.pht.insert(&entry, core_id as usize);
             },
             None => {},
         }
