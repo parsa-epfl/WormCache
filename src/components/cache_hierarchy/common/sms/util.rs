@@ -12,18 +12,31 @@ pub fn get_address<const N_BLK: usize>(base: u64, offset: u64) -> u64 {
     (base << (N_BLK.trailing_zeros())) | offset
 }
 
-pub fn build_key<const N_BLK: usize, const PHT_SETS: usize>(pc: u64, offset: u64) -> u64 {
+pub fn build_key<const N_BLK: usize, const PHT_SETS: usize, const ROT: bool>(pc: u64, offset: u64) -> u64 {
     let off_width = N_BLK.trailing_zeros();
     let index_len = PHT_SETS.trailing_zeros();
     assert!(PC_WIDTH + off_width as usize > index_len as usize);
 
     let pc = pc & ((1 << PC_WIDTH) - 1);
-    let offset = offset & ((1 << off_width) - 1);
-    let key = (pc << off_width) | offset;
-    key
+    if ROT {    // If rotation, then only PC based indexing
+        pc
+    } else {    // else (PC + offset) based indexing
+        let offset = offset & ((1 << off_width) - 1);
+        let key = (pc << off_width) | offset;
+        key
+    }
 }
 
-pub fn rotate_left<T, const N: usize>(pattern: &mut [T; N], rot_val: usize) {
+// TODO: can be made better though traits but for now, this is fine
+pub fn rotate_left_vec<T>(pattern: &mut Vec<T>, rot_val: usize) {
+    let len = pattern.len();
+    if len == 0 || rot_val % len == 0 {
+        return;
+    }
+    pattern.rotate_left(rot_val % len);
+}
+
+pub fn rotate_left_arr<T, const N: usize>(pattern: &mut [T; N], rot_val: usize) {
     let len = pattern.len();
     if len == 0 || rot_val % len == 0 {
         return;
