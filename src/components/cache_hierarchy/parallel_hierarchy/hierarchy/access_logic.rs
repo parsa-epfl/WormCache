@@ -1,19 +1,16 @@
 use crate::{
     components::{
         cache_hierarchy::{
-            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
-                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
-                PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
-            },
-            mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
+                CCell, CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
+            }, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
         },
         debug::{
             cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
             statistics::{EventType, Statistics},
         },
     },
-    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE, SMS_PREFETCHING},
+    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE, SMS_PREFETCHING, N_PRINT_LOW, N_PRINT_UP},
 };
 
 use super::ParallelMemoryHierarchy;
@@ -123,12 +120,28 @@ impl<
             }
         }
 
+        let mut cnt = self.access_counter.inner();
+        if !is_prefetch && !is_instruction {
+            cnt[core_id as usize] += 1;
+        }
+
         // first, we need to check the private cache.
         let private_hit = self.private_caches.poke_and_update(r, ts);
 
+        let print: bool = (cnt[core_id as usize] >= N_PRINT_LOW as u64) && (cnt[core_id as usize] <= N_PRINT_UP as u64);
+
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
+            if print && !is_instruction {
+                println!("[Hit] Core: {}, Block ID: {}, is_os: {}, is_store: {}, is_page_walk: {}, pc: {}, is_prefetch: {}", 
+                    core_id, block_id, is_os, is_store, is_page_walk, pc, is_prefetch);
+            }
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
+        }
+
+        if print && !is_instruction {
+            println!("[Miss] Core: {}, Block ID: {}, is_os: {}, is_store: {}, is_page_walk: {}, pc: {}, is_prefetch: {}", 
+                core_id, block_id, is_os, is_store, is_page_walk, pc, is_prefetch);
         }
 
         let evicted_slot = match private_hit {
@@ -145,6 +158,10 @@ impl<
                     let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);
+
+                    if print && !is_instruction {
+                        println!("[Evict1] Block ID: {}", potential_evicted_id);
+                    }
 
                     if SMS_PREFETCHING && !is_instruction {
                         self.evict_sms(core_id, potential_evicted_id);
@@ -212,6 +229,9 @@ impl<
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
 
                         let core_id = (*replica_cache_id / 2) as u32;
+                        if print && !is_instruction {
+                            println!("[Evict2] Block ID: {}", entry.block_id());
+                        }
                         if SMS_PREFETCHING && !is_instruction {
                             self.evict_sms(core_id, entry.block_id());
                         }
@@ -617,6 +637,9 @@ impl<
                             incoming_sharer.set(*replica_cache_id, false);
                             
                             let core_id = (*replica_cache_id / 2) as u32;
+                            if print && !is_instruction {
+                                println!("[Evict3] Block ID: {}", entry.block_id());
+                            }
                             if SMS_PREFETCHING && !is_instruction {
                                 self.evict_sms(core_id, entry.block_id());
                             }

@@ -29,6 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use spin::mutex::SpinMutex;
 use zstd::{Decoder, Encoder};
 
 use crate::components::cache_hierarchy::common::InfiniteDirectorySet;
@@ -81,6 +82,7 @@ pub struct ParallelMemoryHierarchy<
 
     agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
     pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK>,
+    access_counter: SpinMutex<[u64; CORE_COUNT]>,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -132,6 +134,7 @@ impl<
             directory_run_gc,
             agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
             pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK>::new(),
+            access_counter: SpinMutex::new([0; CORE_COUNT]),
         }
     }
 
