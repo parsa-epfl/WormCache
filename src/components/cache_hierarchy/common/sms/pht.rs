@@ -226,9 +226,24 @@ impl<
         }
     }
 
+    #[inline]
+    fn get_base_pc_offset(&self, request: &CacheBlockRequest) -> (u64, u64, u64) {
+        util::get_base_pc_offset::<N_BLK>(request)
+    }
+
+    #[inline]
+    fn build_key(&self, pc: u64, offset: u64) -> u64 {
+        util::build_key::<N_BLK, PHT_SETS>(pc, offset)
+    }
+
+    #[inline]
+    fn get_address(&self, base: u64, offset: u64) -> u64 {
+        util::get_address::<N_BLK>(base, offset)
+    }
+
     pub fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<u64>> {
-        let (base, pc, offset) = util::get_base_pc_offset(request, N_BLK);
-        let key = util::build_key(pc, offset, PHT_SETS);
+        let (base, pc, offset) = self.get_base_pc_offset(request);
+        let key = self.build_key(pc, offset);
         let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
         match self.sets[set_idx  as usize].inner().lookup(tag, !request.is_store(), ts) {
@@ -237,7 +252,7 @@ impl<
                 let mut result = Vec::new();
                 for (i, &bit) in bitvec.iter().enumerate() {
                     if bit {
-                        result.push(util::get_address(base, i as u64, N_BLK));
+                        result.push(self.get_address(base, i as u64));
                     }
                 }
                 Some(result)
@@ -247,7 +262,7 @@ impl<
     }
 
     pub fn insert(&self, entry: &AccTableEntry<N_BLK>) {
-        let key = util::build_key(entry.pc, entry.offset, PHT_SETS);
+        let key = self.build_key(entry.pc, entry.offset);
         let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
         self.sets[set_idx as usize].inner().insert(tag, entry);
