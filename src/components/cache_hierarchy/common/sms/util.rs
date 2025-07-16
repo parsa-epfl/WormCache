@@ -51,3 +51,9 @@ pub fn rotate_right<T, const N: usize>(pattern: &mut [T; N], rot_val: usize) {
     }
     pattern.rotate_right(rot_val % len);
 }
+
+pub enum PatternType {
+    Access,
+    Read,
+    Write,
+}
