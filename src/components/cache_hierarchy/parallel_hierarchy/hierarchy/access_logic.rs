@@ -32,6 +32,7 @@ impl<
     const PHT_WAYS: usize,
     const N_BLK: usize,
     const ROT: bool,
+    const SEP_RDWR: bool,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
@@ -50,6 +51,7 @@ impl<
         PHT_WAYS,
         N_BLK,
         ROT,
+        SEP_RDWR,
     >
 {
 

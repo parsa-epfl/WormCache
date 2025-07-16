@@ -69,6 +69,7 @@ type MH = ParallelMemoryHierarchy<
     {parameter::PHT_WAYS},
     {parameter::N_BLK},
     {parameter::ROT},
+    {parameter::SEP_RDWR},
 >;
 
 #[allow(dead_code)]
