@@ -70,6 +70,7 @@ type MH = ParallelMemoryHierarchy<
     {parameter::N_BLK},
     {parameter::ROT},
     {parameter::SEP_RDWR},
+    {parameter::SAT_CNT},
 >;
 
 #[test]
