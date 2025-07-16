@@ -55,8 +55,13 @@ impl<
         }
     }
 
+    #[inline]
+    fn get_base_pc_offset(&self, request: &CacheBlockRequest) -> (u64, u64, u64) {
+        util::get_base_pc_offset::<N_BLK>(request)
+    }
+
     fn poke(&self, request: &CacheBlockRequest) -> Option<usize> {
-        let (base, _, _) = util::get_base_pc_offset(request, N_BLK);
+        let (base, _, _) = self.get_base_pc_offset(request);
         for (i, locked_entry) in self.entries.iter().enumerate() {
             let current_entry = locked_entry.inner();
             if current_entry.valid && current_entry.tag == base {
@@ -88,7 +93,7 @@ impl<
     }
 
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
-        let (base, pc, offset) = util::get_base_pc_offset(request, N_BLK);
+        let (base, pc, offset) = self.get_base_pc_offset(request);
         match self.poke(request) {
             Some(idx) => {  // entry found, check further
                 let mut existing_entry = self.entries[idx].inner();

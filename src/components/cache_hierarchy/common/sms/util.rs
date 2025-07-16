@@ -1,32 +1,25 @@
 use crate::components::cache_hierarchy::CacheBlockRequest;
+use crate::parameter::{PC_WIDTH};
 
-pub fn get_base_pc_offset(request: &CacheBlockRequest, n_blk: usize) -> (u64, u64, u64) {
+pub fn get_base_pc_offset<const N_BLK: usize>(request: &CacheBlockRequest) -> (u64, u64, u64) {
     let pc = request.pc;
-    let base = request.block_id >> (n_blk.trailing_zeros());
-    let offset = request.block_id & ((1 << n_blk.trailing_zeros()) - 1);
+    let base = request.block_id >> (N_BLK.trailing_zeros());
+    let offset = request.block_id & ((1 << N_BLK.trailing_zeros()) - 1);
     (base, pc, offset)
 }
 
-pub fn get_address(base: u64, offset: u64, n_blk: usize) -> u64 {
-    let index_len = n_blk.trailing_zeros();
-    assert!(index_len > 0);
-    (base << index_len) | offset
+pub fn get_address<const N_BLK: usize>(base: u64, offset: u64) -> u64 {
+    (base << (N_BLK.trailing_zeros())) | offset
 }
 
-pub fn build_key(pc: u64, offset: u64, n_sets: usize) -> u64 {
-    const PC_WIDTH: u64 = 16;
-    const OFF_WIDTH: u64 = 5;
-    let index_len = n_sets.trailing_zeros();
-    assert!(PC_WIDTH + OFF_WIDTH > index_len.into());
+pub fn build_key<const N_BLK: usize, const PHT_SETS: usize>(pc: u64, offset: u64) -> u64 {
+    let off_width = N_BLK.trailing_zeros();
+    let index_len = PHT_SETS.trailing_zeros();
+    assert!(PC_WIDTH + off_width as usize > index_len as usize);
 
     let pc = pc & ((1 << PC_WIDTH) - 1);
-    let offset = offset & ((1 << OFF_WIDTH) - 1);
-    let key = (pc << OFF_WIDTH) | offset;
-    // let mut tag = key >> index_len;
-    // while tag > 0 {
-    //     key ^= tag & ((1 << index_len) - 1);
-    //     tag >>= index_len;
-    // }
+    let offset = offset & ((1 << off_width) - 1);
+    let key = (pc << off_width) | offset;
     key
 }
 
