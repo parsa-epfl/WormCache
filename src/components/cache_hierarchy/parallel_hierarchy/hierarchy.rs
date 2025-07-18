@@ -77,6 +77,7 @@ pub struct ParallelMemoryHierarchy<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
@@ -84,7 +85,7 @@ pub struct ParallelMemoryHierarchy<
     directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>,DIRECTORY_SHARD_COUNT>,
 
     agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
-    pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>,
+    pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>,
     access_counter: SpinMutex<[u64; CORE_COUNT]>,
 
     shared_cache: SCache,
@@ -111,6 +112,7 @@ impl<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 >
     ParallelMemoryHierarchy<
         MMU,
@@ -131,6 +133,7 @@ impl<
         ROT,
         SEP_RDWR,
         SAT_CNT,
+        PERFECT_PHT,
     >
 {
     pub fn new(with_statistics: bool, _quantum_size: u64, directory_run_gc: bool) -> Self {
@@ -142,7 +145,7 @@ impl<
             with_statistics,
             directory_run_gc,
             agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
-            pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>::new(),
+            pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new(),
             access_counter: SpinMutex::new([0; CORE_COUNT]),
         }
     }

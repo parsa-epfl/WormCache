@@ -76,6 +76,7 @@ type MH = ParallelMemoryHierarchy<
     {parameter::ROT},
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
+    { parameter::PERFECT_PHT },
 >;
 
 #[test]

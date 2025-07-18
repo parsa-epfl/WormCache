@@ -271,6 +271,7 @@ fn test_resize_cache_hierarchy() {
         false,
         false,
         false,
+        false,
     >;
 
     type LargeHierarchy = ParallelMemoryHierarchy<
@@ -289,6 +290,7 @@ fn test_resize_cache_hierarchy() {
         1024,
         16,
         32,
+        false,
         false,
         false,
         false,

@@ -153,6 +153,7 @@ pub struct PHTSet<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > {
     pub entries: Vec<PHTEntry<N_BLK, ROT, SEP_RDWR, SAT_CNT>>,
 }
@@ -163,7 +164,8 @@ impl<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
-> PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>
+    const PERFECT_PHT: bool,
+> PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>
 {
     pub fn new() -> Self {
         Self {
@@ -207,7 +209,13 @@ impl<
         if empty {
             self.entries[empty_idx].set(tag, acc_entry);
         } else {
-            self.entries[lru_idx].set(tag, acc_entry);
+            if !PERFECT_PHT {
+                self.entries[lru_idx].set(tag, acc_entry);
+            } else {
+                let mut entry = PHTEntry::<N_BLK, ROT, SEP_RDWR, SAT_CNT>::new();
+                entry.set(tag, acc_entry);
+                self.entries.push(entry);
+            }
         }
     }
 
@@ -215,13 +223,14 @@ impl<
 
 #[derive(Debug)]
 pub struct PHTPerCore<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > {
     pub sets: Box<[G; PHT_SETS]>,
 }
@@ -234,27 +243,29 @@ pub struct PHTPerCoreSerdeHelper<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > {
-    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>>
+    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>>
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
-> PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>
+    const PERFECT_PHT: bool,
+> PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>
 {
     pub fn new() -> Self {
         Self {
-            sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>::new())),
+            sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new())),
         }
     }
 
-    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>) -> Self {
+    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>) -> Self {
         let mut sets = Vec::with_capacity(PHT_SETS);
         for set in helper.sets {
             sets.push(G::new(set));
@@ -264,7 +275,7 @@ impl<
         }
     }
 
-    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT> {
+    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT> {
         PHTPerCoreSerdeHelper {
             sets: self
                 .sets
@@ -320,7 +331,7 @@ impl<
 }
 
 pub struct PHT<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
@@ -328,12 +339,13 @@ pub struct PHT<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > {
-    pub tables: Box<[PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>; CORE_COUNT]>,
+    pub tables: Box<[PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>; CORE_COUNT]>,
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> + std::fmt::Debug,
+    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
@@ -341,11 +353,12 @@ impl<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
-> PHT<G, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>
+    const PERFECT_PHT: bool,
+> PHT<G, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>
 {
     pub fn new() -> Self {
         Self {
-            tables: crate::util::init_heap_array(|_| PHTPerCore::<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>::new()),
+            tables: crate::util::init_heap_array(|_| PHTPerCore::<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new()),
         }
     }
 
@@ -391,7 +404,7 @@ impl<
         let file = file.unwrap();
         let mut file = Decoder::new(file).unwrap();
 
-        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>> =
+        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> =
             serde_json::from_reader(&mut file).unwrap();
 
         for (table, helper) in self.tables.iter_mut().zip(helper.into_iter()) {
@@ -409,4 +422,5 @@ pub type ParallelPHT<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
-> = PHT<SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>>, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT>;
+    const PERFECT_PHT: bool,
+> = PHT<SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>>, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>;
