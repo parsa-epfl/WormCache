@@ -34,6 +34,7 @@ impl<
     const ROT: bool,
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
@@ -54,6 +55,7 @@ impl<
         ROT,
         SEP_RDWR,
         SAT_CNT,
+        PERFECT_PHT,
     >
 {
 

@@ -280,6 +280,7 @@ pub const PC_WIDTH: usize = 16; // The number of PC bits used to index
 pub const ROT: bool = false;     // Whether to rotate the patterns when stored
 pub const SEP_RDWR: bool = true;    // Whether to seperate read and write patterns
 pub const SAT_CNT: bool = true;     // Whether to use saturating counters or store bit patterns
+pub const PERFECT_PHT: bool = false; // Whether to use perfect PHT
 
 pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
 pub const N_PRINT_UP: u64 = 100_000_000; // The upper bound of the access counter to print the access.

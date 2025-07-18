@@ -76,6 +76,7 @@ type MH = ParallelMemoryHierarchy<
     false,
     false,
     false,
+    false,
 >;
 
 #[test]
