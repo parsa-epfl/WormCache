@@ -58,15 +58,20 @@ impl<
 {
 
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
+        let cnt = self.access_counter.inner();
+        let core_id = request.core_id;
+        let print: bool = (cnt[core_id as usize] >= N_PRINT_LOW as u64) && (cnt[core_id as usize] <= N_PRINT_UP as u64);
+        drop(cnt);
+        
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
                 let mut cnt = 0;
+                let mut pf_addrs = Vec::new();
                 for addr in &addrs {
                     if *addr == request.block_id {
                         continue;
                     }
-                    println!("[PF] Prefetching {} on trigger addr = {}, pc = {}, is_store = {}",
-                        *addr, request.block_id, request.pc, request.is_store());
+                    pf_addrs.push(*addr);
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
                         block_id: *addr,
@@ -92,6 +97,9 @@ impl<
                         }
                     }
                     cnt += 1;
+                }
+                if print && !pf_addrs.is_empty() {
+                    println!("[Pf] {:?}", pf_addrs);
                 }
                 if self.with_statistics {
                     match cnt {
@@ -146,22 +154,6 @@ impl<
     fn record_access(&self, request: &CacheBlockRequest, ts: u64) {
         match self.agt.record(&request, ts) {
             Some(entry) => {
-                let mut a_blks = Vec::new();
-                for (i, &bit) in entry.access_pattern.iter().enumerate() {
-                    if bit {
-                        a_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
-                    }
-                }
-                println!("[PHT-A], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, a_blks);
-
-                let mut r_blks = Vec::new();
-                for (i, &bit) in entry.read_pattern.iter().enumerate() {
-                    if bit {
-                        r_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
-                    }
-                }
-                println!("[PHT-R], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, r_blks);
-
                 self.pht.insert(&entry, request.core_id as usize)
             },
             None => {},
@@ -178,22 +170,6 @@ impl<
         };
         match self.agt.evict(&dummy_req) {
             Some(entry) => {
-                let mut a_blks = Vec::new();
-                for (i, &bit) in entry.access_pattern.iter().enumerate() {
-                    if bit {
-                        a_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
-                    }
-                }
-                println!("[PHT-A], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, a_blks);
-
-                let mut r_blks = Vec::new();
-                for (i, &bit) in entry.read_pattern.iter().enumerate() {
-                    if bit {
-                        r_blks.push(entry.tag << N_BLK.trailing_zeros() | (i as u64));
-                    }
-                }
-                println!("[PHT-R], {}, {}, {}, {:?}, ", entry.tag, entry.pc, entry.offset, r_blks);
-
                 self.pht.insert(&entry, core_id as usize);
             },
             None => {},
@@ -232,19 +208,14 @@ impl<
         let private_hit = self.private_caches.poke_and_update(r, ts);
 
         let print: bool = (cnt[core_id as usize] >= N_PRINT_LOW as u64) && (cnt[core_id as usize] <= N_PRINT_UP as u64);
+        drop(cnt);
+        if print && !is_instruction {
+            println!("[A] {}", block_id);
+        }
 
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
-            if print && !is_instruction {
-                println!("[Hit] Core: {}, Block ID: {}, is_os: {}, is_store: {}, is_page_walk: {}, pc: {}, is_prefetch: {}", 
-                    core_id, block_id, is_os, is_store, is_page_walk, pc, is_prefetch);
-            }
             return CacheHierarchyAccessResult::HitInSelfPrivateCache;
-        }
-
-        if print && !is_instruction {
-            println!("[Miss] Core: {}, Block ID: {}, is_os: {}, is_store: {}, is_page_walk: {}, pc: {}, is_prefetch: {}", 
-                core_id, block_id, is_os, is_store, is_page_walk, pc, is_prefetch);
         }
 
         let evicted_slot = match private_hit {
@@ -263,7 +234,7 @@ impl<
                         .fetch_two_entries(block_id, potential_evicted_id);
 
                     if print && !is_instruction {
-                        println!("[Evict1] Block ID: {}", potential_evicted_id);
+                        println!("[E] {}", potential_evicted_id);
                     }
 
                     if SMS_PREFETCHING && !is_instruction {
@@ -333,7 +304,7 @@ impl<
 
                         let core_id = (*replica_cache_id / 2) as u32;
                         if print && !is_instruction {
-                            println!("[Evict2] Block ID: {}", entry.block_id());
+                            println!("[E] {}", entry.block_id());
                         }
                         if SMS_PREFETCHING && !is_instruction {
                             self.evict_sms(core_id, entry.block_id());
@@ -741,7 +712,7 @@ impl<
                             
                             let core_id = (*replica_cache_id / 2) as u32;
                             if print && !is_instruction {
-                                println!("[Evict3] Block ID: {}", entry.block_id());
+                                println!("[E] {}", entry.block_id());
                             }
                             if SMS_PREFETCHING && !is_instruction {
                                 self.evict_sms(core_id, entry.block_id());
