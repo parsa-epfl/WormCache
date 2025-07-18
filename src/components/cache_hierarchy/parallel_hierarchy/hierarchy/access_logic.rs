@@ -65,6 +65,8 @@ impl<
                     if *addr == request.block_id {
                         continue;
                     }
+                    println!("[PF] Prefetching {} on trigger addr = {}, pc = {}, is_store = {}",
+                        *addr, request.block_id, request.pc, request.is_store());
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
                         block_id: *addr,
