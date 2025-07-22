@@ -2,7 +2,7 @@ use crate::{
     components::{
         cache_hierarchy::{
             common::{
-                CCell, CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
+                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
             }, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
         },
         debug::{
@@ -10,7 +10,7 @@ use crate::{
             statistics::{EventType, Statistics},
         },
     },
-    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE, SMS_PREFETCHING, N_PRINT_LOW, N_PRINT_UP},
+    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE, SMS_PREFETCHING},
 };
 
 use super::ParallelMemoryHierarchy;
@@ -60,11 +60,6 @@ impl<
 {
 
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
-        let cnt = self.access_counter.inner();
-        let core_id = request.core_id;
-        let print: bool = (cnt[core_id as usize] >= N_PRINT_LOW as u64) && (cnt[core_id as usize] <= N_PRINT_UP as u64);
-        drop(cnt);
-        
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
                 let mut cnt = 0;
@@ -99,6 +94,9 @@ impl<
                         }
                     }
                     cnt += 1;
+                }
+                if !pf_addrs.is_empty() {
+                    println!("{:?}", pf_addrs);
                 }
                 if self.with_statistics {
                     match cnt {
@@ -167,6 +165,7 @@ impl<
             is_os: false,   // Not needed
             pc: 0,          // Not needed
         };
+        println!("{}", block_id);
         match self.agt.evict(&dummy_req) {
             Some(entry) => {
                 self.pht.insert(&entry, core_id as usize);
@@ -198,16 +197,8 @@ impl<
             }
         }
 
-        let mut cnt = self.access_counter.inner();
-        if !is_prefetch && !is_instruction {
-            cnt[core_id as usize] += 1;
-        }
-
         // first, we need to check the private cache.
         let private_hit = self.private_caches.poke_and_update(r, ts);
-
-        let print: bool = (cnt[core_id as usize] >= N_PRINT_LOW as u64) && (cnt[core_id as usize] <= N_PRINT_UP as u64);
-        drop(cnt);
 
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
