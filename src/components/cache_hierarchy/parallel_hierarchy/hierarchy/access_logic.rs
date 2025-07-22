@@ -100,9 +100,6 @@ impl<
                     }
                     cnt += 1;
                 }
-                if print && !pf_addrs.is_empty() {
-                    println!("[Pf] {:?}", pf_addrs);
-                }
                 if self.with_statistics {
                     match cnt {
                         0 => Statistics::global_record(request.core_id, EventType::Pf0, request.is_os),
@@ -211,9 +208,6 @@ impl<
 
         let print: bool = (cnt[core_id as usize] >= N_PRINT_LOW as u64) && (cnt[core_id as usize] <= N_PRINT_UP as u64);
         drop(cnt);
-        if print && !is_instruction {
-            println!("[A] {}", block_id);
-        }
 
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
@@ -234,10 +228,6 @@ impl<
                     let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);
-
-                    if print && !is_instruction {
-                        println!("[E] {}", potential_evicted_id);
-                    }
 
                     if SMS_PREFETCHING && !is_instruction {
                         self.evict_sms(core_id, potential_evicted_id);
@@ -305,9 +295,6 @@ impl<
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
 
                         let core_id = (*replica_cache_id / 2) as u32;
-                        if print && !is_instruction {
-                            println!("[E] {}", entry.block_id());
-                        }
                         if SMS_PREFETCHING && !is_instruction {
                             self.evict_sms(core_id, entry.block_id());
                         }
@@ -713,9 +700,6 @@ impl<
                             incoming_sharer.set(*replica_cache_id, false);
                             
                             let core_id = (*replica_cache_id / 2) as u32;
-                            if print && !is_instruction {
-                                println!("[E] {}", entry.block_id());
-                            }
                             if SMS_PREFETCHING && !is_instruction {
                                 self.evict_sms(core_id, entry.block_id());
                             }

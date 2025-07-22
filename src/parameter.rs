@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 2;
+pub const CORE_COUNT: usize = 1;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +52,7 @@ pub const CORE_COUNT: usize = 2;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = true;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -270,7 +270,7 @@ pub const ADJACENT_LINE_PREFETCHING: bool = false;
 /**
 * Parameters for SMS Prefetching
 */
-pub const SMS_PREFETCHING: bool = true;
+pub const SMS_PREFETCHING: bool = false;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
 pub const PHT_SETS: usize = 1024;    // Number of sets in the PHT.
