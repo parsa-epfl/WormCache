@@ -2,7 +2,8 @@ use crate::{
     components::{
         cache_hierarchy::{
             common::{
-                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult
+                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot, PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
+                CCell,
             }, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
         },
         debug::{
@@ -62,13 +63,16 @@ impl<
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
-                let mut cnt = 0;
+                let mut cnt: u64 = 0;
                 let mut pf_addrs = Vec::new();
+                let mut set = self.pf_blocks[request.core_id as usize].inner();
                 for addr in &addrs {
                     if *addr == request.block_id {
                         continue;
                     }
                     pf_addrs.push(*addr);
+                    set.insert(*addr);
+
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
                         block_id: *addr,
@@ -95,10 +99,15 @@ impl<
                     }
                     cnt += 1;
                 }
+                drop(set);
+                if self.with_statistics {
+                    Statistics::global_record_by(request.core_id, EventType::UnknownPrefetches, false, cnt);
+                }
                 if !pf_addrs.is_empty() {
                     println!("{:?}", pf_addrs);
                 }
                 if self.with_statistics {
+                    Statistics::global_record_by(request.core_id, EventType::Prefetches, request.is_os, cnt as u64);
                     match cnt {
                         0 => Statistics::global_record(request.core_id, EventType::Pf0, request.is_os),
                         1 => Statistics::global_record(request.core_id, EventType::Pf1, request.is_os),
@@ -166,6 +175,15 @@ impl<
             pc: 0,          // Not needed
         };
         println!("{}", block_id);
+        let mut set = self.pf_blocks[core_id as usize].inner();
+        if set.contains(&block_id) {
+            if self.with_statistics {
+                Statistics::global_record(core_id, EventType::UselessPrefetches, false);    // Note: is_os = false always because there's no need to distinguish now.
+                Statistics::global_decrease_by(core_id, EventType::UnknownPrefetches, false, 1);
+            }
+            set.remove(&block_id);
+        }
+        drop(set);
         match self.agt.evict(&dummy_req) {
             Some(entry) => {
                 self.pht.insert(&entry, core_id as usize);
@@ -195,6 +213,17 @@ impl<
             } else {
                 Statistics::global_record(core_id, EventType::DataAccess, is_os);
             }
+        }
+
+        if !is_prefetch && !is_instruction && SMS_PREFETCHING {
+            let mut set = self.pf_blocks[r.core_id as usize].inner();
+            if set.contains(&block_id) {
+                if self.with_statistics {
+                    Statistics::global_decrease_by(core_id, EventType::UnknownPrefetches, false, 1);
+                }
+                set.remove(&block_id);
+            }
+            drop(set);
         }
 
         // first, we need to check the private cache.

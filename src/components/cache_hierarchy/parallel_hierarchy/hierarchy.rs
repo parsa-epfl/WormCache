@@ -44,7 +44,9 @@ use super::super::common::agt::ParallelAGT;
 use super::super::common::pht::ParallelPHT;
 
 use std::cell::UnsafeCell;
+use std::collections::HashSet;
 use std::ops::DerefMut;
+use spin::mutex::SpinMutex;
 
 #[cfg(test)]
 mod debug_tests;
@@ -85,6 +87,7 @@ pub struct ParallelMemoryHierarchy<
 
     agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
     pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>,
+    pf_blocks: [SpinMutex<HashSet<u64>>; CORE_COUNT],
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -144,6 +147,7 @@ impl<
             directory_run_gc,
             agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
             pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new(),
+            pf_blocks: std::array::from_fn(|_| SpinMutex::new(HashSet::new())),
         }
     }
 

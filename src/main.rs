@@ -128,7 +128,7 @@ fn main() {
         true,
     );
 
-    let (mut all, mut old_miss, mut new_miss) = (0, 0, 0);
+    let (mut all, mut old_miss, mut new_miss, mut covered) = (0, 0, 0, 0);
     for result in rdr.records() {
         match result {
             Ok(record) => {
@@ -176,6 +176,9 @@ fn main() {
                 if new_code != 0 {
                     new_miss += 1;
                 }
+                if code != 0 && new_code == 0 {
+                    covered += 1;
+                }
                 println!("{},{},{},{},{},{},{}", ts, core_id, block_id, access_code, is_os, pc, new_code);
             }
             Err(e) => {
@@ -185,5 +188,6 @@ fn main() {
     }
     let old_mr = old_miss as f64 / all as f64 * 100.0;
     let new_mr = new_miss as f64 / all as f64 * 100.0;
-    println!("Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%", old_mr, new_mr);
+    let coverage = covered as f64 / old_miss as f64 * 100.0;
+    println!("Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%", old_mr, new_mr, coverage);
 }
