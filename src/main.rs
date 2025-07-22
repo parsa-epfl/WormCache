@@ -35,114 +35,155 @@
 
 use std::env;
 use std::io::BufReader;
-use std::{fs::File, io::Read};
+use std::fs::File;
+use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
+use worm_cache::components::cache_hierarchy::CacheBlockRequest;
+use worm_cache::components::cache_hierarchy::common::{CacheAccessType, ParallelHarvardPrivateCache, ParallelSingleSharedCache};
+use worm_cache::components::cache_hierarchy::common::statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics};
+use worm_cache::components::cache_hierarchy::MemoryHierarchy;
+use worm_cache::components::cache_hierarchy::common::CacheHierarchyAccessResult;
+
+use worm_cache::components::cache_hierarchy::mmu::NoMMU;
+use worm_cache::parameter;
 // use worm_cache::components::memory_ts::{PrivateCacheParameters, TimestampMemoryHierarchy};
 
-#[repr(C)]
-#[cfg(target_pointer_width = "64")]
-pub struct TraceEntry {
-    paddr: u64,     // 8 bytes
-    timestamp: u64, // 8 bytes
-    permission: u8, // 1 byte, 0 means instruction, 1 means normal read, 2 means normal write.
-    core_id: u8,    // 1 byte
+const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
+    parameter::CORE_COUNT / 2
+} else {
+    parameter::CORE_COUNT
+};
+
+pub struct DummyParser;
+pub trait SharedCacheStatisticsParser<const ENABLE_STATISTICS: bool> {
+    type Output;
 }
 
-impl TraceEntry {
-    pub fn read_from_file(file: &mut impl Read) -> Option<TraceEntry> {
-        let mut buffer = [0; 18];
-        match file.read(&mut buffer) {
-            Ok(18) => {
-                let block_id = u64::from_le_bytes(buffer[0..8].try_into().unwrap());
-                let timestamp = u64::from_le_bytes(buffer[8..16].try_into().unwrap());
-                let permission = buffer[16];
-                let core_id = buffer[17];
-                Some(TraceEntry {
-                    paddr: block_id,
-                    timestamp,
-                    permission,
-                    core_id,
-                })
-            }
-            Ok(_) => None,
-            Err(_) => None,
-        }
-    }
-
-    pub fn serialize(&self) -> [u8; 18] {
-        let mut buffer = [0; 18];
-        buffer[0..8].copy_from_slice(&self.paddr.to_le_bytes());
-        buffer[8..16].copy_from_slice(&self.timestamp.to_le_bytes());
-        buffer[16] = self.permission;
-        buffer[17] = self.core_id;
-        buffer
-    }
+impl SharedCacheStatisticsParser<true> for DummyParser {
+    type Output = SharedCacheSetMissStatistics;
 }
+
+impl SharedCacheStatisticsParser<false> for DummyParser {
+    type Output = ZeroSharedCacheSetStatistics;
+}
+type SharedCacheStatisticsWithPlugin =
+    <DummyParser as SharedCacheStatisticsParser<{ parameter::ENABLE_STATISTICS }>>::Output;
+
+type MH = ParallelMemoryHierarchy<
+    NoMMU,
+    ParallelHarvardPrivateCache<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    ParallelSingleSharedCache<
+        SharedCacheStatisticsWithPlugin,
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
+    >,
+        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
+    { parameter::DIRECTORY_SHARD_COUNT },
+    { ALLOCATED_CORE_COUNT },
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
+    {parameter::N_BLK},
+    {parameter::ROT},
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    {parameter::PERFECT_PHT},
+>;
 
 fn main() {
-    // The parameter of the private cache.
-    const P_A: usize = 16;
-    const P_S: usize = 2048;
+    let args: Vec<String> = env::args().collect();
+    let filename = if args.len() > 1 {
+        &args[1]
+    } else {
+        "trace.log"
+    };
 
-    // The parameter of the shared cache.
-    const S_A: usize = 16;
-    const S_S: usize = 1024 * 1024;
-    println!(
-        "Info of the simulator: private cache: {}-way, {} sets; shared cache: {}-way, {} sets",
-        P_A, P_S, S_A, S_S
+    let file = match File::open(filename) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to open file {}: {}", filename, e);
+            return;
+        }
+    };
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(BufReader::new(file));
+
+    let mh = MH::new(
+        parameter::ENABLE_STATISTICS,
+        0, 
+        true,
     );
 
-    let args: Vec<_> = env::args().collect();
-    if args.len() != 4 {
-        println!("Usage: {} <core_count> <trace file> <output file>", args[0]);
-        return;
+    let (mut all, mut old_miss, mut new_miss) = (0, 0, 0);
+    for result in rdr.records() {
+        match result {
+            Ok(record) => {
+                if record.len() != 7 {
+                    panic!("Invalid record length: expected 7, got {}", record.len());
+                }
+                all += 1;
+                let ts = record[0].parse::<u64>().unwrap();
+                let core_id = record[1].parse::<u32>().unwrap();
+                let block_id = record[2].parse::<u64>().unwrap();
+                let access_code = record[3].parse::<u8>().unwrap();
+                let is_os = record[4].parse::<bool>().unwrap();
+                let pc = record[5].parse::<u64>().unwrap();
+                let code = record[6].parse::<u8>().unwrap();
+                if code != 0 {
+                    old_miss += 1;
+                }
+
+                let access_type = match access_code {
+                    0 => CacheAccessType::DataRead,
+                    1 => CacheAccessType::DataWrite,
+                    2 => CacheAccessType::InstructionFetch,
+                    3 => CacheAccessType::PrefetchRead,
+                    4 => CacheAccessType::PrefetchWrite,
+                    5 => CacheAccessType::PageWalkRead,
+                    _ => unreachable!("Invalid access type"),
+                };
+                let req = CacheBlockRequest{
+                    core_id,
+                    block_id,
+                    access_type,
+                    is_os,
+                    pc,
+                };
+                let result = mh.access_memory_pblock_id(&req, ts);
+                let new_code: u8 = match result {
+                    CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+                    CacheHierarchyAccessResult::HitInSharedCache => 1,
+                    CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
+                    CacheHierarchyAccessResult::Miss => 2,
+                    CacheHierarchyAccessResult::MissDueToPermission => 4,
+                    CacheHierarchyAccessResult::MissInPrivateCache => 5,
+                    CacheHierarchyAccessResult::Unknown => 6,
+                };
+                if new_code != 0 {
+                    new_miss += 1;
+                }
+                println!("{},{},{},{},{},{},{}", ts, core_id, block_id, access_code, is_os, pc, new_code);
+            }
+            Err(e) => {
+                panic!("Error reading record: {}", e);
+            }
+        }
     }
-
-    let core_count: usize = args[1].parse().unwrap();
-
-    // let mut mh =
-    //     TimestampMemoryHierarchy::<NoMMU, { P_A }, { P_S }, { S_A }, { S_S }>::new(core_count);
-
-    // read the trace file.
-    let file = File::open(&args[2]).unwrap();
-    let mut reader = BufReader::with_capacity(64 * 1024, file);
-
-    loop {
-        // now, we read one entry.
-        let entry = match TraceEntry::read_from_file(&mut reader) {
-            Some(entry) => entry,
-            None => break,
-        };
-        assert!(
-            entry.core_id < core_count as u8,
-            "core id {} is larger than core count {}",
-            entry.core_id,
-            core_count
-        );
-        // simulate that entry.
-        let _is_instruction = entry.permission == 0;
-        let _is_write: bool = entry.permission == 2;
-        // mh.hierarchies(entry.core_id).access_memory(
-        //     entry.timestamp as usize,
-        //     entry.paddr,
-        //     is_instruction,
-        //     is_write,
-        // );
-    }
-
-    // dump the simulation result.
-    let _output_file = File::create(&args[3]).unwrap();
-    // let mtr = mh.render_mtr::<P_S>();
-    // let cache_param = PrivateCacheParameters {
-    //     l1i_sets: 64,
-    //     l1i_associativity: 16,
-    //     l1d_sets: 64,
-    //     l1d_associativity: 16,
-    //     l2_sets: P_S,
-    //     l2_associativity: P_A,
-    //     directory_associativity: 0, // this value is not used.
-    // };
-
-    // let cache_hierarchy = mh.render_cache_hierarchy(&mtr, &cache_param);
-    // let exported_json = serde_json::to_string(&cache_hierarchy).unwrap();
-    // output_file.write_all(exported_json.as_bytes()).unwrap();
+    let old_mr = old_miss as f64 / all as f64 * 100.0;
+    let new_mr = new_miss as f64 / all as f64 * 100.0;
+    println!("Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%", old_mr, new_mr);
 }
