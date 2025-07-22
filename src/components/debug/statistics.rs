@@ -110,6 +110,9 @@ pub enum EventType {
     PfUnk,
     PfN,
     Pf0,Pf1,Pf2,Pf3,Pf4,Pf5,Pf6,Pf7,Pf8,Pf9,Pf10,Pf11,Pf12,Pf13,Pf14,Pf15,Pf16,Pf17,Pf18,Pf19,Pf20,Pf21,Pf22,Pf23,Pf24,Pf25,Pf26,Pf27,Pf28,Pf29,Pf30,Pf31,
+    Prefetches,
+    UselessPrefetches,
+    UnknownPrefetches,
 }
 
 #[repr(align(64))]
@@ -137,6 +140,18 @@ impl PerCoreStatistics {
                 self.counters[index + 1] += increment;
             } else {
                 self.counters[index] += increment;
+            }
+        }
+    }
+
+    #[inline]
+    pub fn decrease_by(&mut self, event: EventType, is_os: bool, decrement: u64) {
+        if ENABLE_STATISTICS {
+            let index = (event as usize) * 2;
+            if is_os {
+                self.counters[index + 1] = self.counters[index + 1].saturating_sub(decrement);
+            } else {
+                self.counters[index] = self.counters[index].saturating_sub(decrement);
             }
         }
     }
@@ -205,6 +220,15 @@ impl Statistics {
     }
 
     #[inline]
+    pub fn decrease_by(&self, core_id: u32, event: EventType, is_os: bool, decrement: u64) {
+        if ENABLE_STATISTICS {
+            unsafe {
+                (*self.per_core[core_id as usize].get()).decrease_by(event, is_os, decrement);
+            }
+        }
+    }
+
+    #[inline]
     pub fn set(&self, core_id: u32, event: EventType, is_os: bool, value: u64) {
         if ENABLE_STATISTICS {
             unsafe {
@@ -248,6 +272,11 @@ impl Statistics {
     #[inline]
     pub fn global_record_by(core_id: u32, event: EventType, is_os: bool, increment: u64) {
         GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
+    }
+
+    #[inline]
+    pub fn global_decrease_by(core_id: u32, event: EventType, is_os: bool, decrement: u64) {
+        GLOBAL_STATISTICS.decrease_by(core_id, event, is_os, decrement);
     }
 
     #[inline]
