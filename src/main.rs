@@ -136,6 +136,11 @@ fn main() {
         true,
     );
 
+    let is_sat = if parameter::SAT_CNT { 'y' } else { 'n' };
+    let rd_wr = if parameter::SEP_RDWR { 'y' } else { 'n' };
+    let rot = if parameter::ROT { 'y' } else { 'n' };
+    let str = format!("{}{}{}{}", parameter::N_BLK, is_sat, rd_wr, rot);
+
     let (mut all, mut old_miss, mut new_miss, mut covered) = (0, 0, 0, 0);
     let (mut total, mut useful) = (0, 0);
     for (idx, result) in rdr.records().enumerate() {
@@ -145,8 +150,8 @@ fn main() {
             let new_mr = new_miss as f64 / all as f64 * 100.0;
             let coverage = covered as f64 / old_miss as f64 * 100.0;
             let accuracy  = useful as f64 / total as f64 * 100.0;
-            println!("Region size: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
-                parameter::N_BLK, old_mr, new_mr, coverage, accuracy);
+            println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
+                        str, old_mr, new_mr, coverage, accuracy);
         }
         match result {
             Ok(record) => {
@@ -216,6 +221,6 @@ fn main() {
     let new_mr = new_miss as f64 / all as f64 * 100.0;
     let coverage = covered as f64 / old_miss as f64 * 100.0;
     let accuracy  = useful as f64 / total as f64 * 100.0;
-    println!("Region size: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
-                parameter::N_BLK, old_mr, new_mr, coverage, accuracy);
+    println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
+                str, old_mr, new_mr, coverage, accuracy);
 }

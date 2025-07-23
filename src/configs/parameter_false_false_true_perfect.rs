@@ -280,7 +280,7 @@ pub const N_BLK: usize = 32; // Number of blocks in the access table and filter 
 pub const PC_WIDTH: usize = IDX_WIDTH - N_BLK.trailing_zeros() as usize; // The number of PC bits used to index
 pub const SAT_CNT: bool = false;     // Whether to use saturating counters or store bit patterns
 pub const SEP_RDWR: bool = false;    // Whether to seperate read and write patterns
-pub const ROT: bool = false;     // Whether to rotate the patterns when stored
+pub const ROT: bool = true;     // Whether to rotate the patterns when stored
 pub const PERFECT_PHT: bool = true; // Whether to use perfect PHT
 
 pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
