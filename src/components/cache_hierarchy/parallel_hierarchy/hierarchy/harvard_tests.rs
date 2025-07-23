@@ -102,7 +102,7 @@ fn i_create_sharer_from_clean_d() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -123,7 +123,7 @@ fn i_create_sharer_from_clean_d() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -156,7 +156,7 @@ fn i_create_sharer_from_dirty_d() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -177,7 +177,7 @@ fn i_create_sharer_from_dirty_d() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         } else {
@@ -202,7 +202,7 @@ fn i_create_sharer_from_dirty_d() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -235,7 +235,7 @@ fn d_create_sharer_from_clean_i() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -256,7 +256,7 @@ fn d_create_sharer_from_clean_i() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -289,7 +289,7 @@ fn d_dirty_create_sharer_from_clean_i() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -310,7 +310,7 @@ fn d_dirty_create_sharer_from_clean_i() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -331,7 +331,7 @@ fn d_dirty_create_sharer_from_clean_i() {
                 pc: 0,
             },
             get_monotonic_ts()
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 

@@ -88,6 +88,7 @@ pub struct ParallelMemoryHierarchy<
     agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
     pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>,
     pf_blocks: [SpinMutex<HashSet<u64>>; CORE_COUNT],
+    pf_stats: [SpinMutex<(usize, usize, usize)>; CORE_COUNT], // (total, useless, useful)
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -148,6 +149,7 @@ impl<
             agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
             pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new(),
             pf_blocks: std::array::from_fn(|_| SpinMutex::new(HashSet::new())),
+            pf_stats: std::array::from_fn(|_| SpinMutex::new((0, 0, 0))), // (total, useless, useful)
         }
     }
 

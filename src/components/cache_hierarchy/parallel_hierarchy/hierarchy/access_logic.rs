@@ -61,17 +61,19 @@ impl<
 {
 
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
+        let core_id = request.core_id as usize;
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
                 let mut cnt: u64 = 0;
                 let mut pf_addrs = Vec::new();
-                let mut set = self.pf_blocks[request.core_id as usize].inner();
                 for addr in &addrs {
                     if *addr == request.block_id {
                         continue;
                     }
                     pf_addrs.push(*addr);
+                    let mut set = self.pf_blocks[core_id].inner();
                     set.insert(*addr);
+                    drop(set);
 
                     let r = CacheBlockRequest {
                         core_id: request.core_id,
@@ -80,7 +82,7 @@ impl<
                         is_os: request.is_os,
                         pc: request.pc,
                     };
-                    let ret = self.access_memory_pblock_id(&r, ts);
+                    let (ret, _) = self.access_memory_pblock_id(&r, ts);
                     if self.with_statistics {
                         match ret {
                             CacheHierarchyAccessResult::HitInSelfPrivateCache => {
@@ -99,13 +101,13 @@ impl<
                     }
                     cnt += 1;
                 }
-                drop(set);
+                self.pf_stats[core_id].inner().0 += cnt as usize; // total
                 if self.with_statistics {
                     Statistics::global_record_by(request.core_id, EventType::UnknownPrefetches, false, cnt);
                 }
-                if !pf_addrs.is_empty() {
-                    println!("{:?}", pf_addrs);
-                }
+                // if !pf_addrs.is_empty() {
+                //     println!("{:?}", pf_addrs);
+                // }
                 if self.with_statistics {
                     Statistics::global_record_by(request.core_id, EventType::Prefetches, request.is_os, cnt as u64);
                     match cnt {
@@ -141,11 +143,7 @@ impl<
                         29 => Statistics::global_record(request.core_id, EventType::Pf29, request.is_os),
                         30 => Statistics::global_record(request.core_id, EventType::Pf30, request.is_os),
                         31 => Statistics::global_record(request.core_id, EventType::Pf31, request.is_os),
-                        _ => {
-                            unreachable!("[E] {} prefetches by trigger addr = {}, pc = {}, PF addrs = {:?}",
-                                cnt, request.block_id, request.pc, addrs
-                            );
-                        },
+                        _ => {},
                     }
                 }
             }
@@ -174,16 +172,20 @@ impl<
             is_os: false,   // Not needed
             pc: 0,          // Not needed
         };
-        println!("{}", block_id);
+        // println!("{}", block_id);
         let mut set = self.pf_blocks[core_id as usize].inner();
+        let mut stats = self.pf_stats[core_id as usize].inner();
         if set.contains(&block_id) {
             if self.with_statistics {
                 Statistics::global_record(core_id, EventType::UselessPrefetches, false);    // Note: is_os = false always because there's no need to distinguish now.
                 Statistics::global_decrease_by(core_id, EventType::UnknownPrefetches, false, 1);
             }
             set.remove(&block_id);
+            stats.1 += 1; // useless
         }
         drop(set);
+        drop(stats);
+        
         match self.agt.evict(&dummy_req) {
             Some(entry) => {
                 self.pht.insert(&entry, core_id as usize);
@@ -196,7 +198,7 @@ impl<
         &self,
         r: &CacheBlockRequest,
         ts: u64,
-    ) -> CacheHierarchyAccessResult {
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize)) {
         let is_os = r.is_os();
         let core_id = r.core_id;
         let is_instruction = r.is_instruction();
@@ -216,14 +218,17 @@ impl<
         }
 
         if !is_prefetch && !is_instruction && SMS_PREFETCHING {
-            let mut set = self.pf_blocks[r.core_id as usize].inner();
+            let mut set = self.pf_blocks[core_id as usize].inner();
+            let mut stats = self.pf_stats[core_id as usize].inner();
             if set.contains(&block_id) {
                 if self.with_statistics {
                     Statistics::global_decrease_by(core_id, EventType::UnknownPrefetches, false, 1);
                 }
                 set.remove(&block_id);
+                stats.2 += 1; // useful
             }
             drop(set);
+            drop(stats);
         }
 
         // first, we need to check the private cache.
@@ -231,7 +236,8 @@ impl<
 
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
-            return CacheHierarchyAccessResult::HitInSelfPrivateCache;
+            return (CacheHierarchyAccessResult::HitInSelfPrivateCache,
+                    self.pf_stats[r.core_id as usize].inner().clone());
         }
 
         let evicted_slot = match private_hit {
@@ -296,7 +302,8 @@ impl<
                 Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
             }
 
-            return CacheHierarchyAccessResult::Unknown;
+            return (CacheHierarchyAccessResult::Unknown,
+                    self.pf_stats[r.core_id as usize].inner().clone());
         }
 
         // if it is miss, we need to access the last level cache as well, and add it.
@@ -482,7 +489,7 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            return match shared_cache_result {
+            return (match shared_cache_result {
                 SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
                 SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
                     if !is_prefetch && self.with_statistics {
@@ -518,7 +525,8 @@ impl<
                     CacheHierarchyAccessResult::Miss
                 }
                 SharedCacheLookupResult::Unknown(_, _) => CacheHierarchyAccessResult::Unknown,
-            };
+            },
+            self.pf_stats[r.core_id as usize].inner().clone());
         }
 
         if !is_prefetch && self.with_statistics {
@@ -697,7 +705,8 @@ impl<
                         );
                     }
 
-                    return CacheHierarchyAccessResult::Unknown;
+                    return (CacheHierarchyAccessResult::Unknown,
+                            self.pf_stats[r.core_id as usize].inner().clone());
                 }
             }
 
@@ -910,7 +919,8 @@ impl<
                                     );
                                 }
 
-                                return CacheHierarchyAccessResult::Unknown;
+                                return (CacheHierarchyAccessResult::Unknown,
+                                        self.pf_stats[r.core_id as usize].inner().clone());
                             }
 
                             if entry.is_modified() {
@@ -1031,7 +1041,7 @@ impl<
             }
         }
 
-        res
+        (res, self.pf_stats[r.core_id as usize].inner().clone())
     }
 
     fn translate(&self, r: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult {
