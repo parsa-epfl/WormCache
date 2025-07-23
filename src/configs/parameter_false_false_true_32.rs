@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 32;
+pub const CORE_COUNT: usize = 1;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +52,7 @@ pub const CORE_COUNT: usize = 32;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = true;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -153,7 +153,7 @@ static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
  * The associativity of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
+pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -161,7 +161,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -170,7 +170,7 @@ static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
  * The associativity of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
+pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -178,7 +178,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -266,6 +266,25 @@ static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
 * Whether to enable the adjacent (in PA) line prefetching for functional warming.
 */
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
+
+/**
+* Parameters for SMS Prefetching
+*/
+pub const SMS_PREFETCHING: bool = true;
+pub const N_ACC: usize = 64; // Number of entries in the access table.
+pub const N_FILTER: usize = 32; // Number of entries in the filter table.
+pub const PHT_SETS: usize = 32;    // Number of sets in the PHT.
+pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
+pub const IDX_WIDTH: usize = 21;    // Number of bits used to index the PHT.
+pub const N_BLK: usize = 32; // Number of blocks in the access table and filter table.
+pub const PC_WIDTH: usize = IDX_WIDTH - N_BLK.trailing_zeros() as usize; // The number of PC bits used to index
+pub const SAT_CNT: bool = false;     // Whether to use saturating counters or store bit patterns
+pub const SEP_RDWR: bool = false;    // Whether to seperate read and write patterns
+pub const ROT: bool = true;     // Whether to rotate the patterns when stored
+pub const PERFECT_PHT: bool = false; // Whether to use perfect PHT
+
+pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
+pub const N_PRINT_UP: u64 = 100_000_000; // The upper bound of the access counter to print the access.
 
 /**
  * BP_GSHARE_SET
