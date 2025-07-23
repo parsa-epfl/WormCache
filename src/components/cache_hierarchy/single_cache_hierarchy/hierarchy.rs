@@ -137,7 +137,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         &self,
         request: &CacheBlockRequest,
         ts: u64,
-    ) -> CacheHierarchyAccessResult {
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize)) {
         let is_store = request.is_store();
         let is_ptw = request.is_page_walk();
         let is_fetch = request.is_instruction();
@@ -188,12 +188,12 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             }
         }
 
-        match res {
+        (match res {
             SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::Unknown(_, _) => CacheHierarchyAccessResult::Unknown,
-        }
+        }, (0, 0, 0))
     }
 
     fn translate(

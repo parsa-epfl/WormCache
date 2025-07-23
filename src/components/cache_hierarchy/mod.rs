@@ -129,7 +129,7 @@ pub trait MemoryHierarchy {
         &self,
         request: &CacheBlockRequest,
         ts: u64,
-    ) -> CacheHierarchyAccessResult;
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize));
 
     fn translate(&self, request: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult;
 
@@ -187,7 +187,7 @@ pub trait MemoryHierarchy {
                         is_os: request.is_os,
                         pc: request.pc,
                     };
-                    let result = self.access_memory_pblock_id(&request, ts);
+                    let (result, _) = self.access_memory_pblock_id(&request, ts);
                     let code: u8 = match result {
                         CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
                         CacheHierarchyAccessResult::HitInSharedCache => 1,
@@ -226,7 +226,7 @@ pub trait MemoryHierarchy {
             }
         };
 
-        let result = self.access_memory_pblock_id(&translated_request, ts);
+        let (result, _) = self.access_memory_pblock_id(&translated_request, ts);
         let code: u8 = match result {
             CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
             CacheHierarchyAccessResult::HitInSharedCache => 1,

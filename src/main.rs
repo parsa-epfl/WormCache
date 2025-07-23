@@ -118,9 +118,17 @@ fn main() {
         }
     };
 
+    // Skip the first 25 lines directly from the BufReader
+    let mut buf_reader = BufReader::new(file);
+    use std::io::BufRead;
+    for _ in 0..25 {
+        let mut dummy = String::new();
+        let _ = buf_reader.read_line(&mut dummy);
+    }
+
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
-        .from_reader(BufReader::new(file));
+        .from_reader(buf_reader);
 
     let mh = MH::new(
         parameter::ENABLE_STATISTICS,
@@ -129,11 +137,22 @@ fn main() {
     );
 
     let (mut all, mut old_miss, mut new_miss, mut covered) = (0, 0, 0, 0);
-    for result in rdr.records() {
+    let (mut total, mut useful) = (0, 0);
+    for (idx, result) in rdr.records().enumerate() {
+        if (idx+1) % 100_000_000 == 0 {
+            println!("Processed {} records", (idx+1));
+            let old_mr = old_miss as f64 / all as f64 * 100.0;
+            let new_mr = new_miss as f64 / all as f64 * 100.0;
+            let coverage = covered as f64 / old_miss as f64 * 100.0;
+            let accuracy  = useful as f64 / total as f64 * 100.0;
+            println!("Region size: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
+                parameter::N_BLK, old_mr, new_mr, coverage, accuracy);
+        }
         match result {
             Ok(record) => {
                 if record.len() != 7 {
-                    panic!("Invalid record length: expected 7, got {}", record.len());
+                    eprintln!("Invalid record length: expected 7, got {}", record.len());
+                    continue;
                 }
                 all += 1;
                 let ts = record[0].parse::<u64>().unwrap();
@@ -147,6 +166,7 @@ fn main() {
                     old_miss += 1;
                 }
 
+                let is_data = access_code == 0 || access_code == 1;
                 let access_type = match access_code {
                     0 => CacheAccessType::DataRead,
                     1 => CacheAccessType::DataWrite,
@@ -163,7 +183,13 @@ fn main() {
                     is_os,
                     pc,
                 };
-                let result = mh.access_memory_pblock_id(&req, ts);
+                let (result, stats) = mh.access_memory_pblock_id(&req, ts);
+                if parameter::SMS_PREFETCHING && is_data {
+                    mh.prefetch_blocks(&req, ts);
+                    mh.record_access(&req, ts);
+                }
+                total = stats.0;
+                useful = stats.2;
                 let new_code: u8 = match result {
                     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
                     CacheHierarchyAccessResult::HitInSharedCache => 1,
@@ -179,15 +205,17 @@ fn main() {
                 if code != 0 && new_code == 0 {
                     covered += 1;
                 }
-                println!("{},{},{},{},{},{},{}", ts, core_id, block_id, access_code, is_os, pc, new_code);
+                // println!("{},{},{},{},{},{},{}", ts, core_id, block_id, access_code, is_os, pc, new_code);
             }
             Err(e) => {
-                panic!("Error reading record: {}", e);
+                eprintln!("Error reading record: {}", e);
             }
         }
     }
     let old_mr = old_miss as f64 / all as f64 * 100.0;
     let new_mr = new_miss as f64 / all as f64 * 100.0;
     let coverage = covered as f64 / old_miss as f64 * 100.0;
-    println!("Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%", old_mr, new_mr, coverage);
+    let accuracy  = useful as f64 / total as f64 * 100.0;
+    println!("Region size: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
+                parameter::N_BLK, old_mr, new_mr, coverage, accuracy);
 }

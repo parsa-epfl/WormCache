@@ -270,17 +270,18 @@ pub const ADJACENT_LINE_PREFETCHING: bool = false;
 /**
 * Parameters for SMS Prefetching
 */
-pub const SMS_PREFETCHING: bool = false;
+pub const SMS_PREFETCHING: bool = true;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
 pub const PHT_SETS: usize = 1024;    // Number of sets in the PHT.
 pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
-pub const N_BLK: usize = 32; // Number of blocks in the access table and filter table.
-pub const PC_WIDTH: usize = 16; // The number of PC bits used to index
+pub const IDX_WIDTH: usize = 64;    // Number of bits used to index the PHT.
+pub const N_BLK: usize = 64; // Number of blocks in the access table and filter table.
+pub const PC_WIDTH: usize = IDX_WIDTH - N_BLK.trailing_zeros() as usize; // The number of PC bits used to index
 pub const ROT: bool = false;     // Whether to rotate the patterns when stored
-pub const SEP_RDWR: bool = true;    // Whether to seperate read and write patterns
-pub const SAT_CNT: bool = true;     // Whether to use saturating counters or store bit patterns
-pub const PERFECT_PHT: bool = false; // Whether to use perfect PHT
+pub const SEP_RDWR: bool = false;    // Whether to seperate read and write patterns
+pub const SAT_CNT: bool = false;     // Whether to use saturating counters or store bit patterns
+pub const PERFECT_PHT: bool = true; // Whether to use perfect PHT
 
 pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
 pub const N_PRINT_UP: u64 = 100_000_000; // The upper bound of the access counter to print the access.
