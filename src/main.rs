@@ -141,8 +141,9 @@ fn main() {
     let rot = if parameter::ROT { 'y' } else { 'n' };
     let str = format!("{}{}{}{}", parameter::N_BLK, is_sat, rd_wr, rot);
 
-    let (mut all, mut old_miss, mut new_miss, mut covered) = (0, 0, 0, 0);
-    let (mut total, mut useful) = (0, 0);
+    let (mut all, mut old_miss, mut new_miss, mut covered): (usize, usize, usize, usize) = (0, 0, 0, 0);
+    let (mut total, mut useful, mut useless) = (0, 0, 0);
+    let mut prev_ts = 0;
     for (idx, result) in rdr.records().enumerate() {
         if (idx+1) % 100_000_000 == 0 {
             println!("Processed {} records", (idx+1));
@@ -150,8 +151,9 @@ fn main() {
             let new_mr = new_miss as f64 / all as f64 * 100.0;
             let coverage = covered as f64 / old_miss as f64 * 100.0;
             let accuracy  = useful as f64 / total as f64 * 100.0;
-            println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
-                        str, old_mr, new_mr, coverage, accuracy);
+            let overpred = useless as f64 / total as f64 * 100.0;
+            println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
+                        str, old_mr, new_mr, coverage, accuracy, overpred);
         }
         match result {
             Ok(record) => {
@@ -159,19 +161,30 @@ fn main() {
                     eprintln!("Invalid record length: expected 7, got {}", record.len());
                     continue;
                 }
-                all += 1;
-                let ts = record[0].parse::<u64>().unwrap();
+                // println!("Processing record: {:?}", record);
+                let ts = record[0].parse::<u64>().unwrap_or(0);
+                if ts == 0 {
+                    eprintln!("Invalid timestamp: {:?}", record);
+                    continue;
+                }
                 let core_id = record[1].parse::<u32>().unwrap();
                 let block_id = record[2].parse::<u64>().unwrap();
                 let access_code = record[3].parse::<u8>().unwrap();
                 let is_os = record[4].parse::<bool>().unwrap();
                 let pc = record[5].parse::<u64>().unwrap();
                 let code = record[6].parse::<u8>().unwrap();
-                if code != 0 {
+                if prev_ts != 0 && (ts as f64) > 1.5*(prev_ts as f64) {
+                    eprintln!("Warning: Timestamp gap detected: {} -> {}", prev_ts, ts);
+                    continue;
+                }
+                prev_ts = ts;
+                all += 1;
+
+                let is_data = access_code == 0 || access_code == 1;
+                if code != 0 && is_data {
                     old_miss += 1;
                 }
 
-                let is_data = access_code == 0 || access_code == 1;
                 let access_type = match access_code {
                     0 => CacheAccessType::DataRead,
                     1 => CacheAccessType::DataWrite,
@@ -194,6 +207,7 @@ fn main() {
                     mh.record_access(&req, ts);
                 }
                 total = stats.0;
+                useless = stats.1;
                 useful = stats.2;
                 let new_code: u8 = match result {
                     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
@@ -204,10 +218,10 @@ fn main() {
                     CacheHierarchyAccessResult::MissInPrivateCache => 5,
                     CacheHierarchyAccessResult::Unknown => 6,
                 };
-                if new_code != 0 {
+                if new_code != 0 && is_data {
                     new_miss += 1;
                 }
-                if code != 0 && new_code == 0 {
+                if code != 0 && new_code == 0 && is_data {
                     covered += 1;
                 }
                 // println!("{},{},{},{},{},{},{}", ts, core_id, block_id, access_code, is_os, pc, new_code);
@@ -221,6 +235,7 @@ fn main() {
     let new_mr = new_miss as f64 / all as f64 * 100.0;
     let coverage = covered as f64 / old_miss as f64 * 100.0;
     let accuracy  = useful as f64 / total as f64 * 100.0;
-    println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Accuracy: {:.2}%",
-                str, old_mr, new_mr, coverage, accuracy);
+    let overpred =  useless as f64 / total as f64 * 100.0;
+    println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
+                str, old_mr, new_mr, coverage, accuracy, overpred);
 }
