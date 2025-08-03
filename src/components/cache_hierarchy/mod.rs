@@ -187,25 +187,25 @@ pub trait MemoryHierarchy {
                         is_os: request.is_os,
                         pc: request.pc,
                     };
-                    let (_result, _) = self.access_memory_pblock_id(&request, ts);
-                    // let code: u8 = match result {
-                    //     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
-                    //     CacheHierarchyAccessResult::HitInSharedCache => 1,
-                    //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
-                    //     CacheHierarchyAccessResult::Miss => 2,
-                    //     CacheHierarchyAccessResult::MissDueToPermission => 4,
-                    //     CacheHierarchyAccessResult::MissInPrivateCache => 5,
-                    //     CacheHierarchyAccessResult::Unknown => 6,
-                    // };
-                    // let access_code: u8 = match request.access_type {
-                    //     CacheAccessType::DataRead => 0,
-                    //     CacheAccessType::DataWrite => 1,
-                    //     CacheAccessType::InstructionFetch => 2,
-                    //     CacheAccessType::PrefetchRead => 3,
-                    //     CacheAccessType::PrefetchWrite => 4,
-                    //     CacheAccessType::PageWalkRead => 5,
-                    // };
-                    // println!("{},{},{},{},{},{},{}", ts, request.core_id, request.block_id, access_code, request.is_os, request.pc, code);
+                    let (result, _) = self.access_memory_pblock_id(&request, ts);
+                    let code: u8 = match result {
+                        CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+                        CacheHierarchyAccessResult::HitInSharedCache => 1,
+                        CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
+                        CacheHierarchyAccessResult::Miss => 2,
+                        CacheHierarchyAccessResult::MissDueToPermission => 4,
+                        CacheHierarchyAccessResult::MissInPrivateCache => 5,
+                        CacheHierarchyAccessResult::Unknown => 6,
+                    };
+                    let access_code: u8 = match request.access_type {
+                        CacheAccessType::DataRead => 0,
+                        CacheAccessType::DataWrite => 1,
+                        CacheAccessType::InstructionFetch => 2,
+                        CacheAccessType::PrefetchRead => 3,
+                        CacheAccessType::PrefetchWrite => 4,
+                        CacheAccessType::PageWalkRead => 5,
+                    };
+                    println!("{},{},{},{},{},{},{}", ts, request.core_id, request.block_id, access_code, request.is_os, request.pc, code);
                 }
 
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
@@ -227,24 +227,24 @@ pub trait MemoryHierarchy {
         };
 
         let (result, _) = self.access_memory_pblock_id(&translated_request, ts);
-        // let code: u8 = match result {
-        //     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
-        //     CacheHierarchyAccessResult::HitInSharedCache => 1,
-        //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
-        //     CacheHierarchyAccessResult::Miss => 2,
-        //     CacheHierarchyAccessResult::MissDueToPermission => 4,
-        //     CacheHierarchyAccessResult::MissInPrivateCache => 5,
-        //     CacheHierarchyAccessResult::Unknown => 6,
-        // };
-        // let access_code: u8 = match translated_request.access_type {
-        //     CacheAccessType::DataRead => 0,
-        //     CacheAccessType::DataWrite => 1,
-        //     CacheAccessType::InstructionFetch => 2,
-        //     CacheAccessType::PrefetchRead => 3,
-        //     CacheAccessType::PrefetchWrite => 4,
-        //     CacheAccessType::PageWalkRead => 5,
-        // };
-        // println!("{},{},{},{},{},{},{}", ts, translated_request.core_id, translated_request.block_id, access_code, translated_request.is_os, translated_request.pc, code);
+        let code: u8 = match result {
+            CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+            CacheHierarchyAccessResult::HitInSharedCache => 1,
+            CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
+            CacheHierarchyAccessResult::Miss => 2,
+            CacheHierarchyAccessResult::MissDueToPermission => 4,
+            CacheHierarchyAccessResult::MissInPrivateCache => 5,
+            CacheHierarchyAccessResult::Unknown => 6,
+        };
+        let access_code: u8 = match translated_request.access_type {
+            CacheAccessType::DataRead => 0,
+            CacheAccessType::DataWrite => 1,
+            CacheAccessType::InstructionFetch => 2,
+            CacheAccessType::PrefetchRead => 3,
+            CacheAccessType::PrefetchWrite => 4,
+            CacheAccessType::PageWalkRead => 5,
+        };
+        println!("{},{},{},{},{},{},{}", ts, translated_request.core_id, translated_request.block_id, access_code, translated_request.is_os, translated_request.pc, code);
         if ADJACENT_LINE_PREFETCHING {
             let mut prefetch_request = translated_request.clone();
             prefetch_request.block_id += 1;

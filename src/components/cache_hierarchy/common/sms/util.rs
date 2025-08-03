@@ -17,10 +17,11 @@ pub fn build_key<const N_BLK: usize, const PHT_SETS: usize, const ROT: bool>(pc:
     let index_len = PHT_SETS.trailing_zeros();
     assert!(PC_WIDTH + off_width as usize > index_len as usize);
 
-    let pc = pc & ((1 << PC_WIDTH) - 1);
     if ROT {    // If rotation, then only PC based indexing
+        let pc = pc & ((1 << (PC_WIDTH + off_width as usize)) - 1); 
         pc
     } else {    // else (PC + offset) based indexing
+        let pc = pc & ((1 << PC_WIDTH) - 1);
         let offset = offset & ((1 << off_width) - 1);
         let key = (pc << off_width) | offset;
         key
