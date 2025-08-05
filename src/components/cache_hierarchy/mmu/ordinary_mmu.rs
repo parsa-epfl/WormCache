@@ -234,6 +234,13 @@ impl<
                 }
             }
 
+            Statistics::global_record(core_id, EventType::TLBMiss, is_kernel);
+            if is_instruction {
+                Statistics::global_record(core_id, EventType::TLBMissDueToInstruction, is_kernel);
+            } else {
+                Statistics::global_record(core_id, EventType::TLBMissDueToData, is_kernel);
+            }
+
             let ptw_result = ARCH::ptw(va);
 
             let asid = if ptw_result.is_global {
@@ -268,6 +275,14 @@ impl<
                 MMUTranslationResult::MissNotCacheable(ptw_result.paddr)
             }
         } else {
+            
+            Statistics::global_record(core_id, EventType::TLBMiss, is_kernel);
+            if is_instruction {
+                Statistics::global_record(core_id, EventType::TLBMissDueToInstruction, is_kernel);
+            } else {
+                Statistics::global_record(core_id, EventType::TLBMissDueToData, is_kernel);
+            }
+
             let ptw_result = ARCH::ptw(va);
 
             let asid = if ptw_result.is_global {

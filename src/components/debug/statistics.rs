@@ -64,20 +64,10 @@ pub enum EventType {
     SharedCacheMissDueToDataRead,
     SharedCacheMissDueToDataWrite,
 
-    SharedCacheAccessTsViolation,
-
     UnknownPrivateCacheMisses,
     UnknownSharedCacheMisses,
 
-    // PrivateCacheColdMiss
     SharedCacheColdMiss, // The cache miss is caused due to the cold start of the shared cache.
-
-    ShadowSharedCacheHit,
-    ShadowSharedCacheMiss, // this is for debugging purpose of the SharedCacheVTsOrderViolation.
-
-    SpecialMemoryInstructionAccess,
-    SpecialMemoryInstructionPrivateCacheMiss,
-    SpecialMemoryInstructionSharedCacheMiss,
 
     // the key problem is still how I convert the previous two counters' value into the miss rate impact.
     TLBMiss,
