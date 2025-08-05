@@ -88,7 +88,7 @@ unsafe extern "C" fn event_loop_callback() {
         } else if snapshot_format == "incremental" {
             qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_DELTA
         } else if snapshot_format == "incremental_first_base" {
-            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_ZSTD_BASE
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_BASE
         } else {
             panic!("Unsupported snapshot format: {}", snapshot_format);
         };
@@ -302,7 +302,7 @@ pub fn on_load_snapshot(snapshot_name: &str) {
     use std::fs;
 
     // check if the snapshot file exists
-    let base_file = format!("{}.basemem.zstd", snapshot_name);
+    let base_file = format!("{}.mem/base", snapshot_name);
     let state_file = format!("{}.state.zstd", snapshot_name);
     if fs::metadata(&base_file).is_ok() && fs::metadata(&state_file).is_ok() {
         update_snapshot_type("incremental");

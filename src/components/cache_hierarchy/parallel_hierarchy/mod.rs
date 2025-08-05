@@ -226,7 +226,7 @@ unsafe extern "C" fn event_loop_callback() {
 
         qemu_api::qemu_plugin_savevm(
             c_snapshot_name.as_ptr(),
-            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_ZSTD_BASE,
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_BASE,
         );
 
         std::process::exit(0);
@@ -234,11 +234,13 @@ unsafe extern "C" fn event_loop_callback() {
 }
 
 static SNAPSHOT_NAME: OnceLock<String> = OnceLock::new();
+static WARM_RATIO: OnceLock<f64> = OnceLock::new();
 
 unsafe extern "C" fn quantum_checking_callback(_: u64) -> bool {
     let warmed_set = unsafe { (*PLUGIN).get_scache_warmed_set_count() };
+    let warm_ratio = *WARM_RATIO.get().unwrap();
 
-    if warmed_set == parameter::SHARED_CACHE_SET as usize {
+    if warmed_set >= (parameter::SHARED_CACHE_SET as f64 * warm_ratio) as usize {
         let snapshot_info = (SNAPSHOT_NAME.get().unwrap().clone(), 0);
 
         let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
@@ -287,6 +289,11 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         SNAPSHOT_NAME
             .set(format!("{}_{}", prefix, "warmed"))
             .unwrap();
+
+        let warm_ratio = options.get("warm_ratio").unwrap_or(&"1.0".to_string()).clone();
+        let warm_ratio: f64 = warm_ratio.parse().unwrap();
+        assert!(warm_ratio >= 0.0 && warm_ratio <= 1.0);
+        WARM_RATIO.set(warm_ratio).unwrap();
 
         unsafe {
             let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
