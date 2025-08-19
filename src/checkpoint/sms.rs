@@ -1,5 +1,4 @@
 use super::FlexusParameter;
-use zstd::stream::read::Decoder;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -15,18 +14,23 @@ struct FlexusPHTEntry {
 }
 
 #[derive(Serialize, Deserialize)]
+struct FlexusPHTSet {
+    entries: Vec<FlexusPHTEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
 struct PHTProxy {
-    array: Vec<Vec<FlexusPHTEntry>>,
+    sets: Vec<FlexusPHTSet>,
 }
 
 fn serialize_a_pht(
     pht_proxy: PHTProxy,
     flexus_configuration: &FlexusParameter,
-) -> Vec<Vec<FlexusPHTEntry>> {
-    assert!(pht_proxy.array.len() % flexus_configuration.pht_sets == 0);
+) -> PHTProxy {
+    assert!(pht_proxy.sets.len() % flexus_configuration.pht_sets == 0);
 
     if flexus_configuration.no_resizing {
-        assert!(pht_proxy.array.len() == flexus_configuration.pht_sets);
+        assert!(pht_proxy.sets.len() == flexus_configuration.pht_sets);
     }
 
     let mut serialized_pht = Vec::new();
@@ -35,10 +39,10 @@ fn serialize_a_pht(
         serialized_pht.push(Vec::new());
     }
 
-    for (old_set_idx, mut old_set) in pht_proxy.array.into_iter().enumerate() {
+    for (old_set_idx, mut old_set) in pht_proxy.sets.into_iter().enumerate() {
         let new_set_idx = old_set_idx % flexus_configuration.pht_sets;
-        old_set.retain(|entry| entry.valid); // Filter out invalid entries.
-        serialized_pht[new_set_idx].append(&mut old_set);
+        old_set.entries.retain(|entry| entry.valid); // Filter out invalid entries.
+        serialized_pht[new_set_idx].append(&mut old_set.entries);
     }
 
     for set in serialized_pht.iter_mut() {
@@ -55,11 +59,11 @@ fn serialize_a_pht(
         set.truncate(flexus_configuration.pht_associativity);
     }
 
-    let mut serialized_pht_json = Vec::new();
+    let mut serialized_pht_json: PHTProxy = PHTProxy { sets: Vec::new() };
     for set in serialized_pht.iter() {
-        let mut serialized_set = Vec::new();
+        let mut serialized_set: FlexusPHTSet = FlexusPHTSet { entries: Vec::new() };
         for entry in set.iter().rev() {
-            serialized_set.push(FlexusPHTEntry {
+            serialized_set.entries.push(FlexusPHTEntry {
                 tag: entry.tag,
                 access_pattern: entry.access_pattern.clone(),
                 write_pattern: entry.write_pattern.clone(),
@@ -68,32 +72,10 @@ fn serialize_a_pht(
                 valid: entry.valid,
             });
         }
-        serialized_pht_json.push(serialized_set);
+        serialized_pht_json.sets.push(serialized_set);
     }
 
     serialized_pht_json
-}
-
-#[derive(Serialize, Deserialize)]
-struct FlexusPHTUnit {
-    private_units: Vec<PHTProxy>,
-}
-
-impl FlexusPHTUnit {
-    pub fn export(self, folder_name: &String, flexus_configuration: &FlexusParameter) {
-        for (core_id, unit) in self.private_units.into_iter().enumerate() {
-            let file_name = format!("{}/{:03}-pht.json", folder_name, core_id);
-            let file = std::fs::File::create(&file_name).unwrap();
-            serde_json::to_writer(
-                file, 
-                &json!({
-                    "pht": serialize_a_pht(unit, flexus_configuration)
-                }),
-            )
-            .unwrap();
-            println!("PHT for core {} exported to {}", core_id, file_name);
-        }
-    }
 }
 
 pub fn process_sms(
@@ -126,9 +108,21 @@ pub fn process_sms(
     ))
     .unwrap();
 
-    let decoder = Decoder::new(file).unwrap();
+    let decoder = zstd::Decoder::new(file).unwrap();
 
-    let pht: FlexusPHTUnit = serde_json::from_reader(decoder).unwrap();
+    let pht: Vec<PHTProxy> = serde_json::from_reader(decoder).unwrap();
 
-    pht.export(output_folder, flexus);
+    for (core_id, unit) in pht.into_iter().enumerate() {
+        let file_name = format!("{}/{:03}-pht.json", output_folder, core_id);
+        let file = std::fs::File::create(&file_name).unwrap();
+        serde_json::to_writer(
+            file, 
+            &json!({
+                "pht": serialize_a_pht(unit, flexus)
+            }),
+        )
+        .unwrap();
+        println!("PHT for core {} exported to {}", core_id, file_name);
+    }
+
 }
