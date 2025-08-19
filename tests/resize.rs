@@ -218,6 +218,8 @@ fn test_resizable_llc() {
         btb_sets: 1,
         btb_associativity: 1,
         no_resizing: false,
+        pht_sets: 1,
+        pht_associativity: 1,
     };
 
     big_cache_serial_helper.resize(&small_cache_flexus_configuration);
@@ -379,6 +381,8 @@ fn test_resize_cache_hierarchy() {
         btb_sets: 1,
         btb_associativity: 1,
         no_resizing: false,
+        pht_sets: 1,
+        pht_associativity: 1,
     };
 
     process_cache_hierarchy(
