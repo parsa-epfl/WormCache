@@ -81,7 +81,7 @@ pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
 
 // ITLB
 
-pub const ITLB_ASSO: usize = 64;
+pub const ITLB_ASSO: usize = 256;
 
 pub const ITLB_SET: usize = 1;
 static_assertions::const_assert!(!(ITLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
@@ -89,7 +89,7 @@ static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 
 // DTLB
 
-pub const DTLB_ASSO: usize = 64;
+pub const DTLB_ASSO: usize = 256;
 
 pub const DTLB_SET: usize = 1;
 static_assertions::const_assert!(!(DTLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
@@ -106,7 +106,7 @@ static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIV
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 4;
+pub const STLB_ASSO: usize = 8;
 
 /**
  * STLB_SET
@@ -114,7 +114,7 @@ pub const STLB_ASSO: usize = 4;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 1024;
+pub const STLB_SET: usize = 2048;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -161,7 +161,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 256 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -178,7 +178,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 256 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -299,7 +299,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 4096;
+pub const BTB_SET: usize = 16384;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
@@ -307,7 +307,7 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 3;
+pub const BTB_ASSO: usize = 4;
 
 /**
  * BP_RAS_COUNT

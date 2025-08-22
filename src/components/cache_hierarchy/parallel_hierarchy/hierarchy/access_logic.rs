@@ -70,6 +70,7 @@ impl<
                     if *addr == request.block_id {
                         continue;
                     }
+                    // println!("Adding block to prefetch queue: {:x}", addr);
                     pf_addrs.push(*addr);
                     let mut set = self.pf_blocks[core_id].inner();
                     set.insert(*addr);
