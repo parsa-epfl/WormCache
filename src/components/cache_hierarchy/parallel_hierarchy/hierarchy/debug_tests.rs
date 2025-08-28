@@ -32,7 +32,9 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
-use crate::components::cache_hierarchy::common::{CacheAccessType, CacheHierarchyAccessResult};
+use crate::components::cache_hierarchy::common::{
+    CacheAccessType, CacheHierarchyAccessResult, SharedCacheAccessRequest, SharedCacheAccessSource,
+};
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
 use crate::parameter;
@@ -641,8 +643,8 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
     );
 
     // And the cache line is still in the LLC.
-    assert!(mh.shared_cache.peek(&CacheBlockRequest {
-        core_id: 0,
+    assert!(mh.shared_cache.peek(&SharedCacheAccessRequest {
+        source: SharedCacheAccessSource::Core(0),
         block_id,
         access_type: CacheAccessType::DataRead,
         is_os: false,

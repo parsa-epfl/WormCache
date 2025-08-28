@@ -29,6 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use serde::Deserialize;
 use serde::Serialize;
 
 // There are two possible operations for an exclusive shared cache
@@ -37,6 +38,37 @@ use serde::Serialize;
 //    - Read is a hit: Read lock + write lock
 //    - Read is a miss: Read lock
 // 3. It will be probably OK to use Mutex.
+//
+
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub enum SharedCacheAccessSource {
+    Core(u32),
+    Device,
+}
+
+#[derive(Clone)]
+pub struct SharedCacheAccessRequest {
+    pub is_os: bool,
+    pub source: SharedCacheAccessSource,
+    pub block_id: u64,
+    pub access_type: CacheAccessType,
+}
+
+impl SharedCacheAccessRequest {
+    pub fn from_cache_request(src: &CacheBlockRequest) -> Self {
+        Self {
+            is_os: src.is_os,
+            source: SharedCacheAccessSource::Core(src.core_id),
+            block_id: src.block_id,
+            access_type: src.access_type.clone(),
+        }
+    }
+
+    pub fn is_store(&self) -> bool {
+        self.access_type == CacheAccessType::DataWrite
+            || self.access_type == CacheAccessType::PrefetchWrite
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SharedCacheLookupResult {
@@ -59,19 +91,24 @@ pub trait SharedCache {
     fn new() -> Self;
 
     // Check whether the cache line is in the cache. Do not update the cache.
-    fn peek(&self, request: &CacheBlockRequest) -> bool; // (is_hit)
+    fn peek(&self, request: &SharedCacheAccessRequest) -> bool; // (is_hit)
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult;
+    fn invalidate(
+        &self,
+        source: SharedCacheAccessSource,
+        block_id: u64,
+        ts: u64,
+    ) -> SharedCacheLookupResult;
 
     // Conduct a normal lookup operation to the shared cache, including:
     // 1. Peek
     // 2. For read, throw dirty information
     // 3. For write, invalid the cache line.
-    fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult;
+    fn lookup(&self, request: &SharedCacheAccessRequest, ts: u64) -> SharedCacheLookupResult;
 
     fn insert(
         &self,
-        core_id: u32,
+        source: SharedCacheAccessSource,
         block_id: u64,
         ts: u64,
         is_modified: bool,
@@ -81,7 +118,7 @@ pub trait SharedCache {
     // A combine with lookup and insert. If the cache line is not in the cache and it is a read, insert it.
     fn lookup_and_insert_on_miss(
         &self,
-        request: &CacheBlockRequest,
+        request: &SharedCacheAccessRequest,
         ts: u64,
         increase_touched_count: bool,
     ) -> SharedCacheLookupResult;
@@ -114,16 +151,18 @@ mod set_and_line;
 pub use set_and_line::SharedCacheBlock;
 pub use set_and_line::SharedCacheSet;
 
-mod replicated;
+// mod replicated;
 mod single;
 
-pub use replicated::ReplicatedSharedCache;
+// pub use replicated::ReplicatedSharedCache;
 pub use single::ParallelSingleSharedCache;
 pub use single::SerialSingleSharedCache;
 pub use single::SingleSharedCache;
 pub use single::SingleSharedCacheSerdeHelper;
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
+
+use super::CacheAccessType;
 
 #[cfg(test)]
 mod warm_counter_test;

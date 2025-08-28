@@ -32,7 +32,8 @@
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
 use super::{
-    SharedCache, SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
+    SharedCache, SharedCacheAccessRequest, SharedCacheAccessSource,
+    SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
     statistics::SharedCacheSetStatistics,
 };
 
@@ -222,19 +223,36 @@ impl<
         }
     }
 
-    fn peek(&self, request: &CacheBlockRequest) -> bool {
-        let pcache = unsafe { &mut *self.blocks[request.core_id as usize].get() };
+    fn peek(&self, request: &SharedCacheAccessRequest) -> bool {
+        let core_id = match request.source {
+            SharedCacheAccessSource::Core(id) => id,
+            SharedCacheAccessSource::Device => unreachable!(),
+        };
+        let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         let set_idx = (request.block_id % SET as u64) as usize;
         pcache.blocks[set_idx].index_of(request.block_id).is_some()
     }
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult {
+    fn invalidate(
+        &self,
+        source: SharedCacheAccessSource,
+        block_id: u64,
+        ts: u64,
+    ) -> SharedCacheLookupResult {
+        let core_id = match source {
+            SharedCacheAccessSource::Core(id) => id,
+            SharedCacheAccessSource::Device => unreachable!(),
+        };
+
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.invalidate(block_id, ts, core_id)
     }
 
-    fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
-        let core_id = request.core_id;
+    fn lookup(&self, request: &SharedCacheAccessRequest, ts: u64) -> SharedCacheLookupResult {
+        let core_id = match request.source {
+            SharedCacheAccessSource::Core(id) => id,
+            SharedCacheAccessSource::Device => unreachable!(),
+        };
 
         let pcache = unsafe { &mut *self.blocks[core_id as usize].get() };
         pcache.lookup(request, ts)

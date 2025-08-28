@@ -34,12 +34,11 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::components::{
-    cache_hierarchy::CacheBlockRequest, debug::cache_line_history::CacheLineCoherenceHistory,
-};
+use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
 
 use super::{
-    SharedCacheLookupAndInsertResult, SharedCacheLookupResult,
+    SharedCacheAccessRequest, SharedCacheAccessSource, SharedCacheLookupAndInsertResult,
+    SharedCacheLookupResult,
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
 };
 
@@ -48,7 +47,7 @@ pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.
     pub ts: u64,
     pub modified: bool,
-    pub last_accessor: u32, // the last accessor of this cache line.
+    pub last_accessor: SharedCacheAccessSource, // the last accessor of this cache line.
 }
 
 #[serde_as]
@@ -99,7 +98,7 @@ impl<
                 block_id_with_v: 0,
                 ts: 0,
                 modified: false,
-                last_accessor: 0,
+                last_accessor: SharedCacheAccessSource::Core(0),
             }),
 
             touched_count: 0,
@@ -154,7 +153,7 @@ impl<
             .position(|p| p.block_id_with_v == internal_block_id)
     }
 
-    pub fn invalidate(&mut self, block_id: u64, ts: u64, _core_id: u32) -> SharedCacheLookupResult {
+    pub fn invalidate(&mut self, block_id: u64, ts: u64) -> SharedCacheLookupResult {
         // if it is a hit, we remove this block from the cache
         if let Some(hit_block) = self.index_of(block_id) {
             if self.recent_evict_ts < ts {
@@ -190,13 +189,12 @@ impl<
     }
 
     #[inline]
-    pub fn lookup(&mut self, r: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
+    pub fn lookup(&mut self, r: &SharedCacheAccessRequest, ts: u64) -> SharedCacheLookupResult {
         self.access_count += 1;
 
         let block_id = r.block_id;
-        let core_id = r.core_id;
         let access_type = r.access_type.clone();
-        let is_os = r.is_os();
+        let is_os = r.is_os;
 
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
@@ -231,7 +229,7 @@ impl<
                     // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                     hit_block.ts = ts;
 
-                    hit_block.last_accessor = core_id;
+                    hit_block.last_accessor = r.source;
 
                     // Accessed by a higher-level, meaning that the block is not dirty anymore.
                     let was_modified = hit_block.modified;
@@ -260,7 +258,7 @@ impl<
     pub fn insert(
         &mut self,
         block_id: u64,
-        core_id: u32,
+        source: SharedCacheAccessSource,
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
@@ -303,7 +301,7 @@ impl<
                         //     .push((block_id, ts, core_id, is_modified, false));
                     }
 
-                    hit_block.last_accessor = core_id;
+                    hit_block.last_accessor = source;
                 }
                 return false;
             }
@@ -343,7 +341,7 @@ impl<
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = is_modified;
         oldest_block.ts = ts;
-        oldest_block.last_accessor = core_id;
+        oldest_block.last_accessor = source;
 
         // update the eviction counter.
         if self.recent_evict_ts < ts {
@@ -359,7 +357,7 @@ impl<
     #[inline]
     pub fn lookup_and_insert(
         &mut self,
-        r: &CacheBlockRequest,
+        r: &SharedCacheAccessRequest,
         ts: u64,
         increase_touched_count: bool,
     ) -> SharedCacheLookupAndInsertResult {
@@ -367,7 +365,6 @@ impl<
         let result = self.lookup(r, ts);
 
         let block_id = r.block_id;
-        let core_id = r.core_id;
 
         match result {
             SharedCacheLookupResult::Hit(modified) => {
@@ -378,7 +375,7 @@ impl<
                 // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
                 if !r.is_store() {
                     let just_warmed =
-                        self.insert(block_id, core_id, ts, false, increase_touched_count);
+                        self.insert(block_id, r.source, ts, false, increase_touched_count);
                     assert!(!just_warmed);
                     SharedCacheLookupAndInsertResult::Inserted
                 } else {
@@ -390,7 +387,7 @@ impl<
                 // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
                 if !r.is_store() {
                     let just_warmed =
-                        self.insert(block_id, core_id, ts, false, increase_touched_count);
+                        self.insert(block_id, r.source, ts, false, increase_touched_count);
                     SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
                 } else {
                     SharedCacheLookupAndInsertResult::Miss
@@ -412,19 +409,19 @@ fn minimum_can_find_invalid() {
 
     // push 8 elements inside.
     for i in 0..8 {
-        assert_eq!(set.insert(i, 0, ts, false, true), i == 7);
+        assert_eq!(
+            set.insert(i, SharedCacheAccessSource::Core(0), ts, false, true),
+            i == 7
+        );
         ts += 1;
     }
 
     // now, we invalid set 0.
-    assert_eq!(
-        set.invalidate(0, ts, 0),
-        SharedCacheLookupResult::Hit(false)
-    );
+    assert_eq!(set.invalidate(0, ts), SharedCacheLookupResult::Hit(false));
     ts += 1;
 
     // Now if we refill, we will hit the first place.
-    set.insert(9, 0, ts, false, true);
+    set.insert(9, SharedCacheAccessSource::Core(0), ts, false, true);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -433,14 +430,17 @@ fn minimum_can_find_invalid() {
             block_id_with_v: 9 << 1 | 1,
             ts: ts,
             modified: false,
-            last_accessor: 0
+            last_accessor: SharedCacheAccessSource::Core(0)
         }
     );
 
     ts += 1;
 
     // If we now insert another one, line[1] will be replaced.
-    assert_eq!(set.insert(10, 0, ts, false, true), false);
+    assert_eq!(
+        set.insert(10, SharedCacheAccessSource::Core(0), ts, false, true),
+        false
+    );
 
     assert_eq!(
         set.blocks[1],
@@ -448,7 +448,7 @@ fn minimum_can_find_invalid() {
             block_id_with_v: 10 << 1 | 1,
             ts: ts,
             modified: false,
-            last_accessor: 0
+            last_accessor: SharedCacheAccessSource::Core(0)
         }
     )
 }
@@ -465,11 +465,11 @@ fn cold_miss_exist() {
     // do one lookup. It will return the cold.
     assert_eq!(
         set.lookup(
-            &CacheBlockRequest {
+            &SharedCacheAccessRequest {
+                is_os: false,
+                source: SharedCacheAccessSource::Core(0),
                 block_id: 10,
-                core_id: 0,
-                access_type: CacheAccessType::DataRead,
-                is_os: false
+                access_type: CacheAccessType::DataRead
             },
             ts,
         ),
@@ -480,18 +480,21 @@ fn cold_miss_exist() {
 
     // fill the cache.
     for i in 0..8 {
-        assert_eq!(set.insert(i + 10, 0, ts, false, true), i == 7);
+        assert_eq!(
+            set.insert(i + 10, SharedCacheAccessSource::Core(0), ts, false, true),
+            i == 7
+        );
         ts += 1;
     }
 
     // do a lookup that triggers a miss. Now it should be a miss instead of a cold miss.
     assert_eq!(
         set.lookup(
-            &CacheBlockRequest {
+            &SharedCacheAccessRequest {
+                is_os: false,
+                source: SharedCacheAccessSource::Core(0),
                 block_id: 20,
-                core_id: 0,
-                access_type: CacheAccessType::DataRead,
-                is_os: false
+                access_type: CacheAccessType::DataRead
             },
             ts,
         ),

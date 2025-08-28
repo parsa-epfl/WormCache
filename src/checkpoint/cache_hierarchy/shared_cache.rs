@@ -3,7 +3,9 @@ use serde_json::json;
 
 use crate::{
     checkpoint::FlexusParameter,
-    components::cache_hierarchy::common::{PrivateCacheLine, SharedCacheBlock},
+    components::cache_hierarchy::common::{
+        PrivateCacheLine, SharedCacheAccessSource, SharedCacheBlock,
+    },
 };
 
 #[derive(Serialize, Deserialize)]
@@ -48,7 +50,11 @@ fn serialize_a_share_cache_set(
 }
 
 impl SingleSharedCacheSerdeHelper {
-    pub fn process_evicted_cache_line(&mut self, line: &PrivateCacheLine, accessor: u32) {
+    pub fn process_evicted_cache_line(
+        &mut self,
+        line: &PrivateCacheLine,
+        accessor: SharedCacheAccessSource,
+    ) {
         let block_id = line.block_id();
         let set_idx = block_id as usize % self.blocks.len();
         let set = &mut self.blocks[set_idx];
@@ -242,7 +248,7 @@ fn test_process_evicted_cache_line() {
                     block_id_with_v: 0b1,
                     ts: 1,
                     modified: false,
-                    last_accessor: 0,
+                    last_accessor: SharedCacheAccessSource::Core(0),
                 }],
                 touched_count: 0,
                 recent_evict_ts: 0,
@@ -253,7 +259,7 @@ fn test_process_evicted_cache_line() {
                     block_id_with_v: 0b11,
                     ts: 2,
                     modified: false,
-                    last_accessor: 0,
+                    last_accessor: SharedCacheAccessSource::Core(0),
                 }],
                 touched_count: 0,
                 recent_evict_ts: 0,
@@ -272,7 +278,7 @@ fn test_process_evicted_cache_line() {
             writeable: false,
             modified: false,
         },
-        0,
+        SharedCacheAccessSource::Core(0),
     );
 
     // Now, this block should be updated.
@@ -287,7 +293,7 @@ fn test_process_evicted_cache_line() {
                     block_id_with_v: 0b1,
                     ts: 1,
                     modified: false,
-                    last_accessor: 0,
+                    last_accessor: SharedCacheAccessSource::Core(0),
                 }],
                 touched_count: 0,
                 recent_evict_ts: 0,
@@ -298,7 +304,7 @@ fn test_process_evicted_cache_line() {
                     block_id_with_v: 0b11,
                     ts: 2,
                     modified: false,
-                    last_accessor: 0,
+                    last_accessor: SharedCacheAccessSource::Core(0),
                 }],
                 touched_count: 0,
                 recent_evict_ts: 0,
@@ -317,7 +323,7 @@ fn test_process_evicted_cache_line() {
             writeable: false,
             modified: false,
         },
-        0,
+        SharedCacheAccessSource::Core(0),
     );
 
     // Now, this block should be added.
@@ -344,25 +350,25 @@ fn test_resize() {
                         block_id_with_v: 0b1,
                         ts: 1,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                     SharedCacheBlock {
                         block_id_with_v: 0b101,
                         ts: 2,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                     SharedCacheBlock {
                         block_id_with_v: 0b1101,
                         ts: 3,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                     SharedCacheBlock {
                         block_id_with_v: 0b11101,
                         ts: 5,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                 ],
                 touched_count: 0,
@@ -375,25 +381,25 @@ fn test_resize() {
                         block_id_with_v: 0b11,
                         ts: 1,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                     SharedCacheBlock {
                         block_id_with_v: 0b111,
                         ts: 2,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                     SharedCacheBlock {
                         block_id_with_v: 0b1111,
                         ts: 3,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                     SharedCacheBlock {
                         block_id_with_v: 0b11111,
                         ts: 4,
                         modified: false,
-                        last_accessor: 0,
+                        last_accessor: SharedCacheAccessSource::Core(0),
                     },
                 ],
                 touched_count: 0,
@@ -445,7 +451,7 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
                     block_id_with_v: 0b100,
                     ts: 0,
                     modified: false,
-                    last_accessor: 0,
+                    last_accessor: SharedCacheAccessSource::Core(0),
                 }],
                 touched_count: 0,
                 recent_evict_ts: 0,
@@ -470,7 +476,7 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
             writeable: false,
             modified: false,
         },
-        0,
+        SharedCacheAccessSource::Core(0),
     );
 
     // Do a resize, and we should expect that block 0b101 is kept.

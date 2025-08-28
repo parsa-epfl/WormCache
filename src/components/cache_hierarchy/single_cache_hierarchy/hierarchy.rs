@@ -39,7 +39,8 @@ use crate::{
         cache_hierarchy::{
             CacheBlockRequest, MemoryHierarchy,
             common::{
-                CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult,
+                CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheAccessRequest,
+                SharedCacheAccessSource, SharedCacheLookupResult,
             },
             mmu::{self, AbstractMMU, MMUTranslationResult},
         },
@@ -136,8 +137,8 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
 
         let res = self.shared_cache.lookup_and_insert_on_miss(
-            &CacheBlockRequest {
-                core_id,
+            &SharedCacheAccessRequest {
+                source: SharedCacheAccessSource::Core(core_id),
                 block_id,
                 access_type: CacheAccessType::DataRead, // Read does not have impact on the tag array.
                 is_os,
@@ -217,6 +218,15 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         self.shared_cache.deserialize(name, numa_node_id);
         println!("Deserialize MMUs");
         self.deserialize_mmus(name, numa_node_id);
+    }
+
+    fn access_from_device_with_pa(
+        &self,
+        _paddr: u64,
+        _access_type: CacheAccessType,
+        _ts: u64,
+    ) -> CacheHierarchyAccessResult {
+        todo!()
     }
 }
 

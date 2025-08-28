@@ -35,9 +35,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::components::cache_hierarchy::CacheBlockRequest;
-
-use super::super::CCell;
+use super::{super::CCell, SharedCacheAccessRequest, SharedCacheAccessSource};
 
 use super::{
     SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
@@ -127,22 +125,23 @@ impl<
         }
     }
 
-    fn invalidate(&self, core_id: u32, block_id: u64, ts: u64) -> SharedCacheLookupResult {
+    fn invalidate(
+        &self,
+        _source: SharedCacheAccessSource,
+        block_id: u64,
+        ts: u64,
+    ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx]
-            .inner()
-            .invalidate(block_id, ts, core_id);
-        return self.blocks[set_idx]
-            .inner()
-            .invalidate(block_id, ts, core_id);
+        self.blocks[set_idx].inner().invalidate(block_id, ts);
+        return self.blocks[set_idx].inner().invalidate(block_id, ts);
     }
 
-    fn peek(&self, r: &CacheBlockRequest) -> bool {
+    fn peek(&self, r: &SharedCacheAccessRequest) -> bool {
         let set_idx = (r.block_id % SET as u64) as usize;
         self.blocks[set_idx].inner().index_of(r.block_id).is_some()
     }
 
-    fn lookup(&self, r: &CacheBlockRequest, ts: u64) -> SharedCacheLookupResult {
+    fn lookup(&self, r: &SharedCacheAccessRequest, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
 
         self.blocks[set_idx].inner().lookup(r, ts)
@@ -150,7 +149,7 @@ impl<
 
     fn insert(
         &self,
-        core_id: u32,
+        source: SharedCacheAccessSource,
         block_id: u64,
         ts: u64,
         is_modified: bool,
@@ -159,7 +158,7 @@ impl<
         let set_idx = (block_id % SET as u64) as usize;
         let just_warmed = self.blocks[set_idx].inner().insert(
             block_id,
-            core_id,
+            source,
             ts,
             is_modified,
             increase_touched_count,
@@ -171,7 +170,7 @@ impl<
 
     fn lookup_and_insert_on_miss(
         &self,
-        r: &CacheBlockRequest,
+        r: &SharedCacheAccessRequest,
         ts: u64,
         increase_touched_count: bool,
     ) -> SharedCacheLookupResult {

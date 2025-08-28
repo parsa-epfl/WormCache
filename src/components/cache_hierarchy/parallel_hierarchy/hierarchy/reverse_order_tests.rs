@@ -36,8 +36,8 @@ use crate::{
         CacheBlockRequest, MemoryHierarchy,
         common::{
             CacheAccessType, CacheHierarchyAccessResult, ParallelSingleSharedCache,
-            ParallelUnifiedPrivateCache, PrivateCaches, SharedCache,
-            statistics::ZeroSharedCacheSetStatistics,
+            ParallelUnifiedPrivateCache, PrivateCaches, SharedCache, SharedCacheAccessRequest,
+            SharedCacheAccessSource, statistics::ZeroSharedCacheSetStatistics,
         },
         mmu::NoMMU,
     },
@@ -88,8 +88,8 @@ impl MH {
             return BlockPosition::InPrivateCache(private_owner);
         }
 
-        if self.shared_cache.peek(&CacheBlockRequest {
-            core_id: 0,
+        if self.shared_cache.peek(&SharedCacheAccessRequest {
+            source: SharedCacheAccessSource::Core(0),
             block_id,
             access_type: CacheAccessType::DataRead,
             is_os: false,

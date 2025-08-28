@@ -31,7 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
-use crate::components::cache_hierarchy::common::InfiniteDirectorySet;
+use crate::components::cache_hierarchy::common::{InfiniteDirectorySet, SharedCacheAccessSource};
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
@@ -70,7 +70,7 @@ pub struct ParallelMemoryHierarchy<
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
-    directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>,DIRECTORY_SHARD_COUNT>,
+    directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>, DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -187,13 +187,23 @@ impl<
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
             if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
-                self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
+                self.shared_cache.insert(
+                    SharedCacheAccessSource::Core(core_id),
+                    block_id,
+                    ts,
+                    modified.0,
+                    true,
+                );
             }
 
             if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
-                self.shared_cache
-                    .insert(core_id, block_id, ts, modified.0, true);
+                self.shared_cache.insert(
+                    SharedCacheAccessSource::Core(core_id),
+                    block_id,
+                    ts,
+                    modified.0,
+                    true,
+                );
             }
 
             if self.directory_run_gc {

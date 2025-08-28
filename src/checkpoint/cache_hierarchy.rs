@@ -4,7 +4,8 @@ pub use shared_cache::SingleSharedCacheSerdeHelper;
 use zstd::stream::read::Decoder;
 
 use crate::components::cache_hierarchy::common::{
-    HarvardPerCorePrivateCacheSerdeHelper, UnifiedPerCorePrivateCacheSerdeHelper,
+    HarvardPerCorePrivateCacheSerdeHelper, SharedCacheAccessSource,
+    UnifiedPerCorePrivateCacheSerdeHelper,
 };
 
 mod private_cache;
@@ -128,7 +129,7 @@ pub fn process_cache_hierarchy(
     }
 
     for (_, (line, accessor)) in private_cache.get_evicted_lines().iter() {
-        shared_cache.process_evicted_cache_line(line, *accessor);
+        shared_cache.process_evicted_cache_line(line, SharedCacheAccessSource::Core(*accessor));
     }
 
     shared_cache.resize(flexus_configuration);

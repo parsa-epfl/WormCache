@@ -4,7 +4,8 @@ use crate::{
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
                 CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
-                PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheLookupResult,
+                PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheAccessRequest,
+                SharedCacheAccessSource, SharedCacheLookupResult,
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
         },
@@ -13,7 +14,7 @@ use crate::{
             statistics::{EventType, Statistics},
         },
     },
-    parameter::{self, ENABLE_EXCLUSIVE_CACHE_STATE},
+    parameter::{self, CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE},
 };
 
 use super::ParallelMemoryHierarchy;
@@ -142,7 +143,7 @@ impl<
                     evicted_directory_entry.1.sharers,
                 );
 
-                // invalidte these blocks. 
+                // invalidte these blocks.
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                     if let Some(index) = index {
                         let entry = &set.lines[*index];
@@ -170,8 +171,13 @@ impl<
                 }
 
                 // write this back to the shared cache.
-                self.shared_cache
-                    .insert(core_id, evicted_directory_entry.0, ts, false, true);
+                self.shared_cache.insert(
+                    SharedCacheAccessSource::Core(core_id),
+                    evicted_directory_entry.0,
+                    ts,
+                    false,
+                    true,
+                );
             }
 
             let bring_into_shared_cache = if FILL_SCACHE_ON_FILLING_PCACHE {
@@ -188,8 +194,8 @@ impl<
             };
 
             // For MESI coherence protocol, we need to change the access type to write to get the writable permission.
-            let request_to_llc = CacheBlockRequest {
-                core_id,
+            let request_to_llc = SharedCacheAccessRequest {
+                source: SharedCacheAccessSource::Core(core_id),
                 block_id,
                 access_type: match r.access_type {
                     CacheAccessType::InstructionFetch => CacheAccessType::InstructionFetch,
@@ -383,7 +389,13 @@ impl<
             miss_directory_guard.sharers.set(p_cache_id, true);
 
             if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION {
-                self.shared_cache.insert(core_id, block_id, ts, false, true);
+                self.shared_cache.insert(
+                    SharedCacheAccessSource::Core(core_id),
+                    block_id,
+                    ts,
+                    false,
+                    true,
+                );
             }
 
             // get the lock of the private cache for refilling.
@@ -596,8 +608,11 @@ impl<
                 }
 
                 // Because a write operation has happened, we need to invalidate the shared cache.
-                let shared_cahce_invalidation_result =
-                    self.shared_cache.invalidate(core_id, block_id, ts);
+                let shared_cahce_invalidation_result = self.shared_cache.invalidate(
+                    SharedCacheAccessSource::Core(core_id),
+                    block_id,
+                    ts,
+                );
 
                 let llc_invalidation_successful = match shared_cahce_invalidation_result {
                     SharedCacheLookupResult::Hit(_) => true,
@@ -758,8 +773,13 @@ impl<
                 }
 
                 if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
-                    self.shared_cache
-                        .insert(core_id, block_id, ts, modified_replica, true);
+                    self.shared_cache.insert(
+                        SharedCacheAccessSource::Core(core_id),
+                        block_id,
+                        ts,
+                        modified_replica,
+                        true,
+                    );
                 }
 
                 // Then, we need to add self to the directory.
@@ -899,5 +919,86 @@ impl<
         self.shared_cache.deserialize(name, numa_node_id);
         println!("Deserialize MMUs");
         self.deserialize_mmus(name, numa_node_id);
+    }
+
+    fn access_from_device_with_pa(
+        &self,
+        paddr: u64,
+        access_type: CacheAccessType,
+        ts: u64,
+    ) -> CacheHierarchyAccessResult {
+        let block_id = paddr >> CACHE_LINE_SIZE.trailing_ones();
+        // get directory lock.
+        let mut directory_set_lock_guard = self.directory.fetch_one_entry(block_id);
+
+        let (directory_entry, _) = directory_set_lock_guard.get_or_create(block_id);
+
+        // fetch all sharers.
+        let mut acquire_list = self
+            .private_caches
+            .get_set_guard_by_sharer_list(block_id, directory_entry.sharers);
+
+        let llc_request = SharedCacheAccessRequest {
+            is_os: true, // Note: I/O request is always treated as OS.
+            source: SharedCacheAccessSource::Device,
+            block_id,
+            access_type: access_type.clone(),
+        };
+
+        match access_type {
+            CacheAccessType::InstructionFetch => unreachable!(),
+            CacheAccessType::DataRead | CacheAccessType::PageWalkRead => {
+                for (_, set, index) in acquire_list.iter_mut() {
+                    if let Some(index) = index {
+                        set.request_sharer(*index, ts);
+                    }
+                }
+
+                if acquire_list.len() == 0 {
+                    // Well, this cache line should be inserted into LLC, because there might be reuse by the I/O device in the future.
+
+                    return match self
+                        .shared_cache
+                        .lookup_and_insert_on_miss(&llc_request, ts, true)
+                    {
+                        SharedCacheLookupResult::Hit(_) => {
+                            CacheHierarchyAccessResult::HitInSharedCache
+                        }
+                        SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                            CacheHierarchyAccessResult::Miss
+                        }
+                        SharedCacheLookupResult::Unknown(_, _) => {
+                            CacheHierarchyAccessResult::Unknown
+                        }
+                    };
+                } else {
+                    // this is done.
+                    return CacheHierarchyAccessResult::HitInOtherPrivateCache;
+                }
+            }
+
+            CacheAccessType::DataWrite => {
+                for (_, set, index) in acquire_list.iter_mut() {
+                    if let Some(index) = index {
+                        set.invalidate(*index);
+                    }
+                }
+
+                // In any case, we need to forward this write to the shared cache.
+                match self
+                    .shared_cache
+                    .lookup_and_insert_on_miss(&llc_request, ts, true)
+                {
+                    SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+                    SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                        CacheHierarchyAccessResult::Miss
+                    }
+                    SharedCacheLookupResult::Unknown(_, _) => CacheHierarchyAccessResult::Unknown,
+                }
+            }
+
+            CacheAccessType::PrefetchRead => unreachable!(),
+            CacheAccessType::PrefetchWrite => unreachable!(),
+        }
     }
 }

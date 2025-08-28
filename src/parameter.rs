@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 16;
+pub const CORE_COUNT: usize = 3;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -74,7 +74,6 @@ pub const USE_SERIAL_CACHE_MODEL: bool = false;
 
 pub const CACHE_LINE_SIZE: usize = 64;
 static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
-
 
 // Use FullyAssociativeTLB
 pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
@@ -193,7 +192,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 32 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 131072;
 static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
@@ -288,7 +287,7 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 3;
+pub const BTB_ASSO: usize = 4;
 
 /**
  * BP_RAS_COUNT

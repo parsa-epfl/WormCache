@@ -104,9 +104,9 @@ fn default_trace(bias: u64) -> TraceGenerator {
 fn test_resizable_llc() {
     use worm_cache::{
         checkpoint::FlexusParameter,
-        components::cache_hierarchy::{
-            CacheBlockRequest,
-            common::{CacheAccessType, statistics::ZeroSharedCacheSetStatistics},
+        components::cache_hierarchy::common::{
+            CacheAccessType, SharedCacheAccessRequest, SharedCacheAccessSource,
+            statistics::ZeroSharedCacheSetStatistics,
         },
     };
     // Fix the seed.
@@ -135,8 +135,8 @@ fn test_resizable_llc() {
         let is_write = rng.gen_bool(0.5);
 
         if r < 50 {
-            let request = CacheBlockRequest {
-                core_id: 0,
+            let request = SharedCacheAccessRequest {
+                source: SharedCacheAccessSource::Core(0),
                 block_id: addr,
                 access_type: if is_write {
                     CacheAccessType::DataWrite
@@ -152,15 +152,15 @@ fn test_resizable_llc() {
                 eprintln!("lookup ts: {}, addr: {}, is_write: {}", ts, addr, is_write);
             }
         } else if r < 70 {
-            big_cache.insert(0, addr, ts, false, true);
-            small_cache.insert(0, addr, ts, false, true);
+            big_cache.insert(SharedCacheAccessSource::Core(0), addr, ts, false, true);
+            small_cache.insert(SharedCacheAccessSource::Core(0), addr, ts, false, true);
 
             if addr == special {
                 eprintln!("insert ts: {}, addr: {}, is_write: {}", ts, addr, is_write);
             }
         } else {
-            let request = CacheBlockRequest {
-                core_id: 0,
+            let request = SharedCacheAccessRequest {
+                source: SharedCacheAccessSource::Core(0),
                 block_id: addr,
                 access_type: if is_write {
                     CacheAccessType::DataWrite

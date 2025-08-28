@@ -80,6 +80,12 @@ impl MemoryAccessRequest {
 }
 
 #[derive(Clone)]
+pub enum CacheAccessSource {
+    Core(u32),
+    Device,
+}
+
+#[derive(Clone)]
 pub struct CacheBlockRequest {
     pub core_id: u32,
     pub block_id: u64,
@@ -114,6 +120,13 @@ pub trait MemoryHierarchy {
     fn access_memory_pblock_id(
         &self,
         request: &CacheBlockRequest,
+        ts: u64,
+    ) -> CacheHierarchyAccessResult;
+
+    fn access_from_device_with_pa(
+        &self,
+        paddr: u64,
+        access_type: CacheAccessType,
         ts: u64,
     ) -> CacheHierarchyAccessResult;
 

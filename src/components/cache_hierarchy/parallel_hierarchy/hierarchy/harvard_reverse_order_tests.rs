@@ -33,6 +33,7 @@ use std::collections::HashMap;
 
 use crate::components::cache_hierarchy::common::{
     CacheAccessType, CacheHierarchyAccessResult, PrivateCaches, SharedCache,
+    SharedCacheAccessRequest, SharedCacheAccessSource,
 };
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
@@ -96,8 +97,8 @@ impl MH {
         // self.shared_cache
         //     .lookup(0, block_id, 0, 0, false, CacheAccessType::DataRead, false)
         //     .0,
-        self.shared_cache.peek(&CacheBlockRequest {
-            core_id: 0,
+        self.shared_cache.peek(&SharedCacheAccessRequest {
+            source: SharedCacheAccessSource::Core(0),
             block_id,
             access_type: CacheAccessType::DataRead,
             is_os: false,
