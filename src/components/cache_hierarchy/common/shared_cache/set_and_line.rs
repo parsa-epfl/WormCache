@@ -361,41 +361,109 @@ impl<
         ts: u64,
         increase_touched_count: bool,
     ) -> SharedCacheLookupAndInsertResult {
-        // (is_hit, dirty/just_warmed)
-        let result = self.lookup(r, ts);
+        self.access_count += 1;
 
         let block_id = r.block_id;
+        let block_id_with_v = block_id << 1 | 1;
+        let access_type = r.access_type.clone();
+        let is_os = r.is_os;
 
-        match result {
-            SharedCacheLookupResult::Hit(modified) => {
-                SharedCacheLookupAndInsertResult::Hit(modified)
+        let mut hit_block = None;
+        let mut eviction_ts: u64 = 0;
+        let mut evicted_index: usize = 0;
+
+        for (index, line) in self.blocks.iter_mut().enumerate() {
+            if line.block_id_with_v == block_id_with_v {
+                hit_block = Some(index);
+                break;
             }
-            SharedCacheLookupResult::Miss => {
-                // This function is only called when the private cache has a miss
-                // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
-                if !r.is_store() {
-                    let just_warmed =
-                        self.insert(block_id, r.source, ts, false, increase_touched_count);
-                    assert!(!just_warmed);
-                    SharedCacheLookupAndInsertResult::Inserted
+
+            if line.ts <= eviction_ts {
+                eviction_ts = line.ts;
+                evicted_index = index;
+            }
+        }
+
+        if let Some(hit_block) = hit_block {
+            let hit_block = &mut self.blocks[hit_block];
+            if hit_block.ts > ts && COHERENCE_FOLLOW_TS {
+                // Reversed access order. We cannot do anything but return unknown.
+
+                // self.modifying_history
+                //     .push((block_id, ts, core_id, false, false));
+
+                return SharedCacheLookupAndInsertResult::Unknown(
+                    hit_block.ts as u32 - ts as u32,
+                    hit_block.modified,
+                );
+            } else {
+                if r.is_store() || EXCLUSIVE {
+                    // In any case, the invaildation should be recorded.
+                    if self.recent_evict_ts < ts {
+                        self.recent_evict_ts = ts;
+                    }
+
+                    // The cache line should be transferred to the accessor.
+                    // If the cache line has larger ts, it should exists in the cache, thus should be invalid
+                    // If the cache line has smaller ts, it should be invalid as well.
+                    hit_block.block_id_with_v = 0;
+                    hit_block.ts = 0;
+
+                    // self.modifying_history
+                    //     .push((block_id, ts, core_id, false, true));
+
+                    return SharedCacheLookupAndInsertResult::Hit(hit_block.modified);
                 } else {
-                    SharedCacheLookupAndInsertResult::Miss
+                    // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
+                    hit_block.ts = ts;
+
+                    hit_block.last_accessor = r.source;
+
+                    // Accessed by a higher-level, meaning that the block is not dirty anymore.
+                    let was_modified = hit_block.modified;
+                    hit_block.modified = false;
+
+                    // self.modifying_history
+                    //     .push((block_id, ts, core_id, false, true));
+
+                    self.statistics.record(access_type, is_os, true);
+                    return SharedCacheLookupAndInsertResult::Hit(was_modified);
                 }
             }
-            SharedCacheLookupResult::ColdMiss => {
-                // This function is only called when the private cache has a miss
-                // Therefore, we cannot insert a modified block here, because the write permission should have been taken by the private cache.
-                if !r.is_store() {
-                    let just_warmed =
-                        self.insert(block_id, r.source, ts, false, increase_touched_count);
-                    SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
-                } else {
-                    SharedCacheLookupAndInsertResult::Miss
-                }
+        }
+
+        self.statistics.record(access_type, is_os, false);
+
+        // we need to insert the block.
+        if self.recent_evict_ts < ts {
+            self.recent_evict_ts = ts;
+        }
+
+        let mut just_warmed = false;
+
+        let index_to_replace = if self.touched_count < WAY {
+            self.touched_count
+        } else {
+            evicted_index
+        };
+
+        if increase_touched_count && self.touched_count < WAY {
+            self.touched_count += 1;
+            if self.touched_count == WAY {
+                just_warmed = true;
             }
-            SharedCacheLookupResult::Unknown(diff, is_dirty) => {
-                SharedCacheLookupAndInsertResult::Unknown(diff, is_dirty)
-            }
+        }
+
+        let oldest_block = &mut self.blocks[index_to_replace];
+        oldest_block.block_id_with_v = block_id_with_v;
+        oldest_block.modified = r.is_store();
+        oldest_block.ts = ts;
+        oldest_block.last_accessor = r.source;
+
+        if self.touched_count < WAY {
+            SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
+        } else {
+            SharedCacheLookupAndInsertResult::Miss
         }
     }
 }
