@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::{
     checkpoint::FlexusSTLBInclusion,
-    components::cache_hierarchy::mmu::tlb::{AddressSpaceID, TLBEntry, FullyAssociativeTLB},
+    components::cache_hierarchy::mmu::tlb::{AddressSpaceID, FullyAssociativeTLB, TLBEntry},
 };
 use rustc_hash::FxHashMap;
 
@@ -289,14 +289,17 @@ fn load_tlb_json(value: serde_json::Value, is_instruction: bool) -> SerializedTL
         result
     } else {
         // Well, this is a newer version of the checkpoint. It is a FullyAssociativeTLB.
-        let mut fully_assoaicative_tlb: FullyAssociativeTLB = serde_json::from_value(value).unwrap();
+        let mut fully_assoaicative_tlb: FullyAssociativeTLB =
+            serde_json::from_value(value).unwrap();
 
         // process the deferred insertions in the TLB.
         fully_assoaicative_tlb.run_lru();
 
         // do the type conversion.
         let entries: Vec<_> = fully_assoaicative_tlb
-            .elements.into_iter().map(|(hash, entry)| {
+            .elements
+            .into_iter()
+            .map(|(hash, entry)| {
                 let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
                 TLBEntry {
                     vpn,
@@ -304,19 +307,20 @@ fn load_tlb_json(value: serde_json::Value, is_instruction: bool) -> SerializedTL
                     ppn: entry.ppn,
                     ts: entry.ts,
                     valid: true,
-                    is_instruction
+                    is_instruction,
                 }
-            }).collect();
+            })
+            .collect();
 
         SerializedTLB {
-            entries: vec![SerializedTLBSet { entries }]
+            entries: vec![SerializedTLBSet { entries }],
         }
     }
 }
 
 pub fn process_mmus(
     checkpoint_folder: &String,
-    flexus_configuration: &FlexusParameter,
+    flexus_configuration: Option<&FlexusParameter>,
     output_folder: &String,
 ) {
     // find the MMU checkpoint.

@@ -42,6 +42,7 @@ pub mod timestamp;
 // Plugin
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
+use components::cache_hierarchy::MemoryHierarchy;
 #[allow(unused_imports)]
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
@@ -62,7 +63,6 @@ use components::trace::TracePlugin;
 use components::virtual_time::VirtualTimePlugin;
 #[allow(unused_imports)]
 use components::wfi::WaitForInterruptCounterPlugin;
-
 
 use components::Plugin;
 use parameter::PluginList;
@@ -153,7 +153,6 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
 
     // This function is called after the snapshot is loaded.
     on_finish_loading_snapshot();
-
 }
 
 #[unsafe(no_mangle)]

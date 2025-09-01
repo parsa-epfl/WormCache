@@ -9,6 +9,10 @@ fn main() {
     let args = std::env::args().collect::<Vec<String>>();
 
     // usage: <pf_checkpoint_folder> <flexus_configuration> <output_folder>
+    // usage: <pf_checkpoint_folder> <output_folder>
+
+    let need_to_figure_out_flexus = args.len() == 3;
+
     if args.len() != 4 && args.len() != 5 {
         println!(
             "Usage: {} <pf_checkpoint_folder> <flexus_configuration> <output_folder> <resizing=true>",

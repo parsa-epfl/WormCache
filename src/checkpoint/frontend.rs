@@ -184,7 +184,7 @@ impl FlexusFetchUnit {
 }
 pub fn process_frontend(
     checkpoint_folder: &String,
-    flexus_configuration: &FlexusParameter,
+    flexus_configuration: Option<&FlexusParameter>,
     output_folder: &String,
 ) {
     // find the frontend checkpoint.

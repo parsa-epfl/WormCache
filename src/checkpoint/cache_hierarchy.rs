@@ -13,7 +13,7 @@ mod shared_cache;
 
 pub fn process_cache_hierarchy(
     checkpoint_folder: &String,
-    flexus_configuration: &FlexusParameter,
+    flexus_configuration: Option<&FlexusParameter>,
     output_folder: &String,
 ) {
     let harvard_cache_checkpoints = std::fs::read_dir(checkpoint_folder)

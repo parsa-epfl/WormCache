@@ -15,12 +15,6 @@ pub enum FlexusDirectoryType {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub enum FlexusSTLBInclusion {
-    Inclusive,
-    Exclusive,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
 pub struct FlexusParameter {
     pub l1i_sets: usize,
     pub l1i_associativity: usize,
@@ -32,15 +26,8 @@ pub struct FlexusParameter {
     pub l2_associativity: usize,
     pub l2_slice_count: usize,
 
-    pub itlb_sets: usize,
-    pub itlb_associativity: usize,
-
-    pub dtlb_sets: usize,
-    pub dtlb_associativity: usize,
-
     pub stlb_sets: usize,
     pub stlb_associativity: usize,
-    pub stlb_inclusion: FlexusSTLBInclusion,
 
     pub directory: FlexusDirectoryType,
     pub directory_slice_count: usize,
@@ -50,4 +37,28 @@ pub struct FlexusParameter {
 
     #[serde(skip)]
     pub no_resizing: bool,
+}
+
+impl Default for FlexusParameter {
+    fn default() -> Self {
+        FlexusParameter {
+            l1i_sets: 0,
+            l1i_associativity: 0,
+            l1d_sets: 0,
+            l1d_associativity: 0,
+            l2_sets: 0,
+            l2_associativity: 0,
+            l2_slice_count: 0,
+            stlb_sets: 0,
+            stlb_associativity: 0,
+            directory: FlexusDirectoryType::Standard {
+                sets: 0,
+                associativity: 0,
+            },
+            directory_slice_count: 0,
+            btb_sets: 0,
+            btb_associativity: 0,
+            no_resizing: false,
+        }
+    }
 }
