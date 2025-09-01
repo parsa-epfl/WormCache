@@ -715,7 +715,7 @@ fn ear() {
             },
             10,
         ),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
@@ -767,7 +767,7 @@ fn rar() {
             },
             5,
         ),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Now there should be two replicas of core 0 and core 1 in the private cache.

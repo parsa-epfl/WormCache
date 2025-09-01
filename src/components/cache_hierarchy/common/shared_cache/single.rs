@@ -143,15 +143,21 @@ impl<
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) {
+    ) -> (bool, bool) {
         let set_idx = (block_id % SET as u64) as usize;
-        let just_warmed = self.blocks[set_idx]
-            .inner()
-            .insert(block_id, source, ts, is_modified, increase_touched_count)
-            .0;
-        if just_warmed {
+        let insertion_result = self.blocks[set_idx].inner().insert(
+            block_id,
+            source,
+            ts,
+            is_modified,
+            increase_touched_count,
+        );
+
+        if insertion_result.0 {
             self.warmed_sets.fetch_add(1, Ordering::Relaxed);
         }
+
+        return insertion_result;
     }
 
     fn lookup_and_insert_on_miss(

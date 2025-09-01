@@ -58,7 +58,6 @@ pub struct DirectoryEntry {
     pub lru_ts: u64,
     pub sharers: SharerList,
     pub in_shared_cache: bool,
-    pub insertion_ts: u64,
 
     pub shared: bool,
 }
@@ -121,7 +120,6 @@ impl<const SET: usize> DirectorySet for InfiniteDirectorySet<SET> {
             lru_ts: 0,
             sharers: SharerList::ZERO,
             in_shared_cache: false,
-            insertion_ts: 0,
             shared: false,
         });
 
@@ -199,7 +197,6 @@ impl<const SET: usize, const WAY: usize> DirectorySet for FiniteDirectorySet<SET
                     lru_ts: 0,
                     sharers: SharerList::ZERO,
                     in_shared_cache: false,
-                    insertion_ts: 0,
                     shared: false,
                 },
             );
