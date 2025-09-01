@@ -417,7 +417,6 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         if self.touched_count < WAY || just_warmed {
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
         } else {
-            SharedCacheLookupAndInsertResult::Inserted
             if !causality_violation {
                 SharedCacheLookupAndInsertResult::Inserted
             } else {
@@ -532,7 +531,7 @@ fn cold_miss_exist() {
 #[test]
 fn test_lookup_and_insert() {
     let mut set =
-        SharedCacheSet::<4, 1, false, true, super::statistics::ZeroSharedCacheSetStatistics>::new();
+        SharedCacheSet::<4, 1, true, super::statistics::ZeroSharedCacheSetStatistics>::new();
     let mut ts = 1;
     use crate::components::cache_hierarchy::common::CacheAccessType;
 
