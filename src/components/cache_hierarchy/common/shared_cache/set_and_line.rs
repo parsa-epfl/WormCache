@@ -460,10 +460,10 @@ impl<
         oldest_block.ts = ts;
         oldest_block.last_accessor = r.source;
 
-        if self.touched_count < WAY {
+        if self.touched_count < WAY || just_warmed {
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
         } else {
-            SharedCacheLookupAndInsertResult::Miss
+            SharedCacheLookupAndInsertResult::Inserted
         }
     }
 }
@@ -567,5 +567,109 @@ fn cold_miss_exist() {
             ts,
         ),
         SharedCacheLookupResult::Miss,
+    );
+}
+
+#[test]
+fn test_lookup_and_insert() {
+    let mut set =
+        SharedCacheSet::<4, 1, false, true, super::statistics::ZeroSharedCacheSetStatistics>::new();
+    let mut ts = 1;
+    use crate::components::cache_hierarchy::common::CacheAccessType;
+
+    // - When it is cold, look up and insert will return a miss
+    // - Then, lookup and insert with the same cache line will return a hit.
+    // - If we create another four cache lines through lookup and insert, we will
+    //  - See an eviction of the first one
+    // - Then, a lookup and insert of the first one will return a miss.
+
+    assert_eq!(
+        set.lookup_and_insert(
+            &SharedCacheAccessRequest {
+                is_os: false,
+                source: SharedCacheAccessSource::Core(0),
+                block_id: 1,
+                access_type: CacheAccessType::DataWrite
+            },
+            ts,
+            true,
+        ),
+        SharedCacheLookupAndInsertResult::InsertedAndCold(false),
+    );
+
+    ts += 1;
+
+    assert_eq!(
+        set.lookup_and_insert(
+            &SharedCacheAccessRequest {
+                is_os: false,
+                source: SharedCacheAccessSource::Core(0),
+                block_id: 1,
+                access_type: CacheAccessType::DataRead
+            },
+            ts,
+            true,
+        ),
+        SharedCacheLookupAndInsertResult::Hit(true),
+    );
+
+    ts += 1;
+
+    for i in 0..4 {
+        // insert 4 new cache lines.
+        assert_eq!(
+            set.lookup_and_insert(
+                &SharedCacheAccessRequest {
+                    is_os: false,
+                    source: SharedCacheAccessSource::Core(0),
+                    block_id: i + 2,
+                    access_type: CacheAccessType::DataRead
+                },
+                ts,
+                true,
+            ),
+            if i < 2 {
+                SharedCacheLookupAndInsertResult::InsertedAndCold(false)
+            } else if i == 2 {
+                SharedCacheLookupAndInsertResult::InsertedAndCold(true)
+            } else {
+                SharedCacheLookupAndInsertResult::Inserted
+            },
+        );
+
+        ts += 1;
+    }
+
+    // now, if we lookup and insert the first cache line, it should be a miss.
+    ts += 1;
+
+    // do a lookup. It should be a miss.
+    assert_eq!(
+        set.lookup(
+            &SharedCacheAccessRequest {
+                is_os: false,
+                source: SharedCacheAccessSource::Core(0),
+                block_id: 1,
+                access_type: CacheAccessType::DataRead
+            },
+            ts
+        ),
+        SharedCacheLookupResult::Miss,
+    );
+
+    ts += 1;
+
+    assert_eq!(
+        set.lookup_and_insert(
+            &SharedCacheAccessRequest {
+                is_os: false,
+                source: SharedCacheAccessSource::Core(0),
+                block_id: 1,
+                access_type: CacheAccessType::DataRead
+            },
+            ts,
+            true,
+        ),
+        SharedCacheLookupAndInsertResult::Inserted,
     );
 }
