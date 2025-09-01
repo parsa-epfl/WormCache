@@ -116,7 +116,7 @@ impl<
         cache_id: usize,
         block_id: u64,
         ts: u64,
-        modified: (bool, u64),
+        modified: bool,
         is_os: bool,
     ) {
         let directory_entry = {
@@ -171,22 +171,22 @@ impl<
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
-            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
+            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
                 self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     block_id,
                     ts,
-                    modified.0,
+                    modified,
                     true,
                 );
             }
 
-            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
+            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified {
                 self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     block_id,
                     ts,
-                    modified.0,
+                    modified,
                     true,
                 );
             }

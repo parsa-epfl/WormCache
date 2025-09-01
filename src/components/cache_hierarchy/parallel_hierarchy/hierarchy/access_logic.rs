@@ -124,6 +124,7 @@ impl<
                     if let Some(index) = index {
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
+                        let its_ts = entry.access_ts();
 
                         // require recording the timestamp of the operation.
                         set.invalidate(*index);
@@ -481,7 +482,7 @@ impl<
                             )
                         } else {
                             // This means you will only get the read permission, because there is a core with read permission and large timestamp.
-                            assert!(entry.write_ts() <= ts);
+                            assert!(entry.access_ts() <= ts);
                             if *replica_cache_id == p_cache_id {
                                 CacheLineCoherenceHistory::global_get_block_history(block_id)
                                     .unwrap()
