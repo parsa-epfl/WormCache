@@ -48,11 +48,10 @@ use zstd::{Decoder, Encoder};
 
 pub struct SingleSharedCache<
     S: SharedCacheSetStatistics,
-    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>> + std::fmt::Debug,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
 > {
     blocks: Box<[G; SET]>,
     warmed_sets: AtomicUsize,
@@ -60,28 +59,21 @@ pub struct SingleSharedCache<
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct SingleSharedCacheSerdeHelper<
-    const SET: usize,
-    const WAY: usize,
-    const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
-> {
-    blocks:
-        Vec<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, ZeroSharedCacheSetStatistics>>,
+pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
+    blocks: Vec<SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics>>,
     warmed_sets: usize,
 }
 
 impl<
     S: SharedCacheSetStatistics,
-    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>> + std::fmt::Debug,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
-> SingleSharedCache<S, G, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>
+> SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
     pub fn from_serialize_helper(
-        helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>,
+        helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>,
     ) -> Self {
         let mut blocks = Vec::with_capacity(SET);
         for block in helper.blocks {
@@ -94,9 +86,7 @@ impl<
         }
     }
 
-    pub fn to_serialize_helper(
-        &self,
-    ) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS> {
+    pub fn to_serialize_helper(&self) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> {
         SingleSharedCacheSerdeHelper {
             blocks: self
                 .blocks
@@ -110,12 +100,11 @@ impl<
 
 impl<
     S: SharedCacheSetStatistics,
-    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>> + std::fmt::Debug,
+    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
-> super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS>
+> super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {
@@ -156,13 +145,10 @@ impl<
         increase_touched_count: bool,
     ) {
         let set_idx = (block_id % SET as u64) as usize;
-        let just_warmed = self.blocks[set_idx].inner().insert(
-            block_id,
-            source,
-            ts,
-            is_modified,
-            increase_touched_count,
-        );
+        let just_warmed = self.blocks[set_idx]
+            .inner()
+            .insert(block_id, source, ts, is_modified, increase_touched_count)
+            .0;
         if just_warmed {
             self.warmed_sets.fetch_add(1, Ordering::Relaxed);
         }
@@ -191,8 +177,11 @@ impl<
                 SharedCacheLookupResult::ColdMiss
             }
             SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
-            SharedCacheLookupAndInsertResult::Unknown(diff, is_modified) => {
-                SharedCacheLookupResult::Unknown(diff, is_modified)
+            SharedCacheLookupAndInsertResult::LookupLate(diff, is_modified) => {
+                SharedCacheLookupResult::LookupLate(diff, is_modified)
+            }
+            SharedCacheLookupAndInsertResult::EvictedLate(diff) => {
+                SharedCacheLookupResult::EvictedLate(diff)
             }
         }
     }
@@ -249,38 +238,14 @@ impl<
         let file = file.unwrap();
         let file = Decoder::new(file).unwrap();
 
-        let helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE, COHERENCE_FOLLOW_TS> =
+        let helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> =
             serde_json::from_reader(file).unwrap();
         *self = SingleSharedCache::from_serialize_helper(helper);
     }
 }
 
-pub type ParallelSingleSharedCache<
-    S,
-    const SET: usize,
-    const WAY: usize,
-    const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
-> = SingleSharedCache<
-    S,
-    SpinMutex<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>>,
-    SET,
-    WAY,
-    EXCLUSIVE,
-    COHERENCE_FOLLOW_TS,
->;
+pub type ParallelSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
+    SingleSharedCache<S, SpinMutex<SharedCacheSet<WAY, SET, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;
 
-pub type SerialSingleSharedCache<
-    S,
-    const SET: usize,
-    const WAY: usize,
-    const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
-> = SingleSharedCache<
-    S,
-    UnsafeCell<SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>>,
-    SET,
-    WAY,
-    EXCLUSIVE,
-    COHERENCE_FOLLOW_TS,
->;
+pub type SerialSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
+    SingleSharedCache<S, UnsafeCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;

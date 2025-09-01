@@ -1,3 +1,5 @@
+use std::panic;
+
 use crate::{
     components::{
         cache_hierarchy::{
@@ -126,9 +128,7 @@ impl<
             // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit,
             // because the history has been cleaned up by an earlier write
             if !is_prefetch && self.with_statistics {
-                Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
-                // accordingly, we don't know whether this access would have cause a shared cache miss.
-                Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
+                panic!();
             }
 
             return CacheHierarchyAccessResult::Unknown;
@@ -242,8 +242,10 @@ impl<
 
             let modified = match shared_cache_result {
                 SharedCacheLookupResult::Hit(is_modified) => is_store || is_modified,
-                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => is_store,
-                SharedCacheLookupResult::Unknown(_, _) => false,
+                SharedCacheLookupResult::Miss
+                | SharedCacheLookupResult::ColdMiss
+                | SharedCacheLookupResult::EvictedLate(_) => is_store,
+                SharedCacheLookupResult::LookupLate(_, _) => false,
             };
 
             let writable = match shared_cache_result {
@@ -254,10 +256,10 @@ impl<
                         request_to_llc.is_store()
                     }
                 }
-                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
-                    request_to_llc.is_store()
-                }
-                SharedCacheLookupResult::Unknown(_, _) => false,
+                SharedCacheLookupResult::Miss
+                | SharedCacheLookupResult::ColdMiss
+                | SharedCacheLookupResult::EvictedLate(_) => request_to_llc.is_store(),
+                SharedCacheLookupResult::LookupLate(_, _) => false,
             };
 
             // directory keep the writable information.
@@ -350,7 +352,22 @@ impl<
 
                     CacheHierarchyAccessResult::Miss
                 }
-                SharedCacheLookupResult::Unknown(_, _) => CacheHierarchyAccessResult::Unknown,
+                SharedCacheLookupResult::LookupLate(_, _) => {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::SharedCacheAccessCausalityViolation,
+                        is_os,
+                    );
+                    CacheHierarchyAccessResult::Unknown
+                }
+                SharedCacheLookupResult::EvictedLate(_) => {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::SharedCacheEvictionCausalityViolation,
+                        is_os,
+                    );
+                    CacheHierarchyAccessResult::Miss
+                }
             };
         }
 
@@ -425,8 +442,7 @@ impl<
                 // This access is earlier than the directory creation.
                 // Its result should be unknowl
                 if self.with_statistics {
-                    Statistics::global_record(core_id, EventType::UnknownPrivateCacheMisses, is_os);
-                    Statistics::global_record(core_id, EventType::UnknownSharedCacheMisses, is_os);
+                    panic!();
                 }
 
                 // Mark the current access as the insertion file of the directory.
@@ -526,18 +542,7 @@ impl<
                     drop(acquired_sets);
 
                     if self.with_statistics {
-                        // The truth is that we don't know whether this is a miss or hit, because a previous write operation has cleaned the history.
-                        Statistics::global_record(
-                            core_id,
-                            EventType::UnknownPrivateCacheMisses,
-                            is_os,
-                        );
-                        // Accordingly, we don't know whether this access would have cause a shared cache miss.
-                        Statistics::global_record(
-                            core_id,
-                            EventType::UnknownSharedCacheMisses,
-                            is_os,
-                        );
+                        panic!();
                     }
 
                     return CacheHierarchyAccessResult::Unknown;
@@ -617,7 +622,8 @@ impl<
                 let llc_invalidation_successful = match shared_cahce_invalidation_result {
                     SharedCacheLookupResult::Hit(_) => true,
                     SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => true,
-                    SharedCacheLookupResult::Unknown(_, _) => false,
+                    SharedCacheLookupResult::LookupLate(_, _) => false,
+                    SharedCacheLookupResult::EvictedLate(_) => false,
                 };
 
                 let set_for_refill_lock = set_for_refill_lock.unwrap();
@@ -662,13 +668,6 @@ impl<
                         // This memory access is supposed to access the shared cache, but now it is served by other private cache.
                         // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
                         // This might have triggered a shared cache miss.
-                        if self.with_statistics {
-                            Statistics::global_record(
-                                core_id,
-                                EventType::UnknownSharedCacheMisses,
-                                is_os,
-                            );
-                        }
                     }
                 } else if PRECISE_COHERENCE_RECONSTRUCTION {
                     // This memory access is definitely not the first one to this cache line.
@@ -737,17 +736,7 @@ impl<
                                 if self.with_statistics {
                                     // This read happens after a early arrival write operation, so
                                     // we don't know the state of this cache line for this specific case.
-                                    Statistics::global_record(
-                                        core_id,
-                                        EventType::UnknownPrivateCacheMisses,
-                                        is_os,
-                                    );
-                                    // Accordingly, we don't know whether this access would have cause a shared cache miss.
-                                    Statistics::global_record(
-                                        core_id,
-                                        EventType::UnknownSharedCacheMisses,
-                                        is_os,
-                                    );
+                                    panic!();
                                 }
 
                                 return CacheHierarchyAccessResult::Unknown;
@@ -800,11 +789,7 @@ impl<
                             // This memory access is supposed to access the shared cache, but now it is served by other private cache.
                             // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
                             // This might have triggered a shared cache miss.
-                            Statistics::global_record(
-                                core_id,
-                                EventType::UnknownSharedCacheMisses,
-                                is_os,
-                            );
+                            panic!();
                         }
                     }
                 } else {
@@ -950,6 +935,7 @@ impl<
             CacheAccessType::DataRead | CacheAccessType::PageWalkRead => {
                 for (_, set, index) in acquire_list.iter_mut() {
                     if let Some(index) = index {
+                        // TODO: update the counter.
                         set.request_sharer(*index, ts);
                     }
                 }
@@ -967,9 +953,10 @@ impl<
                         SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
                             CacheHierarchyAccessResult::Miss
                         }
-                        SharedCacheLookupResult::Unknown(_, _) => {
+                        SharedCacheLookupResult::LookupLate(_, _) => {
                             CacheHierarchyAccessResult::Unknown
                         }
+                        SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
                     };
                 } else {
                     // this is done.
@@ -990,10 +977,12 @@ impl<
                     .lookup_and_insert_on_miss(&llc_request, ts, true)
                 {
                     SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
-                    SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
-                        CacheHierarchyAccessResult::Miss
+                    SharedCacheLookupResult::Miss
+                    | SharedCacheLookupResult::ColdMiss
+                    | SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
+                    SharedCacheLookupResult::LookupLate(_, _) => {
+                        CacheHierarchyAccessResult::Unknown
                     }
-                    SharedCacheLookupResult::Unknown(_, _) => CacheHierarchyAccessResult::Unknown,
                 }
             }
 

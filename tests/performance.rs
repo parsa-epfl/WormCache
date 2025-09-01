@@ -33,8 +33,6 @@
 
 use perf_event::Builder;
 
-use worm_cache::components::cache_hierarchy::mmu::tlb::AddressSpaceID::NonGlobal;
-use worm_cache::components::cache_hierarchy::mmu::FullyAssociativeTLB;
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
@@ -42,7 +40,9 @@ use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
 use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
 use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
+use worm_cache::components::cache_hierarchy::mmu::FullyAssociativeTLB;
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
+use worm_cache::components::cache_hierarchy::mmu::tlb::AddressSpaceID::NonGlobal;
 use worm_cache::components::debug::statistics::Statistics;
 
 use worm_cache::parameter;
@@ -59,7 +59,6 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     >,
     { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },

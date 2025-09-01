@@ -54,7 +54,6 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     >,
     { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
