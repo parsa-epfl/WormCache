@@ -59,7 +59,6 @@ pub struct ParallelMemoryHierarchy<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
-    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
@@ -81,7 +80,6 @@ impl<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
-    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
@@ -93,7 +91,6 @@ impl<
         MMU,
         PCache,
         SCache,
-        PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
@@ -161,18 +158,6 @@ impl<
             line!(),
         );
 
-        // Also update the writer timestamp before eviction.
-        if modified.0 {
-            let evicted_cache_line_write_ts = modified.1;
-            // keep the latest write timestamp.
-            directory_entry.recent_writer_ts =
-                if directory_entry.recent_writer_ts < evicted_cache_line_write_ts {
-                    evicted_cache_line_write_ts
-                } else {
-                    directory_entry.recent_writer_ts
-                };
-        }
-
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if directory_entry.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
@@ -227,10 +212,9 @@ impl<
 
     pub fn information() -> String {
         format!(
-            "Private Cache: {}\nShared Cache: {}\nPrecise Coherence Reconstruction: {} \nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
+            "Private Cache: {}\nShared Cache: {}\nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
             PCache::information(),
             SCache::information(),
-            PRECISE_COHERENCE_RECONSTRUCTION,
             FILL_SCACHE_ON_FILLING_PCACHE,
             FILL_SCACLE_ON_PCACHE_EVICTION,
             FILL_SCACHE_ON_PCACHE_WRITEBACK,

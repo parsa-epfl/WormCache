@@ -38,7 +38,8 @@ use spin::mutex::SpinMutex;
 use crate::{
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
-    timestamp::get_ts, util::get_monotonic_ts
+    timestamp::get_ts,
+    util::get_monotonic_ts,
 };
 
 use super::{MemoryAccessRequest, MemoryHierarchy, common::CacheAccessType};
@@ -73,14 +74,9 @@ unsafe extern "C" fn vcpu_mem_access(
 
             let inst_virtual_addr = inst_virtual_addr as u64;
             let is_os = (inst_virtual_addr >> 48) & 1 == 1;
-            let offset = inst_virtual_addr >> 49;
+            // let offset = inst_virtual_addr >> 49;
 
-            let ts = if parameter::USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION {
-                let ip10ps = qemu_api::qemu_plugin_get_vcpu_ip10ps(vcpu_idx);
-                ((offset * 10000) / ip10ps) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
-            } else {
-                get_ts()
-            };
+            let ts = get_ts();
 
             if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
                 // (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
@@ -133,13 +129,8 @@ unsafe extern "C" fn vcpu_insn_exec(
             return;
         }
 
-        let offset = (inst_virtual_addr as u64) >> 49;
-        let ts = if parameter::USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION {
-            let ip10ps = qemu_api::qemu_plugin_get_vcpu_ip10ps(vcpu_idx);
-            ((offset * 10000) / ip10ps) + qemu_api::qemu_plugin_get_vcpu_vtime(vcpu_idx) + 1
-        } else {
-            get_ts()
-        };
+        // let offset = (inst_virtual_addr as u64) >> 49;
+        let ts = get_ts();
 
         if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
             // (*DUMMY_PLUGIN).access_memory_with_va(
@@ -290,7 +281,10 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             .set(format!("{}_{}", prefix, "warmed"))
             .unwrap();
 
-        let warm_ratio = options.get("warm_ratio").unwrap_or(&"1.0".to_string()).clone();
+        let warm_ratio = options
+            .get("warm_ratio")
+            .unwrap_or(&"1.0".to_string())
+            .clone();
         let warm_ratio: f64 = warm_ratio.parse().unwrap();
         assert!(warm_ratio >= 0.0 && warm_ratio <= 1.0);
         WARM_RATIO.set(warm_ratio).unwrap();

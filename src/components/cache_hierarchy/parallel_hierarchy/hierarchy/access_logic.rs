@@ -16,7 +16,7 @@ use crate::{
             statistics::{EventType, Statistics},
         },
     },
-    parameter::{self, CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE},
+    parameter::{CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE},
 };
 
 use super::ParallelMemoryHierarchy;
@@ -25,7 +25,6 @@ impl<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
-    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
@@ -37,7 +36,6 @@ impl<
         MMU,
         PCache,
         SCache,
-        PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
@@ -112,28 +110,6 @@ impl<
             CacheOperationType::GetR
         };
 
-        if PRECISE_COHERENCE_RECONSTRUCTION && miss_directory_guard.recent_writer_ts > ts {
-            // This means that the current operation is not ordered. (even later than the first writer)
-            // There is no need to continue, because this memory operation is whatever blocked by a writer before the eviction.
-            CacheLineCoherenceHistory::global_record_history(
-                block_id,
-                record_op,
-                p_cache_id,
-                ts,
-                false,
-                sharers,
-                line!(),
-            );
-
-            // Well, this is not very accurate. The truth is that we don't know whether this is a miss or hit,
-            // because the history has been cleaned up by an earlier write
-            if !is_prefetch && self.with_statistics {
-                panic!();
-            }
-
-            return CacheHierarchyAccessResult::Unknown;
-        }
-
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
             if let Some(evicted_directory_entry) = evicted {
@@ -148,6 +124,8 @@ impl<
                     if let Some(index) = index {
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
+
+                        // require recording the timestamp of the operation.
                         set.invalidate(*index);
 
                         if self.with_statistics {
@@ -233,12 +211,6 @@ impl<
             miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers.set(p_cache_id, true);
             miss_directory_guard.insertion_ts = ts; // this is the moment when the block is inserted to the directory.
-
-            if is_store && PRECISE_COHERENCE_RECONSTRUCTION {
-                if miss_directory_guard.recent_writer_ts < ts {
-                    miss_directory_guard.recent_writer_ts = ts;
-                }
-            }
 
             let modified = match shared_cache_result {
                 SharedCacheLookupResult::Hit(is_modified) => is_store || is_modified,
@@ -470,85 +442,6 @@ impl<
                 .private_caches
                 .get_set_guard_by_sharer_list(block_id, acquire_list);
 
-            if PRECISE_COHERENCE_RECONSTRUCTION {
-                // Here for MESI, there are two cases that we need to consider:
-                // - Another core has written the cache line with a larger timestamp.
-                //   In this case, we need to only keep the latest writer, and ignore this operation.
-
-                // - Another core has the write permission but it is not written yet.
-                //   In this case, the logic is different from the reader and the writer.
-                //     For the reader, it just needs to reclaim the write permission.
-                //     For the writer, it just needs to invalidate this cache line.
-
-                // The following code handles the first case.
-
-                // Do we have another sharer that has a write permission with a larger timestamp?
-                let mut other_has_written_with_large_ts = false;
-                let mut other_write_ts = 0;
-                for (replica_cache_id, set, index) in acquired_sets.iter() {
-                    if let Some(index) = index {
-                        let line = &set.lines[*index];
-                        assert_eq!(line.block_id(), block_id);
-                        if line.write_ts() > ts {
-                            other_has_written_with_large_ts = true;
-                        }
-
-                        // also, find the largest timestamp of the write operation.
-                        if line.write_ts() > other_write_ts {
-                            other_write_ts = line.write_ts();
-                        }
-                    } else {
-                        // Well, the only case that we can see a miss in the private cache is that the cache is waiting for refilling.
-                        if *replica_cache_id != p_cache_id {
-                            if parameter::ENABLE_CACHE_LINE_HISTORY {
-                                CacheLineCoherenceHistory::global_get_block_history(block_id)
-                                    .unwrap()
-                                    .value()
-                                    .print_history();
-                            }
-                            assert_eq!(*replica_cache_id, p_cache_id);
-                        }
-                    }
-                }
-
-                if other_has_written_with_large_ts {
-                    // a write operation has been done by another core with a larger timestamp.
-                    // This write operation is not propagated to the directory, so we cannot see it until we scan it.
-                    assert!(miss_directory_guard.recent_writer_ts <= other_write_ts);
-                }
-
-                // Well, if you find another core that has written the cache line with a larger timestamp,
-                // update the directory's timestamp immediately.
-                if other_write_ts > miss_directory_guard.recent_writer_ts {
-                    miss_directory_guard.recent_writer_ts = other_write_ts;
-                    miss_directory_guard.update_lru_ts(other_write_ts);
-                }
-
-                if other_has_written_with_large_ts {
-                    // Well, this cache line is already touched by another core with a later timestamp.
-                    // Only that core should be kept.
-
-                    CacheLineCoherenceHistory::global_record_history(
-                        block_id,
-                        record_op,
-                        p_cache_id,
-                        ts,
-                        false,
-                        miss_directory_guard.sharers,
-                        line!(),
-                    );
-
-                    // Now, release the lock of the private cache.
-                    drop(acquired_sets);
-
-                    if self.with_statistics {
-                        panic!();
-                    }
-
-                    return CacheHierarchyAccessResult::Unknown;
-                }
-            }
-
             let mut res = if !private_hit.permission_violation() {
                 CacheHierarchyAccessResult::HitInOtherPrivateCache
             } else {
@@ -563,7 +456,7 @@ impl<
                     if let Some(index) = index {
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), block_id);
-                        if !PRECISE_COHERENCE_RECONSTRUCTION || entry.access_ts() <= ts {
+                        if true {
                             // invalid the directory entry.
                             incoming_sharer.set(*replica_cache_id, false);
                             // invalid the private cache entry.
@@ -669,9 +562,6 @@ impl<
                         // Even though we make it access the shared cache now, we don't really know whether it was a hit or a miss, because state of the shared cache is different.
                         // This might have triggered a shared cache miss.
                     }
-                } else if PRECISE_COHERENCE_RECONSTRUCTION {
-                    // This memory access is definitely not the first one to this cache line.
-                    assert!(miss_directory_guard.insertion_ts <= ts);
                 }
 
                 // add self to the incoming sharer list.
@@ -680,12 +570,6 @@ impl<
                 // update the directory.
                 miss_directory_guard.update_lru_ts(ts);
                 miss_directory_guard.sharers = incoming_sharer;
-
-                // We have a new write exposed to the directory.
-                if PRECISE_COHERENCE_RECONSTRUCTION {
-                    assert!(miss_directory_guard.recent_writer_ts <= ts);
-                    miss_directory_guard.recent_writer_ts = ts;
-                }
 
                 CacheLineCoherenceHistory::global_record_history(
                     block_id,
@@ -713,34 +597,6 @@ impl<
                         if entry.has_write_permission() {
                             // well, if you have write permission, you have to yield the write permission.
                             assert!(!find_writable_replica);
-
-                            if entry.is_modified()
-                                && entry.write_ts() > ts
-                                && PRECISE_COHERENCE_RECONSTRUCTION
-                            {
-                                // OK, this read operation is also not ordered.
-                                // There is nothing we need to do.
-
-                                CacheLineCoherenceHistory::global_record_history(
-                                    block_id,
-                                    record_op,
-                                    p_cache_id,
-                                    ts,
-                                    false,
-                                    miss_directory_guard.sharers,
-                                    line!(),
-                                );
-
-                                drop(acquired_sets);
-
-                                if self.with_statistics {
-                                    // This read happens after a early arrival write operation, so
-                                    // we don't know the state of this cache line for this specific case.
-                                    panic!();
-                                }
-
-                                return CacheHierarchyAccessResult::Unknown;
-                            }
 
                             if entry.is_modified() {
                                 modified_replica = true;
