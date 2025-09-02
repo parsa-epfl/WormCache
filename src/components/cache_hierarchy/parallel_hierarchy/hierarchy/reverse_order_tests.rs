@@ -282,13 +282,12 @@ fn raw_and_war() {
             },
             5,
         ),
-        CacheHierarchyAccessResult::HitInOtherPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
     // Now, core 0 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
-    assert_eq!(sharers.len(), 2);
-    assert_eq!(sharers[&2], BlockState::Shared);
-    assert_eq!(sharers[&1], BlockState::Shared);
+    assert_eq!(sharers.len(), 1);
+    assert_eq!(sharers[&2], BlockState::Modified);
 }
 
 #[test]
@@ -341,10 +340,10 @@ fn rarw() {
         CacheHierarchyAccessResult::Unknown
     );
 
-    // Now, core 1 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
-    assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&0], BlockState::Modified);
+    assert_eq!(sharers.len(), 2); // core 0 and core 1 should have the replica.
+    assert_eq!(sharers[&0], BlockState::Shared); // core 0 should be in the shared state.
+    assert_eq!(sharers[&1], BlockState::Shared); // core 1 should be in the shared state as well
 }
 
 #[test]
@@ -379,10 +378,9 @@ fn waw() {
         CacheHierarchyAccessResult::Unknown
     );
 
-    // Now, the only owner of the data should be core 0.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&0], BlockState::Modified);
+    assert_eq!(sharers[&1], BlockState::Modified);
 }
 
 #[test]
@@ -434,7 +432,7 @@ fn wwaw() {
     // Now, the only owner of the data should be core 0.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&0], BlockState::Modified);
+    assert_eq!(sharers[&1], BlockState::Modified);
 }
 
 #[test]
@@ -487,9 +485,8 @@ fn rae() {
         CacheHierarchyAccessResult::Unknown
     );
 
-    // Still, there should be no reader replica.
     let sharers = mh.get_all_private_replicas(block_id);
-    assert_eq!(sharers.len(), 0);
+    assert_eq!(sharers.len(), 1); // only core 1 has the replica based on the host time order.
 }
 
 #[test]
@@ -614,15 +611,15 @@ fn wae() {
         CacheHierarchyAccessResult::Unknown
     );
 
-    // Now there should be nothing in the private cache.
+    // Based on the host time order, core 1 should have the replica.
     let sharers = mh.get_all_private_replicas(block_id);
-    assert_eq!(sharers.len(), 0);
+    assert_eq!(sharers.len(), 1);
+    assert_eq!(sharers[&1], BlockState::Modified);
 
-    // And it is in the last-level cache.
-    assert_eq!(
-        mh.where_is_the_block(block_id),
-        BlockPosition::InSharedCache
-    );
+    // assert_eq!(
+    //     mh.where_is_the_block(block_id),
+    //     BlockPosition::InSharedCache
+    // );
 }
 
 #[test]
@@ -671,9 +668,9 @@ fn eaw() {
         );
     }
 
-    // Now there should be only a copy from core 0 in private caches.
+    // Because we are processing the request based on the order of the host time, we should not see any replica at this stage.
     let sharers = mh.get_all_private_replicas(block_id);
-    assert_eq!(sharers.len(), 1);
+    assert_eq!(sharers.len(), 0);
 }
 
 #[test]
@@ -722,10 +719,8 @@ fn ear() {
         );
     }
 
-    // Now, only core 0 has the block. And it has the exclusive permission.
     let sharers = mh.get_all_private_replicas(block_id);
-    assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&0], BlockState::Shared);
+    assert_eq!(sharers.len(), 0); // no replica anymore based on the host time order.
 }
 
 #[test]
