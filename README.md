@@ -52,7 +52,7 @@ git clone --branch dev https://github.com/parsa-epfl/WormCache
 Modify the cache model parameters in `src/parameter.rs` as needed. After making your changes, compile the model:
 
 ```bash
-cargo build --relesae
+cargo build --release
 ```
 
 The compiled binary should be located in target/release/libworm_cache.so. This shared library will be used as a [QEMU Plugin](https://www.qemu.org/docs/master/devel/tcg-plugins.html) in the next steps.
