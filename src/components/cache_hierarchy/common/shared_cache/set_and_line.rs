@@ -143,10 +143,11 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             }
 
             let hit_block = &mut self.blocks[hit_block];
+            let hit_ts = hit_block.ts;
             hit_block.block_id_with_v = 0;
             hit_block.ts = 0;
 
-            return if hit_block.ts <= ts {
+            return if hit_ts <= ts {
                 SharedCacheLookupResult::Hit(hit_block.modified)
             } else {
                 SharedCacheLookupResult::LookupLate(
@@ -174,44 +175,46 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
-            if hit_block.ts > ts {
-                return SharedCacheLookupResult::LookupLate(
-                    hit_block.ts as u32 - ts as u32,
-                    hit_block.modified,
-                );
-            } else {
-                if r.is_store() || EXCLUSIVE {
-                    // In any case, the invaildation should be recorded.
-                    if self.recent_evict_ts < ts {
-                        self.recent_evict_ts = ts;
-                    }
-
-                    // The cache line should be transferred to the accessor.
-                    // If the cache line has larger ts, it should exists in the cache, thus should be invalid
-                    // If the cache line has smaller ts, it should be invalid as well.
-                    hit_block.block_id_with_v = 0;
-                    hit_block.ts = 0;
-
-                    // self.modifying_history
-                    //     .push((block_id, ts, core_id, false, true));
-
-                    return SharedCacheLookupResult::Hit(hit_block.modified);
-                } else {
-                    // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
-                    hit_block.ts = ts;
-
-                    hit_block.last_accessor = r.source;
-
-                    // Accessed by a higher-level, meaning that the block is not dirty anymore.
-                    let was_modified = hit_block.modified;
-                    hit_block.modified = false;
-
-                    // self.modifying_history
-                    //     .push((block_id, ts, core_id, false, true));
-
-                    self.statistics.record(access_type, is_os, true);
-                    return SharedCacheLookupResult::Hit(was_modified);
+            let hit_ts = hit_block.ts;
+            if r.is_store() || EXCLUSIVE {
+                // In any case, the invaildation should be recorded.
+                if self.recent_evict_ts < ts {
+                    self.recent_evict_ts = ts;
                 }
+
+                hit_block.block_id_with_v = 0;
+                hit_block.ts = 0;
+
+                return if hit_ts > ts {
+                    SharedCacheLookupResult::LookupLate(
+                        hit_ts as u32 - ts as u32,
+                        hit_block.modified,
+                    )
+                } else {
+                    SharedCacheLookupResult::Hit(hit_block.modified)
+                };
+            } else {
+                if hit_ts > ts {
+                    return SharedCacheLookupResult::LookupLate(
+                        hit_ts as u32 - ts as u32,
+                        hit_block.modified,
+                    );
+                }
+
+                // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
+                hit_block.ts = ts;
+
+                hit_block.last_accessor = r.source;
+
+                // Accessed by a higher-level, meaning that the block is not dirty anymore.
+                let was_modified = hit_block.modified;
+                hit_block.modified = false;
+
+                // self.modifying_history
+                //     .push((block_id, ts, core_id, false, true));
+
+                self.statistics.record(access_type, is_os, true);
+                return SharedCacheLookupResult::Hit(was_modified);
             }
         }
 
@@ -333,14 +336,15 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
         if let Some(hit_block) = hit_block {
             let hit_block = &mut self.blocks[hit_block];
-            if hit_block.ts > ts {
+            let hit_ts = hit_block.ts;
+            if hit_ts > ts {
                 // Reversed access order. We cannot do anything but return unknown.
 
                 // self.modifying_history
                 //     .push((block_id, ts, core_id, false, false));
 
                 return SharedCacheLookupAndInsertResult::LookupLate(
-                    hit_block.ts as u32 - ts as u32,
+                    hit_ts as u32 - ts as u32,
                     hit_block.modified,
                 );
             } else {
@@ -350,16 +354,17 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                         self.recent_evict_ts = ts;
                     }
 
-                    // The cache line should be transferred to the accessor.
-                    // If the cache line has larger ts, it should exists in the cache, thus should be invalid
-                    // If the cache line has smaller ts, it should be invalid as well.
                     hit_block.block_id_with_v = 0;
                     hit_block.ts = 0;
 
-                    // self.modifying_history
-                    //     .push((block_id, ts, core_id, false, true));
-
-                    return SharedCacheLookupAndInsertResult::Hit(hit_block.modified);
+                    return if hit_ts > ts {
+                        SharedCacheLookupAndInsertResult::LookupLate(
+                            hit_ts as u32 - ts as u32,
+                            hit_block.modified,
+                        )
+                    } else {
+                        SharedCacheLookupAndInsertResult::Hit(hit_block.modified)
+                    };
                 } else {
                     // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                     hit_block.ts = ts;

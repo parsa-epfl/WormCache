@@ -4,7 +4,7 @@
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
+// modification, are permitted provideed that the following conditions are met:
 //
 // 1. Redistributions of source code must retain the above copyright notice, this
 //    list of conditions and the following disclaimer.
@@ -614,7 +614,7 @@ fn wae() {
     // Based on the host time order, core 1 should have the replica.
     let sharers = mh.get_all_private_replicas(block_id);
     assert_eq!(sharers.len(), 1);
-    assert_eq!(sharers[&1], BlockState::Modified);
+    assert_eq!(sharers[&1], BlockState::Shared); // no way to get the modified state, because there is a later copy in the LLC.
 
     // assert_eq!(
     //     mh.where_is_the_block(block_id),
