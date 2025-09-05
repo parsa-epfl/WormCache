@@ -54,6 +54,7 @@ mod harvard_tests;
 mod reverse_order_tests;
 
 mod access_logic;
+mod timing_bridge;
 
 pub struct ParallelMemoryHierarchy<
     MMU: AbstractMMU,
