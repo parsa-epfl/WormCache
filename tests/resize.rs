@@ -116,9 +116,9 @@ fn test_resizable_llc() {
 
     // create an LLC.
     let big_cache =
-        ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 128, 16, false, false>::new();
+        ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 128, 16, false>::new();
     let small_cache =
-        ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 32, 8, false, false>::new();
+        ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 32, 8, false>::new();
 
     let special = 778;
 
@@ -253,8 +253,7 @@ fn test_resize_cache_hierarchy() {
     type SmallHierarchy = ParallelMemoryHierarchy<
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 32, 4, 32, 4>,
-        ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 32, 8, false, true>,
-        true,
+        ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 32, 8, true>,
         true,
         true,
         true,
@@ -266,8 +265,7 @@ fn test_resize_cache_hierarchy() {
     type LargeHierarchy = ParallelMemoryHierarchy<
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 128, 8, 128, 8>,
-        ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 128, 16, false, true>,
-        true,
+        ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 128, 16, true>,
         true,
         true,
         true,

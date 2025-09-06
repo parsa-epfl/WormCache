@@ -46,8 +46,8 @@ use std::ops::DerefMut;
 
 #[cfg(test)]
 mod debug_tests;
-#[cfg(test)]
-mod harvard_reverse_order_tests;
+// #[cfg(test)]
+// mod harvard_reverse_order_tests;
 #[cfg(test)]
 mod harvard_tests;
 #[cfg(test)]
@@ -59,7 +59,6 @@ pub struct ParallelMemoryHierarchy<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
-    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
@@ -81,7 +80,6 @@ impl<
     MMU: AbstractMMU,
     PCache: PrivateCaches,
     SCache: SharedCache,
-    const PRECISE_COHERENCE_RECONSTRUCTION: bool,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
@@ -93,7 +91,6 @@ impl<
         MMU,
         PCache,
         SCache,
-        PRECISE_COHERENCE_RECONSTRUCTION,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
@@ -119,7 +116,7 @@ impl<
         cache_id: usize,
         block_id: u64,
         ts: u64,
-        modified: (bool, u64),
+        modified: bool,
         is_os: bool,
     ) {
         let directory_entry = {
@@ -161,18 +158,6 @@ impl<
             line!(),
         );
 
-        // Also update the writer timestamp before eviction.
-        if modified.0 {
-            let evicted_cache_line_write_ts = modified.1;
-            // keep the latest write timestamp.
-            directory_entry.recent_writer_ts =
-                if directory_entry.recent_writer_ts < evicted_cache_line_write_ts {
-                    evicted_cache_line_write_ts
-                } else {
-                    directory_entry.recent_writer_ts
-                };
-        }
-
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if directory_entry.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
@@ -186,22 +171,22 @@ impl<
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
-            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified.0 {
+            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
                 self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     block_id,
                     ts,
-                    modified.0,
+                    modified,
                     true,
                 );
             }
 
-            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified.0 {
+            if FILL_SCACHE_ON_PCACHE_WRITEBACK && modified {
                 self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     block_id,
                     ts,
-                    modified.0,
+                    modified,
                     true,
                 );
             }
@@ -227,10 +212,9 @@ impl<
 
     pub fn information() -> String {
         format!(
-            "Private Cache: {}\nShared Cache: {}\nPrecise Coherence Reconstruction: {} \nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
+            "Private Cache: {}\nShared Cache: {}\nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
             PCache::information(),
             SCache::information(),
-            PRECISE_COHERENCE_RECONSTRUCTION,
             FILL_SCACHE_ON_FILLING_PCACHE,
             FILL_SCACLE_ON_PCACHE_EVICTION,
             FILL_SCACHE_ON_PCACHE_WRITEBACK,

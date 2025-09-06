@@ -58,9 +58,7 @@ pub struct DirectoryEntry {
     pub lru_ts: u64,
     pub sharers: SharerList,
     pub in_shared_cache: bool,
-    pub insertion_ts: u64,
 
-    pub recent_writer_ts: u64,
     pub shared: bool,
 }
 
@@ -77,7 +75,10 @@ pub trait DirectorySet {
     fn new(index: usize) -> Self;
     fn from(raw: HashMap<u64, DirectoryEntry>, index: usize) -> Self;
     const LOG2_SET: usize;
-    fn get_or_create(&mut self, block_id: u64) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>);
+    fn get_or_create(
+        &mut self,
+        block_id: u64,
+    ) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>);
     fn erase(&mut self, block_id: u64);
     fn run_gc(&mut self);
 
@@ -109,15 +110,16 @@ impl<const SET: usize> DirectorySet for InfiniteDirectorySet<SET> {
     const LOG2_SET: usize = SET.trailing_zeros() as usize;
 
     #[inline]
-    fn get_or_create(&mut self, block_id: u64) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>) {
+    fn get_or_create(
+        &mut self,
+        block_id: u64,
+    ) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>) {
         let internal_id = block_id >> Self::LOG2_SET;
 
         self.entries.entry(internal_id).or_insert(DirectoryEntry {
             lru_ts: 0,
             sharers: SharerList::ZERO,
-            recent_writer_ts: 0,
             in_shared_cache: false,
-            insertion_ts: 0,
             shared: false,
         });
 
@@ -137,7 +139,6 @@ impl<const SET: usize> DirectorySet for InfiniteDirectorySet<SET> {
     fn raw(&self) -> HashMap<u64, DirectoryEntry> {
         self.entries.clone()
     }
-
 }
 
 #[serde_as]
@@ -148,7 +149,7 @@ pub struct FiniteDirectorySet<const SET: usize, const WAY: usize> {
     pub index: usize,
 }
 
-impl <const SET: usize, const WAY: usize> DirectorySet for FiniteDirectorySet<SET, WAY> {
+impl<const SET: usize, const WAY: usize> DirectorySet for FiniteDirectorySet<SET, WAY> {
     fn new(index: usize) -> Self {
         Self {
             entries: HashMap::<u64, DirectoryEntry>::default(),
@@ -165,7 +166,10 @@ impl <const SET: usize, const WAY: usize> DirectorySet for FiniteDirectorySet<SE
 
     const LOG2_SET: usize = SET.trailing_zeros() as usize;
 
-    fn get_or_create(&mut self, block_id: u64) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>) {
+    fn get_or_create(
+        &mut self,
+        block_id: u64,
+    ) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>) {
         // search for the block in the set.
         let internal_id = block_id >> Self::LOG2_SET;
 
@@ -180,19 +184,22 @@ impl <const SET: usize, const WAY: usize> DirectorySet for FiniteDirectorySet<SE
                     .unwrap()
                     .0;
 
-                self.entries.remove(&lru_block).map(|entry| (lru_block << Self::LOG2_SET + SET, entry))
+                self.entries
+                    .remove(&lru_block)
+                    .map(|entry| (lru_block << Self::LOG2_SET + SET, entry))
             } else {
                 None
             };
 
-            self.entries.insert(internal_id, DirectoryEntry {
-                lru_ts: 0,
-                sharers: SharerList::ZERO,
-                recent_writer_ts: 0,
-                in_shared_cache: false,
-                insertion_ts: 0,
-                shared: false,
-            });
+            self.entries.insert(
+                internal_id,
+                DirectoryEntry {
+                    lru_ts: 0,
+                    sharers: SharerList::ZERO,
+                    in_shared_cache: false,
+                    shared: false,
+                },
+            );
 
             return (self.entries.get_mut(&internal_id).unwrap(), evicted);
         }
@@ -225,13 +232,17 @@ struct DirectorySerdeHelper<const SET: usize> {
     entries: Vec<HashMap<u64, DirectoryEntry>>,
 }
 
-impl<'a, TSet: DirectorySet + fmt::Debug + Serialize + Deserialize<'a> + Clone, const SET: usize> Default for Directory<TSet, SET> {
+impl<'a, TSet: DirectorySet + fmt::Debug + Serialize + Deserialize<'a> + Clone, const SET: usize>
+    Default for Directory<TSet, SET>
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a, TSet: DirectorySet + fmt::Debug + Serialize + Deserialize<'a> + Clone, const SET: usize> Directory<TSet, SET> {
+impl<'a, TSet: DirectorySet + fmt::Debug + Serialize + Deserialize<'a> + Clone, const SET: usize>
+    Directory<TSet, SET>
+{
     pub fn new() -> Self {
         Self {
             entries: util::init_heap_array(|idx| SpinMutex::new(TSet::new(idx))),
@@ -247,10 +258,7 @@ impl<'a, TSet: DirectorySet + fmt::Debug + Serialize + Deserialize<'a> + Clone, 
         &self,
         block_id_0: u64,
         block_id_1: u64,
-    ) -> (
-        SpinMutexGuard<'_, TSet>,
-        Option<SpinMutexGuard<'_, TSet>>,
-    ) {
+    ) -> (SpinMutexGuard<'_, TSet>, Option<SpinMutexGuard<'_, TSet>>) {
         let index_0 = (block_id_0 as usize) % SET;
         let index_1 = (block_id_1 as usize) % SET;
 
@@ -292,7 +300,7 @@ impl<'a, TSet: DirectorySet + fmt::Debug + Serialize + Deserialize<'a> + Clone, 
             .entries
             .into_iter()
             .enumerate()
-            .map(|(idx, set)|SpinMutex::new(TSet::from(set, idx)))
+            .map(|(idx, set)| SpinMutex::new(TSet::from(set, idx)))
             .collect::<Vec<_>>();
 
         Self {

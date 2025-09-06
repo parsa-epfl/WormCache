@@ -61,9 +61,7 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        true,
     >,
-    true,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -717,7 +715,7 @@ fn ear() {
             },
             10,
         ),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     for i in 0..parameter::HARVARD_PRI_D_CACHE_ASSO {
@@ -769,7 +767,7 @@ fn rar() {
             },
             5,
         ),
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Now there should be two replicas of core 0 and core 1 in the private cache.

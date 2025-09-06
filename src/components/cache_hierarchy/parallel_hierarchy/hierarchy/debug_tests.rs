@@ -56,9 +56,7 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        true,
     >,
-    true,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -629,6 +627,7 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
 
     // Then core 1 writes the cache line at the timestamp 10.
     // It should not be a hit in the shared cache, because the result is unknown.
+    // But still, the cache line is taken away into the private cache of core 1, because of the get exclusive.
     assert_eq!(
         mh.access_memory_pblock_id(
             &CacheBlockRequest {
@@ -642,8 +641,8 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
         CacheHierarchyAccessResult::Unknown
     );
 
-    // And the cache line is still in the LLC.
-    assert!(mh.shared_cache.peek(&SharedCacheAccessRequest {
+    // And the cache line is not in the LLC.
+    assert!(!mh.shared_cache.peek(&SharedCacheAccessRequest {
         source: SharedCacheAccessSource::Core(0),
         block_id,
         access_type: CacheAccessType::DataRead,

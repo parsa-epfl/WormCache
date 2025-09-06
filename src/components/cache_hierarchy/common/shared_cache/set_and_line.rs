@@ -56,7 +56,6 @@ pub struct SharedCacheSet<
     const WAY: usize,
     const SET: usize,
     const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
     S: SharedCacheSetStatistics,
 > {
     #[serde_as(as = "[_; WAY]")]
@@ -71,26 +70,16 @@ pub struct SharedCacheSet<
     // pub modifying_history: Vec<(u64, u64, u32, bool, bool)>, // (block_id, ts, core_id, to_what, succeed), recorded on a cache line's modified state is updated.
 }
 
-impl<
-    const WAY: usize,
-    const SET: usize,
-    const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
-    S: SharedCacheSetStatistics,
-> Default for SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>
+impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> Default
+    for SharedCacheSet<WAY, SET, EXCLUSIVE, S>
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<
-    const WAY: usize,
-    const SET: usize,
-    const EXCLUSIVE: bool,
-    const COHERENCE_FOLLOW_TS: bool,
-    S: SharedCacheSetStatistics,
-> SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, S>
+impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>
+    SharedCacheSet<WAY, SET, EXCLUSIVE, S>
 {
     pub fn new() -> Self {
         Self {
@@ -112,13 +101,7 @@ impl<
     }
 
     pub fn from_without_statistics(
-        other: SharedCacheSet<
-            WAY,
-            SET,
-            EXCLUSIVE,
-            COHERENCE_FOLLOW_TS,
-            ZeroSharedCacheSetStatistics,
-        >,
+        other: SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics>,
     ) -> Self {
         Self {
             blocks: other.blocks,
@@ -132,8 +115,7 @@ impl<
 
     pub fn without_statistics(
         &self,
-    ) -> SharedCacheSet<WAY, SET, EXCLUSIVE, COHERENCE_FOLLOW_TS, ZeroSharedCacheSetStatistics>
-    {
+    ) -> SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics> {
         SharedCacheSet {
             blocks: self.blocks.clone(),
             touched_count: self.touched_count,
@@ -161,19 +143,14 @@ impl<
             }
 
             let hit_block = &mut self.blocks[hit_block];
+            let hit_ts = hit_block.ts;
+            hit_block.block_id_with_v = 0;
+            hit_block.ts = 0;
 
-            return if hit_block.ts <= ts || !COHERENCE_FOLLOW_TS {
-                hit_block.block_id_with_v = 0;
-                hit_block.ts = 0;
-
-                // self.modifying_history
-                //     .push((block_id, ts, core_id, false, true));
-
+            return if hit_ts <= ts {
                 SharedCacheLookupResult::Hit(hit_block.modified)
             } else {
-                // self.modifying_history
-                //     .push((block_id, ts, core_id, false, false));
-                SharedCacheLookupResult::Unknown(
+                SharedCacheLookupResult::LookupLate(
                     hit_block.ts as u32 - ts as u32,
                     hit_block.modified,
                 )
@@ -198,49 +175,46 @@ impl<
 
         if let Some(hit_block) = self.index_of(block_id) {
             let hit_block = &mut self.blocks[hit_block];
-            if hit_block.ts > ts && COHERENCE_FOLLOW_TS {
-                // Reversed access order. We cannot do anything but return unknown.
+            let hit_ts = hit_block.ts;
+            if r.is_store() || EXCLUSIVE {
+                // In any case, the invaildation should be recorded.
+                if self.recent_evict_ts < ts {
+                    self.recent_evict_ts = ts;
+                }
+
+                hit_block.block_id_with_v = 0;
+                hit_block.ts = 0;
+
+                return if hit_ts > ts {
+                    SharedCacheLookupResult::LookupLate(
+                        hit_ts as u32 - ts as u32,
+                        hit_block.modified,
+                    )
+                } else {
+                    SharedCacheLookupResult::Hit(hit_block.modified)
+                };
+            } else {
+                if hit_ts > ts {
+                    return SharedCacheLookupResult::LookupLate(
+                        hit_ts as u32 - ts as u32,
+                        hit_block.modified,
+                    );
+                }
+
+                // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
+                hit_block.ts = ts;
+
+                hit_block.last_accessor = r.source;
+
+                // Accessed by a higher-level, meaning that the block is not dirty anymore.
+                let was_modified = hit_block.modified;
+                hit_block.modified = false;
 
                 // self.modifying_history
-                //     .push((block_id, ts, core_id, false, false));
+                //     .push((block_id, ts, core_id, false, true));
 
-                return SharedCacheLookupResult::Unknown(
-                    hit_block.ts as u32 - ts as u32,
-                    hit_block.modified,
-                );
-            } else {
-                if r.is_store() || EXCLUSIVE {
-                    // In any case, the invaildation should be recorded.
-                    if self.recent_evict_ts < ts {
-                        self.recent_evict_ts = ts;
-                    }
-
-                    // The cache line should be transferred to the accessor.
-                    // If the cache line has larger ts, it should exists in the cache, thus should be invalid
-                    // If the cache line has smaller ts, it should be invalid as well.
-                    hit_block.block_id_with_v = 0;
-                    hit_block.ts = 0;
-
-                    // self.modifying_history
-                    //     .push((block_id, ts, core_id, false, true));
-
-                    return SharedCacheLookupResult::Hit(hit_block.modified);
-                } else {
-                    // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
-                    hit_block.ts = ts;
-
-                    hit_block.last_accessor = r.source;
-
-                    // Accessed by a higher-level, meaning that the block is not dirty anymore.
-                    let was_modified = hit_block.modified;
-                    hit_block.modified = false;
-
-                    // self.modifying_history
-                    //     .push((block_id, ts, core_id, false, true));
-
-                    self.statistics.record(access_type, is_os, true);
-                    return SharedCacheLookupResult::Hit(was_modified);
-                }
+                self.statistics.record(access_type, is_os, true);
+                return SharedCacheLookupResult::Hit(was_modified);
             }
         }
 
@@ -262,7 +236,8 @@ impl<
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) -> bool {
+    ) -> (bool, bool) // (was_just_warmed, causality violation?)
+    {
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
         if let Some(hit_block) = self.index_of(block_id) {
@@ -278,32 +253,16 @@ impl<
                 if ts >= hit_block.ts {
                     hit_block.ts = ts;
                     if is_modified {
-                        // self.modifying_history
-                        //     .push((block_id, ts, core_id, is_modified, true));
                         // This cache line's permission should have been taken by the private cache.
                         // So it should not be modified in the shared cache.
                         if hit_block.modified {
-                            // Open a file.
-                            // let mut file = std::fs::File::create("cache_line_history.txt").unwrap();
-                            // // Dump the modifying history of this cache line.
-                            // for h in &self.modifying_history {
-                            //     if h.0 == block_id {
-                            //         // println!("Block id: {}, timestamp: {}, by core {}, to {}. Succeed: {}", h.0, h.1, h.2, h.3, h.4);
-                            //         file.write_all(format!("Block id: {}, timestamp: {}, by core {}, to {}. Succeed: {}\n", h.0, h.1, h.2, h.3, h.4).as_bytes()).unwrap();
-                            //     }
-                            // }
-                            // file.flush().unwrap();
                             panic!();
                         }
                         hit_block.modified = is_modified;
-                    } else {
-                        // self.modifying_history
-                        //     .push((block_id, ts, core_id, is_modified, false));
                     }
-
                     hit_block.last_accessor = source;
                 }
-                return false;
+                return (false, false);
             }
         }
 
@@ -328,14 +287,7 @@ impl<
         }
 
         let oldest_block = &mut self.blocks[minimal_index];
-
-        // if the oldest block even has larger timestamp than the incoming block, we should print a log and do nothing.
-        if oldest_block.ts > ts {
-            return result;
-        }
-
-        // self.modifying_history
-        //     .push((oldest_block.block_id_with_v >> 1, ts, core_id, false, true));
+        let causality_violation = oldest_block.ts > ts;
 
         // otherwise, we replace the oldest block.
         oldest_block.block_id_with_v = block_id_with_v;
@@ -348,10 +300,8 @@ impl<
             self.recent_evict_ts = ts;
         }
 
-        // self.modifying_history
-        //     .push((block_id, ts, core_id, is_modified, true));
         // push the evicted line to the history.
-        result
+        (result, causality_violation)
     }
 
     #[inline]
@@ -386,14 +336,15 @@ impl<
 
         if let Some(hit_block) = hit_block {
             let hit_block = &mut self.blocks[hit_block];
-            if hit_block.ts > ts && COHERENCE_FOLLOW_TS {
+            let hit_ts = hit_block.ts;
+            if hit_ts > ts {
                 // Reversed access order. We cannot do anything but return unknown.
 
                 // self.modifying_history
                 //     .push((block_id, ts, core_id, false, false));
 
-                return SharedCacheLookupAndInsertResult::Unknown(
-                    hit_block.ts as u32 - ts as u32,
+                return SharedCacheLookupAndInsertResult::LookupLate(
+                    hit_ts as u32 - ts as u32,
                     hit_block.modified,
                 );
             } else {
@@ -403,16 +354,17 @@ impl<
                         self.recent_evict_ts = ts;
                     }
 
-                    // The cache line should be transferred to the accessor.
-                    // If the cache line has larger ts, it should exists in the cache, thus should be invalid
-                    // If the cache line has smaller ts, it should be invalid as well.
                     hit_block.block_id_with_v = 0;
                     hit_block.ts = 0;
 
-                    // self.modifying_history
-                    //     .push((block_id, ts, core_id, false, true));
-
-                    return SharedCacheLookupAndInsertResult::Hit(hit_block.modified);
+                    return if hit_ts > ts {
+                        SharedCacheLookupAndInsertResult::LookupLate(
+                            hit_ts as u32 - ts as u32,
+                            hit_block.modified,
+                        )
+                    } else {
+                        SharedCacheLookupAndInsertResult::Hit(hit_block.modified)
+                    };
                 } else {
                     // the equal case is only about page walk, which enables touching multiple cache lines with the same timestamp.
                     hit_block.ts = ts;
@@ -454,6 +406,13 @@ impl<
             }
         }
 
+        let causality_violation = self.blocks[index_to_replace].ts > ts;
+        let ts_diff = if causality_violation {
+            self.blocks[index_to_replace].ts as u32 - ts as u32
+        } else {
+            0
+        };
+
         let oldest_block = &mut self.blocks[index_to_replace];
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = r.is_store();
@@ -463,7 +422,11 @@ impl<
         if self.touched_count < WAY || just_warmed {
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
         } else {
-            SharedCacheLookupAndInsertResult::Inserted
+            if !causality_violation {
+                SharedCacheLookupAndInsertResult::Inserted
+            } else {
+                SharedCacheLookupAndInsertResult::EvictedLate(ts_diff)
+            }
         }
     }
 }
@@ -472,14 +435,14 @@ impl<
 fn minimum_can_find_invalid() {
     use super::statistics::ZeroSharedCacheSetStatistics;
 
-    let mut set = SharedCacheSet::<8, 1, false, true, ZeroSharedCacheSetStatistics>::new();
+    let mut set = SharedCacheSet::<8, 1, false, ZeroSharedCacheSetStatistics>::new();
     let mut ts = 1;
 
     // push 8 elements inside.
     for i in 0..8 {
         assert_eq!(
             set.insert(i, SharedCacheAccessSource::Core(0), ts, false, true),
-            i == 7
+            (i == 7, false)
         );
         ts += 1;
     }
@@ -507,7 +470,7 @@ fn minimum_can_find_invalid() {
     // If we now insert another one, line[1] will be replaced.
     assert_eq!(
         set.insert(10, SharedCacheAccessSource::Core(0), ts, false, true),
-        false
+        (false, false)
     );
 
     assert_eq!(
@@ -526,7 +489,7 @@ fn cold_miss_exist() {
     use super::statistics::ZeroSharedCacheSetStatistics;
     use crate::components::cache_hierarchy::common::CacheAccessType;
 
-    let mut set = SharedCacheSet::<8, 1, false, true, ZeroSharedCacheSetStatistics>::new();
+    let mut set = SharedCacheSet::<8, 1, false, ZeroSharedCacheSetStatistics>::new();
 
     let mut ts = 1;
 
@@ -550,7 +513,7 @@ fn cold_miss_exist() {
     for i in 0..8 {
         assert_eq!(
             set.insert(i + 10, SharedCacheAccessSource::Core(0), ts, false, true),
-            i == 7
+            (i == 7, false)
         );
         ts += 1;
     }
@@ -573,7 +536,7 @@ fn cold_miss_exist() {
 #[test]
 fn test_lookup_and_insert() {
     let mut set =
-        SharedCacheSet::<4, 1, false, true, super::statistics::ZeroSharedCacheSetStatistics>::new();
+        SharedCacheSet::<4, 1, true, super::statistics::ZeroSharedCacheSetStatistics>::new();
     let mut ts = 1;
     use crate::components::cache_hierarchy::common::CacheAccessType;
 

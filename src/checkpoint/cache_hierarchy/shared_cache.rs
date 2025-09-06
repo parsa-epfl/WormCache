@@ -273,7 +273,6 @@ fn test_process_evicted_cache_line() {
         &PrivateCacheLine {
             block_id_with_v: 0b1,
             ts: 3,
-            write_ts: 3,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -318,7 +317,6 @@ fn test_process_evicted_cache_line() {
         &PrivateCacheLine {
             block_id_with_v: 0b101,
             ts: 3,
-            write_ts: 3,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -471,7 +469,6 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
         &PrivateCacheLine {
             block_id_with_v: 0b101,
             ts: 3,
-            write_ts: 3,
             is_instruction: false,
             writeable: false,
             modified: false,

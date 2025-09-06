@@ -64,10 +64,12 @@ pub enum EventType {
     SharedCacheMissDueToDataRead,
     SharedCacheMissDueToDataWrite,
 
-    UnknownPrivateCacheMisses,
-    UnknownSharedCacheMisses,
-
     SharedCacheColdMiss, // The cache miss is caused due to the cold start of the shared cache.
+
+    PrivateCacheInvalidationCausailityViolation, // The cache line is invalidated by a access with a smaller timestamp.
+    PrivateCacheDowngradeCausalityViolation, // The cache line is downgraded by a access with a smaller timestamp.
+    SharedCacheAccessCausalityViolation, // The cache line (in LLC) is accessed by a access with a smaller timestamp.
+    SharedCacheEvictionCausalityViolation, // The cache line (in LLC) is evicted by a access with a smaller timestamp.
 
     // the key problem is still how I convert the previous two counters' value into the miss rate impact.
     TLBMiss,
@@ -87,12 +89,11 @@ pub enum EventType {
     RASMiss,
     TageMiss,
     BPMiss, // this is different from summing the previous one.
-            // It includes the following logic to judge:
-            // - For directional branch, it is a miss if the direction prediction is wrong, or
-            // - For directional branch, it is a miss if the direction prediction is right but the target prediction is wrong.
-            // - For indirect branch, it is a miss if the target prediction is wrong.
-            // - For return, it is a miss if the target prediction (provided by the RAS) is wrong.
-
+    // It includes the following logic to judge:
+    // - For directional branch, it is a miss if the direction prediction is wrong, or
+    // - For directional branch, it is a miss if the direction prediction is right but the target prediction is wrong.
+    // - For indirect branch, it is a miss if the target prediction is wrong.
+    // - For return, it is a miss if the target prediction (provided by the RAS) is wrong.
     WaitForInterrupt,
 }
 

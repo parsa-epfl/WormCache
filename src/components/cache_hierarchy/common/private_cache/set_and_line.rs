@@ -35,8 +35,7 @@ use serde::{Deserialize, Serialize};
 pub struct PrivateCacheLine {
     pub block_id_with_v: u64, // the last bit is the valid bit.
 
-    pub ts: u64,       // the latest timestamp of the cache line.
-    pub write_ts: u64, // the latest write timestamp of the cache line.
+    pub ts: u64, // the latest timestamp of the cache line.
 
     pub is_instruction: bool,
     pub writeable: bool,
@@ -57,11 +56,6 @@ impl PrivateCacheLine {
     #[inline]
     pub fn has_write_permission(&self) -> bool {
         self.writeable
-    }
-
-    #[inline]
-    pub fn write_ts(&self) -> u64 {
-        self.write_ts
     }
 
     #[inline]
@@ -129,7 +123,6 @@ impl PrivateCacheSet {
                 std::iter::repeat(PrivateCacheLine {
                     block_id_with_v: 0,
                     ts: 0,
-                    write_ts: 0,
                     is_instruction: false,
                     writeable: false,
                     modified: false,
@@ -215,7 +208,6 @@ impl PrivateCacheSet {
             if is_store {
                 if line.writeable {
                     line.ts = ts;
-                    line.write_ts = ts;
                     line.modified = true;
                     return PrivateCachePokeResult::Hit;
                 } else {
@@ -249,8 +241,8 @@ impl PrivateCacheSet {
         is_instruction: bool,
         writable: bool,
         modified: bool,
-    ) -> Option<(bool, u64)> {
-        // (modified, write_ts)
+    ) -> Option<bool> {
+        // modified
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
         assert!(self.index_of(block_id).is_none());
@@ -266,10 +258,7 @@ impl PrivateCacheSet {
             PrivateCacheEvictedSlot::Invalid(idx) => (None, idx),
             PrivateCacheEvictedSlot::Valid(idx, _) => match self.recent_invalid_slot_index {
                 Some(idx) => (None, idx),
-                None => (
-                    Some((self.lines[idx].modified, self.lines[idx].write_ts)),
-                    idx,
-                ),
+                None => (Some(self.lines[idx].modified), idx),
             },
             PrivateCacheEvictedSlot::Same(idx) => {
                 // This is actually an upgrade, not a cache fill.
@@ -316,11 +305,6 @@ impl PrivateCacheSet {
         self.lines[idx_of_slot_to_fill].is_instruction = is_instruction;
         self.lines[idx_of_slot_to_fill].writeable = writable;
         self.lines[idx_of_slot_to_fill].modified = modified;
-        if modified {
-            self.lines[idx_of_slot_to_fill].write_ts = ts;
-        } else {
-            self.lines[idx_of_slot_to_fill].write_ts = 0; // no one has written this cache line, so its timestamp should be zero.
-        }
 
         res
     }
@@ -375,7 +359,6 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 1,
             ts: 1,
-            write_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -395,7 +378,6 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 9 << 1 | 1,
             ts: ts,
-            write_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,

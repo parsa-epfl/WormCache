@@ -53,7 +53,6 @@ pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
     MissDueToPermission,
     HitInOtherPrivateCache,
-    MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
     HitInSharedCache,
     Miss,
     Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.

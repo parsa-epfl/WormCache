@@ -358,25 +358,3 @@ pub const ENABLE_EXCLUSIVE_CACHE_STATE: bool = true;
  * This is used to record the cache line coherence history so that you can debug the cache coherence protocol.
  */
 pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
-
-/**
- * Whether to disable precise coherence message reconstruction.
- *
- * This option is for testing the accuracy of the functional warming model.
- *
- * This option is only effective when the parallel cache model is used.
- */
-pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
-
-/**
- * Whether to use the target time (calculated with the instruction count the IPC) for cache state construction.
- *
- * When this option is enabled,
- * the previous options, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION and DISABLE_PRECISE_SHARED_CACHE_LRU_RECONSTRUCTION,
- * must be set to true.
- */
-pub const USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION: bool = false;
-static_assertions::const_assert!(
-    !(DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
-        && USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION)
-);

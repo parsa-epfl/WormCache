@@ -103,14 +103,11 @@ pub fn resize_directory(
     let mut number_of_evicted_directory_entry = 0;
 
     // Step 2: Apply LRUs.
-    let res = res.into_iter()
+    let res = res
+        .into_iter()
         .map(|mut set| {
             // Flexus uses a different replacement policy. Instead of LRU, it uses the one with the least number of sharers.
-            set.sort_by(|a, b| {
-                b.1.sharer_count().cmp(
-                    &a.1.sharer_count(),
-                )
-            });
+            set.sort_by(|a, b| b.1.sharer_count().cmp(&a.1.sharer_count()));
 
             if directory_associativity <= set.len() {
                 number_of_evicted_directory_entry += set.len() - directory_associativity;
@@ -118,7 +115,6 @@ pub fn resize_directory(
                     let mut line_to_evict = PrivateCacheLine {
                         block_id_with_v: (evicted_entry.0 << 1 | 1),
                         ts: 0,
-                        write_ts: 0,
                         is_instruction: false,
                         writeable: false,
                         modified: false,
@@ -143,13 +139,11 @@ pub fn resize_directory(
                         }
 
                         line_to_evict.ts = line_to_evict.ts.max(line.ts);
-                        line_to_evict.write_ts = line_to_evict.write_ts.max(line.write_ts);
                         line_to_evict.writeable |= line.writeable;
                         line_to_evict.modified |= line.modified;
 
                         // invalid the line
                         line.ts = 0;
-                        line.write_ts = 0;
                         line.block_id_with_v = 0;
                     }
 
@@ -180,11 +174,12 @@ pub fn resize_directory(
 
     println!(
         "Number of evicted directory entries: {}, in {}%",
-        number_of_evicted_directory_entry, number_of_evicted_directory_entry as f64 / (directory_set * directory_associativity) as f64 * 100.0
+        number_of_evicted_directory_entry,
+        number_of_evicted_directory_entry as f64 / (directory_set * directory_associativity) as f64
+            * 100.0
     );
 
     res
-    
 }
 
 fn render_infinite_directory(
@@ -500,9 +495,12 @@ fn serialize_directory_slices(
 
             let set_per_slice = sets / slice_count;
 
-            let mut slices = Vec::from_iter(std::iter::repeat_with(
-                || Vec::from_iter(std::iter::repeat_with(Vec::new).take(set_per_slice)),
-            ).take(slice_count));
+            let mut slices = Vec::from_iter(
+                std::iter::repeat_with(|| {
+                    Vec::from_iter(std::iter::repeat_with(Vec::new).take(set_per_slice))
+                })
+                .take(slice_count),
+            );
 
             for (set_idx, set) in directory.iter().enumerate() {
                 assert!(set.len() <= associativity);
@@ -518,11 +516,9 @@ fn serialize_directory_slices(
 
             slices
                 .into_iter()
-                .map(|slice| {
-                    serde_json::to_value(slice).unwrap()
-                })
+                .map(|slice| serde_json::to_value(slice).unwrap())
                 .collect()
-        },
+        }
     }
 }
 

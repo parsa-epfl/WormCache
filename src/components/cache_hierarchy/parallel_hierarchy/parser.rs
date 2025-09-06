@@ -125,7 +125,7 @@ impl MMUParser<false> for DummyParser {
         { parameter::STLB_ENABLED },
         { parameter::STLB_ASSO },
         { parameter::STLB_SET },
-        { parameter::NO_HUGE_PAGE }
+        { parameter::NO_HUGE_PAGE },
     >;
 }
 
@@ -144,9 +144,7 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     >,
-    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -170,9 +168,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     >,
-    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -194,9 +190,7 @@ type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        false,
     >,
-    false,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
@@ -220,9 +214,7 @@ type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        false,
     >,
-    false,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
