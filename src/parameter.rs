@@ -58,15 +58,6 @@ pub const MEASURE_HALF_OF_CORES: bool = false;
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
 
 /**
- * USE_SERIAL_CACHE_MODEL
- *
- * Whether to use the serial cache model.
- *
- * Please only make this model to true when you enables the round-robin TCG mode in QEMU. Otherwise, there will be contention.
- */
-pub const USE_SERIAL_CACHE_MODEL: bool = false;
-
-/**
  * CACHE_LINE_SIZE
  *
  * The size of a cache line, in number of bytes.

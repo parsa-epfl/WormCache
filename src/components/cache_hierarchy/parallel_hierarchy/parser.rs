@@ -52,7 +52,7 @@ use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
 use crate::parameter;
 use crate::{arch::AArch64, components::cache_hierarchy::MemoryHierarchy};
 
-pub trait CacheModelParser<const SERIAL_CACHE_MODEL: bool, const UNIFIED_CACHE_MODEL: bool> {
+pub trait CacheModelParser<const UNIFIED_CACHE_MODEL: bool> {
     type Output: MemoryHierarchy;
 }
 
@@ -80,7 +80,6 @@ pub type SharedCacheStatisticsWithPlugin =
 use super::{
     super::common::{
         ParallelHarvardPrivateCache, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
-        SerialHarvardPrivateCache, SerialSingleSharedCache, SerialUnifiedPrivateCache,
         statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
     },
     hierarchy,
@@ -177,69 +176,13 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { ALLOCATED_CORE_COUNT },
 >;
 
-#[allow(dead_code)]
-type SerialMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
-    AArch64MMU,
-    SerialUnifiedPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
-    >,
-    SerialSingleSharedCache<
-        SharedCacheStatisticsWithPlugin,
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
-    { parameter::DIRECTORY_SHARD_COUNT },
-    { ALLOCATED_CORE_COUNT },
->;
-
-#[allow(dead_code)]
-type SerialMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
-    AArch64MMU,
-    SerialHarvardPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::HARVARD_PRI_I_CACHE_SET },
-        { parameter::HARVARD_PRI_I_CACHE_ASSO },
-        { parameter::HARVARD_PRI_D_CACHE_SET },
-        { parameter::HARVARD_PRI_D_CACHE_ASSO },
-    >,
-    SerialSingleSharedCache<
-        SharedCacheStatisticsWithPlugin,
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
-    { parameter::DIRECTORY_SHARD_COUNT },
-    { ALLOCATED_CORE_COUNT },
->;
-
-impl CacheModelParser<true, true> for DummyParser {
+impl CacheModelParser<true> for DummyParser {
     type Output = ParalleMemoryHierarchyUnified;
 }
 
-impl CacheModelParser<true, false> for DummyParser {
+impl CacheModelParser<false> for DummyParser {
     type Output = ParallelMemoryHierarchyHarvard;
 }
 
-impl CacheModelParser<false, true> for DummyParser {
-    type Output = SerialMemoryHierarchyUnified;
-}
-
-impl CacheModelParser<false, false> for DummyParser {
-    type Output = SerialMemoryHierarchyHarvard;
-}
-
-pub type HierarchyForPlugin = <DummyParser as CacheModelParser<
-    { !parameter::USE_SERIAL_CACHE_MODEL },
-    { parameter::USE_UNIFIED_CACHE },
->>::Output;
+pub type HierarchyForPlugin =
+    <DummyParser as CacheModelParser<{ parameter::USE_UNIFIED_CACHE }>>::Output;

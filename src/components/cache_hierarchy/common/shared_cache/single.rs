@@ -30,12 +30,11 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    cell::UnsafeCell,
     io::prelude::*,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::{super::CCell, SharedCacheAccessRequest, SharedCacheAccessSource};
+use super::{SharedCacheAccessRequest, SharedCacheAccessSource};
 
 use super::{
     SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
@@ -48,12 +47,11 @@ use zstd::{Decoder, Encoder};
 
 pub struct SingleSharedCache<
     S: SharedCacheSetStatistics,
-    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
     const SET: usize,
     const WAY: usize,
     const EXCLUSIVE: bool,
 > {
-    blocks: Box<[G; SET]>,
+    blocks: Box<[SpinMutex<SharedCacheSet<WAY, SET, EXCLUSIVE, S>>; SET]>,
     warmed_sets: AtomicUsize,
     _phantom: std::marker::PhantomData<S>,
 }
@@ -64,20 +62,17 @@ pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, cons
     warmed_sets: usize,
 }
 
-impl<
-    S: SharedCacheSetStatistics,
-    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
-    const SET: usize,
-    const WAY: usize,
-    const EXCLUSIVE: bool,
-> SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
+impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
+    SingleSharedCache<S, SET, WAY, EXCLUSIVE>
 {
     pub fn from_serialize_helper(
         helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>,
     ) -> Self {
         let mut blocks = Vec::with_capacity(SET);
         for block in helper.blocks {
-            blocks.push(G::new(SharedCacheSet::from_without_statistics(block)));
+            blocks.push(SpinMutex::new(SharedCacheSet::from_without_statistics(
+                block,
+            )));
         }
         Self {
             blocks: blocks.into_boxed_slice().try_into().unwrap(),
@@ -91,24 +86,19 @@ impl<
             blocks: self
                 .blocks
                 .iter()
-                .map(|entry| entry.inner().without_statistics())
+                .map(|entry| entry.lock().without_statistics())
                 .collect(),
             warmed_sets: self.warmed_sets.load(Ordering::Relaxed),
         }
     }
 }
 
-impl<
-    S: SharedCacheSetStatistics,
-    G: CCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>> + std::fmt::Debug,
-    const SET: usize,
-    const WAY: usize,
-    const EXCLUSIVE: bool,
-> super::SharedCache for SingleSharedCache<S, G, SET, WAY, EXCLUSIVE>
+impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
+    super::SharedCache for SingleSharedCache<S, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {
-            blocks: crate::util::init_heap_array(|_| (G::new(SharedCacheSet::new()))),
+            blocks: crate::util::init_heap_array(|_| (SpinMutex::new(SharedCacheSet::new()))),
             warmed_sets: AtomicUsize::new(0),
             _phantom: std::marker::PhantomData,
         }
@@ -121,19 +111,19 @@ impl<
         ts: u64,
     ) -> SharedCacheLookupResult {
         let set_idx = (block_id % SET as u64) as usize;
-        self.blocks[set_idx].inner().invalidate(block_id, ts);
-        return self.blocks[set_idx].inner().invalidate(block_id, ts);
+        self.blocks[set_idx].lock().invalidate(block_id, ts);
+        return self.blocks[set_idx].lock().invalidate(block_id, ts);
     }
 
     fn peek(&self, r: &SharedCacheAccessRequest) -> bool {
         let set_idx = (r.block_id % SET as u64) as usize;
-        self.blocks[set_idx].inner().index_of(r.block_id).is_some()
+        self.blocks[set_idx].lock().index_of(r.block_id).is_some()
     }
 
     fn lookup(&self, r: &SharedCacheAccessRequest, ts: u64) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
 
-        self.blocks[set_idx].inner().lookup(r, ts)
+        self.blocks[set_idx].lock().lookup(r, ts)
     }
 
     fn insert(
@@ -145,7 +135,7 @@ impl<
         increase_touched_count: bool,
     ) -> (bool, bool) {
         let set_idx = (block_id % SET as u64) as usize;
-        let insertion_result = self.blocks[set_idx].inner().insert(
+        let insertion_result = self.blocks[set_idx].lock().insert(
             block_id,
             source,
             ts,
@@ -168,7 +158,7 @@ impl<
     ) -> SharedCacheLookupResult {
         let set_idx = (r.block_id % SET as u64) as usize;
         let result = self.blocks[set_idx]
-            .inner()
+            .lock()
             .lookup_and_insert(r, ts, increase_touched_count);
 
         match result {
@@ -200,7 +190,7 @@ impl<
         self.blocks
             .iter()
             .map(|entry| {
-                let entry = entry.inner();
+                let entry = entry.lock();
                 entry.touched_count
             })
             .sum()
@@ -217,7 +207,7 @@ impl<
         let mut file = std::fs::File::create(file_name).unwrap();
         writeln!(file, "idx,{}\n", S::get_header()).unwrap();
         for (idx, entry) in self.blocks.iter().enumerate() {
-            let entry = entry.inner();
+            let entry = entry.lock();
             writeln!(file, "{},{}\n", idx, entry.statistics.render_line()).unwrap();
         }
     }
@@ -251,7 +241,4 @@ impl<
 }
 
 pub type ParallelSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
-    SingleSharedCache<S, SpinMutex<SharedCacheSet<WAY, SET, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;
-
-pub type SerialSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
-    SingleSharedCache<S, UnsafeCell<SharedCacheSet<WAY, SET, EXCLUSIVE, S>>, SET, WAY, EXCLUSIVE>;
+    SingleSharedCache<S, SET, WAY, EXCLUSIVE>;
