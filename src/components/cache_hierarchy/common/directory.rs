@@ -79,6 +79,9 @@ pub trait DirectorySet {
         &mut self,
         block_id: u64,
     ) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>);
+
+    fn get(&mut self, block_ud: u64) -> Option<&mut DirectoryEntry>;
+
     fn erase(&mut self, block_id: u64);
     fn run_gc(&mut self);
 
@@ -124,6 +127,11 @@ impl<const SET: usize> DirectorySet for InfiniteDirectorySet<SET> {
         });
 
         (self.entries.get_mut(&internal_id).unwrap(), None)
+    }
+
+    fn get(&mut self, block_ud: u64) -> Option<&mut DirectoryEntry> {
+        let internal_id = block_ud >> Self::LOG2_SET;
+        self.entries.get_mut(&internal_id)
     }
 
     fn erase(&mut self, block_id: u64) {
@@ -205,6 +213,11 @@ impl<const SET: usize, const WAY: usize> DirectorySet for FiniteDirectorySet<SET
         }
 
         (self.entries.get_mut(&internal_id).unwrap(), None)
+    }
+
+    fn get(&mut self, block_ud: u64) -> Option<&mut DirectoryEntry> {
+        let internal_id = block_ud >> Self::LOG2_SET;
+        self.entries.get_mut(&internal_id)
     }
 
     fn erase(&mut self, block_id: u64) {

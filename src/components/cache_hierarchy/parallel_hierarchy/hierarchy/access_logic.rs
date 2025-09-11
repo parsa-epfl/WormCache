@@ -758,78 +758,63 @@ impl<
         // get directory lock.
         let mut directory_set_lock_guard = self.directory.fetch_one_entry(block_id);
 
-        let (directory_entry, _) = directory_set_lock_guard.get_or_create(block_id);
-
-        // fetch all sharers.
-        let mut acquire_list = self
-            .private_caches
-            .get_set_guard_by_sharer_list(block_id, directory_entry.sharers);
-
-        let llc_request = SharedCacheAccessRequest {
-            is_os: true, // Note: I/O request is always treated as OS.
-            source: SharedCacheAccessSource::Device,
-            block_id,
-            access_type: access_type.clone(),
-        };
-
-        match access_type {
-            CacheAccessType::InstructionFetch => unreachable!(),
-            CacheAccessType::DataRead | CacheAccessType::PageWalkRead => {
-                for (_, set, index) in acquire_list.iter_mut() {
-                    if let Some(index) = index {
-                        // TODO: update the counter.
-                        set.request_sharer(*index, ts);
-                    }
-                }
-
-                if acquire_list.len() == 0 {
-                    // Well, this cache line should be inserted into LLC, because there might be reuse by the I/O device in the future.
-
-                    return match self
-                        .shared_cache
-                        .lookup_and_insert_on_miss(&llc_request, ts, true)
-                    {
-                        SharedCacheLookupResult::Hit(_) => {
-                            CacheHierarchyAccessResult::HitInSharedCache
+        let require_llc_access =
+            if let Some(directory_entry) = directory_set_lock_guard.get(block_id) {
+                let mut acquire_list = self
+                    .private_caches
+                    .get_set_guard_by_sharer_list(block_id, directory_entry.sharers);
+                match access_type {
+                    CacheAccessType::InstructionFetch => unreachable!(),
+                    CacheAccessType::DataRead | CacheAccessType::PageWalkRead => {
+                        for (_, set, index) in acquire_list.iter_mut() {
+                            if let Some(index) = index {
+                                // TODO: update the counter.
+                                set.request_sharer(*index, ts);
+                            }
                         }
-                        SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
-                            CacheHierarchyAccessResult::Miss
-                        }
-                        SharedCacheLookupResult::LookupLate(_, _) => {
-                            CacheHierarchyAccessResult::Unknown
-                        }
-                        SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
-                    };
-                } else {
-                    // this is done.
-                    return CacheHierarchyAccessResult::HitInOtherPrivateCache;
-                }
-            }
 
-            CacheAccessType::DataWrite => {
-                for (_, set, index) in acquire_list.iter_mut() {
-                    if let Some(index) = index {
-                        set.invalidate(*index);
+                        acquire_list.len() == 0
                     }
-                }
 
-                // In any case, we need to forward this write to the shared cache.
-                match self
-                    .shared_cache
-                    .lookup_and_insert_on_miss(&llc_request, ts, true)
-                {
-                    SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
-                    SharedCacheLookupResult::Miss
-                    | SharedCacheLookupResult::ColdMiss
-                    | SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
-                    SharedCacheLookupResult::LookupLate(_, _) => {
-                        CacheHierarchyAccessResult::Unknown
+                    CacheAccessType::DataWrite => {
+                        for (_, set, index) in acquire_list.iter_mut() {
+                            if let Some(index) = index {
+                                set.invalidate(*index);
+                            }
+                        }
+
+                        true
                     }
-                }
-            }
 
-            CacheAccessType::PrefetchRead => unreachable!(),
-            CacheAccessType::PrefetchWrite => unreachable!(),
+                    CacheAccessType::PrefetchRead => unreachable!(),
+                    CacheAccessType::PrefetchWrite => unreachable!(),
+                }
+            } else {
+                true
+            };
+
+        if require_llc_access {
+            let llc_request = SharedCacheAccessRequest {
+                is_os: true, // Note: I/O request is always treated as OS.
+                source: SharedCacheAccessSource::Device,
+                block_id,
+                access_type: access_type.clone(),
+            };
+
+            // Well, this cache line should be inserted into LLC, because there might be reuse by the I/O device in the future.
+            return match self
+                .shared_cache
+                .lookup_and_insert_on_miss(&llc_request, ts, true)
+            {
+                SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                    CacheHierarchyAccessResult::Miss
+                }
+                SharedCacheLookupResult::LookupLate(_, _) => CacheHierarchyAccessResult::Unknown,
+                SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
+            };
+        } else {
+            return CacheHierarchyAccessResult::HitInOtherPrivateCache;
         }
     }
 }
