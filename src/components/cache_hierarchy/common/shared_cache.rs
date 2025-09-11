@@ -158,7 +158,6 @@ mod single;
 
 // pub use replicated::ReplicatedSharedCache;
 pub use single::ParallelSingleSharedCache;
-pub use single::SerialSingleSharedCache;
 pub use single::SingleSharedCache;
 pub use single::SingleSharedCacheSerdeHelper;
 

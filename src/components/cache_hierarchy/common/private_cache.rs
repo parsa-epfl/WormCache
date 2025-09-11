@@ -90,10 +90,8 @@ pub trait PrivateCaches {
 
 pub use havard::HarvardPerCorePrivateCacheSerdeHelper;
 pub use havard::ParallelHarvardPrivateCache;
-pub use havard::SerialHarvardPrivateCache;
 
 pub use unified::ParallelUnifiedPrivateCache;
-pub use unified::SerialUnifiedPrivateCache;
 pub use unified::UnifiedPerCorePrivateCacheSerdeHelper;
 
 use crate::components::cache_hierarchy::CacheBlockRequest;

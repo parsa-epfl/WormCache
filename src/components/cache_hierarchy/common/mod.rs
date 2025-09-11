@@ -33,7 +33,6 @@ mod directory;
 mod l0i;
 mod private_cache;
 mod shared_cache;
-mod util;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum CacheAccessType {
@@ -62,4 +61,3 @@ pub use directory::*;
 pub use l0i::*;
 pub use private_cache::*;
 pub use shared_cache::*;
-pub use util::*;

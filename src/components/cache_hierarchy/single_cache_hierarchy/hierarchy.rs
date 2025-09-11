@@ -49,10 +49,10 @@ use crate::{
     parameter,
 };
 
-use super::super::common::{SerialSingleSharedCache, statistics::ZeroSharedCacheSetStatistics};
+use super::super::common::{ParallelSingleSharedCache, statistics::ZeroSharedCacheSetStatistics};
 
 pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
-    pub shared_cache: SerialSingleSharedCache<
+    pub shared_cache: ParallelSingleSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
@@ -65,7 +65,7 @@ pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
 impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
     pub fn new() -> Self {
         SingleCacheHierarchy {
-            shared_cache: SerialSingleSharedCache::new(),
+            shared_cache: ParallelSingleSharedCache::new(),
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
         }
     }

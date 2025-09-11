@@ -33,11 +33,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
-use super::super::CCell;
-
 use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
 use spin::mutex::SpinMutex;
-use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 
@@ -45,12 +42,8 @@ use zstd::{Decoder, Encoder};
 
 #[repr(align(64))]
 #[derive(Debug)]
-pub struct UnifiedPerCorePrivateCache<
-    G: CCell<PrivateCacheSet> + std::fmt::Debug,
-    const SET: usize,
-    const ASSO: usize,
-> {
-    cache: Box<[G; SET]>,
+pub struct UnifiedPerCorePrivateCache<const SET: usize, const ASSO: usize> {
+    cache: Box<[SpinMutex<PrivateCacheSet>; SET]>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,16 +51,14 @@ pub struct UnifiedPerCorePrivateCacheSerdeHelper {
     pub cache: Vec<PrivateCacheSet>,
 }
 
-impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: usize>
-    UnifiedPerCorePrivateCache<G, SET, ASSO>
-{
+impl<const SET: usize, const ASSO: usize> UnifiedPerCorePrivateCache<SET, ASSO> {
     pub fn new() -> Self {
         Self {
-            cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(ASSO))),
+            cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(ASSO))),
         }
     }
 
-    pub fn get_set(&self, block_id: u64) -> &G {
+    pub fn get_set(&self, block_id: u64) -> &SpinMutex<PrivateCacheSet> {
         let set_id = block_id as usize % SET;
         &self.cache[set_id]
     }
@@ -76,7 +67,7 @@ impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: 
         let cache = self
             .cache
             .iter()
-            .map(|set| set.inner().clone())
+            .map(|set| set.lock().clone())
             .collect::<Vec<_>>();
 
         UnifiedPerCorePrivateCacheSerdeHelper { cache }
@@ -86,7 +77,7 @@ impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: 
         let cache = helper
             .cache
             .into_iter()
-            .map(|set| G::new(set))
+            .map(|set| SpinMutex::new(set))
             .collect::<Vec<_>>();
 
         Self {
@@ -95,21 +86,12 @@ impl<G: CCell<PrivateCacheSet> + std::fmt::Debug, const SET: usize, const ASSO: 
     }
 }
 
-pub struct UnifiedPrivateCaches<
-    G: CCell<PrivateCacheSet> + std::fmt::Debug,
-    const CORE_COUNT: usize,
-    const SET: usize,
-    const ASSO: usize,
-> {
-    caches: Box<[UnifiedPerCorePrivateCache<G, SET, ASSO>; CORE_COUNT]>,
+pub struct UnifiedPrivateCaches<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> {
+    caches: Box<[UnifiedPerCorePrivateCache<SET, ASSO>; CORE_COUNT]>,
 }
 
-impl<
-    G: CCell<PrivateCacheSet> + std::fmt::Debug,
-    const CORE_COUNT: usize,
-    const SET: usize,
-    const ASSO: usize,
-> PrivateCaches for UnifiedPrivateCaches<G, CORE_COUNT, SET, ASSO>
+impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
+    for UnifiedPrivateCaches<CORE_COUNT, SET, ASSO>
 {
     const DIRECTORY_SET: usize = SET;
 
@@ -128,7 +110,7 @@ impl<
 
         self.caches[core_id]
             .get_set(block_id)
-            .inner()
+            .lock()
             .poke_and_update(block_id, ts, is_store, is_instruction)
     }
 
@@ -146,7 +128,7 @@ impl<
 
         for core_id in sharers.iter_ones() {
             let set = self.caches[core_id].get_set(block_id);
-            let guard = set.inner();
+            let guard = set.lock();
             let index = guard.index_of(block_id);
             result.push((core_id, guard, index));
         }
@@ -159,7 +141,7 @@ impl<
         let mut result = Vec::new();
         for core_id in 0..CORE_COUNT {
             let set = self.caches[core_id].get_set(block_id);
-            let guard = set.inner();
+            let guard = set.lock();
             if guard.poke(block_id).is_some() {
                 result.push(core_id as u32);
             }
@@ -175,7 +157,7 @@ impl<
 
         for core_id in 0..CORE_COUNT {
             let is_d = self.caches[core_id].cache[block_id as usize % SET]
-                .inner()
+                .lock()
                 .poke(block_id);
 
             if let Some(d_line) = is_d {
@@ -201,11 +183,10 @@ impl<
 
     fn information() -> String {
         format!(
-            "Type: UnifiedPrivateCache, Core Count: {}, Set: {}, Associativity: {}, Is Parallel: {}",
+            "Type: UnifiedPrivateCache, Core Count: {}, Set: {}, Associativity: {}",
             { CORE_COUNT },
             SET,
-            ASSO,
-            G::support_parallel_access()
+            ASSO
         )
     }
 
@@ -216,7 +197,7 @@ impl<
     ) -> impl DerefMut<Target = PrivateCacheSet> {
         let core_id = request.core_id as usize;
         let block_id = request.block_id;
-        self.caches[core_id].get_set(block_id).inner()
+        self.caches[core_id].get_set(block_id).lock()
     }
 
     #[inline]
@@ -227,7 +208,7 @@ impl<
 
         for cache in self.caches.iter() {
             for set in cache.cache.iter() {
-                let guard = set.inner();
+                let guard = set.lock();
                 hit_count += guard.hit_time;
                 hit_index += guard.hit_index_acc;
             }
@@ -291,7 +272,4 @@ impl<
 }
 
 pub type ParallelUnifiedPrivateCache<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> =
-    UnifiedPrivateCaches<SpinMutex<PrivateCacheSet>, CORE_COUNT, SET, ASSO>;
-
-pub type SerialUnifiedPrivateCache<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> =
-    UnifiedPrivateCaches<UnsafeCell<PrivateCacheSet>, CORE_COUNT, SET, ASSO>;
+    UnifiedPrivateCaches<CORE_COUNT, SET, ASSO>;
