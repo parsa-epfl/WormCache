@@ -52,7 +52,8 @@ pub fn init() {
                     core_id as u32,
                     EventType::TargetLocalCycle,
                     false,
-                    unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
+                    // unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
+                    0
                 );
             }
 

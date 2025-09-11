@@ -29,7 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
+use crate::components::cache_hierarchy::mmu::{self, AbstractMMU, NoMMU};
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
  *
@@ -132,7 +132,7 @@ type AArch64MMU = <DummyParser as MMUParser<{ parameter::USE_HIGHLY_ASSOCIATIVE_
 
 #[allow(dead_code)]
 type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
-    AArch64MMU,
+    NoMMU,
     ParallelUnifiedPrivateCache<
         { ALLOCATED_CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
@@ -149,12 +149,13 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    { parameter::DIRECTORY_ASSO },
     { ALLOCATED_CORE_COUNT },
 >;
 
 #[allow(dead_code)]
 type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
-    AArch64MMU,
+    NoMMU,
     ParallelHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },
         { parameter::HARVARD_PRI_I_CACHE_SET },
@@ -173,6 +174,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    { parameter::DIRECTORY_ASSO },
     { ALLOCATED_CORE_COUNT },
 >;
 

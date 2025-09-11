@@ -143,9 +143,11 @@ impl Plugin for BranchPredictorPlugin {
             "Pure vtime is enabled. BP should be disabled."
         );
 
+        /*
         assert!(unsafe {
             qemu_api::qemu_plugin_register_vcpu_branch_resolved_cb(Some(branch_resolved_cb))
         });
+        */
 
         unsafe {
             FETCH_UNIT = Box::into_raw(Box::new(fetch::FetchUnit::new()));

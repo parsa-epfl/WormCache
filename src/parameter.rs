@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 3;
+pub const CORE_COUNT: usize = 16;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -249,6 +249,15 @@ static_assertions::const_assert!(
 */
 pub const DIRECTORY_SHARD_COUNT: usize = 32768;
 static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
+
+/**
+ * DIRECTORY_ASSO
+ *
+ * The associativity of the directory.
+ *
+*/
+pub const DIRECTORY_ASSO: usize = 16;
+static_assertions::const_assert!(DIRECTORY_ASSO >= 2);
 
 /**
 * ADJACENT_LINE_PREFETCHING

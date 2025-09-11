@@ -53,7 +53,8 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, host_va: *mut ffi::c_void) {
         }
 
         let host_va_u64 = host_va as u64;
-        let pc = qemu_api::qemu_plugin_read_pc_vpn() << 12 | host_va_u64 & 0xfff;
+        // let pc = qemu_api::qemu_plugin_read_pc_vpn() << 12 | host_va_u64 & 0xfff;
+        let pc = 0;
         let instruction_literal = *(host_va as *mut u32);
 
         // write the instruction to the trace file.

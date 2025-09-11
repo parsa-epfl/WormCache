@@ -26,7 +26,7 @@ unsafe impl Sync for BufPtr {}
 static BUFFER: OnceLock<Mutex<BufPtr>> = OnceLock::new();
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn set_buf(buf: *mut u64, max_len: u64) {
+unsafe extern "C" fn dev_trace_init(buf: *mut u64, max_len: u64) {
     let buf_ptr = BufPtr {
         ptr: buf,
         current_idx: 0,
@@ -36,11 +36,10 @@ unsafe extern "C" fn set_buf(buf: *mut u64, max_len: u64) {
     BUFFER.get_or_init(|| Mutex::new(buf_ptr));
 }
 
-pub fn push_info(
+pub fn timing_bridge_push(
     core_id: u32,
     pa: u64,
     sharer_list: SharerList,
-    directory_hit: bool,
     llc_hit: bool,
     is_broadcast_invalidation: bool,
     is_forward: bool,
@@ -60,10 +59,9 @@ pub fn push_info(
             src: core_id as u64,
             addr: pa,
             list: sharer_list.data[0],
-            flag: (directory_hit as u64) << 2
-                | (llc_hit as u64) << 1
+            flag: (llc_hit as u64) << 2
                 | (is_broadcast_invalidation as u64) << 0
-                | (is_forward as u64) << 3,
+                | (is_forward as u64) << 1,
             time: ts,
         };
         unsafe {

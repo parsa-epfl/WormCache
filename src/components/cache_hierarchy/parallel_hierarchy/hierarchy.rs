@@ -31,7 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
-use crate::components::cache_hierarchy::common::{InfiniteDirectorySet, SharedCacheAccessSource};
+use crate::components::cache_hierarchy::common::{InfiniteDirectorySet, FiniteDirectorySet, SharedCacheAccessSource};
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
@@ -65,12 +65,13 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
+    const DIRECTORY_ASSO: usize,
     const CORE_COUNT: usize,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
-    directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>, DIRECTORY_SHARD_COUNT>,
+    directory: Directory<FiniteDirectorySet<DIRECTORY_SHARD_COUNT, DIRECTORY_ASSO>, DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
     with_statistics: bool,
@@ -86,6 +87,7 @@ impl<
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
+    const DIRECTORY_ASSO: usize,
     const CORE_COUNT: usize,
 >
     ParallelMemoryHierarchy<
@@ -97,6 +99,7 @@ impl<
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
+        DIRECTORY_ASSO,
         CORE_COUNT,
     >
 {
@@ -111,9 +114,9 @@ impl<
         }
     }
 
-    pub fn handle_eviction<const SET: usize>(
+    pub fn handle_eviction<const SET: usize, const WAY: usize>(
         &self,
-        directory_set_guard: &mut impl DerefMut<Target = InfiniteDirectorySet<SET>>,
+        directory_set_guard: &mut impl DerefMut<Target = FiniteDirectorySet<SET, WAY>>,
         cache_id: usize,
         block_id: u64,
         ts: u64,

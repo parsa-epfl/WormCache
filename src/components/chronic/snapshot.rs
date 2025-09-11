@@ -121,7 +121,8 @@ unsafe extern "C" fn event_loop_callback() {
                     core_id as u32,
                     EventType::TargetLocalCycle,
                     false,
-                    qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+                    // qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+                    0
                 );
             }
 
@@ -216,7 +217,8 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
                             core_id as u32,
                             EventType::TargetLocalCycle,
                             false,
-                            qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+                            // qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+                            0
                         );
                     }
 
@@ -258,6 +260,7 @@ pub unsafe fn init(
             .set(SpinMutex::new("incremental_first_base".to_string()))
             .expect("Failed to set the snapshot format.");
 
+        /*
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
             quantum_checking_callback
         )));
@@ -267,6 +270,7 @@ pub unsafe fn init(
                 event_loop_callback
             )));
         }
+        */
 
         STATISTICS_QUANTUM_FILE
             .set(SpinMutex::new(

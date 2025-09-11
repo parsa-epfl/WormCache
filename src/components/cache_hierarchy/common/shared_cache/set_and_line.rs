@@ -236,7 +236,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) -> (bool, bool) // (was_just_warmed, causality violation?)
+    ) -> (bool, bool, bool) // (was_just_warmed, causality violation?)
     {
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
@@ -262,7 +262,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                     }
                     hit_block.last_accessor = source;
                 }
-                return (false, false);
+                return (false, false, true);
             }
         }
 
@@ -301,7 +301,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         }
 
         // push the evicted line to the history.
-        (result, causality_violation)
+        (result, causality_violation, false)
     }
 
     #[inline]
@@ -442,7 +442,7 @@ fn minimum_can_find_invalid() {
     for i in 0..8 {
         assert_eq!(
             set.insert(i, SharedCacheAccessSource::Core(0), ts, false, true),
-            (i == 7, false)
+            (i == 7, false, false)
         );
         ts += 1;
     }
@@ -470,7 +470,7 @@ fn minimum_can_find_invalid() {
     // If we now insert another one, line[1] will be replaced.
     assert_eq!(
         set.insert(10, SharedCacheAccessSource::Core(0), ts, false, true),
-        (false, false)
+        (false, false, false)
     );
 
     assert_eq!(
@@ -513,7 +513,7 @@ fn cold_miss_exist() {
     for i in 0..8 {
         assert_eq!(
             set.insert(i + 10, SharedCacheAccessSource::Core(0), ts, false, true),
-            (i == 7, false)
+            (i == 7, false, false)
         );
         ts += 1;
     }

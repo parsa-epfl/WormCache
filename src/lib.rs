@@ -168,11 +168,13 @@ unsafe extern "C" fn qemu_plugin_install(
 ) -> i32 {
     unsafe {
         // make sure that the number of vCPUs is equal to the core count.
+        /*
         assert_eq!(
             qemu_api::qemu_plugin_n_vcpus(),
             parameter::CORE_COUNT as i32,
             "Unmatched core count, thus exit."
         );
+        */
 
         // check system emulation cost.
         assert!(
@@ -206,6 +208,7 @@ unsafe extern "C" fn qemu_plugin_install(
         let current_mode = String::from("normal");
         let current_mode = options.get("mode").unwrap_or(&current_mode);
 
+        /*
         if *current_mode != "vtime" && *current_mode != "ff" {
             qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
             qemu_api::qemu_plugin_register_atexit_cb(
@@ -229,6 +232,7 @@ unsafe extern "C" fn qemu_plugin_install(
             }
             println!("Virtual Time or Fast forward is enabled. Disable all Memory Hierarchy.");
         }
+        */
 
         chronic_behavior_init(&options);
 
@@ -236,6 +240,32 @@ unsafe extern "C" fn qemu_plugin_install(
         let mut log_file = std::fs::File::create("parameter.rs").unwrap();
         log_file.write_all(PARAMETER_RS.as_bytes()).unwrap();
         drop(log_file);
+
+        0
+    }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn paraflex_init(
+    id: qemu_api::qemu_plugin_id_t,
+    argc: i32,
+    argv: *const *const u8,
+) -> i32 {
+    unsafe {
+        let mut options = FxHashMap::default();
+
+        // Now, we collect the options.
+        for i in 0..argc as usize {
+            let arg = ffi::CStr::from_ptr(*argv.offset(i as isize) as *const i8)
+                .to_str()
+                .unwrap();
+            let mut iter = arg.split("=");
+            let key = iter.next().unwrap();
+            let value = iter.next().unwrap();
+            options.insert(key.to_string(), value.to_string());
+        }
+
+        PluginList::init(id, &options);
 
         0
     }

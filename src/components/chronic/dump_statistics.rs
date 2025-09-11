@@ -189,7 +189,8 @@ unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
                         core_id as u32,
                         EventType::TargetLocalCycle,
                         false,
-                        qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+                        // qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32),
+                        0
                     );
                 }
 
@@ -229,9 +230,11 @@ pub unsafe fn init(init_threshold: u64, interval: u64, count: u64, prefix: Strin
         MEASURE_INTERVAL = interval;
         MEASURE_PREFIX.set(prefix).unwrap();
 
+        /*
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
             on_icount_periodic_checking
         )));
+        */
     }
 }
 

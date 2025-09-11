@@ -3,13 +3,11 @@ use std::panic;
 use crate::{
     components::{
         cache_hierarchy::{
-            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
                 CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
                 PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheAccessRequest,
-                SharedCacheAccessSource, SharedCacheLookupResult,
-            },
-            mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
+                SharedCacheAccessSource, SharedCacheLookupResult, SharerList,
+            }, hierarchy::timing_bridge::timing_bridge_push, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
         },
         debug::{
             cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
@@ -30,6 +28,7 @@ impl<
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
     const DIRECTORY_SHARD_COUNT: usize,
+    const DIRECTORY_ASSO: usize,
     const CORE_COUNT: usize,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
@@ -41,6 +40,7 @@ impl<
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
         DIRECTORY_SHARD_COUNT,
+        DIRECTORY_ASSO,
         CORE_COUNT,
     >
 {
@@ -112,6 +112,7 @@ impl<
 
         // if it is miss, we need to access the last level cache as well, and add it.
         if sharers.count_ones() == 0 {
+            // directory miss
             if let Some(evicted_directory_entry) = evicted {
                 // trigger eviction to the private cache.
                 let mut acquired_sets = self.private_caches.get_set_guard_by_sharer_list(
@@ -158,7 +159,7 @@ impl<
 
                 // write this back to the shared cache.
                 // TODO: Here we should record the causality violation.
-                let (_, eviction_violated) = self.shared_cache.insert(
+                let (_, eviction_violated, _) = self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     evicted_directory_entry.0,
                     ts,
@@ -265,6 +266,17 @@ impl<
                 line!(),
             );
 
+            timing_bridge_push(
+                core_id,
+                block_id,
+                sharers, // 0
+                // both read and write need to access memory
+                matches!(shared_cache_result, SharedCacheLookupResult::Hit(_)),
+                false,
+                false,
+                ts,
+            );
+
             // Now, it is time to fill the private cache.
 
             let mut set_to_fill = self.private_caches.get_set_for_fill(r);
@@ -361,6 +373,8 @@ impl<
             };
         }
 
+        // directory hit
+
         if is_prefetch {
             return CacheHierarchyAccessResult::Miss;
         }
@@ -391,6 +405,7 @@ impl<
         // and the current operation is a read operation, we don't need to acquire the sharer list.
         // It is a fast path: we can just put this replica in the shared list.
         let (evicted, res) = if miss_directory_guard.shared && !is_store {
+            // read a shared block
             let result = if ts < miss_directory_guard.lru_ts {
                 // violation happens, but it does not change the result of this access.
                 CacheHierarchyAccessResult::Unknown
@@ -411,6 +426,17 @@ impl<
                     true,
                 );
             }
+
+            // don't even bother to forward
+            timing_bridge_push(
+                core_id,
+                block_id,
+                sharers, // not relevant
+                true,
+                false,
+                false,
+                ts,
+            );
 
             // get the lock of the private cache for refilling.
             let mut set_for_refill_lock = self.private_caches.get_set_for_fill(r);
@@ -437,6 +463,7 @@ impl<
 
             (evicted, result)
         } else {
+            // read a potentially-modified block, or write a block
             let mut acquire_list = sharers;
             // this list should either
             // - Not contain the current core, so it is a miss, or
@@ -461,6 +488,7 @@ impl<
             };
 
             let evicted = if is_store {
+                // write a block
                 let mut incoming_sharer = miss_directory_guard.sharers;
                 let mut set_for_refill_lock = None;
                 let mut causality_violation = false;
@@ -514,8 +542,45 @@ impl<
                 }
 
                 // Because a write operation has happened, we need to invalidate the shared cache.
-                self.shared_cache
+                let inv_result = self.shared_cache
                     .invalidate(SharedCacheAccessSource::Core(core_id), block_id, ts);
+
+                // when a write only requires invalidation, the core must
+                // already be in the sharer list, and there must be other
+                // sharers to invalidate
+                let mut next_sharers = acquire_list.clone();
+                next_sharers.set(p_cache_id, false);
+
+                if sharers.get(p_cache_id).unwrap() == true && next_sharers.count_ones() > 0 {
+                    timing_bridge_push(
+                        core_id,
+                        block_id,
+                        next_sharers,
+                        // skip memory access as only invalidation is needed
+                        true,
+                        true,
+                        false,
+                        ts,
+                    );
+                } else {
+                    // different semantics: a write can miss in the directory or
+                    // the core is not in the sharer list. treat the write as
+                    // GetX instead
+                    timing_bridge_push(
+                        core_id,
+                        block_id,
+                        next_sharers,
+                        // skip memory access if
+                        //   1. the block is already in llc
+                        //   2. the read is non-allocating
+                        matches!(inv_result, SharedCacheLookupResult::Hit(_)) ||
+                            !FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
+                        // might be true
+                        next_sharers.count_ones() > 0,
+                        false,
+                        ts,
+                    );
+                }
 
                 let set_for_refill_lock = set_for_refill_lock.unwrap();
 
@@ -566,6 +631,7 @@ impl<
 
                 evicted
             } else {
+                // read a non-shared block
                 // You need to find currently whether there are cores that have modified permission.
                 let mut find_writable_replica = false;
                 let mut modified_replica = false;
@@ -612,15 +678,35 @@ impl<
                     assert!(!miss_directory_guard.shared);
                 }
 
-                if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
+                let (_, _, llc_hit) = if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
                     self.shared_cache.insert(
                         SharedCacheAccessSource::Core(core_id),
                         block_id,
                         ts,
                         modified_replica,
                         true,
-                    );
-                }
+                    )
+                } else {
+                    (false, false, false)
+                };
+
+                // cpu reads a non-shared block
+                assert_eq!(sharers.get(p_cache_id).unwrap(), false);
+
+                timing_bridge_push(
+                    core_id,
+                    block_id,
+                    sharers,
+                    // skip memory access if
+                    //   1. llc hits and no writeback is needed
+                    //   2. the read is non-allocating
+                    llc_hit && !modified_replica || !FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
+                    // even if no core keeps a modified copy, the broadcast is
+                    // still needed
+                    true,
+                    false,
+                    ts,
+                );
 
                 if !private_hit.permission_violation() {
                     if miss_directory_guard.lru_ts < ts && !causality_violation {
@@ -758,7 +844,7 @@ impl<
         // get directory lock.
         let mut directory_set_lock_guard = self.directory.fetch_one_entry(block_id);
 
-        let require_llc_access =
+        let (require_llc_access, broadcast, sharers) =
             if let Some(directory_entry) = directory_set_lock_guard.get(block_id) {
                 let mut acquire_list = self
                     .private_caches
@@ -766,14 +852,24 @@ impl<
                 match access_type {
                     CacheAccessType::InstructionFetch => unreachable!(),
                     CacheAccessType::DataRead | CacheAccessType::PageWalkRead => {
-                        for (_, set, index) in acquire_list.iter_mut() {
-                            if let Some(index) = index {
-                                // TODO: update the counter.
-                                set.request_sharer(*index, ts);
+                        let res = (acquire_list.len() == 0,
+                                  !directory_entry.shared && directory_entry.sharers.count_ones() > 0,
+                                   directory_entry.sharers);
+
+                        if !directory_entry.shared {
+                            for (_, set, index) in acquire_list.iter_mut() {
+                                if let Some(index) = index {
+                                    // TODO: update the counter.
+                                    set.request_sharer(*index, ts);
+                                }
+                            }
+
+                            if acquire_list.len() > 0 {
+                                directory_entry.shared = true;
                             }
                         }
 
-                        acquire_list.len() == 0
+                        res
                     }
 
                     CacheAccessType::DataWrite => {
@@ -783,14 +879,14 @@ impl<
                             }
                         }
 
-                        true
+                        (true, directory_entry.sharers.count_ones() > 0, directory_entry.sharers)
                     }
 
                     CacheAccessType::PrefetchRead => unreachable!(),
                     CacheAccessType::PrefetchWrite => unreachable!(),
                 }
             } else {
-                true
+                (true, false, SharerList::ZERO)
             };
 
         if require_llc_access {
@@ -806,14 +902,43 @@ impl<
                 .shared_cache
                 .lookup_and_insert_on_miss(&llc_request, ts, true)
             {
-                SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+                SharedCacheLookupResult::Hit(_) => {
+                    timing_bridge_push(
+                        0, // irrelevant
+                        block_id,
+                        sharers,
+                        true,
+                        broadcast,
+                        false,
+                        ts,
+                    );
+                    CacheHierarchyAccessResult::HitInSharedCache
+                }
                 SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                    timing_bridge_push(
+                        0, // irrelevant
+                        block_id,
+                        sharers,
+                        false,
+                        broadcast,
+                        false,
+                        ts,
+                    );
                     CacheHierarchyAccessResult::Miss
                 }
                 SharedCacheLookupResult::LookupLate(_, _) => CacheHierarchyAccessResult::Unknown,
                 SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
             };
         } else {
+            timing_bridge_push(
+                0, // irrelevant
+                block_id,
+                sharers,
+                false, // irrelevant
+                false,
+                true,
+                ts,
+            );
             return CacheHierarchyAccessResult::HitInOtherPrivateCache;
         }
     }

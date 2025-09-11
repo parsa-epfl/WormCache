@@ -115,7 +115,7 @@ pub trait SharedCache {
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) -> (bool, bool);
+    ) -> (bool, bool, bool);
 
     // A combine with lookup and insert. If the cache line is not in the cache and it is a read, insert it.
     fn lookup_and_insert_on_miss(

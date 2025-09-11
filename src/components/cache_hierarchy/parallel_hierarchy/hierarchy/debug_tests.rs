@@ -62,6 +62,7 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { parameter::DIRECTORY_SHARD_COUNT },
+    { parameter::DIRECTORY_ASSO },
     32,
 >;
 

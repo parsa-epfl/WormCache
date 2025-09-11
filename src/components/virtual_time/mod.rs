@@ -102,6 +102,7 @@ impl super::Plugin for VirtualTimePlugin {
             }
         }
 
+        /*
         if vtime_is_on && !unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
             assert!(unsafe {
                 qemu_api::qemu_plugin_register_cpu_clock_cb(Some(calculate_cpu_clock))
@@ -224,6 +225,7 @@ impl super::Plugin for VirtualTimePlugin {
         } else if unsafe { qemu_api::qemu_plugin_is_icount_mode() } {
             println!("Virtual time calculation is off because icount mode is on.");
         }
+        */
     }
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb) {
@@ -258,7 +260,8 @@ impl super::Plugin for VirtualTimePlugin {
         let mut file = zstd::Encoder::new(file, 0).unwrap();
 
         let vtime = (0..256)
-            .map(|idx| unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(idx) })
+            // .map(|idx| unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(idx) })
+            .map(|_| 0)
             .collect::<Vec<_>>();
 
         serde_json::to_writer(&mut file, &vtime).unwrap();
@@ -280,10 +283,12 @@ impl super::Plugin for VirtualTimePlugin {
 
         let vtime: Vec<u64> = serde_json::from_reader(&mut file).unwrap();
 
+        /*
         for (i, v) in vtime.into_iter().enumerate() {
             unsafe {
                 qemu_api::qemu_plugin_set_vcpu_vtime(i as u32, v);
             }
         }
+        */
     }
 }

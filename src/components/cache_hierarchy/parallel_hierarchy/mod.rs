@@ -40,6 +40,7 @@ use crate::{
     qemu_api,
     timestamp::get_ts,
     util::get_monotonic_ts,
+    components::cache_hierarchy::CacheBlockRequest
 };
 
 use super::{MemoryAccessRequest, MemoryHierarchy, common::CacheAccessType};
@@ -115,6 +116,48 @@ unsafe extern "C" fn vcpu_mem_access(
     }
 }
 
+#[unsafe(no_mangle)]
+unsafe extern "C" fn cpu_trace_phys(
+    vcpu_idx: u32,
+    paddr: u64,
+    is_store: bool,
+    is_os: bool
+) {
+    unsafe {
+        (*PLUGIN).access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: vcpu_idx,
+                block_id: paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros(),
+                access_type: if is_store {
+                    CacheAccessType::DataWrite
+                } else {
+                    CacheAccessType::DataRead
+                },
+                is_os: is_os
+            },
+            get_ts()
+        );
+    }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn dev_trace_phys(
+    paddr: u64,
+    is_store: bool
+) {
+    unsafe {
+        (*PLUGIN).access_from_device_with_pa(
+            paddr,
+            if is_store {
+                CacheAccessType::DataWrite
+            } else {
+                CacheAccessType::DataRead
+            },
+            get_ts()
+        );
+    }
+}
+
 static mut L0_CACHE: *mut L0InstructionCache<{ parameter::CORE_COUNT }> = std::ptr::null_mut();
 
 unsafe extern "C" fn vcpu_insn_exec(
@@ -122,7 +165,8 @@ unsafe extern "C" fn vcpu_insn_exec(
     inst_virtual_addr: *mut ffi::c_void, // it is basically its physical address.
 ) {
     unsafe {
-        let vpn = qemu_api::qemu_plugin_read_pc_vpn();
+        // let vpn = qemu_api::qemu_plugin_read_pc_vpn();
+        let vpn = 0;
         let vaddr = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
 
         if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
@@ -262,20 +306,6 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             "Pure vtime is enabled. Memory Hierarchy should be disabled."
         );
 
-        let pure_fill_mode = mode == "pure_fill";
-
-        if pure_fill_mode {
-            unsafe {
-                assert!(qemu_api::qemu_plugin_register_event_loop_poll_cb(Some(
-                    event_loop_callback
-                )));
-
-                assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
-                    quantum_checking_callback
-                )));
-            }
-        }
-
         let prefix = options.get("prefix").unwrap_or(&"".to_string()).clone();
         SNAPSHOT_NAME
             .set(format!("{}_{}", prefix, "warmed"))
@@ -290,13 +320,11 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         WARM_RATIO.set(warm_ratio).unwrap();
 
         unsafe {
-            let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
-            let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
-
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(
                 true,
-                quantum_size,
-                is_icount_mode,
+                // quantum_size,
+                // is_icount_mode,
+                0, false
             )));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
@@ -305,7 +333,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             // Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
             // }
 
-            qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_invalid_tlb));
+            // qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_invalid_tlb));
 
             // qemu_api::qemu_plugin_register_periodic_check_cb(Some(dump_statistics));
         }

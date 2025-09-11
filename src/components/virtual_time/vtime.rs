@@ -56,9 +56,11 @@ impl VirtualTimeContext {
     }
 
     pub fn shift_time(&mut self, shift: u64) {
+        /*
         if unsafe { qemu_plugin_cpu_is_tick_enabled() } {
             self.advanced_vclock += shift as i64;
         }
+        */
     }
 
     pub fn get_scaling_factor(&self) -> f64 {
@@ -75,6 +77,7 @@ impl VirtualTimeContext {
         let real_time = crate::util::get_monotonic_ts();
 
         // 2. calculate the potential update
+        /*
         unsafe {
             if qemu_plugin_cpu_is_tick_enabled() && self.last_real_time != 0 {
                 // 3.2 if the maximum is zero, we use the difference of the real time.
@@ -85,6 +88,7 @@ impl VirtualTimeContext {
                 self.advanced_vclock += advanced_vtime;
             }
         }
+        */
 
         // 4. update the context with the new icounts and the real time.
         self.last_real_time = real_time;
@@ -101,12 +105,14 @@ impl VirtualTimeContext {
     pub fn calculate_cpu_clock_with_10x_slowdown_from_realtime(&mut self) -> i64 {
         let real_time = crate::util::get_monotonic_ts();
 
+        /*
         unsafe {
             if qemu_plugin_cpu_is_tick_enabled() && self.last_real_time != 0 {
                 let advanced_vtime = (real_time - self.last_real_time) as i64;
                 self.advanced_vclock += advanced_vtime / 10;
             }
         }
+        */
 
         self.last_real_time = real_time;
 

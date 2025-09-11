@@ -133,7 +133,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) -> (bool, bool) {
+    ) -> (bool, bool, bool) {
         let set_idx = (block_id % SET as u64) as usize;
         let insertion_result = self.blocks[set_idx].lock().insert(
             block_id,
