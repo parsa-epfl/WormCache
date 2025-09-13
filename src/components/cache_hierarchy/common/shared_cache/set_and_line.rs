@@ -150,10 +150,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             return if hit_ts <= ts {
                 SharedCacheLookupResult::Hit(hit_block.modified)
             } else {
-                SharedCacheLookupResult::LookupLate(
-                    hit_block.ts as u32 - ts as u32,
-                    hit_block.modified,
-                )
+                SharedCacheLookupResult::LookupLate(hit_ts as u32 - ts as u32, hit_block.modified)
             };
         }
 

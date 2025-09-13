@@ -33,5 +33,13 @@ crate-type=["rlib", "cdylib"]
 debug = true
 
 [dev-dependencies]
+divan = "0.1.21"
 tempfile = "3.17.1"
 
+[[bench]]
+name = "bp_ipc"
+harness = false
+
+[[bench]]
+name = "memory_hierarchy_ipc"
+harness = false

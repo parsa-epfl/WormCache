@@ -29,7 +29,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use perf_event::Builder;
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
@@ -38,9 +37,10 @@ use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache
 use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
-use worm_cache::components::debug::statistics::Statistics;
 
 use worm_cache::parameter;
+
+use divan;
 
 type MH = ParallelMemoryHierarchy<
     NoMMU,
@@ -63,7 +63,7 @@ type MH = ParallelMemoryHierarchy<
     1,
 >;
 
-#[allow(dead_code)]
+#[divan::bench]
 fn test_hit_last() {
     let mh = MH::new(true, 0, false);
 
@@ -76,11 +76,9 @@ fn test_hit_last() {
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
             },
-            i as u64,
+            (i + 1) as u64,
         );
     }
-
-    println!("Set filled: {}", set_idx);
 
     // start testing. Access the same set and the last way.
     let addr = (parameter::UNIFIED_PRI_CACHE_ASSO as u64 - 1)
@@ -99,10 +97,14 @@ fn test_hit_last() {
             ts,
         );
         ts += 1;
+
+        if ts > 1024 * 1024 {
+            break;
+        }
     }
 }
 
-#[allow(dead_code)]
+#[divan::bench]
 fn testing_pcache_always_miss() {
     let mh = MH::new(true, 0, false);
 
@@ -129,16 +131,13 @@ fn testing_pcache_always_miss() {
         }
         block_id = 42;
 
-        if ts > 1024 * 1024 * 10 {
+        if ts > 1024 * 1024 {
             break;
         }
     }
-
-    // print the miss rate of the data cache and shared cache from core 0. They should be 100%.
-    println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);
 }
 
-#[allow(dead_code)]
+#[divan::bench]
 fn testing_always_miss() {
     let mh = MH::new(true, 0, false);
 
@@ -165,21 +164,20 @@ fn testing_always_miss() {
         }
         block_id = 37;
 
-        if ts > 1024 * 1024 * 1000 {
+        if ts > 1024 * 1024 {
             break;
         }
     }
-
-    // print the miss rate of the data cache and shared cache from core 0. They should be 100%.
-    println!("{}", Statistics::global_get_line_for_all_cores(0)[0]);
 }
 
 pub fn main() {
-    let mut counter = Builder::new().build().unwrap();
+    // let mut counter = Builder::new().build().unwrap();
 
-    counter.enable().unwrap();
-    testing_pcache_always_miss();
-    counter.disable().unwrap();
+    // counter.enable().unwrap();
+    // testing_pcache_always_miss();
+    // counter.disable().unwrap();
 
-    println!("Instructions: {}", counter.read().unwrap());
+    // println!("Instructions: {}", counter.read().unwrap());
+
+    divan::main();
 }
