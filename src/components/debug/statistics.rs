@@ -32,8 +32,8 @@
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount, EnumIter};
 
-use std::cell::UnsafeCell;
 use std::sync::LazyLock;
+use std::{cell::UnsafeCell, io::Write};
 
 use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
 
@@ -263,5 +263,22 @@ impl Statistics {
         }
 
         lines.join("\n")
+    }
+
+    #[inline]
+    pub fn save_to_csv(file_name: &str, ts: u64) {
+        // save statistics.
+        let mut file = std::fs::File::create(format!("{}/statistics.csv", file_name)).unwrap();
+        // write header.
+        file.write_fmt(format_args!("{}\n", Statistics::get_header()))
+            .unwrap();
+        // write content
+        for stat in Statistics::global_get_line_for_all_cores(ts) {
+            file.write_all(stat.as_bytes()).unwrap();
+            file.write_all(b"\n").unwrap();
+        }
+
+        file.flush().unwrap();
+        drop(file);
     }
 }

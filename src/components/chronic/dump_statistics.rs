@@ -29,8 +29,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::Write;
-
 use crate::{
     components::debug::statistics::{EventType, Statistics},
     parameter as param, qemu_api,
@@ -178,11 +176,6 @@ unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
             if turn >= MEASURE_MAX_TURN {
                 println!("The maximum statistics turn is reached. Quit.");
 
-                let mut miss_file = std::fs::File::create("statistics.final.csv").unwrap();
-                miss_file
-                    .write_fmt(format_args!("{}\n", Statistics::get_header()))
-                    .unwrap();
-
                 // update the local target time before writing the statistics
                 for core_id in 0..param::CORE_COUNT {
                     Statistics::global_set(
@@ -193,10 +186,7 @@ unsafe extern "C" fn on_icount_periodic_checking(diff: u64) -> bool {
                     );
                 }
 
-                for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                    miss_file.write_all(stat.as_bytes()).unwrap();
-                    miss_file.write_all(b"\n").unwrap();
-                }
+                Statistics::save_to_csv("statistics.final.csv", get_monotonic_ts());
 
                 {
                     use nix::sys::signal::{self, Signal};

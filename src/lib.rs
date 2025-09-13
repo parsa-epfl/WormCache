@@ -48,6 +48,7 @@ use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 use components::cache_hierarchy::SingleCacheHierarchyPlugin;
 use components::chronic::chronic_behavior_init;
 use components::chronic::on_finish_loading_snapshot;
+use components::debug::statistics::Statistics;
 #[allow(unused_imports)]
 use components::instruction_frequency::InstructionFrequencyPlugin;
 #[allow(unused_imports)]
@@ -63,10 +64,10 @@ use components::virtual_time::VirtualTimePlugin;
 #[allow(unused_imports)]
 use components::wfi::WaitForInterruptCounterPlugin;
 
-
 use components::Plugin;
 use parameter::PluginList;
 use rustc_hash::FxHashMap;
+use util::get_monotonic_ts;
 
 use std::ffi;
 use std::io::Write;
@@ -128,7 +129,9 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
         std::fs::create_dir_all(&name).unwrap();
         let current_time = std::time::SystemTime::now();
         PluginList::serialize(&name);
+        Statistics::save_to_csv(&format!("{}/statistics.csv", name), get_monotonic_ts());
         timestamp::serialize(&name);
+
         let elapsed_time = std::time::SystemTime::now()
             .duration_since(current_time)
             .unwrap()
@@ -153,7 +156,6 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
 
     // This function is called after the snapshot is loaded.
     on_finish_loading_snapshot();
-
 }
 
 #[unsafe(no_mangle)]
