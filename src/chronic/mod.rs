@@ -31,14 +31,13 @@
 
 use rustc_hash::FxHashMap;
 
-mod dump_statistics;
 mod snapshot;
 
 pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
     let normal = "normal".to_string();
     let mode = options.get("mode").unwrap_or(&normal);
 
-    // - mode=normal|warm|ff|measure
+    // - mode=normal|warm|ff
     // - init_threshold=N
     // - interval=N
     // - count=N
@@ -47,8 +46,6 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
 
     if mode == "warm" || mode == "ff" {
         println!("Periodical snapshot (warm) is enabled.");
-
-        // assert!(unsafe { qemu_plugin_is_icount_mode() });
 
         let init_threshold = options
             .get("init_threshold")
@@ -90,38 +87,6 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
                 no_qemu_snapshot,
             );
         }
-    } else if mode == "measure" {
-        // assert!(unsafe { qemu_plugin_is_icount_mode() });
-
-        let init_threshold = options
-            .get("init_threshold")
-            .map(|x| x.parse::<u64>().unwrap())
-            .unwrap();
-
-        let interval = options
-            .get("interval")
-            .map(|x| x.parse::<u64>().unwrap())
-            .unwrap();
-
-        let count = options
-            .get("count")
-            .map(|x| x.parse::<u64>().unwrap())
-            .unwrap();
-
-        let prefix = options
-            .get("prefix")
-            .unwrap_or(&"icount_statistics".to_string())
-            .clone();
-
-        println!("Measurement is ON.");
-        println!(
-            "Interval: {}, Initial threshold: {}, Count: {}",
-            interval, init_threshold, count
-        );
-
-        unsafe {
-            dump_statistics::init(init_threshold, interval, count, prefix);
-        }
     }
 }
 
@@ -129,6 +94,4 @@ pub fn on_loading_snapshot(snapshot_name: &str) {
     snapshot::on_load_snapshot(snapshot_name);
 }
 
-pub fn on_finish_loading_snapshot() {
-    dump_statistics::on_finish_loading_snapshot();
-}
+pub fn on_finish_loading_snapshot() {}

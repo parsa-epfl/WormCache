@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 3;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
