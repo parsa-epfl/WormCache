@@ -35,17 +35,15 @@ use zstd::{Decoder, Encoder};
 
 use crate::{
     arch::AArch64,
-    components::{
-        cache_hierarchy::{
-            CacheBlockRequest, MemoryHierarchy,
-            common::{
-                CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheAccessRequest,
-                SharedCacheAccessSource, SharedCacheLookupResult,
-            },
-            mmu::{self, AbstractMMU, MMUTranslationResult},
+    components::cache_hierarchy::{
+        CacheBlockRequest, MemoryHierarchy,
+        common::{
+            CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheAccessRequest,
+            SharedCacheAccessSource, SharedCacheLookupResult,
         },
-        debug::statistics::{EventType, Statistics},
+        mmu::{self, AbstractMMU, MMUTranslationResult},
     },
+    debug::statistics::{EventType, Statistics},
     parameter,
 };
 

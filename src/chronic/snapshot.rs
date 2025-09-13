@@ -32,7 +32,7 @@
 use std::{fs::File, io::Write};
 
 use crate::{
-    components::debug::statistics::{EventType, Statistics},
+    debug::statistics::{EventType, Statistics},
     parameter::{self, PluginList},
     qemu_api,
     util::get_monotonic_ts,

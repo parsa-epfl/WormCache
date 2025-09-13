@@ -1,20 +1,18 @@
 use std::panic;
 
 use crate::{
-    components::{
-        cache_hierarchy::{
-            CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
-            common::{
-                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCache,
-                PrivateCacheEvictedSlot, PrivateCachePokeResult, SharedCache,
-                SharedCacheAccessRequest, SharedCacheAccessSource, SharedCacheLookupResult,
-            },
-            mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
+    components::cache_hierarchy::{
+        CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
+        common::{
+            CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCache,
+            PrivateCacheEvictedSlot, PrivateCachePokeResult, SharedCache, SharedCacheAccessRequest,
+            SharedCacheAccessSource, SharedCacheLookupResult,
         },
-        debug::{
-            cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
-            statistics::{EventType, Statistics},
-        },
+        mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
+    },
+    debug::{
+        cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
+        statistics::{EventType, Statistics},
     },
     parameter::{CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE},
 };

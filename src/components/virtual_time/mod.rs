@@ -42,8 +42,8 @@ use std::time::Duration;
 use crate::parameter as param;
 use crate::qemu_api;
 
-use super::debug::statistics::EventType;
-use super::debug::statistics::Statistics;
+use crate::debug::statistics::EventType;
+use crate::debug::statistics::Statistics;
 
 static TIME_PLUGIN: LazyLock<Mutex<vtime::VirtualTimeContext>> =
     LazyLock::new(|| Mutex::new(vtime::VirtualTimeContext::new()));

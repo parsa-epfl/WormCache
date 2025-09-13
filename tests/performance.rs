@@ -43,7 +43,7 @@ use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 use worm_cache::components::cache_hierarchy::mmu::FullyAssociativeTLB;
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
 use worm_cache::components::cache_hierarchy::mmu::tlb::AddressSpaceID::NonGlobal;
-use worm_cache::components::debug::statistics::Statistics;
+use worm_cache::debug::statistics::Statistics;
 
 use worm_cache::parameter;
 

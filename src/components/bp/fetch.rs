@@ -35,7 +35,7 @@ mod gshare;
 mod ras;
 pub mod tage;
 
-use crate::components::debug::statistics::{EventType, Statistics};
+use crate::debug::statistics::{EventType, Statistics};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 

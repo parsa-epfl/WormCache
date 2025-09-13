@@ -35,9 +35,9 @@ use crate::components::cache_hierarchy::common::{InfiniteDirectorySet, SharedCac
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
-use crate::components::debug::statistics::{EventType, Statistics};
+use crate::debug::statistics::{EventType, Statistics};
 
-use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
+use crate::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
 use super::super::common::{Directory, DirectorySet, PrivateCache, SharedCache};
 

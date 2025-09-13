@@ -33,22 +33,24 @@ pub mod arch;
 pub mod parameter;
 
 pub mod checkpoint;
+pub mod chronic;
 pub mod components;
+pub mod debug;
 mod qemu_api;
 mod util;
 
 pub mod timestamp;
 
 // Plugin
+use crate::chronic::chronic_behavior_init;
+use crate::chronic::on_finish_loading_snapshot;
+use crate::debug::statistics::Statistics;
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::SingleCacheHierarchyPlugin;
-use components::chronic::chronic_behavior_init;
-use components::chronic::on_finish_loading_snapshot;
-use components::debug::statistics::Statistics;
 #[allow(unused_imports)]
 use components::instruction_frequency::InstructionFrequencyPlugin;
 #[allow(unused_imports)]
@@ -150,7 +152,7 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
 
         // Handling the timestamp.
         timestamp::initialize();
-        components::chronic::on_loading_snapshot(&name);
+        crate::chronic::on_loading_snapshot(&name);
         timestamp::deserialize(&folder_name);
     }
 

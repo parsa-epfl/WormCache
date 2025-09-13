@@ -34,7 +34,7 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::debug::cache_line_history::CacheLineCoherenceHistory;
 
 use super::{
     SharedCacheAccessRequest, SharedCacheAccessSource, SharedCacheLookupAndInsertResult,

@@ -30,7 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    components::debug::statistics::{EventType, Statistics},
+    debug::statistics::{EventType, Statistics},
     parameter as param, qemu_api,
     util::get_monotonic_ts,
 };
