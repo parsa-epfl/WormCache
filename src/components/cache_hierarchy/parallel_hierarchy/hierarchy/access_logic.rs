@@ -5,9 +5,9 @@ use crate::{
         cache_hierarchy::{
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
-                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
-                PrivateCachePokeResult, PrivateCache, SharedCache, SharedCacheAccessRequest,
-                SharedCacheAccessSource, SharedCacheLookupResult,
+                CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCache,
+                PrivateCacheEvictedSlot, PrivateCachePokeResult, SharedCache,
+                SharedCacheAccessRequest, SharedCacheAccessSource, SharedCacheLookupResult,
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
         },
@@ -57,7 +57,7 @@ impl<
         let block_id = r.block_id;
         let is_prefetch = r.is_prefetch();
 
-        if !is_prefetch && self.with_statistics {
+        if !is_prefetch {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
             if is_instruction {
                 Statistics::global_record(core_id, EventType::InstructionAccess, is_os);
@@ -128,20 +128,18 @@ impl<
                         // require recording the timestamp of the operation.
                         set.invalidate(*index);
 
-                        if self.with_statistics {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::PrivateCacheInvalidation,
+                            is_os,
+                        );
+
+                        if access_ts > ts {
                             Statistics::global_record(
                                 core_id,
-                                EventType::PrivateCacheInvalidation,
+                                EventType::PrivateCacheInvalidationCausailityViolation,
                                 is_os,
                             );
-
-                            if access_ts > ts {
-                                Statistics::global_record(
-                                    core_id,
-                                    EventType::PrivateCacheInvalidationCausailityViolation,
-                                    is_os,
-                                );
-                            }
                         }
 
                         CacheLineCoherenceHistory::global_record_history(
@@ -167,13 +165,11 @@ impl<
                 );
 
                 if eviction_violated {
-                    if self.with_statistics {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheEvictionCausalityViolation,
-                            is_os,
-                        );
-                    }
+                    Statistics::global_record(
+                        core_id,
+                        EventType::SharedCacheEvictionCausalityViolation,
+                        is_os,
+                    );
                 }
             }
 
@@ -292,7 +288,7 @@ impl<
                 );
             }
 
-            if !is_prefetch && self.with_statistics {
+            if !is_prefetch {
                 // Here it is a miss in the private cache.
                 Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
@@ -310,7 +306,7 @@ impl<
             return match shared_cache_result {
                 SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
                 SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
-                    if !is_prefetch && self.with_statistics {
+                    if !is_prefetch {
                         if is_page_walk {
                             Statistics::global_record(
                                 core_id,
@@ -365,26 +361,24 @@ impl<
             return CacheHierarchyAccessResult::Miss;
         }
 
-        if self.with_statistics {
-            if is_instruction {
-                Statistics::global_record(
-                    core_id,
-                    EventType::PrivateCacheMissTriggerCoherenceDueToFetch,
-                    is_os,
-                );
-            } else if is_store {
-                Statistics::global_record(
-                    core_id,
-                    EventType::PrivateCacheMissTriggerCoherenceDueToWrite,
-                    is_os,
-                );
-            } else {
-                Statistics::global_record(
-                    core_id,
-                    EventType::PrivateCacheMissTriggerCoherenceDueToRead,
-                    is_os,
-                );
-            }
+        if is_instruction {
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerCoherenceDueToFetch,
+                is_os,
+            );
+        } else if is_store {
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerCoherenceDueToWrite,
+                is_os,
+            );
+        } else {
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerCoherenceDueToRead,
+                is_os,
+            );
         }
 
         // If the directory entry suggests the cache line be in the shared state,
@@ -477,20 +471,18 @@ impl<
 
                         causality_violation |= access_ts > ts;
 
-                        if self.with_statistics {
+                        Statistics::global_record(
+                            core_id,
+                            EventType::PrivateCacheInvalidation,
+                            is_os,
+                        );
+
+                        if access_ts > ts {
                             Statistics::global_record(
                                 core_id,
-                                EventType::PrivateCacheInvalidation,
+                                EventType::PrivateCacheInvalidationCausailityViolation,
                                 is_os,
                             );
-
-                            if access_ts > ts {
-                                Statistics::global_record(
-                                    core_id,
-                                    EventType::PrivateCacheInvalidationCausailityViolation,
-                                    is_os,
-                                );
-                            }
                         }
 
                         CacheLineCoherenceHistory::global_record_history(
@@ -591,14 +583,12 @@ impl<
                             set.request_sharer(*index, ts);
                             find_writable_replica = true;
 
-                            if self.with_statistics {
-                                if access_ts > ts {
-                                    Statistics::global_record(
-                                        core_id,
-                                        EventType::PrivateCacheDowngradeCausalityViolation,
-                                        is_os,
-                                    );
-                                }
+                            if access_ts > ts {
+                                Statistics::global_record(
+                                    core_id,
+                                    EventType::PrivateCacheDowngradeCausalityViolation,
+                                    is_os,
+                                );
                             }
                         }
                     }
@@ -683,24 +673,22 @@ impl<
             );
         }
 
-        if self.with_statistics {
-            Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
+        Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
 
-            if is_instruction {
-                Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
-            } else if is_page_walk {
-                Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
-            } else {
-                Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
-            }
+        if is_instruction {
+            Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
+        } else if is_page_walk {
+            Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
+        } else {
+            Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
+        }
 
-            if matches!(res, CacheHierarchyAccessResult::HitInOtherPrivateCache) && is_store {
-                Statistics::global_record(
-                    core_id,
-                    EventType::PrivateCacheMissTriggerInvalidation,
-                    is_os,
-                );
-            }
+        if matches!(res, CacheHierarchyAccessResult::HitInOtherPrivateCache) && is_store {
+            Statistics::global_record(
+                core_id,
+                EventType::PrivateCacheMissTriggerInvalidation,
+                is_os,
+            );
         }
 
         res

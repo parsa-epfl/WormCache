@@ -118,8 +118,8 @@ impl MH {
 #[test]
 #[should_panic(expected = "assertion failed: self.lines[idx_of_slot_to_fill].ts <= ts")]
 fn reversed_timestamp_from_the_same_core() {
-    // let mh = MH::new(true, 0, false);
-    let mh = MH::new(true, 0, false);
+    // let mh = MH::new();
+    let mh = MH::new();
     // Fill one cache set with some data.
     let mut ts = 100;
     // Fill one cache set with some data.
@@ -174,7 +174,7 @@ fn reversed_timestamp_from_the_same_core() {
 
 #[test]
 fn write_invalidation_coherence() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
 
     let block_id = 1024;
     // Core 0 gets a read permission at 1.
@@ -242,7 +242,7 @@ fn write_invalidation_coherence() {
 
 #[test]
 fn raw_and_war() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
 
     let block_id = 1024;
     // Core 0 gets a read permission at 0.
@@ -292,7 +292,7 @@ fn raw_and_war() {
 
 #[test]
 fn rarw() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
 
     let block_id = 1024;
     // Core 0 gets a read permission at 10.
@@ -348,7 +348,7 @@ fn rarw() {
 
 #[test]
 fn waw() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
     assert_eq!(
@@ -385,7 +385,7 @@ fn waw() {
 
 #[test]
 fn wwaw() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 gets a write permission at timestamp 10
     assert_eq!(
@@ -437,7 +437,7 @@ fn wwaw() {
 
 #[test]
 fn rae() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 writes to this block at timestamp 10.
     assert_eq!(
@@ -491,7 +491,7 @@ fn rae() {
 
 #[test]
 fn eae() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     // Core 0 accesses the core at 200 and evicts the block at 216 with the dirty permission.
     let block_id = 1024;
     assert_eq!(
@@ -564,7 +564,7 @@ fn eae() {
 
 #[test]
 fn wae() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     let block_id = 1024;
     // Core 0 writes the block at 200 and evicts from the 217.
     assert_eq!(
@@ -624,7 +624,7 @@ fn wae() {
 
 #[test]
 fn eaw() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     let block_id = 1024;
 
     // Core 0 writes to the block at 200.
@@ -675,7 +675,7 @@ fn eaw() {
 
 #[test]
 fn ear() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     let block_id = 1024;
 
     // Core 0 reads the block at 100.
@@ -725,7 +725,7 @@ fn ear() {
 
 #[test]
 fn rar() {
-    let mut mh = MH::new(true, 0, false);
+    let mut mh = MH::new();
     let block_id = 1024;
 
     // Core 0 reads the block at 10.

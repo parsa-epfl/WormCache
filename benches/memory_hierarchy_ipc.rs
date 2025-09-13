@@ -65,7 +65,7 @@ type MH = ParallelMemoryHierarchy<
 
 #[divan::bench]
 fn test_hit_last() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     let set_idx = 1;
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
@@ -106,7 +106,7 @@ fn test_hit_last() {
 
 #[divan::bench]
 fn testing_pcache_always_miss() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:
@@ -139,7 +139,7 @@ fn testing_pcache_always_miss() {
 
 #[divan::bench]
 fn testing_always_miss() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:

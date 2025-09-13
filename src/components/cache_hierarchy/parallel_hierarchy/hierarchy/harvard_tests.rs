@@ -69,7 +69,7 @@ type MH = ParallelMemoryHierarchy<
 
 #[test]
 fn i_create_sharer_from_clean_d() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     let block_id = 203;
 
@@ -121,7 +121,7 @@ fn i_create_sharer_from_clean_d() {
 
 #[test]
 fn i_create_sharer_from_dirty_d() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     let block_id = 203;
 
@@ -197,7 +197,7 @@ fn i_create_sharer_from_dirty_d() {
 
 #[test]
 fn d_create_sharer_from_clean_i() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     let block_id = 203;
 
@@ -249,7 +249,7 @@ fn d_create_sharer_from_clean_i() {
 
 #[test]
 fn d_dirty_create_sharer_from_clean_i() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     let block_id = 203;
 

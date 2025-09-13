@@ -70,7 +70,7 @@ type MH = ParallelMemoryHierarchy<
 
 #[test]
 fn testing_pcache_always_miss() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:
@@ -116,7 +116,7 @@ fn testing_pcache_always_miss() {
 
 #[test]
 fn testing_pcache_always_hit() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:
@@ -160,7 +160,7 @@ fn testing_pcache_always_hit() {
 
 #[test]
 fn read_shared_cache_line() {
-    let mh = MH::new(false, 0, false);
+    let mh = MH::new();
 
     // What I need to do is just to access the block id belonging to a specific shared cache set.
     // The block id is calculated as follows:

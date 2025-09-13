@@ -72,8 +72,6 @@ pub struct ParallelMemoryHierarchy<
     directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>, DIRECTORY_SHARD_COUNT>,
 
     shared_cache: SCache,
-    with_statistics: bool,
-    directory_run_gc: bool,
 }
 
 impl<
@@ -99,14 +97,12 @@ impl<
         CORE_COUNT,
     >
 {
-    pub fn new(with_statistics: bool, _quantum_size: u64, directory_run_gc: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
             private_caches: PCache::new(),
             directory: Directory::new(),
             shared_cache: SCache::new(),
-            with_statistics,
-            directory_run_gc,
         }
     }
 
@@ -161,13 +157,11 @@ impl<
         // before releasing the lock of the directory, we need to check whether we need to place this lock to the shared cache.
         if directory_entry.sharers.count_ones() == 0 {
             // we need to place this block to the shared cache.
-            if self.with_statistics {
-                Statistics::global_record(
-                    PCache::find_cache_info_by_cache_id(cache_id).0,
-                    EventType::SharedCacheAccess,
-                    is_os,
-                );
-            }
+            Statistics::global_record(
+                PCache::find_cache_info_by_cache_id(cache_id).0,
+                EventType::SharedCacheAccess,
+                is_os,
+            );
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
@@ -189,11 +183,6 @@ impl<
                     modified,
                     true,
                 );
-            }
-
-            if self.directory_run_gc {
-                // run GC here to clean this directory entry.
-                directory_set_guard.erase(block_id);
             }
         }
     }

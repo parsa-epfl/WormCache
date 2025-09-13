@@ -290,14 +290,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         WARM_RATIO.set(warm_ratio).unwrap();
 
         unsafe {
-            let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
-            let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
-
-            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(
-                true,
-                quantum_size,
-                is_icount_mode,
-            )));
+            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
 
             // if parameter::MEASURE_HALF_OF_CORES {
