@@ -32,18 +32,7 @@
 use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
- *
- *
- * Basically, I want to implement the following logic:
- *
- * ```rust
- * type HierarchyForPlugin = match (SERIAL_CACHE_MODEL, UNIFIED_CACHE_MODEL) {
- *    (true, true) => ParallelMemoryHierarchyUnified,
- *    (true, false) => ParallelMemoryHierarchyHarvard,
- *    (false, true) => SerialMemoryHierarchyUnified,
- *    (false, false) => SerialMemoryHierarchyHarvard,
- * };
- *
+ * Basically, I want to select which ParallelMemoryHierarchy based on the paramter.rs at the compile time.
  * Well, this is not available in the Rust. So, I have to use the trait and its polymorphism to implement the logic, which is extremely dirty.
  *
  * Reference: https://willcrichton.net/notes/type-level-programming/
@@ -74,8 +63,9 @@ impl SharedCacheStatisticsParser<false> for DummyParser {
     type Output = ZeroSharedCacheSetStatistics;
 }
 
-pub type SharedCacheStatisticsWithPlugin =
-    <DummyParser as SharedCacheStatisticsParser<{ parameter::ENABLE_STATISTICS }>>::Output;
+pub type SharedCacheStatisticsWithPlugin = <DummyParser as SharedCacheStatisticsParser<
+    { parameter::ENABLE_SHARED_CACHE_STATISTICS },
+>>::Output;
 
 use super::{
     super::common::{

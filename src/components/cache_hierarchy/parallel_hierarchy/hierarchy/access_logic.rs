@@ -80,7 +80,7 @@ impl<
 
         // Alright, we may need to get another directory entry of the eviction.
         // This entry may bot be used, because other entry in the same set can be evicted. But we need to get it ahead of time to avoid deadlock.
-        let (mut miss_directory_set_guard, evict_directory) = {
+        let (mut miss_directory_set_guard, evicted_directory_set_guard) = {
             match evicted_slot {
                 PrivateCacheEvictedSlot::Valid(_, potential_evicted_id) => {
                     let (m_guard, e_guard) = self
@@ -273,7 +273,7 @@ impl<
                 modified,
             ) {
                 let (evicted_block_id, mut evicted_block_directory_guard) =
-                    evict_directory.unwrap();
+                    evicted_directory_set_guard.unwrap();
                 self.handle_eviction(
                     evicted_block_directory_guard
                         .as_mut()
@@ -658,7 +658,8 @@ impl<
         };
 
         if let Some(is_modified) = evicted {
-            let (evicted_block_id, mut evicted_block_directory_guard) = evict_directory.unwrap();
+            let (evicted_block_id, mut evicted_block_directory_guard) =
+                evicted_directory_set_guard.unwrap();
             self.handle_eviction(
                 evicted_block_directory_guard
                     .as_mut()
