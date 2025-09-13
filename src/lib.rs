@@ -40,29 +40,28 @@ mod util;
 pub mod timestamp;
 
 // Plugin
-#[allow(unused_imports)]
-use components::bp::BranchPredictorPlugin;
+// #[allow(unused_imports)]
+// use components::bp::BranchPredictorPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
-#[allow(unused_imports)]
-use components::cache_hierarchy::SingleCacheHierarchyPlugin;
-use components::chronic::chronic_behavior_init;
-use components::chronic::on_finish_loading_snapshot;
-#[allow(unused_imports)]
-use components::instruction_frequency::InstructionFrequencyPlugin;
-#[allow(unused_imports)]
-use components::marker::MarkerPlugin;
-#[allow(unused_imports)]
-use components::pw_log::PageWalkLoggerPlugin;
-#[allow(unused_imports)]
-use components::touch_once::TouchOnePlugin;
-#[allow(unused_imports)]
-use components::trace::TracePlugin;
-#[allow(unused_imports)]
-use components::virtual_time::VirtualTimePlugin;
-#[allow(unused_imports)]
-use components::wfi::WaitForInterruptCounterPlugin;
-
+// #[allow(unused_imports)]
+// use components::cache_hierarchy::SingleCacheHierarchyPlugin;
+// use components::chronic::chronic_behavior_init;
+// use components::chronic::on_finish_loading_snapshot;
+// #[allow(unused_imports)]
+// use components::instruction_frequency::InstructionFrequencyPlugin;
+// #[allow(unused_imports)]
+// use components::marker::MarkerPlugin;
+// #[allow(unused_imports)]
+// use components::pw_log::PageWalkLoggerPlugin;
+// #[allow(unused_imports)]
+// use components::touch_once::TouchOnePlugin;
+// #[allow(unused_imports)]
+// use components::trace::TracePlugin;
+// #[allow(unused_imports)]
+// use components::virtual_time::VirtualTimePlugin;
+// #[allow(unused_imports)]
+// use components::wfi::WaitForInterruptCounterPlugin;
 
 use components::Plugin;
 use parameter::PluginList;
@@ -89,72 +88,71 @@ unsafe extern "C" fn vcpu_tb_trans(
     }
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn vcpu_vtime_tb_trans(
-    _: qemu_api::qemu_plugin_id_t,
-    tb: *mut qemu_api::qemu_plugin_tb,
-) {
-    unsafe {
-        VirtualTimePlugin::on_translation(tb);
-    }
-}
+// #[unsafe(no_mangle)]
+// unsafe extern "C" fn vcpu_vtime_tb_trans(
+//     _: qemu_api::qemu_plugin_id_t,
+//     tb: *mut qemu_api::qemu_plugin_tb,
+// ) {
+//     unsafe {
+//         VirtualTimePlugin::on_translation(tb);
+//     }
+// }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
-    unsafe {
-        let converted_name = ffi::CStr::from_ptr(name).to_str();
+// #[unsafe(no_mangle)]
+// unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
+//     unsafe {
+//         let converted_name = ffi::CStr::from_ptr(name).to_str();
 
-        if converted_name.is_err() {
-            // print the raw char and return.
-            println!("Failed to convert the name to string.");
-            // print the raw char until we saw a null character.
-            let mut i = 0;
-            loop {
-                let c = *name.offset(i);
-                if c == 0 {
-                    break;
-                }
-                print!("{}", c as u8 as char);
-                i += 1;
-            }
+//         if converted_name.is_err() {
+//             // print the raw char and return.
+//             println!("Failed to convert the name to string.");
+//             // print the raw char until we saw a null character.
+//             let mut i = 0;
+//             loop {
+//                 let c = *name.offset(i);
+//                 if c == 0 {
+//                     break;
+//                 }
+//                 print!("{}", c as u8 as char);
+//                 i += 1;
+//             }
 
-            panic!();
-        }
+//             panic!();
+//         }
 
-        let name = converted_name.unwrap();
+//         let name = converted_name.unwrap();
 
-        let name = format!("{}.uarch", name);
-        // create a folder for the name.
-        std::fs::create_dir_all(&name).unwrap();
-        let current_time = std::time::SystemTime::now();
-        PluginList::serialize(&name);
-        timestamp::serialize(&name);
-        let elapsed_time = std::time::SystemTime::now()
-            .duration_since(current_time)
-            .unwrap()
-            .as_millis();
+//         let name = format!("{}.uarch", name);
+//         // create a folder for the name.
+//         std::fs::create_dir_all(&name).unwrap();
+//         let current_time = std::time::SystemTime::now();
+//         PluginList::serialize(&name);
+//         timestamp::serialize(&name);
+//         let elapsed_time = std::time::SystemTime::now()
+//             .duration_since(current_time)
+//             .unwrap()
+//             .as_millis();
 
-        println!("Serialized the plugin data in {} ms.", elapsed_time);
-    }
-}
+//         println!("Serialized the plugin data in {} ms.", elapsed_time);
+//     }
+// }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
-    unsafe {
-        let name = ffi::CStr::from_ptr(name).to_str().unwrap();
-        let folder_name = format!("{}.uarch", name);
-        PluginList::deserialize(&folder_name);
+// #[unsafe(no_mangle)]
+// unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
+//     unsafe {
+//         let name = ffi::CStr::from_ptr(name).to_str().unwrap();
+//         let folder_name = format!("{}.uarch", name);
+//         PluginList::deserialize(&folder_name);
 
-        // Handling the timestamp.
-        timestamp::initialize();
-        components::chronic::on_loading_snapshot(&name);
-        timestamp::deserialize(&folder_name);
-    }
+//         // Handling the timestamp.
+//         timestamp::initialize();
+//         components::chronic::on_loading_snapshot(&name);
+//         timestamp::deserialize(&folder_name);
+//     }
 
-    // This function is called after the snapshot is loaded.
-    on_finish_loading_snapshot();
-
-}
+//     // This function is called after the snapshot is loaded.
+//     // on_finish_loading_snapshot();
+// }
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn qemu_plugin_exit(_: qemu_api::qemu_plugin_id_t, _: *mut ffi::c_void) {}
@@ -234,7 +232,7 @@ unsafe extern "C" fn qemu_plugin_install(
         }
         */
 
-        chronic_behavior_init(&options);
+        // chronic_behavior_init(&options);
 
         // Dump the PARAMETER_RS to a log file.
         let mut log_file = std::fs::File::create("parameter.rs").unwrap();

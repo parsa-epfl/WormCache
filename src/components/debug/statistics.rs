@@ -222,36 +222,41 @@ impl Statistics {
     }
 }
 
-static GLOBAL_STATISTICS: LazyLock<Statistics> = LazyLock::new(Statistics::new);
+// static GLOBAL_STATISTICS: LazyLock<Statistics> = LazyLock::new(Statistics::new);
 
 impl Statistics {
     #[inline]
     pub fn global_record(core_id: u32, event: EventType, is_os: bool) {
-        GLOBAL_STATISTICS.record(core_id, event, is_os);
+        return;
+        // GLOBAL_STATISTICS.record(core_id, event, is_os);
     }
 
     #[inline]
     pub fn global_record_by(core_id: u32, event: EventType, is_os: bool, increment: u64) {
-        GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
+        return;
+        // GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
     }
 
     #[inline]
     pub fn global_set(core_id: u32, event: EventType, is_os: bool, value: u64) {
-        GLOBAL_STATISTICS.set(core_id, event, is_os, value);
+        return;
+        // GLOBAL_STATISTICS.set(core_id, event, is_os, value);
     }
 
     pub fn global_query_record(core_id: u32, event: EventType) -> (u64, u64, u64) {
-        unsafe {
-            let cnt = (*GLOBAL_STATISTICS.per_core[core_id as usize].get()).counters;
-            let index = (event as usize) * 2;
-            let u = cnt[index];
-            let k = cnt[index + 1];
-            (u + k, u, k)
-        }
+        return (0, 0, 0);
+        // unsafe {
+        //     let cnt = (*GLOBAL_STATISTICS.per_core[core_id as usize].get()).counters;
+        //     let index = (event as usize) * 2;
+        //     let u = cnt[index];
+        //     let k = cnt[index + 1];
+        //     (u + k, u, k)
+        // }
     }
 
     pub fn global_get_line_for_all_cores(ts: u64) -> Vec<String> {
-        GLOBAL_STATISTICS.get_line_for_all_cores(ts)
+        return vec![];
+        // GLOBAL_STATISTICS.get_line_for_all_cores(ts)
     }
 
     pub fn global_one_line_statistics() -> String {
