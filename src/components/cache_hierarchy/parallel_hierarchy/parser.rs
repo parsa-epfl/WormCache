@@ -79,7 +79,7 @@ pub type SharedCacheStatisticsWithPlugin =
 
 use super::{
     super::common::{
-        ParallelHarvardPrivateCache, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
+        ParallelHarvardPrivateCache, ParallelLRUSharedCache, ParallelUnifiedPrivateCache,
         statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
     },
     hierarchy,
@@ -138,7 +138,7 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
@@ -162,7 +162,7 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },

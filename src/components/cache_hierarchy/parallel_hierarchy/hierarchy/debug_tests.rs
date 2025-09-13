@@ -41,7 +41,7 @@ use crate::parameter;
 use crate::util::get_monotonic_ts;
 
 use super::super::super::common::{
-    ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
+    ParallelLRUSharedCache, ParallelUnifiedPrivateCache,
     statistics::ZeroSharedCacheSetStatistics,
 };
 use super::ParallelMemoryHierarchy;
@@ -51,7 +51,7 @@ const PCACHE_SET: usize = 1024;
 type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },

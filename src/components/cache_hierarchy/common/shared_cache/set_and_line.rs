@@ -66,8 +66,6 @@ pub struct SharedCacheSet<
     pub access_count: u64,
 
     pub statistics: S,
-    // #[serde(skip)]
-    // pub modifying_history: Vec<(u64, u64, u32, bool, bool)>, // (block_id, ts, core_id, to_what, succeed), recorded on a cache line's modified state is updated.
 }
 
 impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> Default

@@ -6,7 +6,7 @@ use crate::{
             CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
             common::{
                 CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
-                PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheAccessRequest,
+                PrivateCachePokeResult, PrivateCache, SharedCache, SharedCacheAccessRequest,
                 SharedCacheAccessSource, SharedCacheLookupResult,
             },
             mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
@@ -23,7 +23,7 @@ use super::ParallelMemoryHierarchy;
 
 impl<
     MMU: AbstractMMU,
-    PCache: PrivateCaches,
+    PCache: PrivateCache,
     SCache: SharedCache,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,

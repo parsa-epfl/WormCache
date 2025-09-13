@@ -39,7 +39,7 @@ use crate::components::debug::statistics::{EventType, Statistics};
 
 use crate::components::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::super::common::{Directory, DirectorySet, PrivateCaches, SharedCache};
+use super::super::common::{Directory, DirectorySet, PrivateCache, SharedCache};
 
 use std::cell::UnsafeCell;
 use std::ops::DerefMut;
@@ -57,7 +57,7 @@ mod access_logic;
 
 pub struct ParallelMemoryHierarchy<
     MMU: AbstractMMU,
-    PCache: PrivateCaches,
+    PCache: PrivateCache,
     SCache: SharedCache,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
@@ -78,7 +78,7 @@ pub struct ParallelMemoryHierarchy<
 
 impl<
     MMU: AbstractMMU,
-    PCache: PrivateCaches,
+    PCache: PrivateCache,
     SCache: SharedCache,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,

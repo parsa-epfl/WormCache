@@ -30,7 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::components::cache_hierarchy::common::{
-    CacheAccessType, CacheHierarchyAccessResult, PrivateCaches,
+    CacheAccessType, CacheHierarchyAccessResult, PrivateCache,
 };
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
@@ -38,8 +38,7 @@ use crate::parameter;
 use crate::util::get_monotonic_ts;
 
 use super::super::super::common::{
-    ParallelHarvardPrivateCache, ParallelSingleSharedCache,
-    statistics::ZeroSharedCacheSetStatistics,
+    ParallelHarvardPrivateCache, ParallelLRUSharedCache, statistics::ZeroSharedCacheSetStatistics,
 };
 use super::ParallelMemoryHierarchy;
 
@@ -54,7 +53,7 @@ type MH = ParallelMemoryHierarchy<
         { PCACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },

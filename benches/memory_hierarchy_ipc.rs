@@ -32,7 +32,7 @@
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
-use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
+use worm_cache::components::cache_hierarchy::common::ParallelLRUSharedCache;
 use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
 use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
@@ -49,7 +49,7 @@ type MH = ParallelMemoryHierarchy<
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },

@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
-use super::PrivateCaches;
+use super::PrivateCache;
 use super::{PrivateCachePokeResult, PrivateCacheSet};
 use spin::mutex::SpinMutex;
 
@@ -118,7 +118,7 @@ impl<
     const I_ASSO: usize,
     const D_SET: usize,
     const D_ASSO: usize,
-> PrivateCaches for HarvardPrivateCaches<CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
+> PrivateCache for HarvardPrivateCaches<CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
 {
     const DIRECTORY_SET: usize = gcd::binary_usize(I_SET, D_SET);
 

@@ -35,8 +35,8 @@ use crate::{
     components::cache_hierarchy::{
         CacheBlockRequest, MemoryHierarchy,
         common::{
-            CacheAccessType, CacheHierarchyAccessResult, ParallelSingleSharedCache,
-            ParallelUnifiedPrivateCache, PrivateCaches, SharedCache, SharedCacheAccessRequest,
+            CacheAccessType, CacheHierarchyAccessResult, ParallelLRUSharedCache,
+            ParallelUnifiedPrivateCache, PrivateCache, SharedCache, SharedCacheAccessRequest,
             SharedCacheAccessSource, statistics::ZeroSharedCacheSetStatistics,
         },
         mmu::NoMMU,
@@ -51,7 +51,7 @@ const PCACHE_SET: usize = 64;
 type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
