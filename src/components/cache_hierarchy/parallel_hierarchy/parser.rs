@@ -92,7 +92,7 @@ pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
 };
 
 impl MMUParser<true> for DummyParser {
-    type Output = mmu::FunctionalWarmingMMU<
+    type Output = mmu::FullyAssociativeL1MMU<
         AArch64,
         { parameter::ITLB_ASSO },
         { parameter::DTLB_ASSO },

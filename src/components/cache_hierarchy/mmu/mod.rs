@@ -32,7 +32,7 @@
 // Desc: Memory Management Unit
 // This file is highly related to the ISA.
 
-pub mod fw_mmu;
+pub mod l1_fully_associative;
 pub mod no_mmu;
 pub mod ordinary_mmu;
 pub mod tlb;
@@ -50,7 +50,7 @@ pub enum MMUFlushMode {
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum MMUTranslationResult {
-    Hit(u64, u32),              // PA
+    Hit(u64, u32),         // PA
     Miss(u64, [u64; 4]),   // PA, walk traces
     MissNotCacheable(u64), // PA
 }
@@ -74,12 +74,11 @@ pub trait AbstractMMU {
     fn deserialize(&mut self, value: serde_json::Value);
 }
 
+pub use l1_fully_associative::FullyAssociativeL1MMU;
 pub use no_mmu::NoMMU;
 pub use ordinary_mmu::OrdinaryMMU;
-pub use tlb::TLB;
 pub use tlb::FullyAssociativeTLB;
-pub use fw_mmu::FunctionalWarmingMMU;
-
+pub use tlb::TLB;
 
 #[cfg(test)]
 mod test;
