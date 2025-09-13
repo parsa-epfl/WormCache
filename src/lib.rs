@@ -54,15 +54,11 @@ use components::cache_hierarchy::SingleCacheHierarchyPlugin;
 #[allow(unused_imports)]
 use components::instruction_frequency::InstructionFrequencyPlugin;
 #[allow(unused_imports)]
-use components::marker::MarkerPlugin;
-#[allow(unused_imports)]
 use components::pw_log::PageWalkLoggerPlugin;
 #[allow(unused_imports)]
 use components::touch_once::TouchOnePlugin;
 #[allow(unused_imports)]
 use components::trace::TracePlugin;
-#[allow(unused_imports)]
-use components::virtual_time::VirtualTimePlugin;
 #[allow(unused_imports)]
 use components::wfi::WaitForInterruptCounterPlugin;
 
@@ -89,16 +85,6 @@ unsafe extern "C" fn vcpu_tb_trans(
 ) {
     unsafe {
         PluginList::on_translation(tb);
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe extern "C" fn vcpu_vtime_tb_trans(
-    _: qemu_api::qemu_plugin_id_t,
-    tb: *mut qemu_api::qemu_plugin_tb,
-) {
-    unsafe {
-        VirtualTimePlugin::on_translation(tb);
     }
 }
 
@@ -206,35 +192,21 @@ unsafe extern "C" fn qemu_plugin_install(
             options.insert(key.to_string(), value.to_string());
         }
 
-        // check the current mode.
-        let current_mode = String::from("normal");
-        let current_mode = options.get("mode").unwrap_or(&current_mode);
-
-        if *current_mode != "vtime" && *current_mode != "ff" {
-            qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
-            qemu_api::qemu_plugin_register_atexit_cb(
-                id,
-                Some(qemu_plugin_exit),
-                std::ptr::null_mut(),
-            );
-            qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
-            qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
-            PluginList::init(id, &options);
-        } else {
-            VirtualTimePlugin::init(id, &options);
-            // We do not instrument anything if we have fixed virtual time.
-            let vtime_mode = String::from("adaptive");
-            let vtime_mode = options.get("vtime_mode").unwrap_or(&vtime_mode);
-            if vtime_mode == "adaptive" {
-                println!(
-                    "Adaptive Virtual Time is enabled. This mode reuiqres counting the number of instructions."
-                );
-                qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_vtime_tb_trans));
-            }
-            println!("Virtual Time or Fast forward is enabled. Disable all Memory Hierarchy.");
-        }
+        qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(id, Some(vcpu_tb_trans));
+        qemu_api::qemu_plugin_register_atexit_cb(id, Some(qemu_plugin_exit), std::ptr::null_mut());
+        qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
+        qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
+        PluginList::init(id, &options);
 
         chronic_behavior_init(&options);
+
+        if parameter::ENABLE_STATISTICS {
+            debug::statistics::create_thread_for_periodic_log();
+            qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(
+                id,
+                Some(debug::statistics::on_translation_instructions),
+            );
+        }
 
         // Dump the PARAMETER_RS to a log file.
         let mut log_file = std::fs::File::create("parameter.rs").unwrap();

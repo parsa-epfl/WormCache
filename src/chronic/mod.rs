@@ -33,7 +33,6 @@ use rustc_hash::FxHashMap;
 
 mod dump_statistics;
 mod snapshot;
-mod statistics;
 
 pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
     let normal = "normal".to_string();
@@ -88,7 +87,7 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
                 count,
                 prefix,
                 init_index,
-                no_qemu_snapshot
+                no_qemu_snapshot,
             );
         }
     } else if mode == "measure" {
@@ -124,11 +123,6 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
             dump_statistics::init(init_threshold, interval, count, prefix);
         }
     }
-
-    if mode != "vtime" {
-        statistics::init();
-    }
-    // Add more chronic behaviors here.
 }
 
 pub fn on_loading_snapshot(snapshot_name: &str) {
