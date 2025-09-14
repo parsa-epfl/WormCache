@@ -829,38 +829,6 @@ unsafe extern "C" {
     pub fn qemu_plugin_entry_code() -> u64;
 }
 unsafe extern "C" {
-    #[doc = " qemu_plugin_set_running_flag() - setting the \"running\" flag of the current\n CPU\n\n @is_running: The value of the flag.\n\n Some synchronization mechanism (e.g., exclusive execution) checks\n this flag to make sure all CPUs are not executing instructions and\n wait for all CPUs to be idle.\n\n In you plugin are using locks and synchronization which can block\n execution, you should set the running flag to false before being\n blocked to avoid deadlocks."]
-    pub fn qemu_plugin_set_running_flag(is_running: bool);
-}
-unsafe extern "C" {
-    #[doc = " qemu_plugin_is_current_cpu_can_run() - check whether the current CPU can\n still continue to run instructions, i.e., not stopped by other threads like\n quitting.\n\n Returns true if the current cpu can still run.\n\n This function is a wrapper of function `cpu_can_run`."]
-    pub fn qemu_plugin_is_current_cpu_can_run() -> bool;
-}
-pub type qemu_plugin_cpu_clock_callback_t = ::std::option::Option<unsafe extern "C" fn() -> i64>;
-unsafe extern "C" {
-    #[doc = " qemu_plugin_register_cpu_clock_cb() - register the method for CPU to\n calculate the time.\n\n @callback: The callback to provide cpu clock.\n\n Returns true if the registration is successful. Please note that only one\n callback can be registered.\n\n This function overrides the internal QEMU function `cpu_get_clock_locked`,\n and it cannot be used together with the icount mode."]
-    pub fn qemu_plugin_register_cpu_clock_cb(callback: qemu_plugin_cpu_clock_callback_t) -> bool;
-}
-unsafe extern "C" {
-    #[doc = " qemu_plugin_get_cpu_clock() - return the CPU clock time calculated by the\n realtime elapsing.\n\n Useful when defining the new cpu clock function."]
-    pub fn qemu_plugin_get_cpu_clock() -> i64;
-}
-unsafe extern "C" {
-    #[doc = " qemu_plugin_get_snapshot_cpu_clock() - return the CPU clock when the snapshot\n is taken. Otherwise, it is zero.\n\n Useful when defining the new cpu clock function."]
-    pub fn qemu_plugin_get_snapshot_cpu_clock() -> i64;
-}
-pub type qemu_plugin_snapshot_cpu_clock_update_cb = ::std::option::Option<unsafe extern "C" fn()>;
-unsafe extern "C" {
-    #[doc = " qemu_plugin_register_snapshot_cpu_clock_update_cb() - register the callback\n for updating the snapshot time.\n\n @callback: The callback to reset the VM clock.\n\n Returns true if the registration is successful. Please note that only one\n callback can be registered."]
-    pub fn qemu_plugin_register_snapshot_cpu_clock_update_cb(
-        callback: qemu_plugin_snapshot_cpu_clock_update_cb,
-    ) -> bool;
-}
-unsafe extern "C" {
-    #[doc = " qemu_plugin_cpu_is_tick_enabled() - return whether the CPU tick is enabled.\n\n Useful when defining the new virtual time function."]
-    pub fn qemu_plugin_cpu_is_tick_enabled() -> bool;
-}
-unsafe extern "C" {
     #[doc = " qemu_plugin_read_cpu_integer_register - returns the value of the given\n integer register.\n\n This function can be only called from threads that run a vCPU. Otherwise, it\n will trigger assertion failure."]
     pub fn qemu_plugin_read_cpu_integer_register(reg_index: ::std::os::raw::c_int) -> u64;
 }
@@ -875,7 +843,7 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the\n page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a\n specific page table entry. For huge pages or translation error, you will see\n -1 in the array ahead of time.\n\n This function can be only called from threads that run a vCPU. Otherwise, it\n will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way\n to optimize the storage.\n"]
     pub fn qemu_plugin_hwaddr_translate_walk_trace(hwaddr: *const qemu_plugin_hwaddr)
-        -> *const u64;
+    -> *const u64;
 }
 unsafe extern "C" {
     #[doc = " qemu_plugin_read_physical_memory - returns the value of the given physical\n memory address.\n\n This function calls cpu_physical_memory_rw to read the physical memory.\n\n This function will not trigger memory access plugin."]
@@ -923,8 +891,6 @@ unsafe extern "C" {
 }
 pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_INTERNAL_RAW:
     qemu_plugin_snapshot_format_t = 0;
-pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_RAW:
-    qemu_plugin_snapshot_format_t = 1;
 pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_ZSTD:
     qemu_plugin_snapshot_format_t = 2;
 pub const qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_BASE:
@@ -958,15 +924,6 @@ unsafe extern "C" {
     #[doc = " The following functions are used to get and set the virtual time of a\n specific vCPU.\n\n This part of the logic should be able to be implemented by the plugin itself.\n\n The unit, unfortunately, is centi-cycle."]
     pub fn qemu_plugin_get_vcpu_vtime(cpu_idx: u32) -> u64;
 }
-unsafe extern "C" {
-    pub fn qemu_plugin_set_vcpu_vtime(cpu_idx: u32, vtime: u64);
-}
-unsafe extern "C" {
-    pub fn qemu_plugin_get_vcpu_ip10ps(cpu_idx: u32) -> u64;
-}
-unsafe extern "C" {
-    pub fn qemu_plugin_cpu_get_next_deadline(cpu_index: u32) -> u64;
-}
 pub const qemu_plugin_tlb_flush_type_t_QEMU_PLUGIN_TLB_FLUSH_ALL: qemu_plugin_tlb_flush_type_t = 0;
 pub const qemu_plugin_tlb_flush_type_t_QEMU_PLUGIN_TLB_FLUSH_BY_ASID: qemu_plugin_tlb_flush_type_t =
     1;
@@ -986,5 +943,5 @@ pub type qemu_plugin_flushing_local_tlb_t = ::std::option::Option<
 >;
 unsafe extern "C" {
     pub fn qemu_plugin_register_flushing_local_tlb_cb(cb: qemu_plugin_flushing_local_tlb_t)
-        -> bool;
+    -> bool;
 }

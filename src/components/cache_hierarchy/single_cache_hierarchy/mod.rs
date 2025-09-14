@@ -40,8 +40,8 @@ use crate::{
     components::cache_hierarchy::common::CacheAccessType,
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
-    util::get_monotonic_ts,
     timestamp::get_ts,
+    util::get_monotonic_ts,
 };
 
 use super::common::L0InstructionCache;
@@ -149,7 +149,6 @@ impl super::super::Plugin for SingleCacheHierarchyPlugin {
         );
 
         unsafe {
-            // let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
             let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
 
             assert!(is_icount_mode);
