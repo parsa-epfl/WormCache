@@ -31,8 +31,6 @@
 
 pub mod fetch;
 
-mod aarch64;
-mod callbacks;
 use std::io::Write;
 
 use super::Plugin;

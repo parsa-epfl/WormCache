@@ -45,7 +45,7 @@ use spin::mutex::SpinMutex;
 
 use zstd::{Decoder, Encoder};
 
-pub struct SingleSharedCache<
+pub struct LRUSharedCache<
     S: SharedCacheSetStatistics,
     const SET: usize,
     const WAY: usize,
@@ -63,7 +63,7 @@ pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, cons
 }
 
 impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
-    SingleSharedCache<S, SET, WAY, EXCLUSIVE>
+    LRUSharedCache<S, SET, WAY, EXCLUSIVE>
 {
     pub fn from_serialize_helper(
         helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>,
@@ -94,7 +94,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
 }
 
 impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
-    super::SharedCache for SingleSharedCache<S, SET, WAY, EXCLUSIVE>
+    super::SharedCache for LRUSharedCache<S, SET, WAY, EXCLUSIVE>
 {
     fn new() -> Self {
         Self {
@@ -236,9 +236,9 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
 
         let helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> =
             serde_json::from_reader(file).unwrap();
-        *self = SingleSharedCache::from_serialize_helper(helper);
+        *self = LRUSharedCache::from_serialize_helper(helper);
     }
 }
 
-pub type ParallelSingleSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
-    SingleSharedCache<S, SET, WAY, EXCLUSIVE>;
+pub type ParallelLRUSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =
+    LRUSharedCache<S, SET, WAY, EXCLUSIVE>;

@@ -154,12 +154,12 @@ pub use set_and_line::SharedCacheBlock;
 pub use set_and_line::SharedCacheSet;
 
 // mod replicated;
-mod single;
+mod lru_shared_cache;
 
 // pub use replicated::ReplicatedSharedCache;
-pub use single::ParallelSingleSharedCache;
-pub use single::SingleSharedCache;
-pub use single::SingleSharedCacheSerdeHelper;
+pub use lru_shared_cache::LRUSharedCache;
+pub use lru_shared_cache::ParallelLRUSharedCache;
+pub use lru_shared_cache::SingleSharedCacheSerdeHelper;
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
 

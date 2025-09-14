@@ -1,5 +1,5 @@
 use rand::Rng;
-use worm_cache::components::cache_hierarchy::common::ParallelSingleSharedCache;
+use worm_cache::components::cache_hierarchy::common::ParallelLRUSharedCache;
 use worm_cache::components::cache_hierarchy::common::SharedCache;
 
 struct WorkingSet {
@@ -115,10 +115,8 @@ fn test_resizable_llc() {
     let mut rng = rand::thread_rng();
 
     // create an LLC.
-    let big_cache =
-        ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 128, 16, false>::new();
-    let small_cache =
-        ParallelSingleSharedCache::<ZeroSharedCacheSetStatistics, 32, 8, false>::new();
+    let big_cache = ParallelLRUSharedCache::<ZeroSharedCacheSetStatistics, 128, 16, false>::new();
+    let small_cache = ParallelLRUSharedCache::<ZeroSharedCacheSetStatistics, 32, 8, false>::new();
 
     let special = 778;
 
@@ -253,7 +251,7 @@ fn test_resize_cache_hierarchy() {
     type SmallHierarchy = ParallelMemoryHierarchy<
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 32, 4, 32, 4>,
-        ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 32, 8, true>,
+        ParallelLRUSharedCache<ZeroSharedCacheSetStatistics, 32, 8, true>,
         true,
         true,
         true,
@@ -265,7 +263,7 @@ fn test_resize_cache_hierarchy() {
     type LargeHierarchy = ParallelMemoryHierarchy<
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 128, 8, 128, 8>,
-        ParallelSingleSharedCache<ZeroSharedCacheSetStatistics, 128, 16, true>,
+        ParallelLRUSharedCache<ZeroSharedCacheSetStatistics, 128, 16, true>,
         true,
         true,
         true,
@@ -276,8 +274,8 @@ fn test_resize_cache_hierarchy() {
 
     let special_cache_line = 490;
 
-    let small_hierarchy = SmallHierarchy::new(false, 0, false);
-    let large_hierarchy = LargeHierarchy::new(false, 0, false);
+    let small_hierarchy = SmallHierarchy::new();
+    let large_hierarchy = LargeHierarchy::new();
 
     for ts in 1..10001u64 {
         let core_id = rng.gen_range(0..CORE_COUNT as u32);

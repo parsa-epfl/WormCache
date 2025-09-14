@@ -29,12 +29,11 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use worm_cache::components::{
-    bp::{BranchResolutionResult, BranchType, fetch::FetchUnit},
-    debug::statistics::Statistics,
-};
+use worm_cache::components::bp::{BranchResolutionResult, BranchType, fetch::FetchUnit};
 
 use rand::prelude::*;
+
+use divan;
 
 type FetchUnitType = FetchUnit<1>;
 
@@ -56,7 +55,7 @@ type FetchUnitType = FetchUnit<1>;
  *
 */
 
-#[allow(dead_code)]
+#[divan::bench]
 fn all_hits_btb() {
     let mut fetch_unit = FetchUnitType::new();
     let indirect_branch_result = BranchResolutionResult {
@@ -66,14 +65,12 @@ fn all_hits_btb() {
 
     fetch_unit.train(0, 4, indirect_branch_result, 8);
 
-    for _ in 0..(1000 * 1000 * 1000) {
+    for _ in 0..(1000 * 1000) {
         fetch_unit.train(0, 4, indirect_branch_result, 8);
     }
-
-    println!("{}", Statistics::global_one_line_statistics());
 }
 
-#[allow(dead_code)]
+#[divan::bench]
 fn all_misses_btb_same_branch() {
     let mut fetch_unit = FetchUnitType::new();
     let indirect_branch_result = BranchResolutionResult {
@@ -83,14 +80,12 @@ fn all_misses_btb_same_branch() {
 
     fetch_unit.train(0, 4, indirect_branch_result, 8);
 
-    for idx in 0..(1000 * 1000) {
+    for idx in 0..(1000) {
         fetch_unit.train(0, 4, indirect_branch_result, 8 + idx * 4);
     }
-
-    println!("{}", Statistics::global_one_line_statistics());
 }
 
-#[allow(dead_code)]
+#[divan::bench]
 fn all_misses_btb_different_branches() {
     // This test can trigger the slow path of the BTB due to the eviction.
     let mut fetch_unit = FetchUnitType::new();
@@ -99,15 +94,13 @@ fn all_misses_btb_different_branches() {
         is_taken: true,
     };
 
-    for pc in 0..(1000 * 1000) {
+    for pc in 0..(1000) {
         let pc = pc * worm_cache::parameter::BTB_SET as u64 + 8;
         fetch_unit.train(0, pc, indirect_branch_result, pc * 4);
     }
-
-    println!("{}", Statistics::global_one_line_statistics());
 }
 
-#[allow(dead_code)]
+#[divan::bench]
 fn exercise_ras_best() {
     let mut fetch_unit = FetchUnitType::new();
     // it should be a pair of call and the return.
@@ -124,7 +117,7 @@ fn exercise_ras_best() {
         is_taken: true,
     };
 
-    for idx in 0..(1000 * 1000) {
+    for idx in 0..(1000) {
         let is_call = idx % 2 == 0;
         if is_call {
             fetch_unit.train(0, caller_pc, call_result, callee_pc);
@@ -132,11 +125,9 @@ fn exercise_ras_best() {
             fetch_unit.train(0, callee_pc, return_result, caller_pc + 4);
         }
     }
-
-    println!("{}", Statistics::global_one_line_statistics());
 }
 
-#[allow(dead_code)]
+#[divan::bench]
 fn tage_best_case() {
     let mut fetch_unit = FetchUnitType::new();
 
@@ -145,17 +136,15 @@ fn tage_best_case() {
         is_taken: true,
     };
 
-    for _ in 0..(100 * 1000 * 1000) {
+    for _ in 0..(100 * 1000) {
         fetch_unit.train(0, 4, taken, 16);
     }
-
-    println!("{}", Statistics::global_one_line_statistics());
 }
 
-#[allow(dead_code)]
+#[divan::bench]
 fn tage_worst_case() {
     // generate 1000 branches, and their directions are random.
-    let branches = (0..100 * 1000)
+    let branches = (0..100 * 100)
         .map(|_| {
             let pc = random::<u64>();
             let direction = random::<bool>();
@@ -175,20 +164,11 @@ fn tage_worst_case() {
         is_taken: false,
     };
 
-    for _ in 0..1000 {
-        for (pc, direction) in branches.iter() {
-            fetch_unit.train(0, *pc, if *direction { taken } else { not_taken }, 0);
-        }
+    for (pc, direction) in branches.iter() {
+        fetch_unit.train(0, *pc, if *direction { taken } else { not_taken }, 0);
     }
-
-    println!("{}", Statistics::global_one_line_statistics());
 }
 
 fn main() {
-    // all_hits_btb();
-    // all_misses_btb_same_branch();
-    // all_misses_btb_different_branches();
-    // exercise_ras_best();
-    // tage_worst_case();
-    tage_best_case();
+    divan::main();
 }

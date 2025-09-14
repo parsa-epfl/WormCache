@@ -40,7 +40,7 @@ pub use set_and_line::{
     PrivateCacheEvictedSlot, PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet,
 };
 
-pub trait PrivateCaches {
+pub trait PrivateCache {
     // This function is for creating all new private caches.
     fn new() -> Self;
 

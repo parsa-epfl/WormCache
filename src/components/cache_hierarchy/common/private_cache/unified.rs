@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
-use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCaches};
+use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCache};
 use spin::mutex::SpinMutex;
 use std::collections::HashMap;
 use std::ops::DerefMut;
@@ -90,7 +90,7 @@ pub struct UnifiedPrivateCaches<const CORE_COUNT: usize, const SET: usize, const
     caches: Box<[UnifiedPerCorePrivateCache<SET, ASSO>; CORE_COUNT]>,
 }
 
-impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCaches
+impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
     for UnifiedPrivateCaches<CORE_COUNT, SET, ASSO>
 {
     const DIRECTORY_SET: usize = SET;

@@ -34,8 +34,11 @@ use strum_macros::{Display, EnumCount, EnumIter};
 
 use std::sync::LazyLock;
 use std::{cell::UnsafeCell, io::Write};
+use std::{ffi, thread};
 
 use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
+use crate::qemu_api;
+use crate::util::get_monotonic_ts;
 
 #[derive(EnumCount, EnumIter, Display, Debug, Clone, Copy)]
 pub enum EventType {
@@ -268,7 +271,7 @@ impl Statistics {
     #[inline]
     pub fn save_to_csv(file_name: &str, ts: u64) {
         // save statistics.
-        let mut file = std::fs::File::create(format!("{}/statistics.csv", file_name)).unwrap();
+        let mut file = std::fs::File::create(file_name).unwrap();
         // write header.
         file.write_fmt(format_args!("{}\n", Statistics::get_header()))
             .unwrap();
@@ -280,5 +283,73 @@ impl Statistics {
 
         file.flush().unwrap();
         drop(file);
+    }
+}
+
+pub fn create_thread_for_periodic_log() {
+    thread::spawn(move || {
+        let mut miss_file = std::fs::File::create("statistics.csv").unwrap();
+
+        miss_file
+            .write_fmt(format_args!("{}\n", Statistics::get_header()))
+            .unwrap();
+
+        loop {
+            // update the local target time before writing the statistics
+            for core_id in 0..CORE_COUNT {
+                Statistics::global_set(
+                    core_id as u32,
+                    EventType::TargetLocalCycle,
+                    false,
+                    unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
+                );
+            }
+
+            for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
+                miss_file.write_all(stat.as_bytes()).unwrap();
+                miss_file.write_all(b"\n").unwrap();
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(10));
+        }
+    });
+}
+
+unsafe extern "C" fn user_vcpu_insn_exec(
+    vcpu_idx: u32,
+    size: *mut ffi::c_void, // the size of the basic block
+) {
+    Statistics::global_record_by(vcpu_idx, EventType::Instruction, false, size as u64);
+}
+
+unsafe extern "C" fn kernel_vcpu_insn_exec(
+    vcpu_idx: u32,
+    size: *mut ffi::c_void, // the size of the basic block
+) {
+    Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
+}
+
+pub unsafe extern "C" fn on_translation_instructions(tb: *mut qemu_api::qemu_plugin_tb) {
+    unsafe {
+        let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);
+        let size = qemu_api::qemu_plugin_tb_n_insns(tb);
+        // I need to get the first instruction's PC to see if it is a user or kernel space.
+        let pc = qemu_api::qemu_plugin_insn_vaddr(first_instruction);
+        if pc & 0x8000_0000_0000_0000 == 0 {
+            // user space
+            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                first_instruction,
+                Some(user_vcpu_insn_exec),
+                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                size as *mut ffi::c_void,
+            );
+        } else {
+            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                first_instruction,
+                Some(kernel_vcpu_insn_exec),
+                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                size as *mut ffi::c_void,
+            );
+        }
     }
 }

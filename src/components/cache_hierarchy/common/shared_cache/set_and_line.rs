@@ -34,7 +34,7 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::debug::cache_line_history::CacheLineCoherenceHistory;
 
 use super::{
     SharedCacheAccessRequest, SharedCacheAccessSource, SharedCacheLookupAndInsertResult,
@@ -66,8 +66,6 @@ pub struct SharedCacheSet<
     pub access_count: u64,
 
     pub statistics: S,
-    // #[serde(skip)]
-    // pub modifying_history: Vec<(u64, u64, u32, bool, bool)>, // (block_id, ts, core_id, to_what, succeed), recorded on a cache line's modified state is updated.
 }
 
 impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics> Default
@@ -150,10 +148,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             return if hit_ts <= ts {
                 SharedCacheLookupResult::Hit(hit_block.modified)
             } else {
-                SharedCacheLookupResult::LookupLate(
-                    hit_block.ts as u32 - ts as u32,
-                    hit_block.modified,
-                )
+                SharedCacheLookupResult::LookupLate(hit_ts as u32 - ts as u32, hit_block.modified)
             };
         }
 

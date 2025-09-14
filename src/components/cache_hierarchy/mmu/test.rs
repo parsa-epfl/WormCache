@@ -52,45 +52,25 @@ fn test_equivalence_of_two_tlbs() {
 
             assert_eq!(ordinary_result, fw_result);
         }
-
     }
-
 }
 
 // The following test should fail because the two MMUs are not equivalent.
 
 #[test]
 fn test_equivalence_of_two_mmus() {
-    if ! parameter::L1TLB_ENABLED {
+    if !parameter::L1TLB_ENABLED {
         return;
     }
-
 
     // There are two MMUs in this project:
     // - OrdinaryMMU
     // - FunctionalWarmingMMU
     // They should be equivalent in terms of the translation result.
     // This test checks the equivalence of the two MMUs.
-    type OrdinaryMMU = super::OrdinaryMMU<
-        FakeISA,
-        64,
-        1,
-        64,
-        1,
-        true,
-        4,
-        128,
-        true
-    >;
+    type OrdinaryMMU = super::OrdinaryMMU<FakeISA, 64, 1, 64, 1, true, 4, 128, true>;
 
-    type FWMMU = super::FunctionalWarmingMMU<
-        FakeISA,
-        64,
-        64,
-        4,
-        128,
-        true
-    >;
+    type FWMMU = super::FullyAssociativeL1MMU<FakeISA, 64, 64, 4, 128, true>;
 
     let mut o_mmu = OrdinaryMMU::new();
     let mut fw_mmu = FWMMU::new();
@@ -118,26 +98,41 @@ fn test_equivalence_of_two_mmus() {
         let fw_result = fw_mmu.translate_and_refill(0, va, ts, is_instruction);
 
         match (o_result, fw_result) {
-            (super::MMUTranslationResult::Hit(o_ppn, _), super::MMUTranslationResult::Hit(fw_ppn, _)) => {
+            (
+                super::MMUTranslationResult::Hit(o_ppn, _),
+                super::MMUTranslationResult::Hit(fw_ppn, _),
+            ) => {
                 assert_eq!(o_ppn, fw_ppn);
-            },
-            (super::MMUTranslationResult::Miss(o_ppn, o_traces), super::MMUTranslationResult::Miss(fw_ppn, fw_traces)) => {
+            }
+            (
+                super::MMUTranslationResult::Miss(o_ppn, o_traces),
+                super::MMUTranslationResult::Miss(fw_ppn, fw_traces),
+            ) => {
                 assert_eq!(o_ppn, fw_ppn);
                 assert_eq!(o_traces, fw_traces);
-            },
-            (super::MMUTranslationResult::MissNotCacheable(o_ppn), super::MMUTranslationResult::MissNotCacheable(fw_ppn)) => {
+            }
+            (
+                super::MMUTranslationResult::MissNotCacheable(o_ppn),
+                super::MMUTranslationResult::MissNotCacheable(fw_ppn),
+            ) => {
                 assert_eq!(o_ppn, fw_ppn);
-            },
-            (super::MMUTranslationResult::Hit(_, hit_level), super::MMUTranslationResult::Miss(_, _)) => {
+            }
+            (
+                super::MMUTranslationResult::Hit(_, hit_level),
+                super::MMUTranslationResult::Miss(_, _),
+            ) => {
                 println!("Ordinary MMU: {:?}", o_result);
                 println!("FW MMU: {:?}", fw_result);
                 assert!(hit_level == 2);
-            },
-            (super::MMUTranslationResult::Miss(_, _), super::MMUTranslationResult::Hit(_, hit_level)) => {
+            }
+            (
+                super::MMUTranslationResult::Miss(_, _),
+                super::MMUTranslationResult::Hit(_, hit_level),
+            ) => {
                 println!("Ordinary MMU: {:?}", o_result);
                 println!("FW MMU: {:?}", fw_result);
                 assert!(hit_level == 2);
-            },
+            }
             _ => {
                 println!("Ordinary MMU: {:?}", o_result);
                 println!("FW MMU: {:?}", fw_result);

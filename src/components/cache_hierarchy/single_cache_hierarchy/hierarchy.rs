@@ -35,24 +35,22 @@ use zstd::{Decoder, Encoder};
 
 use crate::{
     arch::AArch64,
-    components::{
-        cache_hierarchy::{
-            CacheBlockRequest, MemoryHierarchy,
-            common::{
-                CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheAccessRequest,
-                SharedCacheAccessSource, SharedCacheLookupResult,
-            },
-            mmu::{self, AbstractMMU, MMUTranslationResult},
+    components::cache_hierarchy::{
+        CacheBlockRequest, MemoryHierarchy,
+        common::{
+            CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheAccessRequest,
+            SharedCacheAccessSource, SharedCacheLookupResult,
         },
-        debug::statistics::{EventType, Statistics},
+        mmu::{self, AbstractMMU, MMUTranslationResult},
     },
+    debug::statistics::{EventType, Statistics},
     parameter,
 };
 
-use super::super::common::{ParallelSingleSharedCache, statistics::ZeroSharedCacheSetStatistics};
+use super::super::common::{ParallelLRUSharedCache, statistics::ZeroSharedCacheSetStatistics};
 
 pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
-    pub shared_cache: ParallelSingleSharedCache<
+    pub shared_cache: ParallelLRUSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
@@ -65,7 +63,7 @@ pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
 impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
     pub fn new() -> Self {
         SingleCacheHierarchy {
-            shared_cache: ParallelSingleSharedCache::new(),
+            shared_cache: ParallelLRUSharedCache::new(),
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
         }
     }

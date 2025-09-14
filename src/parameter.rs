@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 3;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -314,8 +314,6 @@ use crate::components::Plugin;
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
     _pb: crate::BranchPredictorPlugin,
-    _vt: crate::VirtualTimePlugin,
-    // _mk: crate::MarkerPlugin,
     _lm: crate::ParallelCacheHierarchyPlugin,
     // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,

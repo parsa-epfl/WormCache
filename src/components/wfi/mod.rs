@@ -2,7 +2,7 @@ use std::ffi;
 
 use crate::qemu_api;
 
-use crate::components::debug::statistics::*;
+use crate::debug::statistics::*;
 
 unsafe extern "C" fn vcpu_exec_wfi(vcpu_idx: u32, _: *mut ffi::c_void) {
     Statistics::global_record(vcpu_idx, EventType::WaitForInterrupt, true);

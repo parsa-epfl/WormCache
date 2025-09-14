@@ -29,41 +29,69 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cell::UnsafeCell;
+use rustc_hash::FxHashMap;
 
-#[derive(Debug)]
-#[repr(align(64))]
-struct IsSleeping {
-    is_sleeping: bool,
-}
+mod snapshot;
 
-pub struct SleepingTable<const CORE_COUNT: usize> {
-    is_sleeping: [UnsafeCell<IsSleeping>; CORE_COUNT],
-}
+pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
+    let normal = "normal".to_string();
+    let mode = options.get("mode").unwrap_or(&normal);
 
-impl<const CORE_COUNT: usize> SleepingTable<CORE_COUNT> {
-    pub fn new() -> Self {
-        Self {
-            is_sleeping: std::array::from_fn(|_| {
-                UnsafeCell::new(IsSleeping { is_sleeping: false })
-            }),
-        }
-    }
+    // - mode=normal|warm|ff
+    // - init_threshold=N
+    // - interval=N
+    // - count=N
+    // - prefix="name"
+    // - init_index=N
 
-    pub fn set_sleeping(&self, core_id: usize, is_sleeping: bool) {
-        // self.is_sleeping[core_id].is_sleeping = is_sleeping;
+    if mode == "warm" || mode == "ff" {
+        println!("Periodical snapshot (warm) is enabled.");
+
+        let init_threshold = options
+            .get("init_threshold")
+            .map(|x| x.parse::<u64>().unwrap())
+            .unwrap();
+
+        let interval = options
+            .get("interval")
+            .map(|x| x.parse::<u64>().unwrap())
+            .unwrap();
+
+        let count = options
+            .get("count")
+            .map(|x| x.parse::<u64>().unwrap())
+            .unwrap();
+
+        let prefix = options
+            .get("prefix")
+            .unwrap_or(&"snapshot".to_string())
+            .clone();
+
+        let init_index = options
+            .get("init_index")
+            .map(|x| x.parse::<u64>().unwrap())
+            .unwrap_or(0);
+
+        let no_qemu_snapshot = options
+            .get("no_qemu_snapshot")
+            .map(|x| x.parse::<bool>().unwrap())
+            .unwrap_or(false);
+
         unsafe {
-            (*self.is_sleeping[core_id].get()).is_sleeping = is_sleeping;
-        }
-    }
-
-    pub fn has_slept(&self, core_id: usize) -> bool {
-        unsafe { (*self.is_sleeping[core_id].get()).is_sleeping }
-    }
-
-    pub fn clean_sleeping(&self) {
-        for i in 0..CORE_COUNT {
-            self.set_sleeping(i, false);
+            snapshot::init(
+                init_threshold,
+                interval,
+                count,
+                prefix,
+                init_index,
+                no_qemu_snapshot,
+            );
         }
     }
 }
+
+pub fn on_loading_snapshot(snapshot_name: &str) {
+    snapshot::on_load_snapshot(snapshot_name);
+}
+
+pub fn on_finish_loading_snapshot() {}

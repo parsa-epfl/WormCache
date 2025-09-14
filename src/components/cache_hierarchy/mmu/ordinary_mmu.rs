@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap as HashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::components::debug::statistics::{EventType, Statistics};
+use crate::debug::statistics::{EventType, Statistics};
 use crate::{arch, parameter};
 
 use super::{
@@ -275,7 +275,6 @@ impl<
                 MMUTranslationResult::MissNotCacheable(ptw_result.paddr)
             }
         } else {
-            
             Statistics::global_record(core_id, EventType::TLBMiss, is_kernel);
             if is_instruction {
                 Statistics::global_record(core_id, EventType::TLBMissDueToInstruction, is_kernel);

@@ -11,7 +11,7 @@ use super::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[repr(align(64))]
-pub struct FunctionalWarmingMMU<
+pub struct FullyAssociativeL1MMU<
     ARCH: arch::ISA,
     const I_T_ASSO: usize = 64,
     const D_T_ASSO: usize = 64,
@@ -35,7 +35,7 @@ impl<
     const S_T_A: usize,
     const S_T_S: usize,
     const NO_HUGE_PAGE: bool,
-> FunctionalWarmingMMU<ARCH, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
+> FullyAssociativeL1MMU<ARCH, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
 {
     fn refill_4k_tlb(
         &mut self,
@@ -64,7 +64,7 @@ impl<
     const S_T_A: usize,
     const S_T_S: usize,
     const NO_HUGE_PAGE: bool,
-> AbstractMMU for FunctionalWarmingMMU<ARCH, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
+> AbstractMMU for FullyAssociativeL1MMU<ARCH, I_T_A, D_T_A, S_T_A, S_T_S, NO_HUGE_PAGE>
 {
     fn new() -> Self {
         Self {
