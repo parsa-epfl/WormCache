@@ -44,6 +44,7 @@ pub mod timestamp;
 // Plugin
 use crate::chronic::chronic_behavior_init;
 use crate::chronic::on_finish_loading_snapshot;
+use crate::debug::statistics;
 use crate::debug::statistics::Statistics;
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
@@ -85,6 +86,10 @@ unsafe extern "C" fn vcpu_tb_trans(
 ) {
     unsafe {
         PluginList::on_translation(tb);
+
+        if parameter::ENABLE_STATISTICS {
+            statistics::on_translation_instructions(tb);
+        }
     }
 }
 
@@ -202,10 +207,6 @@ unsafe extern "C" fn qemu_plugin_install(
 
         if parameter::ENABLE_STATISTICS {
             debug::statistics::create_thread_for_periodic_log();
-            qemu_api::qemu_plugin_register_vcpu_tb_trans_cb(
-                id,
-                Some(debug::statistics::on_translation_instructions),
-            );
         }
 
         // Dump the PARAMETER_RS to a log file.

@@ -271,7 +271,7 @@ impl Statistics {
     #[inline]
     pub fn save_to_csv(file_name: &str, ts: u64) {
         // save statistics.
-        let mut file = std::fs::File::create(format!("{}/statistics.csv", file_name)).unwrap();
+        let mut file = std::fs::File::create(file_name).unwrap();
         // write header.
         file.write_fmt(format_args!("{}\n", Statistics::get_header()))
             .unwrap();
@@ -329,10 +329,7 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
 }
 
-pub unsafe extern "C" fn on_translation_instructions(
-    _: qemu_api::qemu_plugin_id_t,
-    tb: *mut qemu_api::qemu_plugin_tb,
-) {
+pub unsafe extern "C" fn on_translation_instructions(tb: *mut qemu_api::qemu_plugin_tb) {
     unsafe {
         let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);
         let size = qemu_api::qemu_plugin_tb_n_insns(tb);
