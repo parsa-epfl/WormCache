@@ -119,7 +119,7 @@ pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = false;
  * If true, the private instruction cache and the private data cache are unified.
  * If false, the private instruction cache and the private data cache are separated, i.e., the Harvard architecture.
  */
-pub const USE_UNIFIED_CACHE: bool = false;
+pub const USE_UNIFIED_CACHE: bool = true;
 
 /**
  * PRI_CACHE_ASSO

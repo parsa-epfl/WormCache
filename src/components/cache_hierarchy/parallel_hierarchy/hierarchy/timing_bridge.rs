@@ -14,7 +14,7 @@ pub struct Raw {
 }
 
 struct BufPtr {
-    ptr: *mut u64,
+    ptr: *mut Raw,
     current_idx: u64,
     max_len: u64,
     seq: u64,
@@ -26,11 +26,11 @@ unsafe impl Sync for BufPtr {}
 static BUFFER: OnceLock<Mutex<BufPtr>> = OnceLock::new();
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn dev_trace_init(buf: *mut u64, max_len: u64) {
+unsafe extern "C" fn dev_trace_init(buf: *mut Raw, max_len: u64) {
     let buf_ptr = BufPtr {
         ptr: buf,
         current_idx: 0,
-        max_len,
+        max_len: max_len,
         seq: 0,
     };
     BUFFER.get_or_init(|| Mutex::new(buf_ptr));
@@ -47,28 +47,30 @@ pub fn timing_bridge_push(
 ) {
     // cast the buf into an array of Raw
     // then push the data into the array
-
     assert!(CORE_COUNT <= 32);
 
     if let Some(mutex) = BUFFER.get() {
         let mut buf_ptr = mutex.lock();
-        let offset = buf_ptr.current_idx * std::mem::size_of::<Raw>() as u64;
-        let dst = unsafe { buf_ptr.ptr.add(offset as usize) as *mut Raw };
-        let data = Raw {
-            seq: buf_ptr.seq,
-            src: core_id as u64,
-            addr: pa,
-            list: sharer_list.data[0],
-            flag: (llc_hit as u64) << 2
+        let dst = unsafe { buf_ptr.ptr.add(buf_ptr.current_idx as usize) };
+
+        let flag = (llc_hit as u64) << 2
                 | (is_broadcast_invalidation as u64) << 0
-                | (is_forward as u64) << 1,
-            time: ts,
-        };
+                | (is_forward as u64) << 1;
+
         unsafe {
-            std::ptr::write(dst, data);
+            std::ptr::write(std::ptr::addr_of_mut!((*dst).seq),  buf_ptr.seq);
+            std::ptr::write(std::ptr::addr_of_mut!((*dst).src),  core_id as u64);
+            std::ptr::write(std::ptr::addr_of_mut!((*dst).addr), pa);
+            std::ptr::write(std::ptr::addr_of_mut!((*dst).list), sharer_list.data[0]);
+            std::ptr::write(std::ptr::addr_of_mut!((*dst).time), ts);
+
+            std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+
+            // update flag after all other fields are visible
+            std::ptr::write(std::ptr::addr_of_mut!((*dst).flag), flag);
         }
+
         buf_ptr.seq += 1;
-        buf_ptr.current_idx += 1;
-        buf_ptr.current_idx %= buf_ptr.max_len; // wrap around if exceed max_len
+        buf_ptr.current_idx = buf_ptr.seq % buf_ptr.max_len; // wrap around if exceed max_len
     }
 }

@@ -227,6 +227,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
 
     fn access_from_device_with_pa(
         &self,
+        _dev_id: u32,
         _paddr: u64,
         _access_type: CacheAccessType,
         _ts: u64,

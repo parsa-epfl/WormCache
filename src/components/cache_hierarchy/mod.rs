@@ -125,6 +125,7 @@ pub trait MemoryHierarchy {
 
     fn access_from_device_with_pa(
         &self,
+        dev_id: u32,
         paddr: u64,
         access_type: CacheAccessType,
         ts: u64,

@@ -836,6 +836,7 @@ impl<
 
     fn access_from_device_with_pa(
         &self,
+        dev_id: u32,
         paddr: u64,
         access_type: CacheAccessType,
         ts: u64,
@@ -904,7 +905,7 @@ impl<
             {
                 SharedCacheLookupResult::Hit(_) => {
                     timing_bridge_push(
-                        0, // irrelevant
+                        dev_id,
                         block_id,
                         sharers,
                         true,
@@ -916,7 +917,7 @@ impl<
                 }
                 SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
                     timing_bridge_push(
-                        0, // irrelevant
+                        dev_id,
                         block_id,
                         sharers,
                         false,
@@ -931,7 +932,7 @@ impl<
             };
         } else {
             timing_bridge_push(
-                0, // irrelevant
+                dev_id,
                 block_id,
                 sharers,
                 false, // irrelevant

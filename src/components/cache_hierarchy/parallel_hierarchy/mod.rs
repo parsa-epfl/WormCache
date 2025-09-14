@@ -142,11 +142,13 @@ unsafe extern "C" fn cpu_trace_phys(
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn dev_trace_phys(
+    dev_id: u32,
     paddr: u64,
     is_store: bool
 ) {
     unsafe {
         (*PLUGIN).access_from_device_with_pa(
+            dev_id,
             paddr,
             if is_store {
                 CacheAccessType::DataWrite

@@ -194,7 +194,7 @@ impl<const SET: usize, const WAY: usize> DirectorySet for FiniteDirectorySet<SET
 
                 self.entries
                     .remove(&lru_block)
-                    .map(|entry| (lru_block << Self::LOG2_SET + SET, entry))
+                    .map(|entry| ((lru_block << Self::LOG2_SET) + SET as u64, entry))
             } else {
                 None
             };

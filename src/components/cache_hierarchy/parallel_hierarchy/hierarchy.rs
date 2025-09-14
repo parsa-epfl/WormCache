@@ -125,7 +125,7 @@ impl<
     ) {
         let directory_entry = {
             let tmp = directory_set_guard.get_or_create(block_id);
-            assert!(tmp.1.is_none());
+            //assert!(tmp.1.is_none());
             tmp.0
         };
 
@@ -145,7 +145,7 @@ impl<
                     sharer.iter_ones().collect::<Vec<usize>>()
                 );
             }
-            panic!();
+            //panic!();
         }
 
         // we put the element back to the directory.

@@ -151,7 +151,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                 SharedCacheLookupResult::Hit(hit_block.modified)
             } else {
                 SharedCacheLookupResult::LookupLate(
-                    hit_block.ts as u32 - ts as u32,
+                    (hit_ts - ts) as u32,
                     hit_block.modified,
                 )
             };
