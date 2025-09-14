@@ -286,26 +286,6 @@ pub const BTB_ASSO: usize = 4;
 pub const BP_RAS_COUNT: usize = 32;
 
 /**
- * INIT_HOST_TIME_SCALE
- *
- * The initial denominator of taking host time to advance target CPU clock.
- *
- * By default, the VirtualTime plugin calculate the denominator by periodically picking the fast core, and uses its speed
- * to calculate this denominator. This parameter is used to set the initial value of this denominator.
- *
- */
-pub const INIT_HOST_TIME_SCALE: usize = 1000;
-
-/**
- * HOST_TIME_SCALING_PROFILING_PERIOD
- *
- * The period of profiling the host time scaling, in milliseconds.
- *
- * The VirtualTime plugin will profile the icount and determine host time scaling every this number of instructions.
- */
-pub const HOST_TIME_SCALING_PROFILING_PERIOD: usize = 100;
-
-/**
  * The list of plugins.
  */
 use crate::components::Plugin;
