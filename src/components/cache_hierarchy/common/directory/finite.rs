@@ -236,6 +236,6 @@ impl<const SET: usize, const WAY: usize> Directory for FiniteDirectory<SET, WAY>
     }
 
     fn information() -> String {
-        String::from(format!("Finite Directory ({} sets, {} ways)", SET, WAY))
+        format!("Finite Directory ({} sets, {} ways)", SET, WAY)
     }
 }
