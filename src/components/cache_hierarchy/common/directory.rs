@@ -68,13 +68,12 @@ impl DirectoryEntry {
 pub trait DirectorySet: Sized + Send + Sync + Clone {
     fn new(index: usize) -> Self;
     fn from(raw: HashMap<u64, DirectoryEntry>, index: usize) -> Self;
-    const LOG2_SET: usize;
     fn get_or_create(
         &mut self,
         block_id: u64,
     ) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>);
 
-    fn get(&mut self, block_ud: u64) -> Option<&mut DirectoryEntry>;
+    fn get(&mut self, block_id: u64) -> Option<&mut DirectoryEntry>;
 
     fn erase(&mut self, block_id: u64);
     fn run_gc(&mut self);
@@ -107,4 +106,6 @@ pub trait Directory: Send + Sync {
     fn serialize(&self, name: &str, numa_node_id: usize);
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize);
+
+    fn information() -> String;
 }

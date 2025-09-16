@@ -198,7 +198,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
 
     fn information() -> String {
         format!(
-            "SingleSharedCache: SET={}, WAY={}, EXCLUSIVE={}",
+            "SharedCache: SET={}, WAY={}, EXCLUSIVE={}",
             SET, WAY, EXCLUSIVE
         )
     }

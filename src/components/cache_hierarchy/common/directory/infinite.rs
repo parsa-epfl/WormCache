@@ -60,33 +60,27 @@ impl<const SET: usize> DirectorySet for InfiniteDirectorySet<SET> {
         }
     }
 
-    const LOG2_SET: usize = SET.trailing_zeros() as usize;
-
     #[inline]
     fn get_or_create(
         &mut self,
         block_id: u64,
     ) -> (&mut DirectoryEntry, Option<(u64, DirectoryEntry)>) {
-        let internal_id = block_id >> Self::LOG2_SET;
-
-        self.entries.entry(internal_id).or_insert(DirectoryEntry {
+        self.entries.entry(block_id).or_insert(DirectoryEntry {
             lru_ts: 0,
             sharers: SharerList::ZERO,
             in_shared_cache: false,
             shared: false,
         });
 
-        (self.entries.get_mut(&internal_id).unwrap(), None)
+        (self.entries.get_mut(&block_id).unwrap(), None)
     }
 
-    fn get(&mut self, block_ud: u64) -> Option<&mut DirectoryEntry> {
-        let internal_id = block_ud >> Self::LOG2_SET;
-        self.entries.get_mut(&internal_id)
+    fn get(&mut self, block_id: u64) -> Option<&mut DirectoryEntry> {
+        self.entries.get_mut(&block_id)
     }
 
     fn erase(&mut self, block_id: u64) {
-        let internal_id = block_id >> Self::LOG2_SET;
-        self.entries.remove(&internal_id);
+        self.entries.remove(&block_id);
     }
 
     fn run_gc(&mut self) {
@@ -213,5 +207,9 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
 
         let helper: super::DirectorySerdeHelper<SET> = serde_json::from_reader(file).unwrap();
         *self = Self::from_serialize_helper(helper);
+    }
+
+    fn information() -> String {
+        format!("Infinite Directory with {} shard(s)", SET)
     }
 }
