@@ -31,7 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
-use crate::components::cache_hierarchy::common::{InfiniteDirectorySet, SharedCacheAccessSource};
+use crate::components::cache_hierarchy::common::SharedCacheAccessSource;
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter;
 
@@ -49,6 +49,8 @@ mod debug_tests;
 // #[cfg(test)]
 // mod harvard_reverse_order_tests;
 #[cfg(test)]
+mod finite_directory_eviction_tests;
+#[cfg(test)]
 mod harvard_tests;
 #[cfg(test)]
 mod reverse_order_tests;
@@ -59,17 +61,17 @@ pub struct ParallelMemoryHierarchy<
     MMU: AbstractMMU,
     PCache: PrivateCache,
     SCache: SharedCache,
+    Dir: Directory,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
-    const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
-    directory: Directory<InfiniteDirectorySet<DIRECTORY_SHARD_COUNT>, DIRECTORY_SHARD_COUNT>,
+    directory: Dir,
 
     shared_cache: SCache,
 }
@@ -78,22 +80,22 @@ impl<
     MMU: AbstractMMU,
     PCache: PrivateCache,
     SCache: SharedCache,
+    Dir: Directory,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
-    const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
 >
     ParallelMemoryHierarchy<
         MMU,
         PCache,
         SCache,
+        Dir,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
-        DIRECTORY_SHARD_COUNT,
         CORE_COUNT,
     >
 {
@@ -106,9 +108,9 @@ impl<
         }
     }
 
-    pub fn handle_eviction<const SET: usize>(
+    pub fn handle_eviction(
         &self,
-        directory_set_guard: &mut impl DerefMut<Target = InfiniteDirectorySet<SET>>,
+        directory_set_guard: &mut impl DerefMut<Target = Dir::TSet>,
         cache_id: usize,
         block_id: u64,
         ts: u64,
@@ -201,8 +203,9 @@ impl<
 
     pub fn information() -> String {
         format!(
-            "Private Cache: {}\nShared Cache: {}\nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
+            "Private Cache: {}\nDirectory: {}\nShared Cache: {}\nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
             PCache::information(),
+            Dir::information(),
             SCache::information(),
             FILL_SCACHE_ON_FILLING_PCACHE,
             FILL_SCACLE_ON_PCACHE_EVICTION,

@@ -208,6 +208,12 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             assert!(HierarchyForPlugin::information().contains("HarvardPrivateCache"))
         }
 
+        if parameter::USE_INFINITE_DIRECTORY {
+            assert!(HierarchyForPlugin::information().contains("Infinite Directory"))
+        } else {
+            assert!(HierarchyForPlugin::information().contains("Finite Directory"))
+        }
+
         println!("Memory plugin initialized.");
         println!("{}", HierarchyForPlugin::information());
 

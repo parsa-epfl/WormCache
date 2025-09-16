@@ -239,16 +239,15 @@ static_assertions::const_assert!(
     !(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_REPLICA_CREATION)
 );
 
-/**
- * DIRECTORY_SHARD_COUNT
- *
- * The number of sets of the directory. It should be much larger than the number of sets of all private caches to prevent directory contention.
- *
- * It should be a power of 2.
- *
-*/
-pub const DIRECTORY_SHARD_COUNT: usize = 32768;
-static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
+pub const USE_INFINITE_DIRECTORY: bool = false;
+
+pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
+static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
+
+pub const FINITE_DIRECTORY_SET: usize = 256 * CORE_COUNT;
+static_assertions::const_assert!(FINITE_DIRECTORY_SET.is_power_of_two());
+
+pub const FINITE_DIRECTORY_ASSO: usize = 16;
 
 /**
 * ADJACENT_LINE_PREFETCHING

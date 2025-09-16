@@ -29,6 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::components::cache_hierarchy::common::{Directory, FiniteDirectory, InfiniteDirectory};
 use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
@@ -38,7 +39,7 @@ use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
  * Reference: https://willcrichton.net/notes/type-level-programming/
  *
  */
-use crate::parameter;
+use crate::parameter::{self};
 use crate::{arch::AArch64, components::cache_hierarchy::MemoryHierarchy};
 
 pub trait CacheModelParser<const UNIFIED_CACHE_MODEL: bool> {
@@ -47,6 +48,10 @@ pub trait CacheModelParser<const UNIFIED_CACHE_MODEL: bool> {
 
 pub trait MMUParser<const USE_FULLY_ASSOCIATIVE_L1_TLB: bool> {
     type Output: AbstractMMU;
+}
+
+pub trait DirectoryParser<const USE_INFINITE_DIRECTORY: bool> {
+    type Output: Directory;
 }
 
 pub struct DummyParser;
@@ -120,6 +125,18 @@ impl MMUParser<false> for DummyParser {
 
 type AArch64MMU = <DummyParser as MMUParser<{ parameter::USE_HIGHLY_ASSOCIATIVE_L1TLB }>>::Output;
 
+impl DirectoryParser<true> for DummyParser {
+    type Output = InfiniteDirectory<{ parameter::INFINITE_DIRECTORY_SHARED_COUNT }>;
+}
+
+impl DirectoryParser<false> for DummyParser {
+    type Output =
+        FiniteDirectory<{ parameter::FINITE_DIRECTORY_SET }, { parameter::FINITE_DIRECTORY_ASSO }>;
+}
+
+type DirectoryForPlugin =
+    <DummyParser as DirectoryParser<{ parameter::USE_INFINITE_DIRECTORY }>>::Output;
+
 #[allow(dead_code)]
 type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     AArch64MMU,
@@ -134,11 +151,11 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    DirectoryForPlugin,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
-    { parameter::DIRECTORY_SHARD_COUNT },
     { ALLOCATED_CORE_COUNT },
 >;
 
@@ -158,11 +175,11 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    DirectoryForPlugin,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
-    { parameter::DIRECTORY_SHARD_COUNT },
     { ALLOCATED_CORE_COUNT },
 >;
 

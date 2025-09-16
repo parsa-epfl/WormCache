@@ -57,6 +57,8 @@ pub enum CacheHierarchyAccessResult {
     Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
 }
 
+pub use directory::finite::*;
+pub use directory::infinite::*;
 pub use directory::*;
 pub use l0i::*;
 pub use private_cache::*;
