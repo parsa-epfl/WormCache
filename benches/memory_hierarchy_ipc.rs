@@ -32,6 +32,7 @@
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheAccessType;
+use worm_cache::components::cache_hierarchy::common::InfiniteDirectory;
 use worm_cache::components::cache_hierarchy::common::ParallelLRUSharedCache;
 use worm_cache::components::cache_hierarchy::common::ParallelUnifiedPrivateCache;
 use worm_cache::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
@@ -55,11 +56,11 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    InfiniteDirectory<32768>,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
-    { parameter::DIRECTORY_SHARD_COUNT },
     1,
 >;
 

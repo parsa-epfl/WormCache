@@ -4,7 +4,7 @@ use crate::{
     components::cache_hierarchy::{
         CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
         common::{
-            CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCache,
+            CacheAccessType, CacheHierarchyAccessResult, Directory, DirectorySet, PrivateCache,
             PrivateCacheEvictedSlot, PrivateCachePokeResult, SharedCache, SharedCacheAccessRequest,
             SharedCacheAccessSource, SharedCacheLookupResult,
         },
@@ -23,22 +23,22 @@ impl<
     MMU: AbstractMMU,
     PCache: PrivateCache,
     SCache: SharedCache,
+    Dir: Directory,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
     const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
-    const DIRECTORY_SHARD_COUNT: usize,
     const CORE_COUNT: usize,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
         PCache,
         SCache,
+        Dir,
         FILL_SCACHE_ON_FILLING_PCACHE,
         FILL_SCACLE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
-        DIRECTORY_SHARD_COUNT,
         CORE_COUNT,
     >
 {

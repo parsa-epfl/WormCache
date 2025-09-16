@@ -35,7 +35,7 @@ use crate::{
     components::cache_hierarchy::{
         CacheBlockRequest, MemoryHierarchy,
         common::{
-            CacheAccessType, CacheHierarchyAccessResult, ParallelLRUSharedCache,
+            CacheAccessType, CacheHierarchyAccessResult, InfiniteDirectory, ParallelLRUSharedCache,
             ParallelUnifiedPrivateCache, PrivateCache, SharedCache, SharedCacheAccessRequest,
             SharedCacheAccessSource, statistics::ZeroSharedCacheSetStatistics,
         },
@@ -57,11 +57,11 @@ type MH = ParallelMemoryHierarchy<
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
+    InfiniteDirectory<32768>,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
-    { parameter::DIRECTORY_SHARD_COUNT },
     32,
 >;
 

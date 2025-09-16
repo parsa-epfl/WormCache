@@ -232,7 +232,7 @@ fn test_resize_cache_hierarchy() {
         components::cache_hierarchy::{
             CacheBlockRequest, MemoryHierarchy,
             common::{
-                CacheAccessType, ParallelHarvardPrivateCache,
+                CacheAccessType, InfiniteDirectory, ParallelHarvardPrivateCache,
                 statistics::ZeroSharedCacheSetStatistics,
             },
             hierarchy::ParallelMemoryHierarchy,
@@ -252,11 +252,11 @@ fn test_resize_cache_hierarchy() {
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 32, 4, 32, 4>,
         ParallelLRUSharedCache<ZeroSharedCacheSetStatistics, 32, 8, true>,
+        InfiniteDirectory<65536>,
         true,
         true,
         true,
         true,
-        65536,
         { CORE_COUNT },
     >;
 
@@ -264,11 +264,11 @@ fn test_resize_cache_hierarchy() {
         NoMMU,
         ParallelHarvardPrivateCache<{ CORE_COUNT }, 128, 8, 128, 8>,
         ParallelLRUSharedCache<ZeroSharedCacheSetStatistics, 128, 16, true>,
+        InfiniteDirectory<65536>,
         true,
         true,
         true,
         true,
-        65536,
         { CORE_COUNT },
     >;
 
