@@ -53,9 +53,9 @@ type MH = super::ParallelMemoryHierarchy<
     ParallelLRUSharedCache<ZeroSharedCacheSetStatistics, SCACHE_SET, SCACHE_ASSO, false>,
     FiniteDirectory<DIR_SET, DIR_WAY>,
     true, // FILL_SCACHE_ON_FILLING_PCACHE
-    true, // FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION
+    true, // FILL_SCACHE_ON_PCACHE_CLEAN_EVICTION
     true, // FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION
-    true, // FILL_SCACLE_ON_PCACPE_REPLICA_CREATION
+    true, // FILL_SCACHE_ON_PCACHE_REPLICA_CREATION
     CORE_COUNT,
 >;
 

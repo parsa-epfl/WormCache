@@ -25,9 +25,9 @@ impl<
     SCache: SharedCache,
     Dir: Directory,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-    const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
     const CORE_COUNT: usize,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
@@ -36,9 +36,9 @@ impl<
         SCache,
         Dir,
         FILL_SCACHE_ON_FILLING_PCACHE,
-        FILL_SCACLE_ON_PCACHE_EVICTION,
+        FILL_SCACHE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
-        FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
+        FILL_SCACHE_ON_PCACHE_REPLICA_CREATION,
         CORE_COUNT,
     >
 {
@@ -394,7 +394,7 @@ impl<
             miss_directory_guard.update_lru_ts(ts);
             miss_directory_guard.sharers.set(p_cache_id, true);
 
-            if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION {
+            if FILL_SCACHE_ON_PCACHE_REPLICA_CREATION {
                 self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     block_id,
@@ -600,7 +600,7 @@ impl<
                     assert!(!miss_directory_guard.shared);
                 }
 
-                if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
+                if FILL_SCACHE_ON_PCACHE_REPLICA_CREATION || modified_replica {
                     self.shared_cache.insert(
                         SharedCacheAccessSource::Core(core_id),
                         block_id,

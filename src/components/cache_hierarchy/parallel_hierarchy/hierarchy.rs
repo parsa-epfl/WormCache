@@ -63,9 +63,9 @@ pub struct ParallelMemoryHierarchy<
     SCache: SharedCache,
     Dir: Directory,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-    const FILL_SCACLE_ON_PCACHE_CLEAN_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_CLEAN_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
-    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
     const CORE_COUNT: usize,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
@@ -82,9 +82,9 @@ impl<
     SCache: SharedCache,
     Dir: Directory,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-    const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
     const CORE_COUNT: usize,
 >
     ParallelMemoryHierarchy<
@@ -93,9 +93,9 @@ impl<
         SCache,
         Dir,
         FILL_SCACHE_ON_FILLING_PCACHE,
-        FILL_SCACLE_ON_PCACHE_EVICTION,
+        FILL_SCACHE_ON_PCACHE_EVICTION,
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
-        FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
+        FILL_SCACHE_ON_PCACHE_REPLICA_CREATION,
         CORE_COUNT,
     >
 {
@@ -167,7 +167,7 @@ impl<
 
             let core_id = PCache::find_cache_info_by_cache_id(cache_id).0;
 
-            if FILL_SCACLE_ON_PCACHE_EVICTION && !modified {
+            if FILL_SCACHE_ON_PCACHE_EVICTION && !modified {
                 self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     block_id,
@@ -208,9 +208,9 @@ impl<
             Dir::information(),
             SCache::information(),
             FILL_SCACHE_ON_FILLING_PCACHE,
-            FILL_SCACLE_ON_PCACHE_EVICTION,
+            FILL_SCACHE_ON_PCACHE_EVICTION,
             FILL_SCACHE_ON_PCACHE_WRITEBACK,
-            FILL_SCACLE_ON_PCACPE_REPLICA_CREATION
+            FILL_SCACHE_ON_PCACHE_REPLICA_CREATION
         )
     }
 
