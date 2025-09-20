@@ -56,6 +56,7 @@ impl<
         let is_page_walk = r.is_page_walk();
         let block_id = r.block_id;
         let is_prefetch = r.is_prefetch();
+        let paddr = block_id << CACHE_LINE_SIZE.trailing_zeros();
 
         if !is_prefetch && self.with_statistics {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
@@ -268,7 +269,7 @@ impl<
 
             timing_bridge_push(
                 core_id,
-                block_id,
+                paddr,
                 sharers, // 0
                 // both read and write need to access memory
                 matches!(shared_cache_result, SharedCacheLookupResult::Hit(_)),
@@ -430,7 +431,7 @@ impl<
             // don't even bother to forward
             timing_bridge_push(
                 core_id,
-                block_id,
+                paddr,
                 sharers, // not relevant
                 true,
                 false,
@@ -554,7 +555,7 @@ impl<
                 if sharers.get(p_cache_id).unwrap() == true && next_sharers.count_ones() > 0 {
                     timing_bridge_push(
                         core_id,
-                        block_id,
+                        paddr,
                         next_sharers,
                         // skip memory access as only invalidation is needed
                         true,
@@ -568,7 +569,7 @@ impl<
                     // GetX instead
                     timing_bridge_push(
                         core_id,
-                        block_id,
+                        paddr,
                         next_sharers,
                         // skip memory access if
                         //   1. the block is already in llc
@@ -695,7 +696,7 @@ impl<
 
                 timing_bridge_push(
                     core_id,
-                    block_id,
+                    paddr,
                     sharers,
                     // skip memory access if
                     //   1. llc hits and no writeback is needed
@@ -906,7 +907,7 @@ impl<
                 SharedCacheLookupResult::Hit(_) => {
                     timing_bridge_push(
                         dev_id,
-                        block_id,
+                        paddr,
                         sharers,
                         true,
                         broadcast,
@@ -918,7 +919,7 @@ impl<
                 SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
                     timing_bridge_push(
                         dev_id,
-                        block_id,
+                        paddr,
                         sharers,
                         false,
                         broadcast,
@@ -933,7 +934,7 @@ impl<
         } else {
             timing_bridge_push(
                 dev_id,
-                block_id,
+                paddr,
                 sharers,
                 false, // irrelevant
                 false,

@@ -349,6 +349,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         println!("Memory plugin initialized.");
         println!("{}", HierarchyForPlugin::information());
 
+        /*
         // this thread peridocally dumps the statistics.
         std::thread::spawn(move || {
             if !ENABLE_STATISTICS {
@@ -377,6 +378,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
         });
+        */
     }
 
     #[inline]
