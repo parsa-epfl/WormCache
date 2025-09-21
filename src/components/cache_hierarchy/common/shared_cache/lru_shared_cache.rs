@@ -98,7 +98,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
 {
     fn new() -> Self {
         Self {
-            blocks: crate::util::init_heap_array(|_| (SpinMutex::new(SharedCacheSet::new()))),
+            blocks: crate::util::init_heap_array(|_| SpinMutex::new(SharedCacheSet::new())),
             warmed_sets: AtomicUsize::new(0),
             _phantom: std::marker::PhantomData,
         }
