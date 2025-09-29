@@ -720,7 +720,7 @@ impl<
         self.directory.serialize(name, numa_node_id);
         println!("Serializing shared cache.");
         self.shared_cache.serialize(name, numa_node_id);
-        println!("Serialize MMUs");
+        println!("Serializing MMUs.");
         self.serialize_mmus(name, numa_node_id);
     }
 
@@ -731,7 +731,7 @@ impl<
         self.directory.deserialize(name, numa_node_id);
         println!("Deserializing shared cache.");
         self.shared_cache.deserialize(name, numa_node_id);
-        println!("Deserialize MMUs");
+        println!("Deserializing MMUs.");
         self.deserialize_mmus(name, numa_node_id);
     }
 
