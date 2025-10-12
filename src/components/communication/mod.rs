@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
 use std::ffi;
 
+mod aarch64_decoder;
+
 // Global timestamp updated by QEMU's quantum incremental handler
 #[unsafe(no_mangle)]
 static mut QUANTUM_GENERATION: u64 = 0;
@@ -38,6 +40,11 @@ struct CacheLineAccessRecord {
     last_writer_core: u32,
     // intervals: Vec<u64>,
     intervals: FxHashMap<u64, u64>, // interval_ns -> count
+    instruction_fetch_count: u64,
+    page_walk_count: u64,
+    os_access_count: u64,
+    load_exclusive_count: u64,
+    atomic_access_count: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -54,6 +61,16 @@ struct CommunicationInterval {
 struct InterruptInterval {
     interval_ns: u64,
     core_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct SerializedCacheLineRecord {
+    intervals: FxHashMap<u64, u64>, // interval_ns -> count,
+    instruction_fetch_count: u64,
+    page_walk_count: u64,
+    os_access_count: u64,
+    load_exclusive_count: u64,
+    atomic_access_count: u64,
 }
 
 // Sharded cache line records for fine-grained locking
@@ -82,9 +99,12 @@ impl ShardedCacheLineRecords {
         &self,
         cache_line_id: u64,
         core_id: u32,
+        is_instruction: bool,
         is_write: bool,
         is_os: bool,
         is_page_walk: bool,
+        is_atomic: bool,
+        is_load_exclusive: bool,
         ts: u64,
     ) {
         let shard_idx = Self::get_shard_index(cache_line_id);
@@ -97,6 +117,11 @@ impl ShardedCacheLineRecords {
                 last_writer_core: core_id,
                 // intervals: Vec::new(),
                 intervals: FxHashMap::default(),
+                instruction_fetch_count: 0,
+                page_walk_count: 0,
+                os_access_count: 0,
+                load_exclusive_count: 0,
+                atomic_access_count: 0,
             });
 
             // Check if different core wrote to the same cache line
@@ -112,6 +137,26 @@ impl ShardedCacheLineRecords {
                 // });
                 // record.intervals.push(interval);
                 *record.intervals.entry(interval).or_insert(0) += 1;
+
+                if is_page_walk {
+                    record.page_walk_count += 1;
+                }
+
+                if is_os {
+                    record.os_access_count += 1;
+                }
+
+                if is_atomic {
+                    record.atomic_access_count += 1;
+                }
+
+                if is_load_exclusive {
+                    record.load_exclusive_count += 1;
+                }
+
+                if is_instruction {
+                    record.instruction_fetch_count += 1;
+                }
             }
 
             record.last_write_timestamp = ts;
@@ -132,6 +177,26 @@ impl ShardedCacheLineRecords {
                     // });
                     // record.intervals.push(interval);
                     *record.intervals.entry(interval).or_insert(0) += 1;
+
+                    if is_page_walk {
+                        record.page_walk_count += 1;
+                    }
+
+                    if is_os {
+                        record.os_access_count += 1;
+                    }
+
+                    if is_atomic {
+                        record.atomic_access_count += 1;
+                    }
+
+                    if is_load_exclusive {
+                        record.load_exclusive_count += 1;
+                    }
+
+                    if is_instruction {
+                        record.instruction_fetch_count += 1;
+                    }
                 }
             }
         }
@@ -145,15 +210,21 @@ impl ShardedCacheLineRecords {
             let shard_guard = shard.lock();
             for (cache_line_id, record) in shard_guard.iter() {
                 if !record.intervals.is_empty() {
-                    cache_comm_data.insert(
-                        *cache_line_id,
-                        record.intervals.clone(),
-                    );
+                    
+                    cache_comm_data.insert(*cache_line_id, SerializedCacheLineRecord {
+                        intervals: record.intervals.clone(),
+                        instruction_fetch_count: record.instruction_fetch_count,
+                        page_walk_count: record.page_walk_count,
+                        os_access_count: record.os_access_count,
+                        load_exclusive_count: record.load_exclusive_count,
+                        atomic_access_count: record.atomic_access_count,
+                    });
                 }
             }
         }
 
-        let json_str = serde_json::to_string_pretty(&(total_memory_accesses, cache_comm_data)).unwrap();
+        let json_str =
+            serde_json::to_string_pretty(&(total_memory_accesses, cache_comm_data)).unwrap();
         std::fs::write(file_path, json_str).unwrap();
         println!("Dumped cache line communication to {}", file_path);
     }
@@ -192,10 +263,12 @@ impl CommunicationRecorder {
             mmu_state,
             l0_cache: L0InstructionCache::new(),
             memory_access_count: (0..parameter::CORE_COUNT)
-                .map(|_| SpinMutex::new(PerCoreMemoryAccess {
-                    total_accesses: 0,
-                    __padding: [0; 7],
-                }))
+                .map(|_| {
+                    SpinMutex::new(PerCoreMemoryAccess {
+                        total_accesses: 0,
+                        __padding: [0; 7],
+                    })
+                })
                 .collect(),
         }
     }
@@ -204,19 +277,27 @@ impl CommunicationRecorder {
         &self,
         core_id: u32,
         pa: u64,
+        is_instruction: bool,
+        is_atomic: bool,
+        is_load_exclusive: bool,
         is_write: bool,
         is_os: bool,
         is_page_walk: bool,
         ts: u64,
     ) {
         let cache_line_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-        self.memory_access_count[core_id as usize].lock().total_accesses += 1;
+        self.memory_access_count[core_id as usize]
+            .lock()
+            .total_accesses += 1;
         self.cache_line_records.record_access(
             cache_line_id,
             core_id,
+            is_instruction,
             is_write,
             is_os,
             is_page_walk,
+            is_atomic,
+            is_load_exclusive,
             ts,
         );
     }
@@ -259,11 +340,16 @@ impl CommunicationRecorder {
                         cache_line_id,
                         core_id,
                         false, // page walks are reads
+                        false,
                         is_os,
                         true, // this is a page walk
+                        false,
+                        false,
                         ts,
                     );
-                    self.memory_access_count[core_id as usize].lock().total_accesses += 1;
+                    self.memory_access_count[core_id as usize]
+                        .lock()
+                        .total_accesses += 1;
                 }
                 Some(pa)
             }
@@ -274,8 +360,13 @@ impl CommunicationRecorder {
     fn dump_to_json(&self, name: &str) {
         // Dump cache line communication intervals
         let cache_comm_file = format!("{}/cache_line_communication.json", name);
-        let total_memory_accesses: u64 = self.memory_access_count.iter().map(|m| m.lock().total_accesses).sum();
-        self.cache_line_records.dump_to_json(&cache_comm_file, total_memory_accesses);
+        let total_memory_accesses: u64 = self
+            .memory_access_count
+            .iter()
+            .map(|m| m.lock().total_accesses)
+            .sum();
+        self.cache_line_records
+            .dump_to_json(&cache_comm_file, total_memory_accesses);
 
         // Dump interrupt intervals
         let interrupt_file = format!("{}/interrupt_intervals.json", name);
@@ -328,14 +419,34 @@ unsafe extern "C" fn vcpu_mem_access(
         if !is_device {
             let is_store = qemu_api::qemu_plugin_mem_is_store(info);
             let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
-            let inst_virtual_addr = inst_virtual_addr as u64;
+            
+            // Decode user data:
+            // Bits [48:0]: instruction virtual address (49 bits)
+            // Bit  [49]:   is_atomic flag
+            // Bit  [50]:   is_load_exclusive flag
+            // Bits [51+]:  offset
+            let userdata = inst_virtual_addr as u64;
+            let inst_virtual_addr = userdata & 0x1_ffff_ffff_ffff;
+            let is_atomic = ((userdata >> 49) & 1) != 0;
+            let is_load_exclusive = ((userdata >> 50) & 1) != 0;
+            
             let is_os = (inst_virtual_addr >> 48) & 1 == 1;
             let ts = std::ptr::addr_of!(QUANTUM_GENERATION).read_volatile() * 100;
 
             let recorder = &*PLUGIN;
 
-            // Record the memory access (page walk tracking happens in translate_and_record if needed)
-            recorder.record_memory_access(vcpu_idx, pa, is_store, is_os, false, ts);
+            // Record the memory access
+            recorder.record_memory_access(
+                vcpu_idx, 
+                pa, 
+                false,        // is_instruction
+                is_atomic,
+                is_load_exclusive,
+                is_store,
+                is_os,
+                false,        // is_page_walk (handled separately in translate_and_record)
+                ts
+            );
         }
     }
 }
@@ -357,7 +468,17 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, inst_virtual_addr: *mut ffi::
 
         // Translate through MMU and record page walks if necessary
         if let Some(pa) = recorder.translate_and_record(vcpu_idx, vaddr, ts, true, is_os) {
-            recorder.record_memory_access(vcpu_idx, pa, false, is_os, false, ts);
+            recorder.record_memory_access(
+                vcpu_idx, 
+                pa,
+                true,
+                 false, 
+                 false,
+                 false,
+                 is_os,
+                 false,
+                 ts
+            );
         }
     }
 }
@@ -485,12 +606,31 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
             assert!(n_instruction < 32768);
 
             let mut block_id = vec![];
+            let mut insn_flags = vec![]; // Store (is_atomic, is_load_exclusive) for each instruction
+            
             for i in 0..n_instruction {
                 let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
                 block_id.push(
                     qemu_api::qemu_plugin_insn_haddr(inst) as usize
                         >> crate::parameter::CACHE_LINE_SIZE.trailing_zeros(),
                 );
+                
+                // Decode the instruction to determine if it's atomic or load-exclusive
+                let insn_data_ptr = qemu_api::qemu_plugin_insn_data(inst);
+                let insn_bytes = std::slice::from_raw_parts(insn_data_ptr as *const u8, 4);
+                
+                // AArch64 instructions are little-endian 32-bit values
+                let insn_word = u32::from_le_bytes([
+                    insn_bytes[0],
+                    insn_bytes[1],
+                    insn_bytes[2],
+                    insn_bytes[3],
+                ]);
+                
+                let is_atomic = aarch64_decoder::is_atomic_operation(insn_word);
+                let is_load_exclusive = aarch64_decoder::is_load_exclusive(insn_word);
+                
+                insn_flags.push((is_atomic, is_load_exclusive));
             }
 
             let fb_info = crate::util::find_fetch_block_from_block_id_sequence(block_id);
@@ -501,7 +641,17 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
 
                 let insn_addr = (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0x1_ffff_ffff_ffff;
                 let offset = idx as u64;
-                let combined = insn_addr | (offset << 49);
+                
+                // Encode flags in user data:
+                // Bits [48:0]: instruction virtual address (49 bits)
+                // Bit  [49]:   is_atomic flag
+                // Bit  [50]:   is_load_exclusive flag
+                // Bits [51+]:  offset
+                let (is_atomic, is_load_exclusive) = insn_flags[idx as usize];
+                let combined = insn_addr 
+                    | ((is_atomic as u64) << 49)
+                    | ((is_load_exclusive as u64) << 50)
+                    | (offset << 51);
 
                 qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
                     i,
@@ -518,7 +668,17 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                 let insn_addr =
                     (qemu_api::qemu_plugin_insn_vaddr(inst) as u64) & 0x1_ffff_ffff_ffff;
                 let offset = i as u64;
-                let combined = insn_addr | (offset << 49);
+                
+                // Encode flags in user data:
+                // Bits [48:0]: instruction virtual address (49 bits)
+                // Bit  [49]:   is_atomic flag
+                // Bit  [50]:   is_load_exclusive flag
+                // Bits [51+]:  offset
+                let (is_atomic, is_load_exclusive) = insn_flags[i as usize];
+                let combined = insn_addr 
+                    | ((is_atomic as u64) << 49)
+                    | ((is_load_exclusive as u64) << 50)
+                    | (offset << 51);
 
                 qemu_api::qemu_plugin_register_vcpu_mem_cb(
                     inst,
