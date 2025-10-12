@@ -46,6 +46,7 @@ pub mod cache_hierarchy;
 
 pub mod instruction_frequency;
 pub mod pw_log;
+pub mod communication;
 pub mod touch_once;
 pub mod trace;
 pub mod wfi;

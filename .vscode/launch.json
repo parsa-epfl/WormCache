@@ -60,7 +60,34 @@
             "cwd": "/home/xusine/paraflex/debug/htop-singlecore",
             "relativePathBase": "/home/xusine/paraflex/debug/htop-singlecore",
             "sourceLanguages": ["rust", "c"],
-
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "debug-communication",
+            "program": "/home/sqlin/replica/pf/qemu/build/qemu-system-aarch64",
+            "args": [
+                "-smp", "32",
+                "-M", "virt,gic-version=max,virtualization=off,secure=off",
+                "-cpu", "max,pauth=off",
+                "-m", "64G",
+                "-boot", "menu=on",
+                "-bios", "./QEMU_EFI.fd",
+                "-drive", "if=virtio,file=./root.qcow2,format=qcow2",
+                "-nic", "user",
+                "-rtc", "clock=vm",
+                "-quantum", "size=100,check_period=1000000",
+                "-plugin", "${workspaceFolder}/target/release/libworm_cache.so,quit_threshold_ns=200000000",
+                "-loadvm", "base",
+                "-nographic",
+                "-no-reboot"
+            ],
+            "cwd": "/mnt/sdb/sqlin/communication/data-caching-c16-para-q100-llc2.0-20251012-000459/run",
+            "relativePathBase": "/mnt/sdb/sqlin/communication/data-caching-c16-para-q100-llc2.0-20251012-000459/run",
+            "sourceLanguages": [
+                "rust",
+                "c"
+            ],
         }
     ]
 }
