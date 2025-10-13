@@ -241,6 +241,8 @@ struct CommunicationRecorder {
     last_interrupt_timestamp: Vec<SpinMutex<u64>>,
     // interrupt_intervals: SpinMutex<Vec<InterruptInterval>>,
     interrupt_intervals: SpinMutex<FxHashMap<u64, u64>>, // interval_ns -> count
+    last_wfi_timestamp: Vec<SpinMutex<u64>>,
+    idle_intervals: SpinMutex<FxHashMap<u64, u64>>, // WFI-to-interrupt interval_ns -> count
     mmu_state: Vec<SpinMutex<CommunicationMMU>>,
     l0_cache: L0InstructionCache<{ parameter::CORE_COUNT }>,
     memory_access_count: Vec<SpinMutex<PerCoreMemoryAccess>>,
@@ -249,10 +251,12 @@ struct CommunicationRecorder {
 impl CommunicationRecorder {
     fn new() -> Self {
         let mut last_interrupt_timestamp = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut last_wfi_timestamp = Vec::with_capacity(parameter::CORE_COUNT);
         let mut mmu_state = Vec::with_capacity(parameter::CORE_COUNT);
 
         for _ in 0..parameter::CORE_COUNT {
             last_interrupt_timestamp.push(SpinMutex::new(0));
+            last_wfi_timestamp.push(SpinMutex::new(0));
             mmu_state.push(SpinMutex::new(CommunicationMMU::new()));
         }
 
@@ -260,6 +264,8 @@ impl CommunicationRecorder {
             cache_line_records: ShardedCacheLineRecords::new(),
             last_interrupt_timestamp,
             interrupt_intervals: SpinMutex::new(FxHashMap::default()),
+            last_wfi_timestamp,
+            idle_intervals: SpinMutex::new(FxHashMap::default()),
             mmu_state,
             l0_cache: L0InstructionCache::new(),
             memory_access_count: (0..parameter::CORE_COUNT)
@@ -309,6 +315,19 @@ impl CommunicationRecorder {
             *self.interrupt_intervals.lock().entry(interval).or_insert(0) += 1;
         }
         *last_ts = ts;
+
+        // Record idle interval (WFI to interrupt)
+        let mut last_wfi_ts = self.last_wfi_timestamp[core_id as usize].lock();
+        if *last_wfi_ts > 0 {
+            let idle_interval = ts.saturating_sub(*last_wfi_ts);
+            *self.idle_intervals.lock().entry(idle_interval).or_insert(0) += 1;
+            *last_wfi_ts = 0; // Reset after recording
+        }
+    }
+
+    fn record_wfi(&self, core_id: u32, ts: u64) {
+        let mut last_wfi_ts = self.last_wfi_timestamp[core_id as usize].lock();
+        *last_wfi_ts = ts;
     }
 
     fn flush_tlb(&self, core_id: u32, mode: MMUFlushMode) {
@@ -374,6 +393,13 @@ impl CommunicationRecorder {
         let json_str = serde_json::to_string_pretty(&*intervals).unwrap();
         std::fs::write(&interrupt_file, json_str).unwrap();
         println!("Dumped interrupt intervals to {}", interrupt_file);
+
+        // Dump idle intervals (WFI to interrupt)
+        let idle_file = format!("{}/idle_intervals.json", name);
+        let idle_intervals = self.idle_intervals.lock();
+        let json_str = serde_json::to_string_pretty(&*idle_intervals).unwrap();
+        std::fs::write(&idle_file, json_str).unwrap();
+        println!("Dumped idle intervals to {}", idle_file);
     }
 }
 
@@ -521,6 +547,15 @@ unsafe extern "C" fn vcpu_interrupt_delivered(vcpu_idx: u32) {
     }
 }
 
+unsafe extern "C" fn vcpu_exec_wfi(vcpu_idx: u32, _: *mut ffi::c_void) {
+    unsafe {
+        let ts = std::ptr::addr_of!(QUANTUM_GENERATION).read_volatile() * 100;
+
+        let recorder = &*PLUGIN;
+        recorder.record_wfi(vcpu_idx, ts);
+    }
+}
+
 pub struct CommunicationRecordingPlugin {}
 
 impl super::super::Plugin for CommunicationRecordingPlugin {
@@ -659,6 +694,23 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                     qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
                     combined as *mut ffi::c_void,
                 );
+            }
+
+            // Check for WFI instructions and register callback
+            for i in 0..n_instruction {
+                let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+                let literal = qemu_api::qemu_plugin_insn_data(inst) as *const u32;
+                let literal = *literal;
+
+                // WFI instruction encoding for AArch64
+                if literal == 0b_1101_0101_0000_0011_0010_0000_0111_1111 {
+                    qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                        inst,
+                        Some(vcpu_exec_wfi),
+                        qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                        std::ptr::null_mut(),
+                    );
+                }
             }
 
             // bind the memory callback.
