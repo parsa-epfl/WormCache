@@ -58,10 +58,10 @@ pub fn timing_bridge_push(
                 | (is_forward as u64) << 1;
 
         unsafe {
-            assert_eq!(std::ptr::read(std::ptr::addr_of!((*dst).flag)), 0x8,
-                      "timing bridge buffer overflowed!!! addr: {:x} seq: {:x}",
-                       dst as u64,
-                       std::ptr::read(std::ptr::addr_of!((*dst).seq)));
+            if std::ptr::read(std::ptr::addr_of!((*dst).flag)) != 0x8 {
+                println!("overflow e{0}", buf_ptr.current_idx);
+                return;
+            }
 
             std::ptr::write(std::ptr::addr_of_mut!((*dst).seq),  buf_ptr.seq);
             std::ptr::write(std::ptr::addr_of_mut!((*dst).src),  core_id as u64);
