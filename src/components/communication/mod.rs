@@ -6,6 +6,7 @@ use crate::{
     },
     parameter, qemu_api,
 };
+use bitvec::{array::BitArray, order::Lsb0, BitArr};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
@@ -38,23 +39,41 @@ type CommunicationMMU = mmu::OrdinaryMMU<
 struct CacheLineAccessRecord {
     last_write_timestamp: u64,
     last_writer_core: u32,
-    // intervals: Vec<u64>,
-    intervals: FxHashMap<u64, u64>, // interval_ns -> count
-    instruction_fetch_count: u64,
-    page_walk_count: u64,
-    os_access_count: u64,
-    load_exclusive_count: u64,
-    atomic_access_count: u64,
+    recent_readers: BitArr!(for parameter::CORE_COUNT, in u64, Lsb0),
+    // Per-core intervals: core_id -> (interval_ns -> count)
+    per_core_intervals: FxHashMap<u32, FxHashMap<u64, u64>>,
+    // Per-core counters
+    per_core_instruction_fetch_count: FxHashMap<u32, u64>,
+    per_core_page_walk_count: FxHashMap<u32, u64>,
+    per_core_os_access_count: FxHashMap<u32, u64>,
+    per_core_load_exclusive_count: FxHashMap<u32, u64>,
+    per_core_atomic_access_count: FxHashMap<u32, u64>,
+}
+
+impl CacheLineAccessRecord {
+    fn new() -> Self {
+        CacheLineAccessRecord {
+            last_write_timestamp: 0,
+            last_writer_core: 0,
+            recent_readers: BitArray::ZERO,
+            per_core_intervals: FxHashMap::default(),
+            per_core_instruction_fetch_count: FxHashMap::default(),
+            per_core_page_walk_count: FxHashMap::default(),
+            per_core_os_access_count: FxHashMap::default(),
+            per_core_load_exclusive_count: FxHashMap::default(),
+            per_core_atomic_access_count: FxHashMap::default(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct SerializedCacheLineRecord {
-    intervals: FxHashMap<u64, u64>, // interval_ns -> count,
-    instruction_fetch_count: u64,
-    page_walk_count: u64,
-    os_access_count: u64,
-    load_exclusive_count: u64,
-    atomic_access_count: u64,
+    per_core_intervals: FxHashMap<u32, FxHashMap<u64, u64>>, // core_id -> (interval_ns -> count)
+    // per_core_instruction_fetch_count: FxHashMap<u32, u64>,
+    // per_core_page_walk_count: FxHashMap<u32, u64>,
+    // per_core_os_access_count: FxHashMap<u32, u64>,
+    // per_core_load_exclusive_count: FxHashMap<u32, u64>,
+    // per_core_atomic_access_count: FxHashMap<u32, u64>,
 }
 
 // Sharded cache line records for fine-grained locking
@@ -96,51 +115,40 @@ impl ShardedCacheLineRecords {
 
         if is_write {
             // This is a write access
-            let record = shard.entry(cache_line_id).or_insert(CacheLineAccessRecord {
-                last_write_timestamp: ts,
-                last_writer_core: core_id,
-                // intervals: Vec::new(),
-                intervals: FxHashMap::default(),
-                instruction_fetch_count: 0,
-                page_walk_count: 0,
-                os_access_count: 0,
-                load_exclusive_count: 0,
-                atomic_access_count: 0,
-            });
+            let record = shard.entry(cache_line_id).or_insert_with(CacheLineAccessRecord::new);
 
             // Check if different core wrote to the same cache line
             if record.last_writer_core != core_id && record.last_write_timestamp > 0 {
                 let interval = ts.saturating_sub(record.last_write_timestamp);
-                // record.intervals.push(CommunicationInterval {
-                //     interval_ns: interval,
-                //     // from_core: record.last_writer_core,
-                //     // to_core: core_id,
-                //     is_write: true,
-                //     is_os_access: is_os,
-                //     is_page_walk,
-                // });
-                // record.intervals.push(interval);
-                *record.intervals.entry(interval).or_insert(0) += 1;
+                
+                // Record interval for this core (using HashMap entry API)
+                *record.per_core_intervals
+                    .entry(core_id)
+                    .or_insert_with(FxHashMap::default)
+                    .entry(interval)
+                    .or_insert(0) += 1;
 
                 if is_page_walk {
-                    record.page_walk_count += 1;
+                    *record.per_core_page_walk_count.entry(core_id).or_insert(0) += 1;
                 }
 
                 if is_os {
-                    record.os_access_count += 1;
+                    *record.per_core_os_access_count.entry(core_id).or_insert(0) += 1;
                 }
 
                 if is_atomic {
-                    record.atomic_access_count += 1;
+                    *record.per_core_atomic_access_count.entry(core_id).or_insert(0) += 1;
                 }
 
                 if is_load_exclusive {
-                    record.load_exclusive_count += 1;
+                    *record.per_core_load_exclusive_count.entry(core_id).or_insert(0) += 1;
                 }
 
                 if is_instruction {
-                    record.instruction_fetch_count += 1;
+                    *record.per_core_instruction_fetch_count.entry(core_id).or_insert(0) += 1;
                 }
+
+                record.recent_readers.fill(false);
             }
 
             record.last_write_timestamp = ts;
@@ -148,39 +156,38 @@ impl ShardedCacheLineRecords {
         } else {
             // This is a read access
             if let Some(record) = shard.get_mut(&cache_line_id) {
-                if record.last_writer_core != core_id {
+                if record.last_writer_core != core_id && record.recent_readers[core_id as usize] == false {
                     // Different core reading after a write
                     let interval = ts.saturating_sub(record.last_write_timestamp);
-                    // record.intervals.push(CommunicationInterval {
-                    //     interval_ns: interval,
-                    //     // from_core: record.last_writer_core,
-                    //     // to_core: core_id,
-                    //     is_write: false,
-                    //     is_os_access: is_os,
-                    //     is_page_walk,
-                    // });
-                    // record.intervals.push(interval);
-                    *record.intervals.entry(interval).or_insert(0) += 1;
+                    
+                    // Record interval for this core (using HashMap entry API)
+                    *record.per_core_intervals
+                        .entry(core_id)
+                        .or_insert_with(FxHashMap::default)
+                        .entry(interval)
+                        .or_insert(0) += 1;
 
                     if is_page_walk {
-                        record.page_walk_count += 1;
+                        *record.per_core_page_walk_count.entry(core_id).or_insert(0) += 1;
                     }
 
                     if is_os {
-                        record.os_access_count += 1;
+                        *record.per_core_os_access_count.entry(core_id).or_insert(0) += 1;
                     }
 
                     if is_atomic {
-                        record.atomic_access_count += 1;
+                        *record.per_core_atomic_access_count.entry(core_id).or_insert(0) += 1;
                     }
 
                     if is_load_exclusive {
-                        record.load_exclusive_count += 1;
+                        *record.per_core_load_exclusive_count.entry(core_id).or_insert(0) += 1;
                     }
 
                     if is_instruction {
-                        record.instruction_fetch_count += 1;
+                        *record.per_core_instruction_fetch_count.entry(core_id).or_insert(0) += 1;
                     }
+
+                    record.recent_readers.set(core_id as usize, true);
                 }
             }
         }
@@ -193,15 +200,17 @@ impl ShardedCacheLineRecords {
         for shard in &self.shards {
             let shard_guard = shard.lock();
             for (cache_line_id, record) in shard_guard.iter() {
-                if !record.intervals.is_empty() {
-                    
+                // Check if any core has recorded intervals for this cache line
+                let has_data = record.per_core_intervals.values().any(|intervals| !intervals.is_empty());
+                
+                if has_data {
                     cache_comm_data.insert(*cache_line_id, SerializedCacheLineRecord {
-                        intervals: record.intervals.clone(),
-                        instruction_fetch_count: record.instruction_fetch_count,
-                        page_walk_count: record.page_walk_count,
-                        os_access_count: record.os_access_count,
-                        load_exclusive_count: record.load_exclusive_count,
-                        atomic_access_count: record.atomic_access_count,
+                        per_core_intervals: record.per_core_intervals.clone(),
+                        // per_core_instruction_fetch_count: record.per_core_instruction_fetch_count.clone(),
+                        // per_core_page_walk_count: record.per_core_page_walk_count.clone(),
+                        // per_core_os_access_count: record.per_core_os_access_count.clone(),
+                        // per_core_load_exclusive_count: record.per_core_load_exclusive_count.clone(),
+                        // per_core_atomic_access_count: record.per_core_atomic_access_count.clone(),
                     });
                 }
             }
