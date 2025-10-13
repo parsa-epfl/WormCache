@@ -147,12 +147,11 @@ impl ShardedCacheLineRecords {
                 if is_instruction {
                     *record.per_core_instruction_fetch_count.entry(core_id).or_insert(0) += 1;
                 }
-
-                record.recent_readers.fill(false);
             }
 
             record.last_write_timestamp = ts;
             record.last_writer_core = core_id;
+            record.recent_readers.fill(false);
         } else {
             // This is a read access
             if let Some(record) = shard.get_mut(&cache_line_id) {
