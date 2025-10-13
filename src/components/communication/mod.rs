@@ -48,22 +48,6 @@ struct CacheLineAccessRecord {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-struct CommunicationInterval {
-    interval_ns: u64,
-    // from_core: u32,
-    // to_core: u32,
-    is_write: bool,
-    is_os_access: bool,
-    is_page_walk: bool,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct InterruptInterval {
-    interval_ns: u64,
-    core_id: u32,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
 struct SerializedCacheLineRecord {
     intervals: FxHashMap<u64, u64>, // interval_ns -> count,
     instruction_fetch_count: u64,
@@ -239,10 +223,11 @@ struct PerCoreMemoryAccess {
 struct CommunicationRecorder {
     cache_line_records: ShardedCacheLineRecords,
     last_interrupt_timestamp: Vec<SpinMutex<u64>>,
-    // interrupt_intervals: SpinMutex<Vec<InterruptInterval>>,
-    interrupt_intervals: SpinMutex<FxHashMap<u64, u64>>, // interval_ns -> count
+    // Per-core interrupt intervals
+    interrupt_intervals: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: interval_ns -> count
     last_wfi_timestamp: Vec<SpinMutex<u64>>,
-    idle_intervals: SpinMutex<FxHashMap<u64, u64>>, // WFI-to-interrupt interval_ns -> count
+    // Per-core idle intervals
+    idle_intervals: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: WFI-to-interrupt interval_ns -> count
     mmu_state: Vec<SpinMutex<CommunicationMMU>>,
     l0_cache: L0InstructionCache<{ parameter::CORE_COUNT }>,
     memory_access_count: Vec<SpinMutex<PerCoreMemoryAccess>>,
@@ -253,19 +238,23 @@ impl CommunicationRecorder {
         let mut last_interrupt_timestamp = Vec::with_capacity(parameter::CORE_COUNT);
         let mut last_wfi_timestamp = Vec::with_capacity(parameter::CORE_COUNT);
         let mut mmu_state = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut interrupt_intervals = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut idle_intervals = Vec::with_capacity(parameter::CORE_COUNT);
 
         for _ in 0..parameter::CORE_COUNT {
             last_interrupt_timestamp.push(SpinMutex::new(0));
             last_wfi_timestamp.push(SpinMutex::new(0));
             mmu_state.push(SpinMutex::new(CommunicationMMU::new()));
+            interrupt_intervals.push(SpinMutex::new(FxHashMap::default()));
+            idle_intervals.push(SpinMutex::new(FxHashMap::default()));
         }
 
         CommunicationRecorder {
             cache_line_records: ShardedCacheLineRecords::new(),
             last_interrupt_timestamp,
-            interrupt_intervals: SpinMutex::new(FxHashMap::default()),
+            interrupt_intervals,
             last_wfi_timestamp,
-            idle_intervals: SpinMutex::new(FxHashMap::default()),
+            idle_intervals,
             mmu_state,
             l0_cache: L0InstructionCache::new(),
             memory_access_count: (0..parameter::CORE_COUNT)
@@ -312,7 +301,10 @@ impl CommunicationRecorder {
         let mut last_ts = self.last_interrupt_timestamp[core_id as usize].lock();
         if *last_ts > 0 {
             let interval = ts.saturating_sub(*last_ts);
-            *self.interrupt_intervals.lock().entry(interval).or_insert(0) += 1;
+            *self.interrupt_intervals[core_id as usize]
+                .lock()
+                .entry(interval)
+                .or_insert(0) += 1;
         }
         *last_ts = ts;
 
@@ -320,7 +312,10 @@ impl CommunicationRecorder {
         let mut last_wfi_ts = self.last_wfi_timestamp[core_id as usize].lock();
         if *last_wfi_ts > 0 {
             let idle_interval = ts.saturating_sub(*last_wfi_ts);
-            *self.idle_intervals.lock().entry(idle_interval).or_insert(0) += 1;
+            *self.idle_intervals[core_id as usize]
+                .lock()
+                .entry(idle_interval)
+                .or_insert(0) += 1;
             *last_wfi_ts = 0; // Reset after recording
         }
     }
@@ -387,19 +382,31 @@ impl CommunicationRecorder {
         self.cache_line_records
             .dump_to_json(&cache_comm_file, total_memory_accesses);
 
-        // Dump interrupt intervals
+        // Dump per-core interrupt intervals
         let interrupt_file = format!("{}/interrupt_intervals.json", name);
-        let intervals = self.interrupt_intervals.lock();
-        let json_str = serde_json::to_string_pretty(&*intervals).unwrap();
+        let mut per_core_interrupt_intervals = FxHashMap::default();
+        for (core_id, intervals_lock) in self.interrupt_intervals.iter().enumerate() {
+            let intervals = intervals_lock.lock();
+            if !intervals.is_empty() {
+                per_core_interrupt_intervals.insert(core_id, intervals.clone());
+            }
+        }
+        let json_str = serde_json::to_string_pretty(&per_core_interrupt_intervals).unwrap();
         std::fs::write(&interrupt_file, json_str).unwrap();
-        println!("Dumped interrupt intervals to {}", interrupt_file);
+        println!("Dumped per-core interrupt intervals to {}", interrupt_file);
 
-        // Dump idle intervals (WFI to interrupt)
+        // Dump per-core idle intervals (WFI to interrupt)
         let idle_file = format!("{}/idle_intervals.json", name);
-        let idle_intervals = self.idle_intervals.lock();
-        let json_str = serde_json::to_string_pretty(&*idle_intervals).unwrap();
+        let mut per_core_idle_intervals = FxHashMap::default();
+        for (core_id, intervals_lock) in self.idle_intervals.iter().enumerate() {
+            let intervals = intervals_lock.lock();
+            if !intervals.is_empty() {
+                per_core_idle_intervals.insert(core_id, intervals.clone());
+            }
+        }
+        let json_str = serde_json::to_string_pretty(&per_core_idle_intervals).unwrap();
         std::fs::write(&idle_file, json_str).unwrap();
-        println!("Dumped idle intervals to {}", idle_file);
+        println!("Dumped per-core idle intervals to {}", idle_file);
     }
 }
 
