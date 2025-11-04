@@ -200,14 +200,7 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             }
         }
 
-        let prefix = options.get("prefix").unwrap_or(&"".to_string()).clone();
-
-        let warm_ratio = options.get("warm_ratio").unwrap_or(&"1.0".to_string()).clone();
-        let warm_ratio: f64 = warm_ratio.parse().unwrap();
-        assert!(warm_ratio >= 0.0 && warm_ratio <= 1.0);
-
         unsafe {
-            pure_fill::init(&prefix, warm_ratio);
 
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));

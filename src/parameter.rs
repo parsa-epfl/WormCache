@@ -57,6 +57,12 @@ pub const MEASURE_HALF_OF_CORES: bool = false;
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
 
+const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
+    CORE_COUNT / 2
+} else {
+    CORE_COUNT
+};
+
 /**
  * CACHE_LINE_SIZE
  *
@@ -71,7 +77,7 @@ pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
 
 // ITLB
 
-pub const ITLB_ASSO: usize = 256;
+pub const ITLB_ASSO: usize = 64;
 
 pub const ITLB_SET: usize = 1;
 static_assertions::const_assert!(!(ITLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
@@ -79,14 +85,14 @@ static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 
 // DTLB
 
-pub const DTLB_ASSO: usize = 256;
+pub const DTLB_ASSO: usize = 64;
 
 pub const DTLB_SET: usize = 1;
 static_assertions::const_assert!(!(DTLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
 static_assertions::const_assert!(DTLB_SET.is_power_of_two());
 
 // A debugging flag to see whether we should warm the L1 TLB.
-pub const L1TLB_ENABLED: bool = true;
+pub const L1TLB_ENABLED: bool = false;
 
 pub const STLB_ENABLED: bool = true;
 static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIVE_L1TLB));
@@ -96,7 +102,7 @@ static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIV
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 8;
+pub const STLB_ASSO: usize = 4;
 
 /**
  * STLB_SET
@@ -104,7 +110,7 @@ pub const STLB_ASSO: usize = 8;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 2048;
+pub const STLB_SET: usize = 256;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -151,7 +157,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 256 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -168,7 +174,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 256 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -183,8 +189,9 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 131072;
-static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
+pub const SHARED_CACHE_SET: usize = 32 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
+static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
 /**
  * SHARED_CACHE_EXCLUSIVE
@@ -245,7 +252,8 @@ pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
 static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
 
 pub const FINITE_DIRECTORY_SET: usize = 256 * CORE_COUNT;
-static_assertions::const_assert!(FINITE_DIRECTORY_SET.is_power_of_two());
+static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
+static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
 pub const FINITE_DIRECTORY_ASSO: usize = 16;
 
