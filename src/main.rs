@@ -38,7 +38,7 @@ use std::io::BufReader;
 use std::fs::File;
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
-use worm_cache::components::cache_hierarchy::common::{CacheAccessType, ParallelHarvardPrivateCache, ParallelSingleSharedCache};
+use worm_cache::components::cache_hierarchy::common::{CacheAccessType, InfiniteDirectory, ParallelHarvardPrivateCache, ParallelLRUSharedCache};
 use worm_cache::components::cache_hierarchy::common::statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics};
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheHierarchyAccessResult;
@@ -77,19 +77,17 @@ type MH = ParallelMemoryHierarchy<
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
-        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
     >,
-        { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
+    InfiniteDirectory<{ parameter::INFINITE_DIRECTORY_SHARED_COUNT }>,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
-    { parameter::DIRECTORY_SHARD_COUNT },
     { ALLOCATED_CORE_COUNT },
     {parameter::N_ACC},
     {parameter::N_FILTER},
@@ -130,11 +128,7 @@ fn main() {
         .has_headers(false)
         .from_reader(buf_reader);
 
-    let mh = MH::new(
-        parameter::ENABLE_STATISTICS,
-        0, 
-        true,
-    );
+    let mh = MH::new();
 
     let is_sat = if parameter::SAT_CNT { 'y' } else { 'n' };
     let rd_wr = if parameter::SEP_RDWR { 'y' } else { 'n' };
@@ -215,8 +209,7 @@ fn main() {
                     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
                     CacheHierarchyAccessResult::Miss => 2,
                     CacheHierarchyAccessResult::MissDueToPermission => 4,
-                    CacheHierarchyAccessResult::MissInPrivateCache => 5,
-                    CacheHierarchyAccessResult::Unknown => 6,
+                    CacheHierarchyAccessResult::Unknown => 5,
                 };
                 if new_code != 0 && is_data {
                     new_miss += 1;

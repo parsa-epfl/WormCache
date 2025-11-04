@@ -2,7 +2,6 @@
 use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutex;
 use crate::{components::cache_hierarchy::CacheBlockRequest};
-use super::super::CCell;
 use super::acc::AccTableEntry;
 use super::util;
 use zstd::{Decoder, Encoder};
@@ -223,7 +222,6 @@ impl<
 
 #[derive(Debug)]
 pub struct PHTPerCore<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
@@ -232,7 +230,7 @@ pub struct PHTPerCore<
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
 > {
-    pub sets: Box<[G; PHT_SETS]>,
+    pub sets: Box<[SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>>; PHT_SETS]>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -249,7 +247,6 @@ pub struct PHTPerCoreSerdeHelper<
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
     const N_BLK: usize,
@@ -257,18 +254,18 @@ impl<
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
-> PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>
+> PHTPerCore<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>
 {
     pub fn new() -> Self {
         Self {
-            sets: crate::util::init_heap_array(|_| G::new(PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new())),
+            sets: crate::util::init_heap_array(|_| SpinMutex::new(PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new())),
         }
     }
 
     fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>) -> Self {
         let mut sets = Vec::with_capacity(PHT_SETS);
         for set in helper.sets {
-            sets.push(G::new(set));
+            sets.push(SpinMutex::new(set));
         }
         Self {
             sets: sets.into_boxed_slice().try_into().unwrap(),
@@ -280,7 +277,7 @@ impl<
             sets: self
                 .sets
                 .iter()
-                .map(|set| set.inner().clone())
+                .map(|set| set.lock().clone())
                 .collect(),
         }
     }
@@ -305,7 +302,7 @@ impl<
         let key = self.build_key(pc, offset);
         let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
-        match self.sets[set_idx  as usize].inner().lookup(tag, !request.is_store(), ts) {
+        match self.sets[set_idx  as usize].lock().lookup(tag, !request.is_store(), ts) {
             Some(mut bitvec) => {
                 if ROT {
                     util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
@@ -326,12 +323,11 @@ impl<
         let key = self.build_key(entry.pc, entry.offset);
         let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
-        self.sets[set_idx as usize].inner().insert(tag, entry);
+        self.sets[set_idx as usize].lock().insert(tag, entry);
     }
 }
 
 pub struct PHT<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
@@ -341,11 +337,10 @@ pub struct PHT<
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
 > {
-    pub tables: Box<[PHTPerCore<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>; CORE_COUNT]>,
+    pub tables: Box<[PHTPerCore<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>; CORE_COUNT]>,
 }
 
 impl<
-    G: CCell<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const PHT_SETS: usize,
     const PHT_WAYS: usize,
@@ -354,11 +349,11 @@ impl<
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
-> PHT<G, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>
+> PHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>
 {
     pub fn new() -> Self {
         Self {
-            tables: crate::util::init_heap_array(|_| PHTPerCore::<G, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new()),
+            tables: crate::util::init_heap_array(|_| PHTPerCore::< PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new()),
         }
     }
 
@@ -423,4 +418,4 @@ pub type ParallelPHT<
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
-> = PHT<SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>>, CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>;
+> = PHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>;

@@ -691,6 +691,5 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
         block_id,
         access_type: CacheAccessType::DataRead,
         is_os: false,
-        pc: 0,
     }));
 }

@@ -1,5 +1,6 @@
+use spin::mutex::SpinMutex;
+
 use crate::components::cache_hierarchy::CacheBlockRequest;
-use super::super::CCell;
 use super::acc::AccTableEntry;
 use super::util;
 
@@ -36,22 +37,20 @@ impl FilterTableEntry {
 
 #[derive(Debug)]
 pub struct FilterTable<
-    GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
     const N_FILTER: usize,  // Number of entries in the filter table
     const N_BLK: usize,     // Number of blocks per spatial region
 > {
-    entries: Box<[GFilter; N_FILTER]>,
+    entries: Box<[SpinMutex<FilterTableEntry>; N_FILTER]>,
 }
 
 impl<
-    GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
     const N_FILTER: usize,
     const N_BLK: usize,
-> FilterTable<GFilter, N_FILTER, N_BLK>
+> FilterTable<N_FILTER, N_BLK>
 {
     pub fn new() -> Self {
         Self {
-            entries: crate::util::init_heap_array(|_| GFilter::new(FilterTableEntry::new())),
+            entries: crate::util::init_heap_array(|_| SpinMutex::new(FilterTableEntry::new())),
         }
     }
 
@@ -63,7 +62,7 @@ impl<
     fn poke(&self, request: &CacheBlockRequest) -> Option<usize> {
         let (base, _, _) = self.get_base_pc_offset(request);
         for (i, locked_entry) in self.entries.iter().enumerate() {
-            let current_entry = locked_entry.inner();
+            let current_entry = locked_entry.lock();
             if current_entry.valid && current_entry.tag == base {
                 return Some(i);
             }
@@ -76,7 +75,7 @@ impl<
         let mut lru_idx = 0;
         let mut lru_ts = u64::MAX;
         for  (i, locked_entry) in self.entries.iter().enumerate() {
-            let mut current_entry = locked_entry.inner();
+            let mut current_entry = locked_entry.lock();
             if !current_entry.valid {
                 assert!(entry.valid, "Cannot insert invalid entry into FilterTable");
                 current_entry.replace(entry);
@@ -89,14 +88,14 @@ impl<
             drop(current_entry);
         }
         // Replace the LRU entry with the new entry
-        self.entries[lru_idx].inner().replace(entry);
+        self.entries[lru_idx].lock().replace(entry);
     }
 
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
         let (base, pc, offset) = self.get_base_pc_offset(request);
         match self.poke(request) {
             Some(idx) => {  // entry found, check further
-                let mut existing_entry = self.entries[idx].inner();
+                let mut existing_entry = self.entries[idx].lock();
                 if offset == existing_entry.offset {
                     existing_entry.pc = pc;
                     existing_entry.is_read = !request.is_store();
@@ -135,7 +134,7 @@ impl<
 
     pub fn evict(&self, request: &CacheBlockRequest) {
         match self.poke(request) {
-            Some(idx) => self.entries[idx].inner().reset(),
+            Some(idx) => self.entries[idx].lock().reset(),
             None => {}
         }
     }

@@ -36,7 +36,9 @@ use crate::components::cache_hierarchy::{
         ParallelUnifiedPrivateCache, statistics::ZeroSharedCacheSetStatistics,
     },
     mmu::NoMMU,
+    parameter
 };
+
 use crate::util::get_monotonic_ts;
 
 const DIR_SET: usize = 1;
@@ -57,6 +59,15 @@ type MH = super::ParallelMemoryHierarchy<
     true, // FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION
     true, // FILL_SCACHE_ON_PCACHE_REPLICA_CREATION
     CORE_COUNT,
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    true
 >;
 
 #[test]
@@ -76,9 +87,10 @@ fn test_finite_directory_eviction_on_allocation() {
                 block_id: block_id_0,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -91,9 +103,10 @@ fn test_finite_directory_eviction_on_allocation() {
                 block_id: block_id_1,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -108,9 +121,10 @@ fn test_finite_directory_eviction_on_allocation() {
                 block_id: block_id_2,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -123,9 +137,10 @@ fn test_finite_directory_eviction_on_allocation() {
                 block_id: block_id_0,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 }
@@ -145,9 +160,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: shared_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -159,9 +175,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: shared_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -173,9 +190,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: shared_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
     assert_eq!(
@@ -185,9 +203,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: shared_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -201,9 +220,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: filler_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -216,9 +236,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: evictor_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -232,9 +253,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: shared_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 
@@ -245,9 +267,10 @@ fn test_directory_eviction_with_multiple_replicas() {
                 block_id: shared_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             get_monotonic_ts(),
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache // Hit in core 0's p-cache now
     );
 }

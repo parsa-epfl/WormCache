@@ -1,28 +1,22 @@
-use spin::mutex::SpinMutex;
 use crate::components::cache_hierarchy::CacheBlockRequest;
-use super::super::CCell;
 use super::acc::{AccTable, AccTableEntry};
-use super::filter::{FilterTable, FilterTableEntry};
+use super::filter::FilterTable;
 
 #[derive(Debug)]
 struct AGTPerCore<
-    GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
-    GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
     const N_ACC: usize,
     const N_FILTER: usize,
     const N_BLK: usize,
 > {
-    acc_table: AccTable<GAcc, N_ACC, N_BLK>,
-    filter_table: FilterTable<GFilter, N_FILTER, N_BLK>,
+    acc_table: AccTable<N_ACC, N_BLK>,
+    filter_table: FilterTable<N_FILTER, N_BLK>,
 }
 
 impl<
-    GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
-    GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
     const N_ACC: usize,
     const N_FILTER: usize,
     const N_BLK: usize,
-> AGTPerCore<GAcc, GFilter, N_ACC, N_FILTER, N_BLK>
+> AGTPerCore<N_ACC, N_FILTER, N_BLK>
 {
     fn new() -> Self {
         Self {
@@ -49,28 +43,24 @@ impl<
 }
 
 pub struct AGT<
-    GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
-    GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const N_ACC: usize,
     const N_FILTER: usize,
     const N_BLK: usize,
 > {
-    tables: Box<[AGTPerCore<GAcc, GFilter, N_ACC, N_FILTER, N_BLK>; CORE_COUNT]>,
+    tables: Box<[AGTPerCore<N_ACC, N_FILTER, N_BLK>; CORE_COUNT]>,
 }
 
 impl<
-    GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
-    GFilter: CCell<FilterTableEntry> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const N_ACC: usize,
     const N_FILTER: usize,
     const N_BLK: usize,
-> AGT<GAcc, GFilter, CORE_COUNT, N_ACC, N_FILTER, N_BLK>
+> AGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>
 {
     pub fn new() -> Self {
         Self {
-            tables: crate::util::init_heap_array(|_| AGTPerCore::<GAcc, GFilter, N_ACC, N_FILTER, N_BLK>::new()),
+            tables: crate::util::init_heap_array(|_| AGTPerCore::<N_ACC, N_FILTER, N_BLK>::new()),
         }
     }
 
@@ -90,4 +80,4 @@ pub type ParallelAGT<
     const N_ACC: usize,
     const N_FILTER: usize,
     const N_BLK: usize,
-> = AGT<SpinMutex<AccTableEntry<N_BLK>>, SpinMutex<FilterTableEntry>, CORE_COUNT, N_ACC, N_FILTER, N_BLK>;
+> = AGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>;

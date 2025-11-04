@@ -1,5 +1,6 @@
+use spin::mutex::SpinMutex;
+
 use crate::components::cache_hierarchy::CacheBlockRequest;
-use super::super::CCell;
 use super::util;
 
 #[derive(Debug, Clone, Copy)]
@@ -42,22 +43,20 @@ impl <
 
 #[derive(Debug)]
 pub struct AccTable<
-    GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
     const N_ACC: usize,
     const N_BLK: usize,
 > {
-    entries: Box<[GAcc; N_ACC]>,
+    entries: Box<[SpinMutex<AccTableEntry<N_BLK>>; N_ACC]>,
 }
 
 impl<
-    GAcc: CCell<AccTableEntry<N_BLK>> + std::fmt::Debug,
     const N_ACC: usize,
     const N_BLK: usize,
-> AccTable<GAcc, N_ACC, N_BLK>
+> AccTable<N_ACC, N_BLK>
 {
     pub fn new() -> Self {
         Self {
-            entries: crate::util::init_heap_array(|_| GAcc::new(AccTableEntry::<N_BLK>::new())),
+            entries: crate::util::init_heap_array(|_| SpinMutex::new(AccTableEntry::<N_BLK>::new())),
         }
     }
 
@@ -69,7 +68,7 @@ impl<
     fn poke(&self, request: &CacheBlockRequest) -> Option<usize> {
         let (base, _, _) = self.get_base_pc_offset(request);
         for (i, locked_entry) in self.entries.iter().enumerate() {
-            let current_entry = locked_entry.inner();
+            let current_entry = locked_entry.lock();
             if current_entry.valid && current_entry.tag == base {
                 return Some(i);
             }
@@ -82,7 +81,7 @@ impl<
         let mut lru_idx = 0;
         let mut lru_ts = u64::MAX;
         for (i, locked_entry) in self.entries.iter().enumerate() {
-            let mut current_entry = locked_entry.inner();
+            let mut current_entry = locked_entry.lock();
             if !current_entry.valid {
                 assert!(entry.valid, "Cannot insert invalid entry into AccTable");
                 current_entry.replace(entry);
@@ -94,7 +93,7 @@ impl<
             }
             drop(current_entry);
         }
-        let mut dropped_entry = self.entries[lru_idx].inner();
+        let mut dropped_entry = self.entries[lru_idx].lock();
         let dropped_entry_clone = dropped_entry.clone();
         dropped_entry.replace(entry);
         assert!(dropped_entry_clone.ts < dropped_entry.ts, "Cannot insert a block from past");
@@ -105,7 +104,7 @@ impl<
         let (_, _, offset) = self.get_base_pc_offset(request);
         match self.poke(request) {
             Some(idx) => {
-                let mut existing_entry = self.entries[idx].inner();
+                let mut existing_entry = self.entries[idx].lock();
                 if !existing_entry.access_pattern[offset as usize] {
                     existing_entry.access_pattern[offset as usize] = true;
                     existing_entry.read_pattern[offset as usize] = !request.is_store();
@@ -121,7 +120,7 @@ impl<
     pub fn evict(&self, request: &CacheBlockRequest) -> Option<AccTableEntry<N_BLK>> {
         match self.poke(request) {
             Some(idx) => {
-                let mut entry = self.entries[idx].inner();
+                let mut entry = self.entries[idx].lock();
                 let evicted_entry = entry.clone();
                 entry.reset();
                 return Some(evicted_entry);

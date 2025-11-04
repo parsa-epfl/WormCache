@@ -142,7 +142,6 @@ fn test_resizable_llc() {
                     CacheAccessType::DataRead
                 },
                 is_os: false,
-                pc: 0,
             };
             big_cache.lookup_and_insert_on_miss(&request, ts, true);
             small_cache.lookup_and_insert_on_miss(&request, ts, true);
@@ -167,7 +166,6 @@ fn test_resizable_llc() {
                     CacheAccessType::DataRead
                 },
                 is_os: false,
-                pc: 0,
             };
             big_cache.lookup_and_insert_on_miss(&request, ts, true);
             small_cache.lookup_and_insert_on_miss(&request, ts, true);

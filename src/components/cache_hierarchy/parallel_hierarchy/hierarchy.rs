@@ -31,7 +31,7 @@
 
 use zstd::{Decoder, Encoder};
 
-use crate::components::cache_hierarchy::common::SharedCacheAccessSource;
+use crate::components::cache_hierarchy::common::{PrivateCache, SharedCacheAccessSource};
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
 use crate::parameter::{self};
 
@@ -39,7 +39,7 @@ use crate::debug::statistics::{EventType, Statistics};
 
 use crate::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::super::common::{Directory, DirectorySet, PrivateCaches, SharedCache};
+use super::super::common::{Directory, DirectorySet, SharedCache};
 use super::super::common::agt::ParallelAGT;
 use super::super::common::pht::ParallelPHT;
 

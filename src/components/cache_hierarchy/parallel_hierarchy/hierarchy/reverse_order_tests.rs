@@ -100,7 +100,6 @@ impl MH {
             block_id,
             access_type: CacheAccessType::DataRead,
             is_os: false,
-            pc: 0,
         }) {
             return BlockPosition::InSharedCache;
         }
@@ -302,7 +301,7 @@ fn raw_and_war() {
             },
             5,
         ).0,
-        CacheHierarchyAccessResult::HitInOtherPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
     // Now, core 0 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
@@ -746,7 +745,7 @@ fn ear() {
             },
             10,
         ).0,
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
@@ -799,7 +798,7 @@ fn rar() {
             },
             5,
         ).0,
-        CacheHierarchyAccessResult::MissInPrivateCache
+        CacheHierarchyAccessResult::Unknown
     );
 
     // Now there should be two replicas of core 0 and core 1 in the private cache.
