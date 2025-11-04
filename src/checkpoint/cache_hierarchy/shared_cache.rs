@@ -428,6 +428,8 @@ fn test_resize() {
         btb_sets: 1,
         btb_associativity: 1,
         no_resizing: false,
+        pht_sets: 1,
+        pht_associativity: 1,
     });
 
     assert_eq!(shared_cache.blocks.len(), 1);
@@ -497,6 +499,8 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
         btb_sets: 1,
         btb_associativity: 1,
         no_resizing: false,
+        pht_sets: 1,
+        pht_associativity: 1,
     });
 
     assert_eq!(shared_cache.blocks.len(), 1);

@@ -62,6 +62,15 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     1,
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
+    {parameter::N_BLK},
+    {parameter::ROT},
+    {parameter::SEP_RDWR},
+    {parameter::SAT_CNT},
+    {parameter::PERFECT_PHT},
 >;
 
 #[divan::bench]
@@ -76,6 +85,7 @@ fn test_hit_last() {
                 block_id: (i as u64) * (parameter::UNIFIED_PRI_CACHE_SET as u64) + set_idx,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             (i + 1) as u64,
         );
@@ -94,6 +104,7 @@ fn test_hit_last() {
                 block_id: addr,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             ts,
         );
@@ -124,6 +135,7 @@ fn testing_pcache_always_miss() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -157,6 +169,7 @@ fn testing_always_miss() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );

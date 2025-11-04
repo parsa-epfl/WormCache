@@ -118,17 +118,31 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
 }
 
 impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
+    
+    fn prefetch_blocks(&self, _request: &CacheBlockRequest, _ts: u64) {
+        unimplemented!();
+    }
+
+    fn record_access(&self, _request: &CacheBlockRequest, _ts: u64) {
+        unimplemented!();
+    }
+
+    fn evict_sms(&self, _core_id: u32, _block_id: u64) {
+        unimplemented!();
+    }
+
     fn access_memory_pblock_id(
         &self,
         request: &CacheBlockRequest,
         ts: u64,
-    ) -> CacheHierarchyAccessResult {
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize)) {
         let is_store = request.is_store();
         let is_ptw = request.is_page_walk();
         let is_fetch = request.is_instruction();
         let is_os = request.is_os();
         let core_id = request.core_id;
         let block_id = request.block_id;
+        let pc = request.pc;
 
         Statistics::global_record(core_id, EventType::DataAccess, is_os);
         Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
@@ -139,6 +153,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
                 block_id,
                 access_type: CacheAccessType::DataRead, // Read does not have impact on the tag array.
                 is_os,
+                pc,
             },
             ts,
             true,
@@ -176,13 +191,13 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             }
         }
 
-        match res {
+        (match res {
             SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
             SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::LookupLate(_, _) => CacheHierarchyAccessResult::Unknown,
             SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
-        }
+        }, (0, 0, 0))
     }
 
     fn translate(

@@ -142,6 +142,7 @@ fn test_resizable_llc() {
                     CacheAccessType::DataRead
                 },
                 is_os: false,
+                pc: 0,
             };
             big_cache.lookup_and_insert_on_miss(&request, ts, true);
             small_cache.lookup_and_insert_on_miss(&request, ts, true);
@@ -166,6 +167,7 @@ fn test_resizable_llc() {
                     CacheAccessType::DataRead
                 },
                 is_os: false,
+                pc: 0,
             };
             big_cache.lookup_and_insert_on_miss(&request, ts, true);
             small_cache.lookup_and_insert_on_miss(&request, ts, true);
@@ -214,6 +216,8 @@ fn test_resizable_llc() {
         btb_sets: 1,
         btb_associativity: 1,
         no_resizing: false,
+        pht_sets: 1,
+        pht_associativity: 1,
     };
 
     big_cache_serial_helper.resize(&small_cache_flexus_configuration);
@@ -258,6 +262,15 @@ fn test_resize_cache_hierarchy() {
         true,
         true,
         { CORE_COUNT },
+        64,
+        32,
+        1024,
+        16,
+        32,
+        false,
+        false,
+        false,
+        false,
     >;
 
     type LargeHierarchy = ParallelMemoryHierarchy<
@@ -270,6 +283,15 @@ fn test_resize_cache_hierarchy() {
         true,
         true,
         { CORE_COUNT },
+        64,
+        32,
+        1024,
+        16,
+        32,
+        false,
+        false,
+        false,
+        false,
     >;
 
     let special_cache_line = 490;
@@ -312,6 +334,7 @@ fn test_resize_cache_hierarchy() {
             block_id: addr,
             access_type,
             is_os,
+            pc: 0,
         };
 
         small_hierarchy.access_memory_pblock_id(&request, ts);
@@ -354,6 +377,8 @@ fn test_resize_cache_hierarchy() {
         btb_sets: 1,
         btb_associativity: 1,
         no_resizing: false,
+        pht_sets: 1,
+        pht_associativity: 1,
     };
 
     process_cache_hierarchy(

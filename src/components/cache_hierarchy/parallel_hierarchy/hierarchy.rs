@@ -33,16 +33,20 @@ use zstd::{Decoder, Encoder};
 
 use crate::components::cache_hierarchy::common::SharedCacheAccessSource;
 use crate::components::cache_hierarchy::mmu::AbstractMMU;
-use crate::parameter;
+use crate::parameter::{self};
 
 use crate::debug::statistics::{EventType, Statistics};
 
 use crate::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::super::common::{Directory, DirectorySet, PrivateCache, SharedCache};
+use super::super::common::{Directory, DirectorySet, PrivateCaches, SharedCache};
+use super::super::common::agt::ParallelAGT;
+use super::super::common::pht::ParallelPHT;
 
 use std::cell::UnsafeCell;
+use std::collections::HashSet;
 use std::ops::DerefMut;
+use spin::mutex::SpinMutex;
 
 #[cfg(test)]
 mod debug_tests;
@@ -67,11 +71,25 @@ pub struct ParallelMemoryHierarchy<
     const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
     const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
     const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
+    const N_BLK: usize,
+    const ROT: bool,
+    const SEP_RDWR: bool,
+    const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
     private_caches: PCache,
     directory: Dir,
+
+    agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
+    pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>,
+    pf_blocks: [SpinMutex<HashSet<u64>>; CORE_COUNT],
+    pf_stats: [SpinMutex<(usize, usize, usize)>; CORE_COUNT], // (total, useless, useful)
 
     shared_cache: SCache,
 }
@@ -86,6 +104,15 @@ impl<
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
     const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
     const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
+    const N_BLK: usize,
+    const ROT: bool,
+    const SEP_RDWR: bool,
+    const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 >
     ParallelMemoryHierarchy<
         MMU,
@@ -97,6 +124,15 @@ impl<
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         FILL_SCACHE_ON_PCACHE_REPLICA_CREATION,
         CORE_COUNT,
+        N_ACC,
+        N_FILTER,
+        PHT_SETS,
+        PHT_WAYS,
+        N_BLK,
+        ROT,
+        SEP_RDWR,
+        SAT_CNT,
+        PERFECT_PHT,
     >
 {
     pub fn new() -> Self {
@@ -105,6 +141,10 @@ impl<
             private_caches: PCache::new(),
             directory: Directory::new(),
             shared_cache: SCache::new(),
+            agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
+            pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new(),
+            pf_blocks: std::array::from_fn(|_| SpinMutex::new(HashSet::new())),
+            pf_stats: std::array::from_fn(|_| SpinMutex::new((0, 0, 0))), // (total, useless, useful)
         }
     }
 

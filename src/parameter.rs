@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 64;
+pub const CORE_COUNT: usize = 1;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -71,7 +71,7 @@ pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
 
 // ITLB
 
-pub const ITLB_ASSO: usize = 64;
+pub const ITLB_ASSO: usize = 256;
 
 pub const ITLB_SET: usize = 1;
 static_assertions::const_assert!(!(ITLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
@@ -79,14 +79,14 @@ static_assertions::const_assert!(ITLB_SET.is_power_of_two());
 
 // DTLB
 
-pub const DTLB_ASSO: usize = 64;
+pub const DTLB_ASSO: usize = 256;
 
 pub const DTLB_SET: usize = 1;
 static_assertions::const_assert!(!(DTLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
 static_assertions::const_assert!(DTLB_SET.is_power_of_two());
 
 // A debugging flag to see whether we should warm the L1 TLB.
-pub const L1TLB_ENABLED: bool = false;
+pub const L1TLB_ENABLED: bool = true;
 
 pub const STLB_ENABLED: bool = true;
 static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIVE_L1TLB));
@@ -96,7 +96,7 @@ static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIV
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 4;
+pub const STLB_ASSO: usize = 8;
 
 /**
  * STLB_SET
@@ -104,7 +104,7 @@ pub const STLB_ASSO: usize = 4;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 1024;
+pub const STLB_SET: usize = 2048;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -143,7 +143,7 @@ static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
  * The associativity of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
+pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_I_CACHE_SET
@@ -151,7 +151,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 8;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 256 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -160,7 +160,7 @@ static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
  * The associativity of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
+pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
 
 /**
  * HARVARD_PRI_D_CACHE_SET
@@ -168,7 +168,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 8;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 128;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 256 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -257,6 +257,25 @@ pub const FINITE_DIRECTORY_ASSO: usize = 16;
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
 
 /**
+* Parameters for SMS Prefetching
+*/
+pub const SMS_PREFETCHING: bool = true;
+pub const N_ACC: usize = 64; // Number of entries in the access table.
+pub const N_FILTER: usize = 32; // Number of entries in the filter table.
+pub const PHT_SETS: usize = 1024;    // Number of sets in the PHT.
+pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
+pub const IDX_WIDTH: usize = 21;    // Number of bits used to index the PHT.
+pub const N_BLK: usize = 32; // Number of blocks in the region.
+pub const PC_WIDTH: usize = IDX_WIDTH - N_BLK.trailing_zeros() as usize; // The number of PC bits used to index
+pub const SAT_CNT: bool = false;     // Whether to use saturating counters or store bit patterns
+pub const SEP_RDWR: bool = false;    // Whether to seperate read and write patterns
+pub const ROT: bool = false;     // Whether to rotate the patterns when stored
+pub const PERFECT_PHT: bool = false; // Whether to use perfect PHT
+
+pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
+pub const N_PRINT_UP: u64 = 100_000_000; // The upper bound of the access counter to print the access.
+
+/**
  * BP_GSHARE_SET
  *
  * The number of sets of the gshare branch predictor.
@@ -269,7 +288,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 4096;
+pub const BTB_SET: usize = 16384;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**

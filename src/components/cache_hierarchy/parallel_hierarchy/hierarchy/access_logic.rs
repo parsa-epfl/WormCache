@@ -14,7 +14,7 @@ use crate::{
         cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
         statistics::{EventType, Statistics},
     },
-    parameter::{CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE},
+    parameter::{CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE, SMS_PREFETCHING},
 };
 
 use super::ParallelMemoryHierarchy;
@@ -29,6 +29,15 @@ impl<
     const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
     const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
     const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
+    const N_BLK: usize,
+    const ROT: bool,
+    const SEP_RDWR: bool,
+    const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
@@ -40,13 +49,158 @@ impl<
         FILL_SCACHE_ON_PCACHE_WRITEBACK,
         FILL_SCACHE_ON_PCACHE_REPLICA_CREATION,
         CORE_COUNT,
+        N_ACC,
+        N_FILTER,
+        PHT_SETS,
+        PHT_WAYS,
+        N_BLK,
+        ROT,
+        SEP_RDWR,
+        SAT_CNT,
+        PERFECT_PHT,
     >
 {
+
+    fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
+        let core_id = request.core_id as usize;
+        match self.pht.lookup(&request, ts) {
+            Some(addrs) => {
+                let mut cnt: u64 = 0;
+                let mut pf_addrs = Vec::new();
+                for addr in &addrs {
+                    if *addr == request.block_id {
+                        continue;
+                    }
+                    // println!("Adding block to prefetch queue: {:x}", addr);
+                    pf_addrs.push(*addr);
+                    let mut set = self.pf_blocks[core_id].inner();
+                    set.insert(*addr);
+                    drop(set);
+
+                    let r = CacheBlockRequest {
+                        core_id: request.core_id,
+                        block_id: *addr,
+                        access_type: request.get_prefetch_type(),
+                        is_os: request.is_os,
+                        pc: request.pc,
+                    };
+                    let (ret, _) = self.access_memory_pblock_id(&r, ts);
+                    if self.with_statistics {
+                        match ret {
+                            CacheHierarchyAccessResult::HitInSelfPrivateCache => {
+                                Statistics::global_record(request.core_id, EventType::PfL1, request.is_os);
+                            },
+                            CacheHierarchyAccessResult::HitInSharedCache => {
+                                Statistics::global_record(request.core_id, EventType::PfL2, request.is_os);
+                            },
+                            CacheHierarchyAccessResult::Miss => {
+                                Statistics::global_record(request.core_id, EventType::PfMem, request.is_os);
+                            },
+                            _ => {
+                                Statistics::global_record(request.core_id, EventType::PfUnk, request.is_os);
+                            },
+                        }
+                    }
+                    cnt += 1;
+                }
+                self.pf_stats[core_id].inner().0 += cnt as usize; // total
+                if self.with_statistics {
+                    Statistics::global_record_by(request.core_id, EventType::UnknownPrefetches, false, cnt);
+                }
+                // if !pf_addrs.is_empty() {
+                //     println!("{:?}", pf_addrs);
+                // }
+                if self.with_statistics {
+                    Statistics::global_record_by(request.core_id, EventType::Prefetches, request.is_os, cnt as u64);
+                    match cnt {
+                        0 => Statistics::global_record(request.core_id, EventType::Pf0, request.is_os),
+                        1 => Statistics::global_record(request.core_id, EventType::Pf1, request.is_os),
+                        2 => Statistics::global_record(request.core_id, EventType::Pf2, request.is_os),
+                        3 => Statistics::global_record(request.core_id, EventType::Pf3, request.is_os),
+                        4 => Statistics::global_record(request.core_id, EventType::Pf4, request.is_os),
+                        5 => Statistics::global_record(request.core_id, EventType::Pf5, request.is_os),
+                        6 => Statistics::global_record(request.core_id, EventType::Pf6, request.is_os),
+                        7 => Statistics::global_record(request.core_id, EventType::Pf7, request.is_os),
+                        8 => Statistics::global_record(request.core_id, EventType::Pf8, request.is_os),
+                        9 => Statistics::global_record(request.core_id, EventType::Pf9, request.is_os),
+                        10 => Statistics::global_record(request.core_id, EventType::Pf10, request.is_os),
+                        11 => Statistics::global_record(request.core_id, EventType::Pf11, request.is_os),
+                        12 => Statistics::global_record(request.core_id, EventType::Pf12, request.is_os),
+                        13 => Statistics::global_record(request.core_id, EventType::Pf13, request.is_os),
+                        14 => Statistics::global_record(request.core_id, EventType::Pf14, request.is_os),
+                        15 => Statistics::global_record(request.core_id, EventType::Pf15, request.is_os),
+                        16 => Statistics::global_record(request.core_id, EventType::Pf16, request.is_os),
+                        17 => Statistics::global_record(request.core_id, EventType::Pf17, request.is_os),
+                        18 => Statistics::global_record(request.core_id, EventType::Pf18, request.is_os),
+                        19 => Statistics::global_record(request.core_id, EventType::Pf19, request.is_os),
+                        20 => Statistics::global_record(request.core_id, EventType::Pf20, request.is_os),
+                        21 => Statistics::global_record(request.core_id, EventType::Pf21, request.is_os),
+                        22 => Statistics::global_record(request.core_id, EventType::Pf22, request.is_os),
+                        23 => Statistics::global_record(request.core_id, EventType::Pf23, request.is_os),
+                        24 => Statistics::global_record(request.core_id, EventType::Pf24, request.is_os),
+                        25 => Statistics::global_record(request.core_id, EventType::Pf25, request.is_os),
+                        26 => Statistics::global_record(request.core_id, EventType::Pf26, request.is_os),
+                        27 => Statistics::global_record(request.core_id, EventType::Pf27, request.is_os),
+                        28 => Statistics::global_record(request.core_id, EventType::Pf28, request.is_os),
+                        29 => Statistics::global_record(request.core_id, EventType::Pf29, request.is_os),
+                        30 => Statistics::global_record(request.core_id, EventType::Pf30, request.is_os),
+                        31 => Statistics::global_record(request.core_id, EventType::Pf31, request.is_os),
+                        _ => {},
+                    }
+                }
+            }
+            None => {
+                if self.with_statistics {
+                    Statistics::global_record(request.core_id, EventType::Pf0, request.is_os);
+                }
+            },
+        }
+    }
+
+    fn record_access(&self, request: &CacheBlockRequest, ts: u64) {
+        match self.agt.record(&request, ts) {
+            Some(entry) => {
+                self.pht.insert(&entry, request.core_id as usize)
+            },
+            None => {},
+        }
+    }
+
+    fn evict_sms(&self, core_id: u32, block_id: u64) {
+        let dummy_req = CacheBlockRequest{
+            core_id: core_id,
+            block_id: block_id,
+            access_type: CacheAccessType::PrefetchRead, // Not needed
+            is_os: false,   // Not needed
+            pc: 0,          // Not needed
+        };
+        // println!("{}", block_id);
+        let mut set = self.pf_blocks[core_id as usize].inner();
+        let mut stats = self.pf_stats[core_id as usize].inner();
+        if set.contains(&block_id) {
+            if self.with_statistics {
+                Statistics::global_record(core_id, EventType::UselessPrefetches, false);    // Note: is_os = false always because there's no need to distinguish now.
+                Statistics::global_decrease_by(core_id, EventType::UnknownPrefetches, false, 1);
+            }
+            set.remove(&block_id);
+            stats.1 += 1; // useless
+        }
+        drop(set);
+        drop(stats);
+        
+        match self.agt.evict(&dummy_req) {
+            Some(entry) => {
+                self.pht.insert(&entry, core_id as usize);
+            },
+            None => {},
+        }
+    }
+
     fn access_memory_pblock_id(
         &self,
         r: &CacheBlockRequest,
         ts: u64,
-    ) -> CacheHierarchyAccessResult {
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize)) {
         let is_os = r.is_os();
         let core_id = r.core_id;
         let is_instruction = r.is_instruction();
@@ -54,6 +208,7 @@ impl<
         let is_page_walk = r.is_page_walk();
         let block_id = r.block_id;
         let is_prefetch = r.is_prefetch();
+        let pc = r.pc;
 
         if !is_prefetch {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
@@ -64,12 +219,27 @@ impl<
             }
         }
 
+        if !is_prefetch && !is_instruction && SMS_PREFETCHING {
+            let mut set = self.pf_blocks[core_id as usize].inner();
+            let mut stats = self.pf_stats[core_id as usize].inner();
+            if set.contains(&block_id) {
+                if self.with_statistics {
+                    Statistics::global_decrease_by(core_id, EventType::UnknownPrefetches, false, 1);
+                }
+                set.remove(&block_id);
+                stats.2 += 1; // useful
+            }
+            drop(set);
+            drop(stats);
+        }
+
         // first, we need to check the private cache.
         let private_hit = self.private_caches.poke_and_update(r, ts);
 
         if private_hit == PrivateCachePokeResult::Hit {
             // we don't have to anything. Just return.
-            return CacheHierarchyAccessResult::HitInSelfPrivateCache;
+            return (CacheHierarchyAccessResult::HitInSelfPrivateCache,
+                    self.pf_stats[r.core_id as usize].inner().clone());
         }
 
         let evicted_slot = match private_hit {
@@ -86,6 +256,11 @@ impl<
                     let (m_guard, e_guard) = self
                         .directory
                         .fetch_two_entries(block_id, potential_evicted_id);
+
+                    if SMS_PREFETCHING && !is_instruction {
+                        self.evict_sms(core_id, potential_evicted_id);
+                    }
+
                     (m_guard, Some((potential_evicted_id, e_guard)))
                 }
                 _ => {
@@ -123,6 +298,12 @@ impl<
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
                         let access_ts = entry.access_ts();
+                        let core_id = (*replica_cache_id / 2) as u32;
+                        if SMS_PREFETCHING && !is_instruction {
+                            self.evict_sms(core_id, entry.block_id());
+                        }
+
+
                         // require recording the timestamp of the operation.
                         set.invalidate(*index);
 
@@ -209,6 +390,7 @@ impl<
                     CacheAccessType::PrefetchWrite => CacheAccessType::PrefetchWrite,
                 },
                 is_os,
+                pc,
             };
 
             let shared_cache_result = if bring_into_shared_cache {
@@ -301,7 +483,7 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            return match shared_cache_result {
+            return (match shared_cache_result {
                 SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
                 SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
                     if !is_prefetch {
@@ -352,7 +534,7 @@ impl<
                     );
                     CacheHierarchyAccessResult::Miss
                 }
-            };
+            }, self.pf_stats[r.core_id as usize].inner().clone());
         }
 
         if is_prefetch {
@@ -464,6 +646,12 @@ impl<
                         let access_ts = entry.access_ts();
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id, false);
+
+                        let core_id = (*replica_cache_id / 2) as u32;
+                        if SMS_PREFETCHING && !is_instruction {
+                            self.evict_sms(core_id, entry.block_id());
+                        }
+                        
                         // invalid the private cache entry.
                         set.invalidate(*index);
 
@@ -672,7 +860,9 @@ impl<
             );
         }
 
-        Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
+        if !is_prefetch && self.with_statistics {
+            Statistics::global_record(core_id, EventType::PrivateCacheMiss, is_os);
+        }
 
         if is_instruction {
             Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
@@ -690,7 +880,7 @@ impl<
             );
         }
 
-        res
+        (res, self.pf_stats[r.core_id as usize].inner().clone())
     }
 
     fn translate(&self, r: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult {
@@ -722,6 +912,8 @@ impl<
         self.shared_cache.serialize(name, numa_node_id);
         println!("Serializing MMUs.");
         self.serialize_mmus(name, numa_node_id);
+        println!("Serialize PHTs");
+        self.pht.serialize(name, numa_node_id);
     }
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize) {
@@ -733,6 +925,8 @@ impl<
         self.shared_cache.deserialize(name, numa_node_id);
         println!("Deserializing MMUs.");
         self.deserialize_mmus(name, numa_node_id);
+        println!("Deserialize PHTs");
+        self.pht.deserialize(name, numa_node_id);
     }
 
     fn access_from_device_with_pa(

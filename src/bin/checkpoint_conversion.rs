@@ -4,6 +4,7 @@ use worm_cache::checkpoint::FlexusParameter;
 use worm_cache::checkpoint::process_cache_hierarchy;
 use worm_cache::checkpoint::process_frontend;
 use worm_cache::checkpoint::process_mmus;
+use worm_cache::checkpoint::process_sms;
 
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
@@ -35,4 +36,5 @@ fn main() {
     process_cache_hierarchy(check_point_folder, &flexus, output_folder);
     process_frontend(check_point_folder, &flexus, output_folder);
     process_mmus(check_point_folder, &flexus, output_folder);
+    process_sms(check_point_folder, &flexus, output_folder);
 }

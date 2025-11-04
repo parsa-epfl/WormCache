@@ -495,7 +495,10 @@ fn cold_miss_exist() {
                 is_os: false,
                 source: SharedCacheAccessSource::Core(0),
                 block_id: 10,
-                access_type: CacheAccessType::DataRead
+                core_id: 0,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
             },
             ts,
         ),
@@ -520,7 +523,10 @@ fn cold_miss_exist() {
                 is_os: false,
                 source: SharedCacheAccessSource::Core(0),
                 block_id: 20,
-                access_type: CacheAccessType::DataRead
+                core_id: 0,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
             },
             ts,
         ),

@@ -63,6 +63,15 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     32,
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
+    {parameter::N_BLK},
+    {parameter::ROT},
+    {parameter::SEP_RDWR},
+    {parameter::SAT_CNT},
+    {parameter::PERFECT_PHT},
 >;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -91,6 +100,7 @@ impl MH {
             block_id,
             access_type: CacheAccessType::DataRead,
             is_os: false,
+            pc: 0,
         }) {
             return BlockPosition::InSharedCache;
         }
@@ -131,6 +141,7 @@ fn reversed_timestamp_from_the_same_core() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             l as u64 + ts + 1,
         );
@@ -148,9 +159,10 @@ fn reversed_timestamp_from_the_same_core() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                pc: 0,
                 },
                 l as u64 + ts + 1,
-            ),
+            ).0,
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         );
     }
@@ -165,9 +177,10 @@ fn reversed_timestamp_from_the_same_core() {
                 block_id: eval_block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             1,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 }
@@ -185,9 +198,10 @@ fn write_invalidation_coherence() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             1,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
@@ -198,9 +212,10 @@ fn write_invalidation_coherence() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 50.
@@ -211,9 +226,10 @@ fn write_invalidation_coherence() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             50,
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Now, core 0 and core 1 should have invalid the cache.
@@ -229,9 +245,10 @@ fn write_invalidation_coherence() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             100,
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     let sharers = mh.get_all_private_replicas(block_id);
@@ -253,9 +270,10 @@ fn raw_and_war() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             1,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
@@ -266,9 +284,10 @@ fn raw_and_war() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 5.
@@ -279,10 +298,11 @@ fn raw_and_war() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             5,
-        ),
-        CacheHierarchyAccessResult::Unknown
+        ).0,
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Now, core 0 should have invalid the cache.
     let sharers = mh.get_all_private_replicas(block_id);
@@ -303,9 +323,10 @@ fn rarw() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
     // Core 0 get a write permission at 20.
@@ -316,9 +337,10 @@ fn rarw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             20,
-        ),
+        ).0,
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         } else {
@@ -334,9 +356,10 @@ fn rarw() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             1,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -358,9 +381,10 @@ fn waw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -372,9 +396,10 @@ fn waw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             5,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -395,9 +420,10 @@ fn wwaw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -409,9 +435,10 @@ fn wwaw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             20,
-        ),
+        ).0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -423,9 +450,10 @@ fn wwaw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             15,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -447,9 +475,10 @@ fn rae() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             10
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -462,6 +491,7 @@ fn rae() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             (100 + i) as u64,
         );
@@ -479,9 +509,10 @@ fn rae() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             5,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -501,9 +532,10 @@ fn eae() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             200,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -515,6 +547,7 @@ fn eae() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             (200 + i) as u64,
         );
@@ -532,9 +565,10 @@ fn eae() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -546,6 +580,7 @@ fn eae() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             (10 + i) as u64,
         );
@@ -574,9 +609,10 @@ fn wae() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             200,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -588,6 +624,7 @@ fn wae() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             (200 + i) as u64,
         );
@@ -605,9 +642,10 @@ fn wae() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -635,9 +673,10 @@ fn eaw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             200,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -649,9 +688,10 @@ fn eaw() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -663,6 +703,7 @@ fn eaw() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             (10 + i) as u64,
         );
@@ -686,9 +727,10 @@ fn ear() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             100,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -700,10 +742,11 @@ fn ear() {
                 block_id,
                 access_type: CacheAccessType::DataWrite,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
-        CacheHierarchyAccessResult::Unknown
+        ).0,
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
@@ -714,6 +757,7 @@ fn ear() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             (10 + i) as u64,
         );
@@ -736,9 +780,10 @@ fn rar() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             10,
-        ),
+        ).0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -750,10 +795,11 @@ fn rar() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             5,
-        ),
-        CacheHierarchyAccessResult::Unknown
+        ).0,
+        CacheHierarchyAccessResult::MissInPrivateCache
     );
 
     // Now there should be two replicas of core 0 and core 1 in the private cache.

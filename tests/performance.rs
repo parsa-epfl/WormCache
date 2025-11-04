@@ -67,6 +67,15 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     64,
+    64,
+    32,
+    1024,
+    16,
+    32,
+    false,
+    false,
+    false,
+    false,
 >;
 
 #[test]
@@ -91,6 +100,7 @@ fn testing_pcache_always_miss() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -137,6 +147,7 @@ fn testing_pcache_always_hit() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
+                    pc: 0,
                 },
                 ts,
             );
@@ -178,6 +189,7 @@ fn read_shared_cache_line() {
                 block_id,
                 access_type: CacheAccessType::DataRead,
                 is_os: false,
+                pc: 0,
             },
             ts,
         );
@@ -194,6 +206,7 @@ fn read_shared_cache_line() {
             block_id,
             access_type: CacheAccessType::DataRead,
             is_os: false,
+            pc: 0,
         },
         ts,
     );

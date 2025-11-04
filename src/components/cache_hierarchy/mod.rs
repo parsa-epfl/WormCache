@@ -51,6 +51,7 @@ pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 
 use crate::parameter;
 use crate::parameter::ADJACENT_LINE_PREFETCHING;
+use crate::parameter::SMS_PREFETCHING;
 
 #[derive(Clone)]
 pub struct MemoryAccessRequest {
@@ -58,6 +59,7 @@ pub struct MemoryAccessRequest {
     pub va: u64,
     pub access_type: CacheAccessType,
     pub is_os: bool,
+    pub pc: u64,
 }
 
 impl MemoryAccessRequest {
@@ -67,6 +69,7 @@ impl MemoryAccessRequest {
 
     pub fn is_store(&self) -> bool {
         self.access_type == CacheAccessType::DataWrite
+            || self.access_type == CacheAccessType::PrefetchWrite
     }
 
     pub fn is_prefetch(&self) -> bool {
@@ -91,6 +94,7 @@ pub struct CacheBlockRequest {
     pub block_id: u64,
     pub access_type: CacheAccessType,
     pub is_os: bool,
+    pub pc: u64,
 }
 
 impl CacheBlockRequest {
@@ -100,6 +104,7 @@ impl CacheBlockRequest {
 
     pub fn is_store(&self) -> bool {
         self.access_type == CacheAccessType::DataWrite
+            || self.access_type == CacheAccessType::PrefetchWrite
     }
 
     pub fn is_prefetch(&self) -> bool {
@@ -114,6 +119,15 @@ impl CacheBlockRequest {
     pub fn is_page_walk(&self) -> bool {
         self.access_type == CacheAccessType::PageWalkRead
     }
+
+    pub fn get_prefetch_type(&self) -> CacheAccessType {
+        match self.access_type {
+            CacheAccessType::DataRead => CacheAccessType::PrefetchRead,
+            CacheAccessType::DataWrite => CacheAccessType::PrefetchWrite,
+            _  => unreachable!(),
+        }
+    }
+
 }
 
 pub trait MemoryHierarchy {
@@ -121,7 +135,7 @@ pub trait MemoryHierarchy {
         &self,
         request: &CacheBlockRequest,
         ts: u64,
-    ) -> CacheHierarchyAccessResult;
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize));
 
     fn access_from_device_with_pa(
         &self,
@@ -133,6 +147,12 @@ pub trait MemoryHierarchy {
     fn translate(&self, request: &MemoryAccessRequest, ts: u64) -> MMUTranslationResult;
 
     fn flush_mmu(&self, core_id: u32, info: mmu::MMUFlushMode);
+
+    fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64);
+
+    fn record_access(&self, request: &CacheBlockRequest, ts: u64);
+
+    fn evict_sms(&self, core_id: u32, block_id: u64);
 
     #[inline]
     fn access_memory_with_va_and_pa(
@@ -163,6 +183,7 @@ pub trait MemoryHierarchy {
                     block_id,
                     access_type: request.access_type.clone(),
                     is_os: request.is_os,
+                    pc: request.pc,
                 }
             }
             MMUTranslationResult::Miss(paddr, walk_trace) => {
@@ -177,8 +198,27 @@ pub trait MemoryHierarchy {
                         block_id: pte_block_id,
                         access_type: CacheAccessType::PageWalkRead,
                         is_os: request.is_os,
+                        pc: request.pc,
                     };
-                    self.access_memory_pblock_id(&request, ts);
+                    let (_result, _) = self.access_memory_pblock_id(&request, ts);
+                    // let code: u8 = match result {
+                    //     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+                    //     CacheHierarchyAccessResult::HitInSharedCache => 1,
+                    //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
+                    //     CacheHierarchyAccessResult::Miss => 2,
+                    //     CacheHierarchyAccessResult::MissDueToPermission => 4,
+                    //     CacheHierarchyAccessResult::MissInPrivateCache => 5,
+                    //     CacheHierarchyAccessResult::Unknown => 6,
+                    // };
+                    // let access_code: u8 = match request.access_type {
+                    //     CacheAccessType::DataRead => 0,
+                    //     CacheAccessType::DataWrite => 1,
+                    //     CacheAccessType::InstructionFetch => 2,
+                    //     CacheAccessType::PrefetchRead => 3,
+                    //     CacheAccessType::PrefetchWrite => 4,
+                    //     CacheAccessType::PageWalkRead => 5,
+                    // };
+                    // println!("{},{},{},{},{},{},{}", ts, request.core_id, request.block_id, access_code, request.is_os, request.pc, code);
                 }
 
                 let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
@@ -194,16 +234,39 @@ pub trait MemoryHierarchy {
                     block_id,
                     access_type: request.access_type.clone(),
                     is_os: request.is_os,
+                    pc: request.pc,
                 }
             }
         };
 
-        let result = self.access_memory_pblock_id(&translated_request, ts);
-
+        let (result, _) = self.access_memory_pblock_id(&translated_request, ts);
+        // let code: u8 = match result {
+        //     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+        //     CacheHierarchyAccessResult::HitInSharedCache => 1,
+        //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
+        //     CacheHierarchyAccessResult::Miss => 2,
+        //     CacheHierarchyAccessResult::MissDueToPermission => 4,
+        //     CacheHierarchyAccessResult::MissInPrivateCache => 5,
+        //     CacheHierarchyAccessResult::Unknown => 6,
+        // };
+        // let access_code: u8 = match translated_request.access_type {
+        //     CacheAccessType::DataRead => 0,
+        //     CacheAccessType::DataWrite => 1,
+        //     CacheAccessType::InstructionFetch => 2,
+        //     CacheAccessType::PrefetchRead => 3,
+        //     CacheAccessType::PrefetchWrite => 4,
+        //     CacheAccessType::PageWalkRead => 5,
+        // };
+        // println!("{},{},{},{},{},{},{}", ts, translated_request.core_id, translated_request.block_id, access_code, translated_request.is_os, translated_request.pc, code);
         if ADJACENT_LINE_PREFETCHING {
             let mut prefetch_request = translated_request.clone();
             prefetch_request.block_id += 1;
+            prefetch_request.access_type = prefetch_request.get_prefetch_type();
             self.access_memory_pblock_id(&prefetch_request, ts);
+        }
+        if SMS_PREFETCHING && !translated_request.is_instruction() {
+            self.prefetch_blocks(&translated_request, ts);
+            self.record_access(&translated_request, ts);
         }
         result
     }

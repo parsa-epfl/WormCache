@@ -72,8 +72,10 @@ unsafe extern "C" fn vcpu_mem_access(
 
             let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
-            let inst_virtual_addr = inst_virtual_addr as u64;
-            let is_os = (inst_virtual_addr >> 48) & 1 == 1;
+            let vpn = qemu_api::qemu_plugin_read_pc_vpn();
+            let pc = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
+            let is_os = (pc >> 48) & 1 == 1;
+            let offset = pc >> 49;
 
             let ts = get_ts();
 
@@ -89,7 +91,8 @@ unsafe extern "C" fn vcpu_mem_access(
                         } else {
                             CacheAccessType::DataRead
                         },
-                        is_os,
+                        is_os: is_os,
+                        pc: pc,
                     },
                     Some(pa),
                     ts,
@@ -126,6 +129,7 @@ unsafe extern "C" fn vcpu_insn_exec(
                     va: vaddr,
                     access_type: CacheAccessType::InstructionFetch,
                     is_os: vaddr >> 63 == 1,
+                    pc: vaddr,
                 },
                 ts,
             );
@@ -168,6 +172,62 @@ unsafe extern "C" fn vcpu_invalid_tlb(
     }
 }
 
+static SNAPSHOT_INFO: SpinMutex<Option<(String, u64)>> = SpinMutex::new(None);
+
+unsafe extern "C" fn event_loop_callback() {
+    unsafe {
+        let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
+        if snapshot_info_guard.is_none() {
+            return;
+        }
+
+        let mut snapshot_info_guard = snapshot_info_guard.unwrap();
+
+        if snapshot_info_guard.is_none() {
+            return;
+        }
+
+        let snapshot_info = snapshot_info_guard.take().unwrap();
+
+        println!("Snapshot request: {}", &snapshot_info.0);
+
+        let c_snapshot_name = std::ffi::CString::new(snapshot_info.0.clone()).unwrap();
+
+        qemu_api::qemu_plugin_savevm(
+            c_snapshot_name.as_ptr(),
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_BASE,
+        );
+
+        std::process::exit(0);
+    }
+}
+
+static SNAPSHOT_NAME: OnceLock<String> = OnceLock::new();
+static WARM_RATIO: OnceLock<f64> = OnceLock::new();
+
+unsafe extern "C" fn quantum_checking_callback(_: u64) -> bool {
+    let warmed_set = unsafe { (*PLUGIN).get_scache_warmed_set_count() };
+    let warm_ratio = *WARM_RATIO.get().unwrap();
+
+    if warmed_set >= (parameter::SHARED_CACHE_SET as f64 * warm_ratio) as usize {
+        let snapshot_info = (SNAPSHOT_NAME.get().unwrap().clone(), 0);
+
+        let snapshot_info_guard = SNAPSHOT_INFO.try_lock();
+        if snapshot_info_guard.is_none() {
+            return false;
+        }
+
+        let mut snapshot_info_guard = snapshot_info_guard.unwrap();
+
+        if snapshot_info_guard.is_none() {
+            *snapshot_info_guard = Some(snapshot_info);
+            println!("All the sets are warmed up. Create a snapshot.");
+            return true; // suggest a interrupt.
+        }
+    }
+    return false;
+}
+
 pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::super::Plugin for ParallelCacheHierarchyPlugin {
@@ -195,6 +255,16 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                 pure_fill::init(&prefix, warm_ratio);
             }
         }
+
+        let prefix = options.get("prefix").unwrap_or(&"".to_string()).clone();
+        SNAPSHOT_NAME
+            .set(format!("{}_{}", prefix, "warmed"))
+            .unwrap();
+
+        let warm_ratio = options.get("warm_ratio").unwrap_or(&"1.0".to_string()).clone();
+        let warm_ratio: f64 = warm_ratio.parse().unwrap();
+        assert!(warm_ratio >= 0.0 && warm_ratio <= 1.0);
+        WARM_RATIO.set(warm_ratio).unwrap();
 
         unsafe {
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));

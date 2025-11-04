@@ -1,10 +1,12 @@
 pub mod cache_hierarchy;
 mod frontend;
 mod mmu;
+mod sms;
 
 pub use cache_hierarchy::process_cache_hierarchy;
 pub use frontend::process_frontend;
 pub use mmu::process_mmus;
+pub use sms::process_sms;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -47,6 +49,9 @@ pub struct FlexusParameter {
 
     pub btb_sets: usize,
     pub btb_associativity: usize,
+
+    pub pht_sets: usize,
+    pub pht_associativity: usize,
 
     #[serde(skip)]
     pub no_resizing: bool,
