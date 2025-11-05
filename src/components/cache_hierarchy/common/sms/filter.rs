@@ -59,12 +59,12 @@ impl<
         util::get_base_pc_offset::<N_BLK>(request)
     }
 
-    fn poke(&self, request: &CacheBlockRequest) -> Option<usize> {
+    fn poke<'a>(&'a self, request: &CacheBlockRequest) -> Option<(usize, spin::mutex::SpinMutexGuard<'a, FilterTableEntry>)> {
         let (base, _, _) = self.get_base_pc_offset(request);
         for (i, locked_entry) in self.entries.iter().enumerate() {
             let current_entry = locked_entry.lock();
             if current_entry.valid && current_entry.tag == base {
-                return Some(i);
+                return Some((i, current_entry));
             }
             drop(current_entry);
         }
@@ -94,8 +94,7 @@ impl<
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
         let (base, pc, offset) = self.get_base_pc_offset(request);
         match self.poke(request) {
-            Some(idx) => {  // entry found, check further
-                let mut existing_entry = self.entries[idx].lock();
+            Some((_, mut existing_entry)) => {  // entry found, check further
                 if offset == existing_entry.offset {
                     existing_entry.pc = pc;
                     existing_entry.is_read = !request.is_store();
@@ -134,7 +133,7 @@ impl<
 
     pub fn evict(&self, request: &CacheBlockRequest) {
         match self.poke(request) {
-            Some(idx) => self.entries[idx].lock().reset(),
+            Some((_, mut existing_entry)) => existing_entry.reset(),
             None => {}
         }
     }

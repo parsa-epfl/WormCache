@@ -65,12 +65,12 @@ impl<
         util::get_base_pc_offset::<N_BLK>(request)
     }
 
-    fn poke(&self, request: &CacheBlockRequest) -> Option<usize> {
+    fn poke<'a>(&'a self, request: &CacheBlockRequest) -> Option<(usize, spin::mutex::SpinMutexGuard<'a, AccTableEntry<N_BLK>>)> {
         let (base, _, _) = self.get_base_pc_offset(request);
         for (i, locked_entry) in self.entries.iter().enumerate() {
             let current_entry = locked_entry.lock();
             if current_entry.valid && current_entry.tag == base {
-                return Some(i);
+                return Some((i, current_entry));
             }
             drop(current_entry);
         }
@@ -103,8 +103,7 @@ impl<
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> bool {   // return true if entry found and updated
         let (_, _, offset) = self.get_base_pc_offset(request);
         match self.poke(request) {
-            Some(idx) => {
-                let mut existing_entry = self.entries[idx].lock();
+            Some((_, mut existing_entry)) => {
                 if !existing_entry.access_pattern[offset as usize] {
                     existing_entry.access_pattern[offset as usize] = true;
                     existing_entry.read_pattern[offset as usize] = !request.is_store();
@@ -119,8 +118,7 @@ impl<
     // TODO: what if entry gets evicted due to frequent updates?
     pub fn evict(&self, request: &CacheBlockRequest) -> Option<AccTableEntry<N_BLK>> {
         match self.poke(request) {
-            Some(idx) => {
-                let mut entry = self.entries[idx].lock();
+            Some((_, mut entry)) => {
                 let evicted_entry = entry.clone();
                 entry.reset();
                 return Some(evicted_entry);
