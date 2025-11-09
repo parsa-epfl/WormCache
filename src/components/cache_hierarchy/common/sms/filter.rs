@@ -72,23 +72,29 @@ impl<
     }
 
     fn insert(&self, entry: &FilterTableEntry) {
-        let mut lru_idx = 0;
         let mut lru_ts = u64::MAX;
-        for  (i, locked_entry) in self.entries.iter().enumerate() {
+        let mut lru_guard: Option<spin::mutex::SpinMutexGuard<'_, FilterTableEntry>> = None;
+        for locked_entry in self.entries.iter() {
             let mut current_entry = locked_entry.lock();
             if !current_entry.valid {
                 assert!(entry.valid, "Cannot insert invalid entry into FilterTable");
                 current_entry.replace(entry);
                 return;
             }
-            if current_entry.ts < lru_ts {  // current_entry.valid is true implicitly
+            if current_entry.ts < lru_ts {
+                if let Some(prev) = lru_guard {
+                    drop(prev);
+                }
                 lru_ts = current_entry.ts;
-                lru_idx = i;
+                lru_guard = Some(current_entry);
+            } else {
+                drop(current_entry);
             }
-            drop(current_entry);
         }
         // Replace the LRU entry with the new entry
-        self.entries[lru_idx].lock().replace(entry);
+        let mut dropped_entry = lru_guard
+            .expect("FilterTable must contain at least one entry and all were valid");
+        dropped_entry.replace(entry);
     }
 
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {

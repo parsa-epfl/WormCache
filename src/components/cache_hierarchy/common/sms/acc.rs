@@ -78,9 +78,9 @@ impl<
     }
 
     pub fn insert(&self, entry: &AccTableEntry<N_BLK>) -> Option<AccTableEntry<N_BLK>> {
-        let mut lru_idx = 0;
         let mut lru_ts = u64::MAX;
-        for (i, locked_entry) in self.entries.iter().enumerate() {
+        let mut lru_guard: Option<spin::mutex::SpinMutexGuard<'_, AccTableEntry<N_BLK>>> = None;
+        for locked_entry in self.entries.iter() {
             let mut current_entry = locked_entry.lock();
             if !current_entry.valid {
                 assert!(entry.valid, "Cannot insert invalid entry into AccTable");
@@ -88,12 +88,19 @@ impl<
                 return None; // Entry was inserted, no eviction needed
             }
             if current_entry.ts < lru_ts {
+                if let Some(prev) = lru_guard {
+                    drop(prev);
+                }
                 lru_ts = current_entry.ts;
-                lru_idx = i;
+                lru_guard = Some(current_entry);
+            } else {
+                drop(current_entry);
             }
-            drop(current_entry);
         }
-        let mut dropped_entry = self.entries[lru_idx].lock();
+
+        // At this point we still hold the lock for the chosen LRU entry in lru_guard
+        let mut dropped_entry = lru_guard
+            .expect("AccTable must contain at least one entry and all were valid");
         let dropped_entry_clone = dropped_entry.clone();
         dropped_entry.replace(entry);
         assert!(dropped_entry_clone.ts < dropped_entry.ts, "Cannot insert a block from past");
