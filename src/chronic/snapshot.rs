@@ -293,4 +293,14 @@ pub fn on_load_snapshot(snapshot_name: &str) {
             snapshot_name
         );
     }
+
+    // check whether this snapshot is already a delta snapshot
+    let delta_file = format!("{}.loc", snapshot_name);
+    if fs::metadata(&delta_file).is_ok() {
+        update_snapshot_type("incremental");
+        println!(
+            "Detected incremental delta snapshot: {}. Following snaphots are generaed with delta",
+            snapshot_name
+        );
+    }
 }
