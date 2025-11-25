@@ -285,9 +285,15 @@ pub fn on_load_snapshot(snapshot_name: &str) {
     use std::fs;
 
     // check if the snapshot file exists
-    let base_file = format!("{}.mem/base", snapshot_name);
-    let state_file = format!("{}.state.zstd", snapshot_name);
-    if fs::metadata(&base_file).is_ok() && fs::metadata(&state_file).is_ok() {
+    let base_file_is_ok = [
+        format!("{}.mem/base", snapshot_name),
+        format!("{}.mem/base.index", snapshot_name),
+    ]
+    .iter()
+    .any(|pattern| fs::metadata(pattern).is_ok());
+    let state_file_is_ok = fs::metadata(format!("{}.state.zstd", snapshot_name)).is_ok();
+
+    if base_file_is_ok && state_file_is_ok {
         update_snapshot_type("incremental");
         println!(
             "Detected incremental base snapshot: {}. Following snaphots are generaed with delta",
@@ -312,15 +318,12 @@ pub fn on_load_snapshot(snapshot_name: &str) {
             .parse::<u64>()
             .unwrap()
             + 1;
-        
+
         // set the init index
         unsafe {
             PERIODIC_SNAPSHOT_INIT_INDEX = next_index;
         }
 
-        println!(
-            "Next snapshot index is set to {}",
-            next_index
-        );
+        println!("Next snapshot index is set to {}", next_index);
     }
 }
