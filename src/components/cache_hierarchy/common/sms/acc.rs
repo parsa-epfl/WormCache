@@ -20,7 +20,7 @@ impl <
     const N_BLK: usize,
 > AccTableEntry<N_BLK>
 {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             tag: 0,
             pc: 0,
@@ -46,7 +46,7 @@ pub struct AccTable<
     const N_ACC: usize,
     const N_BLK: usize,
 > {
-    entries: Box<[SpinMutex<AccTableEntry<N_BLK>>; N_ACC]>,
+    entries: SpinMutex<[AccTableEntry<N_BLK>; N_ACC]>,
 }
 
 impl<
@@ -56,7 +56,7 @@ impl<
 {
     pub fn new() -> Self {
         Self {
-            entries: crate::util::init_heap_array(|_| SpinMutex::new(AccTableEntry::<N_BLK>::new())),
+            entries: SpinMutex::new([const { AccTableEntry::<N_BLK>::new() }; N_ACC]),
         }
     }
 
@@ -65,74 +65,68 @@ impl<
         util::get_base_pc_offset::<N_BLK>(request)
     }
 
-    fn poke<'a>(&'a self, request: &CacheBlockRequest) -> Option<(usize, spin::mutex::SpinMutexGuard<'a, AccTableEntry<N_BLK>>)> {
-        let (base, _, _) = self.get_base_pc_offset(request);
-        for (i, locked_entry) in self.entries.iter().enumerate() {
-            let current_entry = locked_entry.lock();
-            if current_entry.valid && current_entry.tag == base {
-                return Some((i, current_entry));
+    fn poke_index(&self, entries: &[AccTableEntry<N_BLK>; N_ACC], base: u64) -> Option<usize> {
+        for (i, entry) in entries.iter().enumerate() {
+            if entry.valid && entry.tag == base {
+                return Some(i);
             }
-            drop(current_entry);
         }
         None
     }
 
     pub fn insert(&self, entry: &AccTableEntry<N_BLK>) -> Option<AccTableEntry<N_BLK>> {
+        assert!(entry.valid, "Cannot insert invalid entry into AccTable");
+        
+        let mut entries = self.entries.lock();
         let mut lru_ts = u64::MAX;
-        let mut lru_guard: Option<spin::mutex::SpinMutexGuard<'_, AccTableEntry<N_BLK>>> = None;
-        for locked_entry in self.entries.iter() {
-            let mut current_entry = locked_entry.lock();
+        let mut lru_idx: Option<usize> = None;
+        
+        for (i, current_entry) in entries.iter().enumerate() {
             if !current_entry.valid {
-                assert!(entry.valid, "Cannot insert invalid entry into AccTable");
-                current_entry.replace(entry);
+                entries[i].replace(entry);
                 return None; // Entry was inserted, no eviction needed
             }
             if current_entry.ts < lru_ts {
-                if let Some(prev) = lru_guard {
-                    drop(prev);
-                }
                 lru_ts = current_entry.ts;
-                lru_guard = Some(current_entry);
-            } else {
-                drop(current_entry);
+                lru_idx = Some(i);
             }
         }
 
-        // At this point we still hold the lock for the chosen LRU entry in lru_guard
-        let mut dropped_entry = lru_guard
-            .expect("AccTable must contain at least one entry and all were valid");
-        let dropped_entry_clone = dropped_entry.clone();
-        dropped_entry.replace(entry);
-        assert!(dropped_entry_clone.ts < dropped_entry.ts, "Cannot insert a block from past");
+        // All entries were valid, evict LRU
+        let idx = lru_idx.expect("AccTable must contain at least one entry and all were valid");
+        let dropped_entry_clone = entries[idx].clone();
+        entries[idx].replace(entry);
+        assert!(dropped_entry_clone.ts < entry.ts, "Cannot insert a block from past");
         Some(dropped_entry_clone)
     }
 
-    pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> bool {   // return true if entry found and updated
-        let (_, _, offset) = self.get_base_pc_offset(request);
-        match self.poke(request) {
-            Some((_, mut existing_entry)) => {
-                if !existing_entry.access_pattern[offset as usize] {
-                    existing_entry.access_pattern[offset as usize] = true;
-                    existing_entry.read_pattern[offset as usize] = !request.is_store();
-                }
-                existing_entry.ts = ts;
-                return true;
+    pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> bool {
+        let (base, _, offset) = self.get_base_pc_offset(request);
+        let is_store = request.is_store();
+        
+        let mut entries = self.entries.lock();
+        
+        if let Some(idx) = self.poke_index(&entries, base) {
+            if !entries[idx].access_pattern[offset as usize] {
+                entries[idx].access_pattern[offset as usize] = true;
+                entries[idx].read_pattern[offset as usize] = !is_store;
             }
-            None => return false,
+            entries[idx].ts = ts;
+            return true;
         }
+        false
     }
 
-    // TODO: what if entry gets evicted due to frequent updates?
     pub fn evict(&self, request: &CacheBlockRequest) -> Option<AccTableEntry<N_BLK>> {
-        match self.poke(request) {
-            Some((_, mut entry)) => {
-                let evicted_entry = entry.clone();
-                entry.reset();
-                return Some(evicted_entry);
-            }
-            None => {
-                return None; // No entry to evict
-            }
+        let (base, _, _) = self.get_base_pc_offset(request);
+        
+        let mut entries = self.entries.lock();
+        
+        if let Some(idx) = self.poke_index(&entries, base) {
+            let evicted_entry = entries[idx].clone();
+            entries[idx].reset();
+            return Some(evicted_entry);
         }
+        None
     }
 }
