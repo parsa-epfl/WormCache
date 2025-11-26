@@ -293,4 +293,33 @@ pub fn on_load_snapshot(snapshot_name: &str) {
             snapshot_name
         );
     }
+
+    // check whether this snapshot is already a delta snapshot
+    let delta_file = format!("{}.loc", snapshot_name);
+    if fs::metadata(&delta_file).is_ok() {
+        update_snapshot_type("incremental");
+        println!(
+            "Detected incremental delta snapshot: {}. Following snaphots are generaed with delta",
+            snapshot_name
+        );
+
+        // the index of the next snapshot can be inferred from the snapshot name.
+        let next_index = snapshot_name
+            .rsplit('_')
+            .next()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap()
+            + 1;
+        
+        // set the init index
+        unsafe {
+            PERIODIC_SNAPSHOT_INIT_INDEX = next_index;
+        }
+
+        println!(
+            "Next snapshot index is set to {}",
+            next_index
+        );
+    }
 }
