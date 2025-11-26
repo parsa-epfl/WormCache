@@ -1,3 +1,4 @@
+use rustc_hash::FxHashMap;
 use spin::mutex::SpinMutex;
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
@@ -5,34 +6,11 @@ use super::acc::AccTableEntry;
 use super::util;
 
 #[derive(Debug, Clone, Copy)]
-pub struct FilterTableEntry {
-    pub tag: u64,
+struct FilterTableDataEntry {
     pub pc: u64,
     pub offset: u64,
     pub is_read: bool,
     pub ts: u64,
-    pub valid: bool,
-}
-
-impl FilterTableEntry {
-    pub fn new() -> Self {
-        Self {
-            tag: 0,
-            pc: 0,
-            offset: 0,
-            is_read: false,
-            ts: 0,
-            valid: false,
-        }
-    }
-
-    pub fn replace(&mut self, new_entry: &FilterTableEntry) {
-        *self = *new_entry;
-    }
-
-    pub fn reset(&mut self) {
-        *self = Self::new();
-    }
 }
 
 #[derive(Debug)]
@@ -40,7 +18,7 @@ pub struct FilterTable<
     const N_FILTER: usize,  // Number of entries in the filter table
     const N_BLK: usize,     // Number of blocks per spatial region
 > {
-    entries: Box<[SpinMutex<FilterTableEntry>; N_FILTER]>,
+    entries: SpinMutex<FxHashMap<u64, FilterTableDataEntry>>,
 }
 
 impl<
@@ -50,7 +28,7 @@ impl<
 {
     pub fn new() -> Self {
         Self {
-            entries: crate::util::init_heap_array(|_| SpinMutex::new(FilterTableEntry::new())),
+            entries: SpinMutex::new(FxHashMap::default()),
         }
     }
 
@@ -59,88 +37,69 @@ impl<
         util::get_base_pc_offset::<N_BLK>(request)
     }
 
-    fn poke<'a>(&'a self, request: &CacheBlockRequest) -> Option<(usize, spin::mutex::SpinMutexGuard<'a, FilterTableEntry>)> {
-        let (base, _, _) = self.get_base_pc_offset(request);
-        for (i, locked_entry) in self.entries.iter().enumerate() {
-            let current_entry = locked_entry.lock();
-            if current_entry.valid && current_entry.tag == base {
-                return Some((i, current_entry));
-            }
-            drop(current_entry);
-        }
-        None
-    }
-
-    fn insert(&self, entry: &FilterTableEntry) {
-        let mut lru_ts = u64::MAX;
-        let mut lru_guard: Option<spin::mutex::SpinMutexGuard<'_, FilterTableEntry>> = None;
-        for locked_entry in self.entries.iter() {
-            let mut current_entry = locked_entry.lock();
-            if !current_entry.valid {
-                assert!(entry.valid, "Cannot insert invalid entry into FilterTable");
-                current_entry.replace(entry);
-                return;
-            }
-            if current_entry.ts < lru_ts {
-                if let Some(prev) = lru_guard {
-                    drop(prev);
-                }
-                lru_ts = current_entry.ts;
-                lru_guard = Some(current_entry);
-            } else {
-                drop(current_entry);
-            }
-        }
-        // Replace the LRU entry with the new entry
-        let mut dropped_entry = lru_guard
-            .expect("FilterTable must contain at least one entry and all were valid");
-        dropped_entry.replace(entry);
+    fn get_lru_key(entries: &FxHashMap<u64, FilterTableDataEntry>) -> Option<u64> {
+        entries
+            .iter()
+            .min_by_key(|(_, data)| data.ts)
+            .map(|(key, _)| *key)
     }
 
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
         let (base, pc, offset) = self.get_base_pc_offset(request);
-        match self.poke(request) {
-            Some((_, mut existing_entry)) => {  // entry found, check further
-                if offset == existing_entry.offset {
-                    existing_entry.pc = pc;
-                    existing_entry.is_read = !request.is_store();
-                    existing_entry.ts = ts;
-                    return None;
-                } else {    // must be promoted to acc entry, TODO: is there a more efficient way?
-                    let mut acc_entry = AccTableEntry::<N_BLK>::new();
-                    acc_entry.tag = existing_entry.tag;
-                    acc_entry.pc = existing_entry.pc;
-                    acc_entry.offset = existing_entry.offset;
-                    acc_entry.access_pattern[existing_entry.offset as usize] = true;
-                    acc_entry.access_pattern[offset as usize] = true;
-                    acc_entry.read_pattern[existing_entry.offset as usize] = existing_entry.is_read;
-                    acc_entry.read_pattern[offset as usize] = !request.is_store();
-                    acc_entry.ts = ts;
-                    acc_entry.valid = true;
-                    existing_entry.reset(); // reset the filter entry
-                    return Some(acc_entry);
-                }
-            }
-            None => {       // new entry must be allocated
-                let mut new_entry = FilterTableEntry::new();
-                new_entry.tag = base;
-                new_entry.pc = pc;
-                new_entry.offset = offset;
-                new_entry.is_read = !request.is_store();
-                new_entry.ts = ts;
-                new_entry.valid = true;
+        let is_read = !request.is_store();
 
-                // Insert the new entry into the filter table
-                self.insert(&new_entry);
+        let mut entries = self.entries.lock();
+
+        if let Some(existing) = entries.get_mut(&base) {
+            // Entry found, check further
+            if offset == existing.offset {
+                existing.pc = pc;
+                existing.is_read = is_read;
+                existing.ts = ts;
                 return None;
+            } else {
+                // Must be promoted to acc entry
+                let mut acc_entry = AccTableEntry::<N_BLK>::new();
+                acc_entry.tag = base;
+                acc_entry.pc = existing.pc;
+                acc_entry.offset = existing.offset;
+                acc_entry.access_pattern[existing.offset as usize] = true;
+                acc_entry.access_pattern[offset as usize] = true;
+                acc_entry.read_pattern[existing.offset as usize] = existing.is_read;
+                acc_entry.read_pattern[offset as usize] = is_read;
+                acc_entry.ts = ts;
+                acc_entry.valid = true;
+                entries.remove(&base);
+                return Some(acc_entry);
             }
         }
+
+        // New entry must be allocated
+        let new_data = FilterTableDataEntry {
+            pc,
+            offset,
+            is_read,
+            ts,
+        };
+
+        // If we have space, insert directly
+        if entries.len() < N_FILTER {
+            entries.insert(base, new_data);
+            return None;
+        }
+
+        // Need to evict LRU entry
+        if let Some(lru_key) = Self::get_lru_key(&entries) {
+            entries.remove(&lru_key);
+            entries.insert(base, new_data);
+        }
+
+        None
     }
 
     pub fn evict(&self, request: &CacheBlockRequest) {
-        match self.poke(request) {
-            Some((_, mut existing_entry)) => existing_entry.reset(),
-            None => {}
-        }
+        let (base, _, _) = self.get_base_pc_offset(request);
+        let mut entries = self.entries.lock();
+        entries.remove(&base);
     }
 }

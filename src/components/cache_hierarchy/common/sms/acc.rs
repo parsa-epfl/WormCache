@@ -1,40 +1,8 @@
+use rustc_hash::FxHashMap;
 use spin::mutex::SpinMutex;
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::util;
-
-#[derive(Debug, Clone, Copy)]
-struct AccTableTagEntry<
-    const N_BLK: usize,
-> {
-    pub tag_with_v: u64,
-}
-
-impl <
-    const N_BLK: usize,
-> AccTableTagEntry<N_BLK> 
-{
-    pub const fn new() -> Self {
-        Self {
-            tag_with_v: 0,
-        }
-    }
-
-    #[inline]
-    pub fn is_valid(&self) -> bool {
-        (self.tag_with_v & 0x1) != 0
-    }
-
-    #[inline]
-    pub fn get_tag(&self) -> u64 {
-        self.tag_with_v >> 1
-    }
-
-    #[inline]
-    pub fn reset(&mut self) {
-        *self = Self::new();
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 struct AccTableDataEntry<
@@ -45,26 +13,6 @@ struct AccTableDataEntry<
     pub access_pattern: [bool; N_BLK],
     pub read_pattern: [bool; N_BLK],
     pub ts: u64,
-}
-
-impl <
-    const N_BLK: usize,
-> AccTableDataEntry<N_BLK> 
-{
-    pub const fn new() -> Self {
-        Self {
-            pc: 0,
-            offset: 0,
-            access_pattern: [false; N_BLK],
-            read_pattern: [false; N_BLK],
-            ts: 0,
-        }
-    }
-
-    #[inline]
-    pub fn reset(&mut self) {
-        *self = Self::new();
-    }
 }
 
 // To preserve outside APIs
@@ -95,32 +43,6 @@ impl <
             valid: false,
         }
     }
-
-    fn from_tag_data(tag_entry: &AccTableTagEntry<N_BLK>, data_entry: &AccTableDataEntry<N_BLK>) -> Self {
-        Self {
-            tag: tag_entry.get_tag(),
-            pc: data_entry.pc,
-            offset: data_entry.offset,
-            access_pattern: data_entry.access_pattern,
-            read_pattern: data_entry.read_pattern,
-            ts: data_entry.ts,
-            valid: tag_entry.is_valid(),
-        }
-    }
-
-    fn split_tag_data(&self) -> (AccTableTagEntry<N_BLK>, AccTableDataEntry<N_BLK>) {
-        let tag_entry = AccTableTagEntry {
-            tag_with_v: (self.tag << 1) | if self.valid { 1 } else { 0 },
-        };
-        let data_entry = AccTableDataEntry {
-            pc: self.pc,
-            offset: self.offset,
-            access_pattern: self.access_pattern,
-            read_pattern: self.read_pattern,
-            ts: self.ts,
-        };
-        (tag_entry, data_entry)
-    }
 }
 
 #[derive(Debug)]
@@ -128,8 +50,7 @@ pub struct AccTable<
     const N_ACC: usize,
     const N_BLK: usize,
 > {
-    tag_entries: SpinMutex<[AccTableTagEntry<N_BLK>; N_ACC]>,
-    data_entries: SpinMutex<[AccTableDataEntry<N_BLK>; N_ACC]>,
+    entries: SpinMutex<FxHashMap<u64, AccTableDataEntry<N_BLK>>>,
 }
 
 impl<
@@ -137,10 +58,9 @@ impl<
     const N_BLK: usize,
 > AccTable<N_ACC, N_BLK>
 {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            tag_entries: SpinMutex::new([AccTableTagEntry::new(); N_ACC]),
-            data_entries: SpinMutex::new([AccTableDataEntry::new(); N_ACC]),
+            entries: SpinMutex::new(FxHashMap::default()),
         }
     }
 
@@ -149,69 +69,62 @@ impl<
         util::get_base_pc_offset::<N_BLK>(request)
     }
 
-    fn poke_index(&self, tag_entries: &[AccTableTagEntry<N_BLK>], base: u64) -> Option<usize> {
-        let base_tag_with_v = (base << 1) | 0x1;
-        for (i, entry) in tag_entries.iter().enumerate() {
-            if entry.tag_with_v == base_tag_with_v {
-                return Some(i);
-            }
-        }
-        None
-    }
-
-    fn get_free_index(&self, tag_entries: &[AccTableTagEntry<N_BLK>]) -> Option<usize> {
-        for (i, entry) in tag_entries.iter().enumerate() {
-            if !entry.is_valid() {
-                return Some(i);
-            }
-        }
-        None
-    }
-
-    fn get_min_ts(&self, data_entries: &[AccTableDataEntry<N_BLK>]) -> usize {
-        let mut min_idx = 0;
-        let mut min_ts = u64::MAX;
-        for (i, entry) in data_entries.iter().enumerate() {
-            if entry.ts < min_ts {
-                min_ts = entry.ts;
-                min_idx = i;
-            }
-        }
-        min_idx
+    fn get_lru_key(entries: &FxHashMap<u64, AccTableDataEntry<N_BLK>>) -> Option<u64> {
+        entries
+            .iter()
+            .min_by_key(|(_, data)| data.ts)
+            .map(|(key, _)| *key)
     }
 
     pub fn insert(&self, entry: &AccTableEntry<N_BLK>) -> Option<AccTableEntry<N_BLK>> {
         assert!(entry.valid, "Cannot insert invalid entry into AccTable");
-        let (tag_entry, data_entry) = entry.split_tag_data();
+        let data_entry = AccTableDataEntry {
+            pc: entry.pc,
+            offset: entry.offset,
+            access_pattern: entry.access_pattern,
+            read_pattern: entry.read_pattern,
+            ts: entry.ts,
+        };
 
-        let mut tag_entries = self.tag_entries.lock();
-        let mut data_entries = self.data_entries.lock();
+        let mut entries = self.entries.lock();
 
-        if let Some(idx) = self.get_free_index(&(*tag_entries)) {
-            tag_entries[idx] = tag_entry;
-            data_entries[idx] = data_entry;
+        // If we have space, insert directly
+        if entries.len() < N_ACC {
+            entries.insert(entry.tag, data_entry);
             return None;
         }
-        let lru_idx = self.get_min_ts(&(*data_entries));
-        let evicted_entry = AccTableEntry::from_tag_data(&tag_entries[lru_idx], &data_entries[lru_idx]);
-        tag_entries[lru_idx] = tag_entry;
-        data_entries[lru_idx] = data_entry;
-        Some(evicted_entry)
+
+        // Need to evict LRU entry
+        if let Some(lru_key) = Self::get_lru_key(&entries) {
+            let evicted_data = entries.remove(&lru_key).unwrap();
+            let evicted_entry = AccTableEntry {
+                tag: lru_key,
+                pc: evicted_data.pc,
+                offset: evicted_data.offset,
+                access_pattern: evicted_data.access_pattern,
+                read_pattern: evicted_data.read_pattern,
+                ts: evicted_data.ts,
+                valid: true,
+            };
+            entries.insert(entry.tag, data_entry);
+            return Some(evicted_entry);
+        }
+
+        None
     }
 
     pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> bool {
         let (base, _, offset) = self.get_base_pc_offset(request);
         let is_store = request.is_store();
 
-        let tag_entries = self.tag_entries.lock();
-        let mut data_entries = self.data_entries.lock();    // TODO: What if you cannot?
+        let mut entries = self.entries.lock();
 
-        if let Some(idx) = self.poke_index(&(*tag_entries), base) {
-            if !data_entries[idx].access_pattern[offset as usize] {
-                data_entries[idx].access_pattern[offset as usize] = true;
-                data_entries[idx].read_pattern[offset as usize] = !is_store;
+        if let Some(data) = entries.get_mut(&base) {
+            if !data.access_pattern[offset as usize] {
+                data.access_pattern[offset as usize] = true;
+                data.read_pattern[offset as usize] = !is_store;
             }
-            data_entries[idx].ts = ts;
+            data.ts = ts;
             return true;
         }
         false
@@ -220,14 +133,18 @@ impl<
     pub fn evict(&self, request: &CacheBlockRequest) -> Option<AccTableEntry<N_BLK>> {
         let (base, _, _) = self.get_base_pc_offset(request);
 
-        let mut tag_entries = self.tag_entries.lock();
-        let mut data_entries = self.data_entries.lock();
+        let mut entries = self.entries.lock();
 
-        if let Some(idx) = self.poke_index(&(*tag_entries), base) {
-            let evicted_entry = AccTableEntry::from_tag_data(&tag_entries[idx], &data_entries[idx]);
-            tag_entries[idx].reset();
-            data_entries[idx].reset();
-            return Some(evicted_entry);
+        if let Some(data) = entries.remove(&base) {
+            return Some(AccTableEntry {
+                tag: base,
+                pc: data.pc,
+                offset: data.offset,
+                access_pattern: data.access_pattern,
+                read_pattern: data.read_pattern,
+                ts: data.ts,
+                valid: true,
+            });
         }
         None
     }
