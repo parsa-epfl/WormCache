@@ -31,6 +31,56 @@
 
 use std::collections::HashMap;
 
+use bitvec::array::BitArray;
+use bitvec::order::Lsb0;
+
+/// Rkyv wrapper for BitArray that serializes/deserializes the underlying storage as Vec<u64>.
+pub struct RkyvBitArray;
+
+impl<const N: usize> rkyv::with::ArchiveWith<BitArray<[u64; N], Lsb0>> for RkyvBitArray {
+    type Archived = rkyv::Archived<Vec<u64>>;
+    type Resolver = rkyv::Resolver<Vec<u64>>;
+
+    fn resolve_with(
+        field: &BitArray<[u64; N], Lsb0>,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let data: Vec<u64> = field.as_raw_slice().to_vec();
+        rkyv::Archive::resolve(&data, resolver, out);
+    }
+}
+
+impl<const N: usize, S> rkyv::with::SerializeWith<BitArray<[u64; N], Lsb0>, S> for RkyvBitArray
+where
+    S: rkyv::ser::Allocator + rkyv::ser::Writer + rkyv::rancor::Fallible + ?Sized,
+    S::Error: rkyv::rancor::Source,
+{
+    fn serialize_with(
+        field: &BitArray<[u64; N], Lsb0>,
+        serializer: &mut S,
+    ) -> Result<Self::Resolver, S::Error> {
+        let data: Vec<u64> = field.as_raw_slice().to_vec();
+        rkyv::Serialize::serialize(&data, serializer)
+    }
+}
+
+impl<const N: usize, D> rkyv::with::DeserializeWith<rkyv::Archived<Vec<u64>>, BitArray<[u64; N], Lsb0>, D>
+    for RkyvBitArray
+where
+    D: rkyv::rancor::Fallible + ?Sized,
+    D::Error: rkyv::rancor::Source,
+{
+    fn deserialize_with(
+        field: &rkyv::Archived<Vec<u64>>,
+        deserializer: &mut D,
+    ) -> Result<BitArray<[u64; N], Lsb0>, D::Error> {
+        let data: Vec<u64> = rkyv::Deserialize::deserialize(field, deserializer)?;
+        let array: [u64; N] = data.try_into().expect("BitArray size mismatch");
+        Ok(BitArray::new(array))
+    }
+}
+
 // Return value: Map[first_index, size]
 pub fn find_fetch_block_from_block_id_sequence(i: Vec<usize>) -> HashMap<usize, usize> {
     let mut res = HashMap::new();

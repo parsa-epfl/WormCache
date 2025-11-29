@@ -31,8 +31,8 @@
 
 use core::panic;
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 use crate::debug::cache_line_history::CacheLineCoherenceHistory;
 
@@ -42,7 +42,7 @@ use super::{
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.
     pub ts: u64,
@@ -50,15 +50,13 @@ pub struct SharedCacheBlock {
     pub last_accessor: SharedCacheAccessSource, // the last accessor of this cache line.
 }
 
-#[serde_as]
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct SharedCacheSet<
     const WAY: usize,
     const SET: usize,
     const EXCLUSIVE: bool,
     S: SharedCacheSetStatistics,
 > {
-    #[serde_as(as = "[_; WAY]")]
     pub blocks: [SharedCacheBlock; WAY],
     pub touched_count: usize,
     pub recent_evict_ts: u64, // if a cache access has a timestamp less than this one, its result might be unknown if there is a hit.

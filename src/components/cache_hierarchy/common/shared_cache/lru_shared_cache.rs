@@ -38,9 +38,9 @@ use super::{SharedCacheAccessRequest, SharedCacheAccessSource};
 
 use super::{
     SharedCacheLookupAndInsertResult, SharedCacheLookupResult, SharedCacheSet,
-    statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
+    statistics::SharedCacheSetStatistics,
 };
-use serde::{Deserialize, Serialize};
+use crate::checkpoint::helpers::{SharedCacheHelper, SharedCacheSetHelper};
 use spin::mutex::SpinMutex;
 
 use zstd::{Decoder, Encoder};
@@ -56,39 +56,31 @@ pub struct LRUSharedCache<
     _phantom: std::marker::PhantomData<S>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct SingleSharedCacheSerdeHelper<const SET: usize, const WAY: usize, const EXCLUSIVE: bool> {
-    blocks: Vec<SharedCacheSet<WAY, SET, EXCLUSIVE, ZeroSharedCacheSetStatistics>>,
-    warmed_sets: usize,
-}
-
 impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCLUSIVE: bool>
     LRUSharedCache<S, SET, WAY, EXCLUSIVE>
 {
-    pub fn from_serialize_helper(
-        helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE>,
-    ) -> Self {
+    /// Convert to unified checkpoint helper (used for both JSON and rkyv).
+    pub fn to_checkpoint_helper(&self) -> SharedCacheHelper {
+        SharedCacheHelper {
+            blocks: self
+                .blocks
+                .iter()
+                .map(|entry| SharedCacheSetHelper::from(&*entry.lock()))
+                .collect(),
+            warmed_sets: self.warmed_sets.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Create from unified checkpoint helper.
+    pub fn from_checkpoint_helper(helper: SharedCacheHelper) -> Self {
         let mut blocks = Vec::with_capacity(SET);
-        for block in helper.blocks {
-            blocks.push(SpinMutex::new(SharedCacheSet::from_without_statistics(
-                block,
-            )));
+        for set_helper in helper.blocks {
+            blocks.push(SpinMutex::new(set_helper.into_set::<WAY, SET, EXCLUSIVE, S>()));
         }
         Self {
             blocks: blocks.into_boxed_slice().try_into().unwrap(),
             warmed_sets: AtomicUsize::new(helper.warmed_sets),
             _phantom: std::marker::PhantomData,
-        }
-    }
-
-    pub fn to_serialize_helper(&self) -> SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> {
-        SingleSharedCacheSerdeHelper {
-            blocks: self
-                .blocks
-                .iter()
-                .map(|entry| entry.lock().without_statistics())
-                .collect(),
-            warmed_sets: self.warmed_sets.load(Ordering::Relaxed),
         }
     }
 }
@@ -213,30 +205,62 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
     }
 
     fn serialize(&self, name: &str, numa_node_id: usize) {
-        let helper = self.to_serialize_helper();
-        let mut file =
-            std::fs::File::create(format!("{}/llc-{}.json.zstd", name, numa_node_id)).unwrap();
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let mut file = Encoder::new(&mut file, 0).unwrap();
-        serde_json::to_writer(&mut file, &helper).unwrap();
+        let helper = self.to_checkpoint_helper();
 
-        file.finish().unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::create(format!("{}/llc-{}.rkyv.zstd", name, numa_node_id)).unwrap();
+
+            let mut encoder = Encoder::new(file, 0).unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let mut file =
+                std::fs::File::create(format!("{}/llc-{}.json.zstd", name, numa_node_id)).unwrap();
+
+            let mut file = Encoder::new(&mut file, 0).unwrap();
+            serde_json::to_writer(&mut file, &helper).unwrap();
+
+            file.finish().unwrap();
+        }
     }
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize) {
-        let file = std::fs::File::open(format!("{}/llc-{}.json.zstd", name, numa_node_id));
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        if file.is_err() {
-            println!("Cannot load the shared cache. Error: {:?}", file.err());
-            return;
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!("{}/llc-{}.rkyv.zstd", name, numa_node_id));
+
+            if file.is_err() {
+                println!("Cannot load the shared cache (rkyv). Error: {:?}", file.err());
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: SharedCacheHelper =
+                rkyv::from_bytes::<SharedCacheHelper, rkyv::rancor::Error>(&bytes).unwrap();
+            *self = LRUSharedCache::from_checkpoint_helper(helper);
+        } else {
+            let file = std::fs::File::open(format!("{}/llc-{}.json.zstd", name, numa_node_id));
+
+            if file.is_err() {
+                println!("Cannot load the shared cache. Error: {:?}", file.err());
+                return;
+            }
+
+            let file = file.unwrap();
+            let file = Decoder::new(file).unwrap();
+
+            let helper: SharedCacheHelper = serde_json::from_reader(file).unwrap();
+            *self = LRUSharedCache::from_checkpoint_helper(helper);
         }
-
-        let file = file.unwrap();
-        let file = Decoder::new(file).unwrap();
-
-        let helper: SingleSharedCacheSerdeHelper<SET, WAY, EXCLUSIVE> =
-            serde_json::from_reader(file).unwrap();
-        *self = LRUSharedCache::from_serialize_helper(helper);
     }
 }
 

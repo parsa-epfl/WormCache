@@ -30,6 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rustc_hash::FxHashMap as HashMap;
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutexGuard;
 
@@ -48,9 +49,10 @@ const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
 
 pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct DirectoryEntry {
     pub lru_ts: u64,
+    #[rkyv(with = crate::util::RkyvBitArray)]
     pub sharers: SharerList,
     pub in_shared_cache: bool,
     pub shared: bool,
@@ -81,10 +83,9 @@ pub trait DirectorySet: Sized + Send + Sync + Clone {
     fn raw(&self) -> HashMap<u64, DirectoryEntry>;
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct DirectorySerdeHelper<const SET: usize> {
-    entries: Vec<HashMap<u64, DirectoryEntry>>,
-}
+// Re-export DirectoryHelper from checkpoint helpers for use in directory implementations
+pub use crate::checkpoint::helpers::DirectoryHelper;
+
 pub trait Directory: Send + Sync {
     type TSet: DirectorySet;
 

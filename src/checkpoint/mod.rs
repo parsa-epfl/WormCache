@@ -1,5 +1,6 @@
 pub mod cache_hierarchy;
 mod frontend;
+pub mod helpers;
 mod mmu;
 mod sms;
 

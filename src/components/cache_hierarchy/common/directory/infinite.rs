@@ -30,15 +30,14 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rustc_hash::FxHashMap as HashMap;
-use serde::{Deserialize, Serialize};
 use spin::mutex::{SpinMutex, SpinMutexGuard};
 use zstd::{Decoder, Encoder};
 
 use crate::util;
 
-use super::{Directory, DirectoryEntry, DirectorySet, SharerList};
+use super::{Directory, DirectoryEntry, DirectoryHelper, DirectorySet, SharerList};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 #[repr(align(64))]
 pub struct InfiniteDirectorySet<const SET: usize> {
     entries: HashMap<u64, DirectoryEntry>,
@@ -98,19 +97,19 @@ pub struct InfiniteDirectory<const SET: usize> {
 }
 
 impl<const SET: usize> InfiniteDirectory<SET> {
-    fn to_serialize_helper(&self) -> super::DirectorySerdeHelper<SET> {
+    fn to_checkpoint_helper(&self) -> DirectoryHelper {
         let entries: Vec<HashMap<u64, DirectoryEntry>> = self
             .entries
             .iter()
             .map(|set| set.lock().clone().raw())
             .collect::<Vec<_>>();
 
-        super::DirectorySerdeHelper { entries }
+        DirectoryHelper::from_sets(&entries)
     }
 
-    fn from_serialize_helper(helper: super::DirectorySerdeHelper<SET>) -> Self {
+    fn from_checkpoint_helper(helper: DirectoryHelper) -> Self {
         let entries = helper
-            .entries
+            .into_sets()
             .into_iter()
             .enumerate()
             .map(|(idx, set)| {
@@ -181,32 +180,66 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
     }
 
     fn serialize(&self, name: &str, numa_node_id: usize) {
+        use crate::parameter::USE_RKYV_SERIALIZATION;
+
         self.run_gc();
-        let file = std::fs::File::create(format!("{}/directory-{}.json.zstd", name, numa_node_id))
-            .unwrap();
 
-        let mut file = Encoder::new(file, 0).unwrap();
+        let helper = self.to_checkpoint_helper();
 
-        let helper = self.to_serialize_helper();
-        serde_json::to_writer(&mut file, &helper).unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::create(format!("{}/directory-{}.rkyv.zstd", name, numa_node_id))
+                .unwrap();
 
-        file.finish().unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let file = std::fs::File::create(format!("{}/directory-{}.json.zstd", name, numa_node_id))
+                .unwrap();
+
+            let mut file = Encoder::new(file, 0).unwrap();
+
+            serde_json::to_writer(&mut file, &helper).unwrap();
+
+            file.finish().unwrap();
+        }
     }
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize) {
-        let file = std::fs::File::open(format!("{}/directory-{}.json.zstd", name, numa_node_id));
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        if file.is_err() {
-            println!("Cannot load the directory state. Error: {:?}", file.err());
-            return;
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!("{}/directory-{}.rkyv.zstd", name, numa_node_id));
+
+            if file.is_err() {
+                println!("Cannot load the directory state (rkyv). Error: {:?}", file.err());
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: DirectoryHelper =
+                rkyv::from_bytes::<DirectoryHelper, rkyv::rancor::Error>(&bytes).unwrap();
+            *self = Self::from_checkpoint_helper(helper);
+        } else {
+            let file = std::fs::File::open(format!("{}/directory-{}.json.zstd", name, numa_node_id));
+
+            if file.is_err() {
+                println!("Cannot load the directory state. Error: {:?}", file.err());
+                return;
+            }
+
+            let file = file.unwrap();
+
+            let file = Decoder::new(file).unwrap();
+
+            let helper: DirectoryHelper = serde_json::from_reader(file).unwrap();
+            *self = Self::from_checkpoint_helper(helper);
         }
-
-        let file = file.unwrap();
-
-        let file = Decoder::new(file).unwrap();
-
-        let helper: super::DirectorySerdeHelper<SET> = serde_json::from_reader(file).unwrap();
-        *self = Self::from_serialize_helper(helper);
     }
 
     fn information() -> String {

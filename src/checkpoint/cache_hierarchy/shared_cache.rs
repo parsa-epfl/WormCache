@@ -1,27 +1,16 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 
 use crate::{
     checkpoint::FlexusParameter,
+    checkpoint::helpers::{SharedCacheHelper, SharedCacheSetHelper},
     components::cache_hierarchy::common::{
         PrivateCacheLine, SharedCacheAccessSource, SharedCacheBlock,
     },
 };
 
-#[derive(Serialize, Deserialize)]
-struct SharedCacheSet {
-    blocks: Vec<SharedCacheBlock>,
-    touched_count: usize,
-    recent_evict_ts: u64,
-    access_count: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SingleSharedCacheSerdeHelper {
-    // This block is different from the one from worm_cache.
-    blocks: Vec<SharedCacheSet>,
-    warmed_sets: usize,
-}
+// Re-export the unified helper as the checkpoint's helper type.
+// This allows seamless deserialization from both JSON and rkyv formats.
 
 #[derive(Serialize)]
 pub struct FlexusSerializedSharedCacheBlock {
@@ -32,7 +21,7 @@ pub struct FlexusSerializedSharedCacheBlock {
 }
 
 fn serialize_a_share_cache_set(
-    set: &SharedCacheSet,
+    set: &SharedCacheSetHelper,
     _: usize,
 ) -> Vec<FlexusSerializedSharedCacheBlock> {
     let mut result = vec![];
@@ -49,7 +38,7 @@ fn serialize_a_share_cache_set(
     result
 }
 
-impl SingleSharedCacheSerdeHelper {
+impl SharedCacheHelper {
     pub fn process_evicted_cache_line(
         &mut self,
         line: &PrivateCacheLine,
@@ -101,7 +90,7 @@ impl SingleSharedCacheSerdeHelper {
         let mut new_blocks = vec![];
 
         for _ in 0..flexus_configuration.l2_sets {
-            new_blocks.push(SharedCacheSet {
+            new_blocks.push(SharedCacheSetHelper {
                 blocks: vec![],
                 touched_count: 0,
                 recent_evict_ts: 0,
@@ -201,7 +190,7 @@ impl SingleSharedCacheSerdeHelper {
     }
 }
 
-impl SingleSharedCacheSerdeHelper {
+impl SharedCacheHelper {
     pub fn assert_eq(&self, other: &Self) {
         // set count should be the same.
         if self.blocks.len() != other.blocks.len() {
@@ -241,9 +230,9 @@ fn test_process_evicted_cache_line() {
     // - The shared cahce already has the cache block.
     // - The shared cache does not have the cache block.
 
-    let mut shared_cache_containing_block = SingleSharedCacheSerdeHelper {
+    let mut shared_cache_containing_block = SharedCacheHelper {
         blocks: vec![
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![SharedCacheBlock {
                     block_id_with_v: 0b1,
                     ts: 1,
@@ -254,7 +243,7 @@ fn test_process_evicted_cache_line() {
                 recent_evict_ts: 0,
                 access_count: 0,
             },
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![SharedCacheBlock {
                     block_id_with_v: 0b11,
                     ts: 2,
@@ -285,9 +274,9 @@ fn test_process_evicted_cache_line() {
     assert_eq!(shared_cache_containing_block.blocks[0].blocks[0].ts, 3);
 
     // The shared cache does not have the cache block.
-    let mut shared_cache_not_containing_block = SingleSharedCacheSerdeHelper {
+    let mut shared_cache_not_containing_block = SharedCacheHelper {
         blocks: vec![
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![SharedCacheBlock {
                     block_id_with_v: 0b1,
                     ts: 1,
@@ -298,7 +287,7 @@ fn test_process_evicted_cache_line() {
                 recent_evict_ts: 0,
                 access_count: 0,
             },
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![SharedCacheBlock {
                     block_id_with_v: 0b11,
                     ts: 2,
@@ -340,9 +329,9 @@ fn test_process_evicted_cache_line() {
 
 #[test]
 fn test_resize() {
-    let mut shared_cache = SingleSharedCacheSerdeHelper {
+    let mut shared_cache = SharedCacheHelper {
         blocks: vec![
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![
                     SharedCacheBlock {
                         block_id_with_v: 0b1,
@@ -373,7 +362,7 @@ fn test_resize() {
                 recent_evict_ts: 0,
                 access_count: 0,
             },
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![
                     SharedCacheBlock {
                         block_id_with_v: 0b11,
@@ -444,9 +433,9 @@ fn test_resize() {
 
 #[test]
 fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
-    let mut shared_cache = SingleSharedCacheSerdeHelper {
+    let mut shared_cache = SharedCacheHelper {
         blocks: vec![
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![SharedCacheBlock {
                     block_id_with_v: 0b100,
                     ts: 0,
@@ -457,7 +446,7 @@ fn insert_a_cache_line_that_is_invalid_in_shared_cache() {
                 recent_evict_ts: 0,
                 access_count: 0,
             },
-            SharedCacheSet {
+            SharedCacheSetHelper {
                 blocks: vec![],
                 touched_count: 0,
                 recent_evict_ts: 0,

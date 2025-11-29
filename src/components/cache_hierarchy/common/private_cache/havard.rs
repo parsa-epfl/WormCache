@@ -29,8 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-
+use crate::checkpoint::helpers::HarvardPrivateCacheHelper;
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
 use super::PrivateCache;
@@ -53,12 +52,6 @@ pub struct HarvardPerCorePrivateCache<
     d_cache: Box<[SpinMutex<PrivateCacheSet>; D_SET]>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct HarvardPerCorePrivateCacheSerdeHelper {
-    pub i_cache: Vec<PrivateCacheSet>,
-    pub d_cache: Vec<PrivateCacheSet>,
-}
-
 impl<const I_SET: usize, const I_ASSO: usize, const D_SET: usize, const D_ASSO: usize>
     HarvardPerCorePrivateCache<I_SET, I_ASSO, D_SET, D_ASSO>
 {
@@ -69,7 +62,24 @@ impl<const I_SET: usize, const I_ASSO: usize, const D_SET: usize, const D_ASSO: 
         }
     }
 
-    fn from_serialize_helper(helper: HarvardPerCorePrivateCacheSerdeHelper) -> Self {
+    /// Convert to unified checkpoint helper (used for both JSON and rkyv).
+    pub fn to_checkpoint_helper(&self) -> HarvardPrivateCacheHelper {
+        HarvardPrivateCacheHelper {
+            i_cache: self
+                .i_cache
+                .iter()
+                .map(|entry| entry.lock().clone())
+                .collect(),
+            d_cache: self
+                .d_cache
+                .iter()
+                .map(|entry| entry.lock().clone())
+                .collect(),
+        }
+    }
+
+    /// Create from unified checkpoint helper.
+    pub fn from_checkpoint_helper(helper: HarvardPrivateCacheHelper) -> Self {
         let mut i_cache = Vec::with_capacity(I_SET);
         for set in helper.i_cache {
             i_cache.push(SpinMutex::new(set));
@@ -83,21 +93,6 @@ impl<const I_SET: usize, const I_ASSO: usize, const D_SET: usize, const D_ASSO: 
         Self {
             i_cache: i_cache.into_boxed_slice().try_into().unwrap(),
             d_cache: d_cache.into_boxed_slice().try_into().unwrap(),
-        }
-    }
-
-    fn to_serialize_helper(&self) -> HarvardPerCorePrivateCacheSerdeHelper {
-        HarvardPerCorePrivateCacheSerdeHelper {
-            i_cache: self
-                .i_cache
-                .iter()
-                .map(|entry| entry.lock().clone())
-                .collect(),
-            d_cache: self
-                .d_cache
-                .iter()
-                .map(|entry| entry.lock().clone())
-                .collect(),
         }
     }
 }
@@ -274,42 +269,89 @@ impl<
     fn print_debug_info(&self) {}
 
     fn serialize(&self, name: &str, numa_node_id: usize) {
-        let helper = self
-            .caches
-            .iter()
-            .map(|cache| cache.to_serialize_helper())
-            .collect::<Vec<_>>();
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let file =
-            std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id))
-                .unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let helper: Vec<_> = self
+                .caches
+                .iter()
+                .map(|cache| cache.to_checkpoint_helper())
+                .collect();
 
-        let mut file = Encoder::new(file, 0).unwrap();
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.rkyv.zstd", name, "harvard", numa_node_id))
+                    .unwrap();
 
-        serde_json::to_writer(&mut file, &helper).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let helper = self
+                .caches
+                .iter()
+                .map(|cache| cache.to_checkpoint_helper())
+                .collect::<Vec<_>>();
 
-        file.finish().unwrap();
-    }
-    fn deserialize(&mut self, name: &str, numa_node_id: usize) {
-        let file =
-            std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id));
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id))
+                    .unwrap();
 
-        if file.is_err() {
-            println!(
-                "Cannot load the harvard private cache state. Error: {:?}",
-                file.err()
-            );
-            return;
+            let mut file = Encoder::new(file, 0).unwrap();
+
+            serde_json::to_writer(&mut file, &helper).unwrap();
+
+            file.finish().unwrap();
         }
+    }
 
-        let file = file.unwrap();
-        let file = Decoder::new(file).unwrap();
+    fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let helper: Vec<HarvardPerCorePrivateCacheSerdeHelper> =
-            serde_json::from_reader(file).unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.rkyv.zstd", name, "harvard", numa_node_id));
 
-        for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
-            *cache = HarvardPerCorePrivateCache::from_serialize_helper(helper);
+            if file.is_err() {
+                println!(
+                    "Cannot load the harvard private cache state (rkyv). Error: {:?}",
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: Vec<HarvardPrivateCacheHelper> =
+                rkyv::from_bytes::<Vec<HarvardPrivateCacheHelper>, rkyv::rancor::Error>(&bytes).unwrap();
+
+            for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
+                *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load the harvard private cache state. Error: {:?}",
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let file = Decoder::new(file).unwrap();
+
+            let helper: Vec<HarvardPrivateCacheHelper> =
+                serde_json::from_reader(file).unwrap();
+
+            for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
+                *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
         }
     }
 }

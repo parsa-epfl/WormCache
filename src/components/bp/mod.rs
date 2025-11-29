@@ -36,6 +36,7 @@ use std::io::Write;
 use super::Plugin;
 use crate::{parameter, qemu_api};
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +45,7 @@ use zstd::{Decoder, Encoder};
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub enum BranchType {
     NonBranch = 0,
     Conditional = 1,
@@ -155,41 +156,63 @@ impl Plugin for BranchPredictorPlugin {
     }
 
     fn serialize(name: &str) {
-        // open a file
-        let mut file = std::fs::File::create(format!("{}/fetch.json.zstd", name)).unwrap();
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let mut file = Encoder::new(&mut file, 0).unwrap();
+        let helper = unsafe { (*FETCH_UNIT).to_checkpoint_helper() };
 
-        // write the content
-        let json = serde_json::to_string(unsafe { &(*FETCH_UNIT) }).unwrap();
-        file.write_all(json.as_bytes()).unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::create(format!("{}/fetch.rkyv.zstd", name)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
 
-        file.finish().unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            encoder.write_all(&bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let file = std::fs::File::create(format!("{}/fetch.json.zstd", name)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
 
-        // unsafe {
-        //     (*FETCH_UNIT).dump_training_trace(name);
-        // }
+            serde_json::to_writer(&mut encoder, &helper).unwrap();
+            encoder.finish().unwrap();
+        }
     }
 
     fn deserialize(name: &str) {
-        // open a file
-        let file = std::fs::File::open(format!("{}/fetch.json.zstd", name));
+        use crate::parameter::USE_RKYV_SERIALIZATION;
+        use crate::checkpoint::helpers::FetchUnitHelper;
 
-        if file.is_err() {
-            println!("Cannot load the fetch unit state. Error: {:?}", file.err());
-            return;
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!("{}/fetch.rkyv.zstd", name));
+
+            if file.is_err() {
+                println!("Cannot load the fetch unit state (rkyv). Error: {:?}", file.err());
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: FetchUnitHelper =
+                rkyv::from_bytes::<FetchUnitHelper, rkyv::rancor::Error>(&bytes).unwrap();
+            unsafe {
+                *FETCH_UNIT = fetch::FetchUnit::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file = std::fs::File::open(format!("{}/fetch.json.zstd", name));
+
+            if file.is_err() {
+                println!("Cannot load the fetch unit state. Error: {:?}", file.err());
+                return;
+            }
+
+            let file = file.unwrap();
+            let decoder = Decoder::new(file).unwrap();
+
+            let helper: FetchUnitHelper = serde_json::from_reader(decoder).unwrap();
+            unsafe {
+                *FETCH_UNIT = fetch::FetchUnit::from_checkpoint_helper(helper);
+            }
         }
-
-        let file = file.unwrap();
-
-        let file = Decoder::new(file).unwrap();
-
-        // read the content
-        let reader = std::io::BufReader::new(file);
-
-        // Deserialize the content
-        let mut reader = serde_json::Deserializer::from_reader(reader);
-
-        Deserialize::deserialize_in_place(&mut reader, unsafe { &mut (*FETCH_UNIT) }).unwrap();
     }
 }

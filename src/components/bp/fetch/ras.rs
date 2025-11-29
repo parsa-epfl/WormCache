@@ -32,18 +32,32 @@
 use std::collections::LinkedList;
 
 use crate::components::bp::BranchResolutionResult;
-use serde::{Deserialize, Serialize};
 
 use super::BranchPredictorResult;
+use crate::checkpoint::helpers::RASHelper;
 
-#[derive(Deserialize, Serialize)]
-pub struct ReturnAddressStacle<const S: usize> {
+#[derive(Debug)]
+pub struct ReturnAddressStack<const S: usize> {
     stack: LinkedList<u64>,
 }
 
-impl<const S: usize> ReturnAddressStacle<S> {
-    pub fn new() -> ReturnAddressStacle<S> {
-        ReturnAddressStacle {
+impl<const S: usize> ReturnAddressStack<S> {
+    pub fn to_checkpoint_helper(&self) -> RASHelper {
+        RASHelper {
+            stack: self.stack.iter().cloned().collect(),
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: RASHelper) -> Self {
+        Self {
+            stack: helper.stack.into_iter().collect(),
+        }
+    }
+}
+
+impl<const S: usize> ReturnAddressStack<S> {
+    pub fn new() -> ReturnAddressStack<S> {
+        ReturnAddressStack {
             stack: LinkedList::new(),
         }
     }

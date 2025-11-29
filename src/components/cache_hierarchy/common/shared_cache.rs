@@ -29,6 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -40,7 +41,7 @@ use serde::Serialize;
 // 3. It will be probably OK to use Mutex.
 //
 
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug, Archive, RkyvDeserialize, RkyvSerialize)]
 pub enum SharedCacheAccessSource {
     Core(u32),
     Device,
@@ -159,7 +160,6 @@ mod lru_shared_cache;
 // pub use replicated::ReplicatedSharedCache;
 pub use lru_shared_cache::LRUSharedCache;
 pub use lru_shared_cache::ParallelLRUSharedCache;
-pub use lru_shared_cache::SingleSharedCacheSerdeHelper;
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
 

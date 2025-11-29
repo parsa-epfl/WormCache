@@ -31,12 +31,13 @@
 
 use crate::components::bp::{BranchResolutionResult, BranchType};
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 use super::BranchPredictorResult;
+use crate::checkpoint::helpers::BTBHelper;
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct BTBEntry {
     pub tag: u64,
     pub target: u64,
@@ -44,12 +45,28 @@ pub struct BTBEntry {
     pub branch_type: BranchType,
 }
 
-#[serde_as]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct BTB<const SET: usize, const ASSO: usize> {
-    #[serde_as(as = "Vec<[_; ASSO]>")]
     array: Vec<[BTBEntry; ASSO]>,
     local_ts: u64,
+}
+
+impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
+    pub fn to_checkpoint_helper(&self) -> BTBHelper {
+        BTBHelper {
+            array: self.array.iter().map(|set| set.to_vec()).collect(),
+            local_ts: self.local_ts,
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: BTBHelper) -> Self {
+        Self {
+            array: helper.array.into_iter().map(|set| {
+                set.try_into().expect("BTB set size mismatch")
+            }).collect(),
+            local_ts: helper.local_ts,
+        }
+    }
 }
 
 impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {

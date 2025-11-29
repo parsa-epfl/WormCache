@@ -80,7 +80,9 @@ type Address = u64;
 
 type History = [bool; MAXHIST];
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FoldedHistory {
     comp: u32,
     c_length: u32,
@@ -117,7 +119,7 @@ impl FoldedHistory {
 }
 
 // bimodal table entry
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TAGEBiModalEntry {
     hyst: i8,
     pred: i8,
@@ -130,7 +132,7 @@ impl TAGEBiModalEntry {
 }
 
 // global table entry
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TAGEGlobalTableEntry {
     ctr: i8,
     tag: u16,
@@ -187,8 +189,7 @@ pub struct TAGETrainingTrace {
     ch_t: [[u32; NHIST]; 2],
 }
 
-#[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct TAGEPredictor {
     // pwin: i32,
 
@@ -198,23 +199,56 @@ pub struct TAGEPredictor {
     pub phist: i32,
 
     // use a path history as for the OGEHL predictor
-    #[serde_as(as = "[_; MAXHIST]")]
     pub ghist: History,
-    #[serde_as(as = "[_; NHIST]")]
     pub ch_i: [FoldedHistory; NHIST],
-    #[serde_as(as = "[[_; NHIST]; 2]")]
     pub ch_t: [[FoldedHistory; NHIST]; 2],
-    #[serde_as(as = "Box<[_; 1 << LOGB]>")]
     pub btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
-    #[serde_as(as = "[Box<[_; 1 << LOGG]>; NHIST]")]
     pub gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
 
     // the seed for pseudo-random number generator
     pub seed: i32,
 
-    #[serde(skip)]
     pub training_trace: Vec<TAGETrainingTrace>,
     // Debugging training trace.
+}
+
+use crate::checkpoint::helpers::TAGEHelper;
+
+impl TAGEPredictor {
+    pub fn to_checkpoint_helper(&self) -> TAGEHelper {
+        TAGEHelper {
+            tick: self.tick,
+            phist: self.phist,
+            ghist: self.ghist.to_vec(),
+            ch_i: self.ch_i.to_vec(),
+            ch_t: self.ch_t.iter().map(|row| row.to_vec()).collect(),
+            btable: self.btable.to_vec(),
+            gtable: self.gtable.iter().map(|table| table.to_vec()).collect(),
+            seed: self.seed,
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: TAGEHelper) -> Self {
+        Self {
+            tick: helper.tick,
+            phist: helper.phist,
+            ghist: helper.ghist.try_into().expect("ghist size mismatch"),
+            ch_i: helper.ch_i.try_into().expect("ch_i size mismatch"),
+            ch_t: helper.ch_t.into_iter()
+                .map(|row| row.try_into().expect("ch_t row size mismatch"))
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("ch_t size mismatch"),
+            btable: helper.btable.into_boxed_slice().try_into().expect("btable size mismatch"),
+            gtable: helper.gtable.into_iter()
+                .map(|table| table.into_boxed_slice().try_into().expect("gtable size mismatch"))
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("gtable size mismatch"),
+            seed: helper.seed,
+            training_trace: Vec::new(),
+        }
+    }
 }
 
 impl TAGEPredictor {

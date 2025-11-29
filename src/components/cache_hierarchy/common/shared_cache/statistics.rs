@@ -29,6 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 use super::super::CacheAccessType;
@@ -44,7 +45,7 @@ pub trait SharedCacheSetStatistics: Default + Debug + Clone + Serialize {
     fn record(&mut self, access_type: CacheAccessType, is_os: bool, is_hit: bool);
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct ZeroSharedCacheSetStatistics {}
 
 impl SharedCacheSetStatistics for ZeroSharedCacheSetStatistics {

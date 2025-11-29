@@ -353,3 +353,13 @@ pub const ENABLE_EXCLUSIVE_CACHE_STATE: bool = true;
  * This is used to record the cache line coherence history so that you can debug the cache coherence protocol.
  */
 pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
+
+/**
+ * Checkpoint serialization format.
+ *
+ * When true, use rkyv for checkpoint serialization (faster and more compact).
+ * When false, use JSON for checkpoint serialization (human-readable, backward compatible).
+ *
+ * Note: MMU serialization always uses JSON due to checkpoint conversion requirements.
+ */
+pub const USE_RKYV_SERIALIZATION: bool = true;

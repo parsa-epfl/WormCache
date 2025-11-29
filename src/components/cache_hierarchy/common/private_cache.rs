@@ -88,11 +88,9 @@ pub trait PrivateCache {
     fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
 }
 
-pub use havard::HarvardPerCorePrivateCacheSerdeHelper;
 pub use havard::ParallelHarvardPrivateCache;
 
 pub use unified::ParallelUnifiedPrivateCache;
-pub use unified::UnifiedPerCorePrivateCacheSerdeHelper;
 
 use crate::components::cache_hierarchy::CacheBlockRequest;
 

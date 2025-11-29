@@ -29,8 +29,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-
+use crate::checkpoint::helpers::UnifiedPrivateCacheHelper;
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
 use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCache};
@@ -46,11 +45,6 @@ pub struct UnifiedPerCorePrivateCache<const SET: usize, const ASSO: usize> {
     cache: Box<[SpinMutex<PrivateCacheSet>; SET]>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UnifiedPerCorePrivateCacheSerdeHelper {
-    pub cache: Vec<PrivateCacheSet>,
-}
-
 impl<const SET: usize, const ASSO: usize> UnifiedPerCorePrivateCache<SET, ASSO> {
     pub fn new() -> Self {
         Self {
@@ -63,17 +57,15 @@ impl<const SET: usize, const ASSO: usize> UnifiedPerCorePrivateCache<SET, ASSO> 
         &self.cache[set_id]
     }
 
-    fn to_serialize_helper(&self) -> UnifiedPerCorePrivateCacheSerdeHelper {
-        let cache = self
-            .cache
-            .iter()
-            .map(|set| set.lock().clone())
-            .collect::<Vec<_>>();
-
-        UnifiedPerCorePrivateCacheSerdeHelper { cache }
+    /// Convert to unified checkpoint helper (used for both JSON and rkyv).
+    pub fn to_checkpoint_helper(&self) -> UnifiedPrivateCacheHelper {
+        UnifiedPrivateCacheHelper {
+            cache: self.cache.iter().map(|set| set.lock().clone()).collect(),
+        }
     }
 
-    fn from_serialize_helper(helper: UnifiedPerCorePrivateCacheSerdeHelper) -> Self {
+    /// Create from unified checkpoint helper.
+    pub fn from_checkpoint_helper(helper: UnifiedPrivateCacheHelper) -> Self {
         let cache = helper
             .cache
             .into_iter()
@@ -230,43 +222,83 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
     }
 
     fn serialize(&self, name: &str, numa_node_id: usize) {
-        let helper = self
+        use crate::parameter::USE_RKYV_SERIALIZATION;
+
+        let helper: Vec<_> = self
             .caches
             .iter()
-            .map(|cache| cache.to_serialize_helper())
-            .collect::<Vec<_>>();
+            .map(|cache| cache.to_checkpoint_helper())
+            .collect();
 
-        let file =
-            std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "unified", numa_node_id))
-                .unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.rkyv.zstd", name, "unified", numa_node_id))
+                    .unwrap();
 
-        let mut file = Encoder::new(file, 0).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "unified", numa_node_id))
+                    .unwrap();
 
-        serde_json::to_writer(&mut file, &helper).unwrap();
+            let mut file = Encoder::new(file, 0).unwrap();
 
-        file.finish().unwrap();
+            serde_json::to_writer(&mut file, &helper).unwrap();
+
+            file.finish().unwrap();
+        }
     }
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize) {
-        let file =
-            std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "unified", numa_node_id));
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        if file.is_err() {
-            println!(
-                "Cannot load the unified private cache. Error: {:?}",
-                file.err()
-            );
-            return;
-        }
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.rkyv.zstd", name, "unified", numa_node_id));
 
-        let file = file.unwrap();
-        let file = Decoder::new(file).unwrap();
+            if file.is_err() {
+                println!(
+                    "Cannot load the unified private cache (rkyv). Error: {:?}",
+                    file.err()
+                );
+                return;
+            }
 
-        let helper: Vec<UnifiedPerCorePrivateCacheSerdeHelper> =
-            serde_json::from_reader(file).unwrap();
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
 
-        for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
-            *cache = UnifiedPerCorePrivateCache::from_serialize_helper(helper);
+            let helper: Vec<UnifiedPrivateCacheHelper> =
+                rkyv::from_bytes::<Vec<UnifiedPrivateCacheHelper>, rkyv::rancor::Error>(&bytes).unwrap();
+
+            for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
+                *cache = UnifiedPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "unified", numa_node_id));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load the unified private cache. Error: {:?}",
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let file = Decoder::new(file).unwrap();
+
+            let helper: Vec<UnifiedPrivateCacheHelper> =
+                serde_json::from_reader(file).unwrap();
+
+            for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
+                *cache = UnifiedPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
         }
     }
 }

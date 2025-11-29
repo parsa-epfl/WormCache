@@ -10,7 +10,8 @@ edition = "2024"
 rand = { version = "0.8.5" }
 serde_json = "1.0.111"
 serde = { version = "1.0", features = ["derive"] }
-bitvec = { version = "1.0.1", features = ["serde"] }
+rkyv = { version = "0.8", features = ["std", "bytecheck"] }
+bitvec = { version = "1.0.1", features = ["serde", "atomic"] }
 plugin_helper = { path = "./plugin_helper" }
 dashmap = "5.5.3"
 gcd = "2.3.0"

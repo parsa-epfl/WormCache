@@ -180,17 +180,17 @@ fn test_resizable_llc() {
     }
 
     // Now, it is time to resize the cache.
-    let big_cache_serial_helper = big_cache.to_serialize_helper();
-    let small_cache_serial_helper = small_cache.to_serialize_helper();
+    let big_cache_serial_helper = big_cache.to_checkpoint_helper();
+    let small_cache_serial_helper = small_cache.to_checkpoint_helper();
 
     // convert these helpers to json Value.
     let big_cache_json = serde_json::to_value(&big_cache_serial_helper).unwrap();
     let small_cache_json = serde_json::to_value(&small_cache_serial_helper).unwrap();
 
-    use worm_cache::checkpoint::cache_hierarchy::SingleSharedCacheSerdeHelper;
-    let mut big_cache_serial_helper: SingleSharedCacheSerdeHelper =
+    use worm_cache::checkpoint::cache_hierarchy::SharedCacheHelper;
+    let mut big_cache_serial_helper: SharedCacheHelper =
         serde_json::from_value(big_cache_json).unwrap();
-    let mut small_cache_serial_helper: SingleSharedCacheSerdeHelper =
+    let mut small_cache_serial_helper: SharedCacheHelper =
         serde_json::from_value(small_cache_json).unwrap();
 
     // Resize the big cache to the small cache.

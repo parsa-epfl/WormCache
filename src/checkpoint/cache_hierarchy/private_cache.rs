@@ -3,10 +3,9 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    checkpoint::{FlexusDirectoryType, FlexusParameter},
+    checkpoint::{helpers::{HarvardPrivateCacheHelper, UnifiedPrivateCacheHelper}, FlexusDirectoryType, FlexusParameter},
     components::cache_hierarchy::common::{
-        HarvardPerCorePrivateCacheSerdeHelper, PrivateCacheLine, PrivateCacheSet,
-        UnifiedPerCorePrivateCacheSerdeHelper,
+        PrivateCacheLine, PrivateCacheSet,
     },
 };
 
@@ -29,7 +28,7 @@ pub struct ExportedDirectoryEntry {
 }
 
 pub struct FlexusPrivateCacheCheckpointHelper {
-    pub caches: Vec<HarvardPerCorePrivateCacheSerdeHelper>,
+    pub caches: Vec<HarvardPrivateCacheHelper>,
     pub directory: Vec<Vec<ExportedDirectoryEntry>>,
     pub evicted_cache_lines: FxHashMap<u64, (PrivateCacheLine, u32)>,
     pub flexus_configuration: FlexusParameter,
@@ -87,7 +86,7 @@ pub fn resize_directory(
     infinite_directory: FxHashMap<u64, BackReferencedEntry>,
     directory_set: usize,
     directory_associativity: usize,
-    harvard: &mut [HarvardPerCorePrivateCacheSerdeHelper],
+    harvard: &mut [HarvardPrivateCacheHelper],
     evicted_cache_line: &mut FxHashMap<u64, (PrivateCacheLine, u32)>,
 ) -> Vec<Vec<ExportedDirectoryEntry>> {
     let mut res: Vec<Vec<(u64, BackReferencedEntry)>> =
@@ -197,7 +196,7 @@ fn render_infinite_directory(
 
 impl FlexusPrivateCacheCheckpointHelper {
     pub fn from_harvard_caches(
-        caches: Vec<HarvardPerCorePrivateCacheSerdeHelper>,
+        caches: Vec<HarvardPrivateCacheHelper>,
         flexus_configuration: &FlexusParameter,
     ) -> Self {
         let mut result = FlexusPrivateCacheCheckpointHelper {
@@ -269,7 +268,7 @@ impl FlexusPrivateCacheCheckpointHelper {
                 }
             }
 
-            let target_harvard = HarvardPerCorePrivateCacheSerdeHelper {
+            let target_harvard = HarvardPrivateCacheHelper {
                 i_cache: new_icache,
                 d_cache: new_dcache,
             };
@@ -316,12 +315,12 @@ impl FlexusPrivateCacheCheckpointHelper {
     }
 }
 
-impl UnifiedPerCorePrivateCacheSerdeHelper {
-    pub fn to_harvard_cache(self) -> HarvardPerCorePrivateCacheSerdeHelper {
+impl UnifiedPrivateCacheHelper {
+    pub fn to_harvard_cache(self) -> HarvardPrivateCacheHelper {
         // Create a harvard cache with the same size.
         let asso = self.cache[0].lines.len();
         let set = self.cache.len();
-        let mut harvard_cache = HarvardPerCorePrivateCacheSerdeHelper {
+        let mut harvard_cache = HarvardPrivateCacheHelper {
             i_cache: vec![],
             d_cache: vec![],
         };
@@ -354,7 +353,7 @@ impl UnifiedPerCorePrivateCacheSerdeHelper {
 
 impl FlexusPrivateCacheCheckpointHelper {
     pub fn from_unified_caches(
-        caches: Vec<UnifiedPerCorePrivateCacheSerdeHelper>,
+        caches: Vec<UnifiedPrivateCacheHelper>,
         flexus_configuration: &FlexusParameter,
     ) -> Self {
         let harvard_caches = caches
