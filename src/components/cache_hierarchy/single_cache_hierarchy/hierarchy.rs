@@ -69,43 +69,64 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
     }
 
     fn serialize_mmus(&self, name: &str, numa_node_id: usize) {
-        let file =
-            std::fs::File::create(format!("{}/mmus-{}.json.zstd", name, numa_node_id)).unwrap();
-        let mut file = Encoder::new(file, 0).unwrap();
+        use crate::checkpoint::helpers::MMUsHelper;
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let multiple_mmus = self
-            .mmus
-            .iter()
-            .map(|x| unsafe { (*x.get()).serialize() })
-            .collect::<Vec<_>>();
+        let mmus_helper = MMUsHelper {
+            mmus: self
+                .mmus
+                .iter()
+                .map(|x| unsafe { (*x.get()).serialize() })
+                .collect(),
+        };
 
-        serde_json::to_writer(&mut file, &serde_json::Value::Array(multiple_mmus)).unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::create(format!("{}/mmus-{}.rkyv.zstd", name, numa_node_id)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
 
-        file.finish().unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmus_helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let file =
+                std::fs::File::create(format!("{}/mmus-{}.json.zstd", name, numa_node_id)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+
+            serde_json::to_writer(&mut encoder, &mmus_helper).unwrap();
+            encoder.finish().unwrap();
+        }
     }
 
     fn deserialize_mmus(&self, name: &str, numa_node_id: usize) {
-        let file = std::fs::File::open(format!("{}/mmus-{}.json.zstd", name, numa_node_id));
-
-        if file.is_err() {
-            println!("Cannot load the MMU state. Error: {:?}", file.err());
-            return;
-        }
-
-        let file = file.unwrap();
-
-        let mut file = Decoder::new(file).unwrap();
-
-        let multiple_mmus: serde_json::Value = serde_json::from_reader(&mut file).unwrap();
-
-        match multiple_mmus {
-            serde_json::Value::Array(mmus) => {
-                for (i, mmu) in mmus.into_iter().enumerate() {
-                    unsafe { (*self.mmus[i].get()).deserialize(mmu) };
-                }
+        // Try rkyv format first, fall back to JSON for backward compatibility
+        let rkyv_path = format!("{}/mmus-{}.rkyv.zstd", name, numa_node_id);
+        let json_path = format!("{}/mmus-{}.json.zstd", name, numa_node_id);
+        
+        if let Ok(file) = std::fs::File::open(&rkyv_path) {
+            // Load rkyv format
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+            
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = 
+                rkyv::from_bytes::<crate::checkpoint::helpers::MMUsHelper, rkyv::rancor::Error>(&bytes).unwrap();
+            
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
             }
-            _ => panic!("Invalid format."),
-        };
+        } else if let Ok(file) = std::fs::File::open(&json_path) {
+            // Fall back to JSON format for backward compatibility
+            let decoder = Decoder::new(file).unwrap();
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = 
+                serde_json::from_reader(decoder).unwrap();
+
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
+            }
+        } else {
+            println!("Cannot load the MMU state. No checkpoint file found.");
+        }
     }
 
     pub fn get_scache_warmed_set_count(&self) -> usize {

@@ -1,3 +1,5 @@
+use crate::checkpoint::helpers::MMUHelper;
+
 use super::{AbstractMMU, MMUFlushMode, MMUTranslationResult};
 
 pub struct NoMMU {}
@@ -22,9 +24,14 @@ impl AbstractMMU for NoMMU {
 
     fn flush(&mut self, _mode: MMUFlushMode) {}
 
-    fn serialize(&self) -> serde_json::Value {
-        serde_json::json!({})
+    fn serialize(&self) -> MMUHelper {
+        MMUHelper::NoMMU(crate::checkpoint::helpers::NoMMUHelper {})
     }
 
-    fn deserialize(&mut self, _: serde_json::Value) {}
+    fn deserialize(&mut self, value: MMUHelper) {
+        match value {
+            MMUHelper::NoMMU(_) => {}
+            _ => panic!("Expected NoMMU helper, got different variant"),
+        }
+    }
 }

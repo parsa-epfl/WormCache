@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use crate::{arch, parameter};
 
 use rustc_hash::FxHashMap as HashMap;
@@ -9,7 +7,7 @@ use super::{
     tlb::{self, AddressSpaceID, FullyAssociativeTLB, TLB},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[repr(align(64))]
 pub struct FullyAssociativeL1MMU<
     ARCH: arch::ISA,
@@ -190,11 +188,32 @@ impl<
         self.stlb.flush(mode);
     }
 
-    fn serialize(&self) -> serde_json::Value {
-        serde_json::to_value(self).unwrap()
+    fn serialize(&self) -> crate::checkpoint::helpers::MMUHelper {
+        use crate::checkpoint::helpers::*;
+        
+        crate::checkpoint::helpers::MMUHelper::FullyAssociativeL1MMU(FullyAssociativeL1MMUHelper {
+            l0_itlb: (self.l0_itlb.0, self.l0_itlb.1.into(), self.l0_itlb.2),
+            stlb: self.stlb.to_checkpoint_helper(),
+            itlb: FullyAssociativeTLBHelper::from(&self.itlb),
+            dtlb: FullyAssociativeTLBHelper::from(&self.dtlb),
+            htbl_2m: HugeTLBHelper::from_hashmap(&self.htbl_2m),
+            htbl_1g: HugeTLBHelper::from_hashmap(&self.htbl_1g),
+        })
     }
 
-    fn deserialize(&mut self, value: serde_json::Value) {
-        *self = serde_json::from_value(value).unwrap();
+    fn deserialize(&mut self, value: crate::checkpoint::helpers::MMUHelper) {
+        use crate::checkpoint::helpers::MMUHelper;
+        
+        match value {
+            MMUHelper::FullyAssociativeL1MMU(helper) => {
+                self.l0_itlb = (helper.l0_itlb.0, helper.l0_itlb.1.into(), helper.l0_itlb.2);
+                self.stlb = TLB::from_checkpoint_helper(helper.stlb);
+                self.itlb = helper.itlb.into_fully_associative_tlb();
+                self.dtlb = helper.dtlb.into_fully_associative_tlb();
+                self.htbl_2m = helper.htbl_2m.into_hashmap();
+                self.htbl_1g = helper.htbl_1g.into_hashmap();
+            }
+            _ => panic!("Expected FullyAssociativeL1MMU helper, got different variant"),
+        }
     }
 }

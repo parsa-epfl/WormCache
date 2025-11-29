@@ -676,3 +676,324 @@ mod fetch_unit_tests {
         assert_eq!(helper.private_units.len(), helper2.private_units.len());
     }
 }
+
+// ============================================================================
+// MMU Helper Tests
+// ============================================================================
+
+mod mmu_tests {
+    use crate::checkpoint::helpers::{
+        AddressSpaceID, TLBEntry, FullyAssociativeTLBEntry, FullyAssociativeTLBHelper,
+        HugeTLBHelper, MMUHelper, MMUsHelper, NoMMUHelper, OrdinaryMMUHelper,
+        TLBHelper, TLBSetHelper, FullyAssociativeL1MMUHelper,
+    };
+
+    fn create_tlb_entry(vpn: u64, ppn: u64, ts: u64, valid: bool) -> TLBEntry {
+        TLBEntry {
+            valid,
+            ts,
+            asid: AddressSpaceID::NonGlobal(42),
+            vpn,
+            ppn,
+            is_instruction: false,
+        }
+    }
+
+    fn create_tlb_helper() -> TLBHelper {
+        TLBHelper {
+            entries: vec![
+                TLBSetHelper {
+                    entries: vec![
+                        create_tlb_entry(0x1000, 0x2000, 100, true),
+                        create_tlb_entry(0x3000, 0x4000, 200, true),
+                        create_tlb_entry(0, 0, 0, false),
+                        create_tlb_entry(0, 0, 0, false),
+                    ],
+                    current_pointer: 2,
+                },
+                TLBSetHelper {
+                    entries: vec![
+                        create_tlb_entry(0x5000, 0x6000, 300, true),
+                        create_tlb_entry(0, 0, 0, false),
+                        create_tlb_entry(0, 0, 0, false),
+                        create_tlb_entry(0, 0, 0, false),
+                    ],
+                    current_pointer: 1,
+                },
+            ],
+        }
+    }
+
+    fn create_fully_associative_tlb_helper() -> FullyAssociativeTLBHelper {
+        FullyAssociativeTLBHelper {
+            elements: vec![
+                (0x12345678, FullyAssociativeTLBEntry { ts: 100, ppn: 0x1000 }),
+                (0x87654321, FullyAssociativeTLBEntry { ts: 200, ppn: 0x2000 }),
+            ],
+            associativity: 64,
+            deferred_elements_exist: false,
+        }
+    }
+
+    fn create_huge_tlb_helper() -> HugeTLBHelper {
+        HugeTLBHelper {
+            entries: vec![
+                (0x100, (AddressSpaceID::Global, 0x200)),
+                (0x300, (AddressSpaceID::NonGlobal(10), 0x400)),
+            ],
+        }
+    }
+
+    fn create_ordinary_mmu_helper() -> OrdinaryMMUHelper {
+        OrdinaryMMUHelper {
+            itlb: create_tlb_helper(),
+            dtlb: create_tlb_helper(),
+            stlb: create_tlb_helper(),
+            htbl_2mb: create_huge_tlb_helper(),
+            htlb_1gb: HugeTLBHelper { entries: vec![] },
+        }
+    }
+
+    #[test]
+    fn test_address_space_id_roundtrip() {
+        // Test Global
+        let asid = AddressSpaceID::Global;
+        let json = serde_json::to_string(&asid).unwrap();
+        let asid2: AddressSpaceID = serde_json::from_str(&json).unwrap();
+        assert_eq!(asid, asid2);
+
+        // Test NonGlobal
+        let asid = AddressSpaceID::NonGlobal(1234);
+        let json = serde_json::to_string(&asid).unwrap();
+        let asid2: AddressSpaceID = serde_json::from_str(&json).unwrap();
+        assert_eq!(asid, asid2);
+
+        // Test rkyv
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&asid).unwrap();
+        let asid3: AddressSpaceID =
+            rkyv::from_bytes::<AddressSpaceID, rkyv::rancor::Error>(&bytes).unwrap();
+        assert_eq!(asid, asid3);
+    }
+
+    #[test]
+    fn test_tlb_entry_json_roundtrip() {
+        let entry = create_tlb_entry(0x1000, 0x2000, 100, true);
+        let json = serde_json::to_string(&entry).unwrap();
+        let entry2: TLBEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(entry.valid, entry2.valid);
+        assert_eq!(entry.ts, entry2.ts);
+        assert_eq!(entry.vpn, entry2.vpn);
+        assert_eq!(entry.ppn, entry2.ppn);
+    }
+
+    #[test]
+    fn test_tlb_entry_rkyv_roundtrip() {
+        let entry = create_tlb_entry(0x1000, 0x2000, 100, true);
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&entry).unwrap();
+        let entry2: TLBEntry =
+            rkyv::from_bytes::<TLBEntry, rkyv::rancor::Error>(&bytes).unwrap();
+
+        assert_eq!(entry.valid, entry2.valid);
+        assert_eq!(entry.ts, entry2.ts);
+        assert_eq!(entry.vpn, entry2.vpn);
+        assert_eq!(entry.ppn, entry2.ppn);
+    }
+
+    #[test]
+    fn test_tlb_helper_json_roundtrip() {
+        let tlb = create_tlb_helper();
+        let json = serde_json::to_string(&tlb).unwrap();
+        let tlb2: TLBHelper = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(tlb.entries.len(), tlb2.entries.len());
+        for (set1, set2) in tlb.entries.iter().zip(tlb2.entries.iter()) {
+            assert_eq!(set1.current_pointer, set2.current_pointer);
+            assert_eq!(set1.entries.len(), set2.entries.len());
+        }
+    }
+
+    #[test]
+    fn test_tlb_helper_rkyv_roundtrip() {
+        let tlb = create_tlb_helper();
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&tlb).unwrap();
+        let tlb2: TLBHelper =
+            rkyv::from_bytes::<TLBHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+        assert_eq!(tlb.entries.len(), tlb2.entries.len());
+    }
+
+    #[test]
+    fn test_fully_associative_tlb_helper_json_roundtrip() {
+        let tlb = create_fully_associative_tlb_helper();
+        let json = serde_json::to_string(&tlb).unwrap();
+        let tlb2: FullyAssociativeTLBHelper = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(tlb.associativity, tlb2.associativity);
+        assert_eq!(tlb.deferred_elements_exist, tlb2.deferred_elements_exist);
+        assert_eq!(tlb.elements.len(), tlb2.elements.len());
+    }
+
+    #[test]
+    fn test_fully_associative_tlb_helper_rkyv_roundtrip() {
+        let tlb = create_fully_associative_tlb_helper();
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&tlb).unwrap();
+        let tlb2: FullyAssociativeTLBHelper =
+            rkyv::from_bytes::<FullyAssociativeTLBHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+        assert_eq!(tlb.associativity, tlb2.associativity);
+        assert_eq!(tlb.elements.len(), tlb2.elements.len());
+    }
+
+    #[test]
+    fn test_huge_tlb_helper_json_roundtrip() {
+        let htlb = create_huge_tlb_helper();
+        let json = serde_json::to_string(&htlb).unwrap();
+        let htlb2: HugeTLBHelper = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(htlb.entries.len(), htlb2.entries.len());
+    }
+
+    #[test]
+    fn test_huge_tlb_helper_rkyv_roundtrip() {
+        let htlb = create_huge_tlb_helper();
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&htlb).unwrap();
+        let htlb2: HugeTLBHelper =
+            rkyv::from_bytes::<HugeTLBHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+        assert_eq!(htlb.entries.len(), htlb2.entries.len());
+    }
+
+    #[test]
+    fn test_ordinary_mmu_helper_json_roundtrip() {
+        let mmu = create_ordinary_mmu_helper();
+        let helper = MMUHelper::OrdinaryMMU(mmu);
+        let json = serde_json::to_string(&helper).unwrap();
+        let helper2: MMUHelper = serde_json::from_str(&json).unwrap();
+
+        match helper2 {
+            MMUHelper::OrdinaryMMU(mmu2) => {
+                assert_eq!(mmu2.itlb.entries.len(), 2);
+                assert_eq!(mmu2.dtlb.entries.len(), 2);
+                assert_eq!(mmu2.stlb.entries.len(), 2);
+            }
+            _ => panic!("Expected OrdinaryMMU variant"),
+        }
+    }
+
+    #[test]
+    fn test_ordinary_mmu_helper_rkyv_roundtrip() {
+        let mmu = create_ordinary_mmu_helper();
+        let helper = MMUHelper::OrdinaryMMU(mmu);
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+        let helper2: MMUHelper =
+            rkyv::from_bytes::<MMUHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+        match helper2 {
+            MMUHelper::OrdinaryMMU(mmu2) => {
+                assert_eq!(mmu2.itlb.entries.len(), 2);
+            }
+            _ => panic!("Expected OrdinaryMMU variant"),
+        }
+    }
+
+    #[test]
+    fn test_fully_associative_l1_mmu_helper_json_roundtrip() {
+        let helper = FullyAssociativeL1MMUHelper {
+            l0_itlb: (0x1000, AddressSpaceID::NonGlobal(42), 0x2000),
+            stlb: create_tlb_helper(),
+            itlb: create_fully_associative_tlb_helper(),
+            dtlb: create_fully_associative_tlb_helper(),
+            htbl_2m: create_huge_tlb_helper(),
+            htbl_1g: HugeTLBHelper { entries: vec![] },
+        };
+        let mmu_helper = MMUHelper::FullyAssociativeL1MMU(helper);
+        let json = serde_json::to_string(&mmu_helper).unwrap();
+        let mmu_helper2: MMUHelper = serde_json::from_str(&json).unwrap();
+
+        match mmu_helper2 {
+            MMUHelper::FullyAssociativeL1MMU(h) => {
+                assert_eq!(h.l0_itlb.0, 0x1000);
+                assert_eq!(h.l0_itlb.2, 0x2000);
+            }
+            _ => panic!("Expected FullyAssociativeL1MMU variant"),
+        }
+    }
+
+    #[test]
+    fn test_fully_associative_l1_mmu_helper_rkyv_roundtrip() {
+        let helper = FullyAssociativeL1MMUHelper {
+            l0_itlb: (0x1000, AddressSpaceID::NonGlobal(42), 0x2000),
+            stlb: create_tlb_helper(),
+            itlb: create_fully_associative_tlb_helper(),
+            dtlb: create_fully_associative_tlb_helper(),
+            htbl_2m: create_huge_tlb_helper(),
+            htbl_1g: HugeTLBHelper { entries: vec![] },
+        };
+        let mmu_helper = MMUHelper::FullyAssociativeL1MMU(helper);
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmu_helper).unwrap();
+        let mmu_helper2: MMUHelper =
+            rkyv::from_bytes::<MMUHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+        match mmu_helper2 {
+            MMUHelper::FullyAssociativeL1MMU(h) => {
+                assert_eq!(h.l0_itlb.0, 0x1000);
+            }
+            _ => panic!("Expected FullyAssociativeL1MMU variant"),
+        }
+    }
+
+    #[test]
+    fn test_no_mmu_helper_json_roundtrip() {
+        let helper = MMUHelper::NoMMU(NoMMUHelper {});
+        let json = serde_json::to_string(&helper).unwrap();
+        let helper2: MMUHelper = serde_json::from_str(&json).unwrap();
+
+        match helper2 {
+            MMUHelper::NoMMU(_) => {}
+            _ => panic!("Expected NoMMU variant"),
+        }
+    }
+
+    #[test]
+    fn test_no_mmu_helper_rkyv_roundtrip() {
+        let helper = MMUHelper::NoMMU(NoMMUHelper {});
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+        let helper2: MMUHelper =
+            rkyv::from_bytes::<MMUHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+        match helper2 {
+            MMUHelper::NoMMU(_) => {}
+            _ => panic!("Expected NoMMU variant"),
+        }
+    }
+
+    #[test]
+    fn test_mmus_helper_json_roundtrip() {
+        let mmus_helper = MMUsHelper {
+            mmus: vec![
+                MMUHelper::OrdinaryMMU(create_ordinary_mmu_helper()),
+                MMUHelper::NoMMU(NoMMUHelper {}),
+            ],
+        };
+        let json = serde_json::to_string(&mmus_helper).unwrap();
+        let mmus_helper2: MMUsHelper = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(mmus_helper.mmus.len(), mmus_helper2.mmus.len());
+    }
+
+    #[test]
+    fn test_mmus_helper_rkyv_roundtrip() {
+        let mmus_helper = MMUsHelper {
+            mmus: vec![
+                MMUHelper::OrdinaryMMU(create_ordinary_mmu_helper()),
+                MMUHelper::NoMMU(NoMMUHelper {}),
+            ],
+        };
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmus_helper).unwrap();
+        let mmus_helper2: MMUsHelper =
+            rkyv::from_bytes::<MMUsHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+        assert_eq!(mmus_helper.mmus.len(), mmus_helper2.mmus.len());
+    }
+}

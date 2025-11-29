@@ -15,11 +15,13 @@
 
 mod bp;
 mod directory;
+mod mmu;
 mod private_cache;
 mod shared_cache;
 
 pub use bp::*;
 pub use directory::*;
+pub use mmu::*;
 pub use private_cache::*;
 pub use shared_cache::*;
 

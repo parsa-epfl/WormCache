@@ -31,12 +31,12 @@
 
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use std::collections::VecDeque;
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
 use super::MMUFlushMode;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy, Eq, Hash, Archive, RkyvDeserialize, RkyvSerialize)]
 pub enum AddressSpaceID {
     Global,
     NonGlobal(u16),
@@ -55,7 +55,7 @@ impl AddressSpaceID {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TLBEntry {
     pub valid: bool,
     pub ts: u64,
@@ -65,10 +65,8 @@ pub struct TLBEntry {
     pub is_instruction: bool,
 }
 
-#[serde_as]
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 struct TLBSet<const ASSO: usize> {
-    #[serde_as(as = "[_; ASSO]")]
     entries: [TLBEntry; ASSO],
     current_pointer: usize,
 }
@@ -146,7 +144,7 @@ impl<const ASSO: usize> TLBSet<ASSO> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct TLB<const SET_COUNT: usize, const ASSO: usize> {
     entries: Vec<TLBSet<ASSO>>,
 }
@@ -246,6 +244,31 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
             }
         }
     }
+
+    /// Convert TLB to a helper struct for serialization.
+    pub fn to_checkpoint_helper(&self) -> crate::checkpoint::helpers::TLBHelper {
+        crate::checkpoint::helpers::TLBHelper {
+            entries: self.entries.iter().map(|set| {
+                crate::checkpoint::helpers::TLBSetHelper {
+                    entries: set.entries.to_vec(),
+                    current_pointer: set.current_pointer,
+                }
+            }).collect(),
+        }
+    }
+
+    /// Restore TLB from a helper struct.
+    pub fn from_checkpoint_helper(helper: crate::checkpoint::helpers::TLBHelper) -> Self {
+        let entries: Vec<TLBSet<ASSO>> = helper.entries.into_iter().map(|set_helper| {
+            let entries: [TLBEntry; ASSO] = set_helper.entries.try_into()
+                .expect("TLB set size mismatch during deserialization");
+            TLBSet {
+                entries,
+                current_pointer: set_helper.current_pointer,
+            }
+        }).collect();
+        Self { entries }
+    }
 }
 
 impl<const SET_COUNT: usize, const ASSO: usize> Default for TLB<SET_COUNT, ASSO> {
@@ -334,18 +357,17 @@ mod tests {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FullyAssociativeTLBEntry {
     pub ts: u64,
     pub ppn: u64,
 }
 
-#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FullyAssociativeTLB {
     pub elements: FxHashMap<u64, FullyAssociativeTLBEntry>,
-    associativity: usize,
-    deferred_elements_exist: bool,
+    pub associativity: usize,
+    pub deferred_elements_exist: bool,
 }
 
 impl FullyAssociativeTLB {

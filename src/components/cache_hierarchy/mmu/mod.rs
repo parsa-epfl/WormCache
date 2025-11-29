@@ -70,8 +70,8 @@ pub trait AbstractMMU {
 
     fn flush(&mut self, mode: MMUFlushMode);
 
-    fn serialize(&self) -> serde_json::Value;
-    fn deserialize(&mut self, value: serde_json::Value);
+    fn serialize(&self) -> MMUHelper;
+    fn deserialize(&mut self, value: MMUHelper);
 }
 
 pub use l1_fully_associative::FullyAssociativeL1MMU;
@@ -79,6 +79,8 @@ pub use no_mmu::NoMMU;
 pub use ordinary_mmu::OrdinaryMMU;
 pub use tlb::FullyAssociativeTLB;
 pub use tlb::TLB;
+
+use crate::checkpoint::helpers::MMUHelper;
 
 #[cfg(test)]
 mod test;

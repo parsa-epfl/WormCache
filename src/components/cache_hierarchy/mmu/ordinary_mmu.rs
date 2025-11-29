@@ -1,5 +1,4 @@
 use rustc_hash::FxHashMap as HashMap;
-use serde::{Deserialize, Serialize};
 
 use crate::debug::statistics::{EventType, Statistics};
 use crate::{arch, parameter};
@@ -9,7 +8,7 @@ use super::{
     tlb::{self, AddressSpaceID, TLB},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 #[repr(align(64))]
 pub struct OrdinaryMMU<
     ARCH: arch::ISA,
@@ -312,11 +311,30 @@ impl<
         self.stlb.lookup(vpn, asid, ts, is_instruction)
     }
 
-    fn serialize(&self) -> serde_json::Value {
-        serde_json::to_value(self).unwrap()
+    fn serialize(&self) -> crate::checkpoint::helpers::MMUHelper {
+        use crate::checkpoint::helpers::*;
+        
+        crate::checkpoint::helpers::MMUHelper::OrdinaryMMU(OrdinaryMMUHelper {
+            itlb: self.itlb.to_checkpoint_helper(),
+            dtlb: self.dtlb.to_checkpoint_helper(),
+            stlb: self.stlb.to_checkpoint_helper(),
+            htbl_2mb: HugeTLBHelper::from_hashmap(&self.htbl_2mb),
+            htlb_1gb: HugeTLBHelper::from_hashmap(&self.htlb_1gb),
+        })
     }
 
-    fn deserialize(&mut self, value: serde_json::Value) {
-        *self = serde_json::from_value(value).unwrap();
+    fn deserialize(&mut self, value: crate::checkpoint::helpers::MMUHelper) {
+        use crate::checkpoint::helpers::MMUHelper;
+        
+        match value {
+            MMUHelper::OrdinaryMMU(helper) => {
+                self.itlb = TLB::from_checkpoint_helper(helper.itlb);
+                self.dtlb = TLB::from_checkpoint_helper(helper.dtlb);
+                self.stlb = TLB::from_checkpoint_helper(helper.stlb);
+                self.htbl_2mb = helper.htbl_2mb.into_hashmap();
+                self.htlb_1gb = helper.htlb_1gb.into_hashmap();
+            }
+            _ => panic!("Expected OrdinaryMMU helper, got different variant"),
+        }
     }
 }
