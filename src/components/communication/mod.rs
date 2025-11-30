@@ -1,10 +1,8 @@
 use crate::{
-    arch::AArch64,
-    components::cache_hierarchy::{
+    arch::AArch64, components::cache_hierarchy::{
         common::L0InstructionCache,
         mmu::{self, AbstractMMU, MMUFlushMode, MMUTranslationResult, tlb::AddressSpaceID},
-    },
-    parameter, qemu_api,
+    }, debug::statistics::Statistics, parameter, qemu_api
 };
 use bitvec::{array::BitArray, order::Lsb0, BitArr};
 use rustc_hash::FxHashMap;
@@ -13,6 +11,9 @@ use spin::Mutex as SpinMutex;
 use std::ffi;
 
 mod aarch64_decoder;
+
+const MODEL_SHARED_MEMORY: bool = false;
+
 
 // Global timestamp updated by QEMU's quantum incremental handler
 #[unsafe(no_mangle)]
@@ -116,8 +117,8 @@ impl ShardedCacheLineRecords {
         is_atomic: bool,
         is_load_exclusive: bool,
         ts: u64,
-        pc: u64,
-        va: u64,
+        _pc: u64,
+        _va: u64,
     ) {
         let shard_idx = Self::get_shard_index(cache_line_id);
         let mut shard = self.shards[shard_idx].lock();
@@ -221,7 +222,7 @@ impl ShardedCacheLineRecords {
         // }
     }
 
-    fn dump_to_json(&self, file_path: &str, total_memory_accesses: u64) {
+    fn dump(&self, file_path: &str, total_memory_accesses: u64) {
         let mut cache_comm_data = FxHashMap::default();
 
         // Collect data from all shards
@@ -246,10 +247,12 @@ impl ShardedCacheLineRecords {
             }
         }
 
-        let json_str =
-            serde_json::to_string_pretty(&(total_memory_accesses, cache_comm_data)).unwrap();
-        std::fs::write(file_path, json_str).unwrap();
-        println!("Dumped cache line communication to {}", file_path);
+        // Serialize with MessagePack and compress with zstd
+        let msgpack_data = rmp_serde::to_vec(&(total_memory_accesses, cache_comm_data)).unwrap();
+        let compressed_data = zstd::encode_all(msgpack_data.as_slice(), 3).unwrap();
+        let compressed_len = compressed_data.len();
+        std::fs::write(file_path, compressed_data).unwrap();
+        println!("Dumped cache line communication to {} (msgpack+zstd, {} bytes)", file_path, compressed_len);
     }
 }
 
@@ -260,16 +263,19 @@ struct PerCoreMemoryAccess {
 }
 
 struct CommunicationRecorder {
-    cache_line_records: ShardedCacheLineRecords,
+    // Interrupt
     last_interrupt_timestamp: Vec<SpinMutex<u64>>,
-    // Per-core interrupt intervals
     interrupt_intervals: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: interval_ns -> count
+
+    // WFI and idle.
     last_wfi_timestamp: Vec<SpinMutex<u64>>,
-    // Per-core idle intervals
     idle_intervals: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: WFI-to-interrupt interval_ns -> count
+
+    // Necessary structure to model shared-memory access.
     mmu_state: Vec<SpinMutex<CommunicationMMU>>,
     l0_cache: L0InstructionCache<{ parameter::CORE_COUNT }>,
     memory_access_count: Vec<SpinMutex<PerCoreMemoryAccess>>,
+    cache_line_records: ShardedCacheLineRecords,
 }
 
 impl CommunicationRecorder {
@@ -365,7 +371,10 @@ impl CommunicationRecorder {
 
     fn record_wfi(&self, core_id: u32, ts: u64) {
         let mut last_wfi_ts = self.last_wfi_timestamp[core_id as usize].lock();
-        *last_wfi_ts = ts;
+        assert!(ts != 0);
+        if *last_wfi_ts == 0 {
+            *last_wfi_ts = ts;
+        }
     }
 
     fn flush_tlb(&self, core_id: u32, mode: MMUFlushMode) {
@@ -416,19 +425,20 @@ impl CommunicationRecorder {
         }
     }
 
-    fn dump_to_json(&self, name: &str) {
-        // Dump cache line communication intervals
-        let cache_comm_file = format!("{}/cache_line_communication.json", name);
-        let total_memory_accesses: u64 = self
-            .memory_access_count
-            .iter()
-            .map(|m| m.lock().total_accesses)
-            .sum();
-        self.cache_line_records
-            .dump_to_json(&cache_comm_file, total_memory_accesses);
+    fn dump(&self) {
+        if MODEL_SHARED_MEMORY {
+            // Dump cache line communication intervals
+            let cache_comm_file = format!("cache_line_communication.msgpack.zstd");
+            let total_memory_accesses: u64 = self
+                .memory_access_count
+                .iter()
+                .map(|m| m.lock().total_accesses)
+                .sum();
+            self.cache_line_records
+                .dump(&cache_comm_file, total_memory_accesses);
+        }
 
         // Dump per-core interrupt intervals
-        let interrupt_file = format!("{}/interrupt_intervals.json", name);
         let mut per_core_interrupt_intervals = FxHashMap::default();
         for (core_id, intervals_lock) in self.interrupt_intervals.iter().enumerate() {
             let intervals = intervals_lock.lock();
@@ -436,12 +446,15 @@ impl CommunicationRecorder {
                 per_core_interrupt_intervals.insert(core_id, intervals.clone());
             }
         }
-        let json_str = serde_json::to_string_pretty(&per_core_interrupt_intervals).unwrap();
-        std::fs::write(&interrupt_file, json_str).unwrap();
-        println!("Dumped per-core interrupt intervals to {}", interrupt_file);
+        let msgpack_data = rmp_serde::to_vec(&per_core_interrupt_intervals).unwrap();
+
+        let interrupt_file = std::fs::File::create("interrupt_intervals.msgpack.zstd").unwrap();
+        let mut encoder = zstd::stream::Encoder::new(interrupt_file, 3).unwrap();
+        std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
+        encoder.finish().unwrap();
+        println!("Dumped per-core interrupt intervals to interrupt_intervals.msgpack.zstd (msgpack+zstd)");
 
         // Dump per-core idle intervals (WFI to interrupt)
-        let idle_file = format!("{}/idle_intervals.json", name);
         let mut per_core_idle_intervals = FxHashMap::default();
         for (core_id, intervals_lock) in self.idle_intervals.iter().enumerate() {
             let intervals = intervals_lock.lock();
@@ -449,9 +462,13 @@ impl CommunicationRecorder {
                 per_core_idle_intervals.insert(core_id, intervals.clone());
             }
         }
-        let json_str = serde_json::to_string_pretty(&per_core_idle_intervals).unwrap();
-        std::fs::write(&idle_file, json_str).unwrap();
-        println!("Dumped per-core idle intervals to {}", idle_file);
+        let msgpack_data = rmp_serde::to_vec(&per_core_idle_intervals).unwrap();
+
+        let idle_file = std::fs::File::create("idle_intervals.msgpack.zstd").unwrap();
+        let mut encoder = zstd::stream::Encoder::new(idle_file, 3).unwrap();
+        std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
+        encoder.finish().unwrap();
+        println!("Dumped per-core idle intervals to idle_intervals.msgpack.zstd (msgpack+zstd)");
     }
 }
 
@@ -472,12 +489,13 @@ unsafe extern "C" fn periodic_checking_callback(_diff: u64) -> bool {
             // Serialize the data
             if !PLUGIN.is_null() {
                 let recorder = &*PLUGIN;
-                let snapshot_name = format!("communication_final_{}", current_time);
-                std::fs::create_dir_all(&snapshot_name).unwrap();
-                recorder.dump_to_json(&snapshot_name);
+                recorder.dump();
             }
 
             println!("Communication plugin: Serialization complete. Exiting...");
+
+            // Save the statistics.
+            Statistics::save_to_csv("statistics.final.csv", current_time);
             std::process::exit(0);
         }
     }
@@ -599,7 +617,6 @@ unsafe extern "C" fn vcpu_tlb_flush(
 unsafe extern "C" fn vcpu_interrupt_delivered(vcpu_idx: u32) {
     unsafe {
         let ts = std::ptr::addr_of!(QUANTUM_GENERATION).read_volatile() * 100;
-
         let recorder = &*PLUGIN;
         recorder.record_interrupt(vcpu_idx, ts);
     }
@@ -684,7 +701,9 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
             qemu_api::qemu_plugin_register_on_deliver_interrupt_cb(Some(vcpu_interrupt_delivered));
 
             // Register TLB flush callback
-            qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_tlb_flush));
+            if MODEL_SHARED_MEMORY {
+                qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_tlb_flush));
+            }
         }
     }
 
@@ -746,12 +765,14 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                     | ((is_load_exclusive as u64) << 50)
                     | (offset << 51);
 
-                qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
-                    i,
-                    Some(vcpu_insn_exec),
-                    qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                    combined as *mut ffi::c_void,
-                );
+                if MODEL_SHARED_MEMORY {
+                    qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                        i,
+                        Some(vcpu_insn_exec),
+                        qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                        combined as *mut ffi::c_void,
+                    );
+                }
             }
 
             // Check for WFI instructions and register callback
@@ -769,6 +790,10 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                         std::ptr::null_mut(),
                     );
                 }
+            }
+
+            if MODEL_SHARED_MEMORY == false {
+                return;
             }
 
             // bind the memory callback.
