@@ -262,6 +262,26 @@ struct PerCoreMemoryAccess {
     __padding: [u64; 7], // Padding to avoid false sharing
 }
 
+// Thresholds for busy-wait detection
+const BUSY_WAIT_INSTRUCTION_THRESHOLD: u64 = 30; // Less than 30 instructions between WFE
+const BUSY_WAIT_TIME_THRESHOLD: u64 = 100; // Less than 1 quantum (100 ns)
+
+// Per-core WFE state for spin detection
+#[derive(Clone, Debug)]
+struct WFEState {
+    last_instruction_count: u64,
+    last_timestamp: u64,
+}
+
+impl WFEState {
+    fn new() -> Self {
+        WFEState {
+            last_instruction_count: 0,
+            last_timestamp: 0,
+        }
+    }
+}
+
 struct CommunicationRecorder {
     // Interrupt
     last_interrupt_timestamp: Vec<SpinMutex<u64>>,
@@ -270,6 +290,13 @@ struct CommunicationRecorder {
     // WFI and idle.
     last_wfi_timestamp: Vec<SpinMutex<u64>>,
     idle_intervals: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: WFI-to-interrupt interval_ns -> count
+
+    // WFE spin detection
+    wfe_state: Vec<SpinMutex<WFEState>>,
+    wfe_total_count: Vec<SpinMutex<u64>>, // per-core: total count of WFE instructions executed
+    wfe_busy_wait_count: Vec<SpinMutex<u64>>, // per-core: count of detected busy-wait loops
+    wfe_instruction_diff_distribution: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: instruction_diff -> count
+    wfe_time_diff_distribution: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: time_diff_ns -> count
 
     // Necessary structure to model shared-memory access.
     mmu_state: Vec<SpinMutex<CommunicationMMU>>,
@@ -285,6 +312,11 @@ impl CommunicationRecorder {
         let mut mmu_state = Vec::with_capacity(parameter::CORE_COUNT);
         let mut interrupt_intervals = Vec::with_capacity(parameter::CORE_COUNT);
         let mut idle_intervals = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut wfe_state = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut wfe_total_count = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut wfe_busy_wait_count = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut wfe_instruction_diff_distribution = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut wfe_time_diff_distribution = Vec::with_capacity(parameter::CORE_COUNT);
 
         for _ in 0..parameter::CORE_COUNT {
             last_interrupt_timestamp.push(SpinMutex::new(0));
@@ -292,6 +324,11 @@ impl CommunicationRecorder {
             mmu_state.push(SpinMutex::new(CommunicationMMU::new()));
             interrupt_intervals.push(SpinMutex::new(FxHashMap::default()));
             idle_intervals.push(SpinMutex::new(FxHashMap::default()));
+            wfe_state.push(SpinMutex::new(WFEState::new()));
+            wfe_total_count.push(SpinMutex::new(0));
+            wfe_busy_wait_count.push(SpinMutex::new(0));
+            wfe_instruction_diff_distribution.push(SpinMutex::new(FxHashMap::default()));
+            wfe_time_diff_distribution.push(SpinMutex::new(FxHashMap::default()));
         }
 
         CommunicationRecorder {
@@ -300,6 +337,11 @@ impl CommunicationRecorder {
             interrupt_intervals,
             last_wfi_timestamp,
             idle_intervals,
+            wfe_state,
+            wfe_total_count,
+            wfe_busy_wait_count,
+            wfe_instruction_diff_distribution,
+            wfe_time_diff_distribution,
             mmu_state,
             l0_cache: L0InstructionCache::new(),
             memory_access_count: (0..parameter::CORE_COUNT)
@@ -375,6 +417,40 @@ impl CommunicationRecorder {
         if *last_wfi_ts == 0 {
             *last_wfi_ts = ts;
         }
+    }
+
+    fn record_wfe(&self, core_id: u32, ts: u64, instruction_count: u64) {
+        // Increment total WFE count for this core
+        *self.wfe_total_count[core_id as usize].lock() += 1;
+        
+        let mut state = self.wfe_state[core_id as usize].lock();
+        
+        // Check if we have a previous WFE to compare against
+        if state.last_timestamp > 0 {
+            // Calculate differences
+            let instruction_diff = instruction_count.saturating_sub(state.last_instruction_count);
+            let time_diff = ts.saturating_sub(state.last_timestamp);
+            
+            // Record in distributions for later analysis
+            *self.wfe_instruction_diff_distribution[core_id as usize]
+                .lock()
+                .entry(instruction_diff)
+                .or_insert(0) += 1;
+            
+            *self.wfe_time_diff_distribution[core_id as usize]
+                .lock()
+                .entry(time_diff)
+                .or_insert(0) += 1;
+            
+            // Check if this looks like a busy-wait loop
+            if instruction_diff < BUSY_WAIT_INSTRUCTION_THRESHOLD && time_diff < BUSY_WAIT_TIME_THRESHOLD {
+                *self.wfe_busy_wait_count[core_id as usize].lock() += 1;
+            }
+        }
+        
+        // Update state for next WFE comparison
+        state.last_instruction_count = instruction_count;
+        state.last_timestamp = ts;
     }
 
     fn flush_tlb(&self, core_id: u32, mode: MMUFlushMode) {
@@ -469,6 +545,35 @@ impl CommunicationRecorder {
         std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
         encoder.finish().unwrap();
         println!("Dumped per-core idle intervals to idle_intervals.msgpack.zstd (msgpack+zstd)");
+
+        // Dump WFE spin detection data
+        // Format: (total_wfe_count, busy_wait_count, instruction_diff_distribution, time_diff_distribution)
+        let mut wfe_data: FxHashMap<usize, (u64, u64, FxHashMap<u64, u64>, FxHashMap<u64, u64>)> = FxHashMap::default();
+        for core_id in 0..parameter::CORE_COUNT {
+            let total_count = *self.wfe_total_count[core_id].lock();
+            let busy_wait_count = *self.wfe_busy_wait_count[core_id].lock();
+            let instruction_diff_dist = self.wfe_instruction_diff_distribution[core_id].lock().clone();
+            let time_diff_dist = self.wfe_time_diff_distribution[core_id].lock().clone();
+            
+            // Only include cores that have WFE data
+            if total_count > 0 || busy_wait_count > 0 || !instruction_diff_dist.is_empty() || !time_diff_dist.is_empty() {
+                wfe_data.insert(core_id, (total_count, busy_wait_count, instruction_diff_dist, time_diff_dist));
+            }
+        }
+        
+        if !wfe_data.is_empty() {
+            let msgpack_data = rmp_serde::to_vec(&wfe_data).unwrap();
+            let wfe_file = std::fs::File::create("wfe_spin_detection.msgpack.zstd").unwrap();
+            let mut encoder = zstd::stream::Encoder::new(wfe_file, 3).unwrap();
+            std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
+            encoder.finish().unwrap();
+            println!("Dumped WFE spin detection data to wfe_spin_detection.msgpack.zstd (msgpack+zstd)");
+            
+            // Print summary
+            let total_wfe: u64 = wfe_data.values().map(|(total, _, _, _)| total).sum();
+            let total_busy_wait: u64 = wfe_data.values().map(|(_, count, _, _)| count).sum();
+            println!("WFE spin detection summary: {} total WFE instructions, {} busy-wait loop iterations detected", total_wfe, total_busy_wait);
+        }
     }
 }
 
@@ -631,6 +736,18 @@ unsafe extern "C" fn vcpu_exec_wfi(vcpu_idx: u32, _: *mut ffi::c_void) {
     }
 }
 
+unsafe extern "C" fn vcpu_exec_wfe(vcpu_idx: u32, _: *mut ffi::c_void) {
+    unsafe {
+        let ts = std::ptr::addr_of!(QUANTUM_GENERATION).read_volatile() * 100;
+        
+        // Get instruction count from statistics
+        let (instruction_count, _, _) = Statistics::global_query_record(vcpu_idx, crate::debug::statistics::EventType::Instruction);
+        
+        let recorder = &*PLUGIN;
+        recorder.record_wfe(vcpu_idx, ts, instruction_count);
+    }
+}
+
 pub struct CommunicationRecordingPlugin {}
 
 impl super::super::Plugin for CommunicationRecordingPlugin {
@@ -775,17 +892,28 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                 }
             }
 
-            // Check for WFI instructions and register callback
+            // Check for WFI and WFE instructions and register callbacks
             for i in 0..n_instruction {
                 let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
                 let literal = qemu_api::qemu_plugin_insn_data(inst) as *const u32;
                 let literal = *literal;
 
-                // WFI instruction encoding for AArch64
+                // WFI instruction encoding for AArch64: 0xD503207F
                 if literal == 0b_1101_0101_0000_0011_0010_0000_0111_1111 {
                     qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
                         inst,
                         Some(vcpu_exec_wfi),
+                        qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                        std::ptr::null_mut(),
+                    );
+                }
+                
+                // WFE instruction encoding for AArch64: 0xD503205F
+                // Binary: 1101_0101_0000_0011_0010_0000_0101_1111
+                if literal == 0b_1101_0101_0000_0011_0010_0000_0101_1111 {
+                    qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                        inst,
+                        Some(vcpu_exec_wfe),
                         qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
                         std::ptr::null_mut(),
                     );

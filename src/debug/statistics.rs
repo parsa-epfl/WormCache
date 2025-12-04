@@ -107,6 +107,7 @@ pub enum EventType {
     Prefetches,
     UselessPrefetches,
     UnknownPrefetches,
+    WaitForEvent,
 }
 
 #[repr(align(64))]
