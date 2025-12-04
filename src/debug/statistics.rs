@@ -108,6 +108,7 @@ pub enum EventType {
     UselessPrefetches,
     UnknownPrefetches,
     WaitForEvent,
+    CompareAndSwap,
 }
 
 #[repr(align(64))]

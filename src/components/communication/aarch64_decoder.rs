@@ -46,6 +46,52 @@ pub fn is_load_exclusive(insn: u32) -> bool {
     true
 }
 
+/// Check if an instruction is a Compare and Swap (CAS) operation
+///
+/// CAS instructions include:
+/// - CAS, CASA, CASAL, CASL (compare and swap word/doubleword)
+/// - CASB, CASAB, CASALB, CASLB (compare and swap byte)
+/// - CASH, CASAH, CASALH, CASLH (compare and swap halfword)
+/// - CASP, CASPA, CASPAL, CASPL (compare and swap pair)
+///
+/// Encoding (ARM DDI0602 A64 ISA):
+/// | 1 | x | 0 | 0 | 1 | 0 | 0 | 0 | 1 | L | 1 | Rs | o0 | 1 | 1 | 1 | 1 | 1 | Rn | Rt |
+/// |size |          29:24       |23 |22 |21|20:16|15 |      14:10      | 9:5| 4:0|
+///
+/// bits [31:30] = size (00=byte, 01=half, 10=word, 11=double)
+/// bits [29:24] = 001000
+/// bit  [23] = 1 (atomic, distinguishes from load/store exclusive which have 0)
+/// bit  [22] = L (acquire semantics)
+/// bit  [21] = 1 (fixed for CAS)
+/// bits [20:16] = Rs (source register)
+/// bit  [15] = o0 (release semantics)
+/// bits [14:10] = 11111 (Rt2 field, fixed for CAS/CASP)
+/// bits [9:5] = Rn (base address register)
+/// bits [4:0] = Rt (destination register)
+///
+/// Reference: ARM ARM DDI0602 CAS, CASA, CASAL, CASL
+#[inline]
+pub fn is_cas_operation(insn: u32) -> bool {
+    // Check bits [29:21] = 001000 1 L 1 pattern
+    // bits [29:24] = 001000, bit [23] = 1, bit [21] = 1
+    // bit [22] (L) can be 0 or 1 for acquire variants
+    let bits_29_24 = (insn >> 24) & 0x3F;
+    let bit_23 = (insn >> 23) & 1;
+    let bit_21 = (insn >> 21) & 1;
+    
+    if bits_29_24 != 0b001000 || bit_23 != 1 || bit_21 != 1 {
+        return false;
+    }
+    
+    // Check bits [14:10] = 11111 (Rt2 field, fixed for CAS/CASP)
+    let bits_14_10 = (insn >> 10) & 0x1F;
+    if bits_14_10 == 0x1F {
+        return true;
+    }
+    
+    false
+}
+
 /// Check if an instruction is an atomic memory operation
 ///
 /// Atomic instructions include LSE (Large System Extension) atomics:
@@ -288,5 +334,38 @@ mod tests {
         // STR w0, [x1] - regular store, not atomic
         let insn: u32 = 0xb9000020; // STR w0, [x1]
         assert!(!is_atomic_operation(insn));
+    }
+    
+    #[test]
+    fn test_cas_operation() {
+        // CAS w0, w1, [x2] - compare and swap
+        // Encoding: size|001000|1|A|R|1|Rs|o|11111|Rn|Rt
+        // 10 001000 1 0 0 1 Rs 0 11111 Rn Rt
+        let insn: u32 = 0x88a07c41; // CAS w0, w1, [x2]
+        assert!(is_cas_operation(insn));
+        assert!(is_atomic_operation(insn));
+    }
+    
+    #[test]
+    fn test_casa_operation() {
+        // CASA w0, w1, [x2] - compare and swap acquire
+        let insn: u32 = 0x88e07c41; // CASA w0, w1, [x2]
+        assert!(is_cas_operation(insn));
+        assert!(is_atomic_operation(insn));
+    }
+    
+    #[test]
+    fn test_casal_operation() {
+        // CASAL w0, w1, [x2] - compare and swap acquire-release
+        let insn: u32 = 0x88e0fc41; // CASAL w0, w1, [x2]
+        assert!(is_cas_operation(insn));
+        assert!(is_atomic_operation(insn));
+    }
+    
+    #[test]
+    fn test_regular_load_not_cas() {
+        // LDR w0, [x1] - regular load, not CAS
+        let insn: u32 = 0xb9400020; // LDR w0, [x1]
+        assert!(!is_cas_operation(insn));
     }
 }

@@ -263,7 +263,7 @@ struct PerCoreMemoryAccess {
 }
 
 // Thresholds for busy-wait detection
-const BUSY_WAIT_INSTRUCTION_THRESHOLD: u64 = 30; // Less than 30 instructions between WFE
+const BUSY_WAIT_INSTRUCTION_THRESHOLD: u64 = 30; // Less than 30 instructions between WFE/CAS
 const BUSY_WAIT_TIME_THRESHOLD: u64 = 100; // Less than 1 quantum (100 ns)
 
 // Per-core WFE state for spin detection
@@ -278,6 +278,29 @@ impl WFEState {
         WFEState {
             last_instruction_count: 0,
             last_timestamp: 0,
+        }
+    }
+}
+
+// Per-PC CAS state for spin detection with address tracking
+// A CAS is recognized as entering a busy-wait loop when:
+// 1. It's executed again with the same memory address
+// 2. The instruction difference is less than the threshold
+#[derive(Clone, Debug)]
+struct CASPCState {
+    last_instruction_count: u64,
+    last_timestamp: u64,
+    last_address: u64,        // Physical address of last CAS access
+    in_busy_wait: bool,       // Whether this PC is currently in a busy-wait loop
+}
+
+impl CASPCState {
+    fn new() -> Self {
+        CASPCState {
+            last_instruction_count: 0,
+            last_timestamp: 0,
+            last_address: 0,
+            in_busy_wait: false,
         }
     }
 }
@@ -298,6 +321,15 @@ struct CommunicationRecorder {
     wfe_instruction_diff_distribution: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: instruction_diff -> count
     wfe_time_diff_distribution: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: time_diff_ns -> count
 
+    // CAS spin detection with per-PC tracking
+    // Each core has a hashtable: PC -> CASPCState
+    cas_pc_state: Vec<SpinMutex<FxHashMap<u64, CASPCState>>>,
+    cas_total_count: Vec<SpinMutex<u64>>, // per-core: total count of CAS instructions executed
+    cas_busy_wait_count: Vec<SpinMutex<u64>>, // per-core: count of detected busy-wait loop iterations
+    cas_busy_wait_entry_count: Vec<SpinMutex<u64>>, // per-core: count of busy-wait loop entries (first spin detection)
+    cas_instruction_diff_distribution: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: instruction_diff -> count
+    cas_time_diff_distribution: Vec<SpinMutex<FxHashMap<u64, u64>>>, // per-core: time_diff_ns -> count
+
     // Necessary structure to model shared-memory access.
     mmu_state: Vec<SpinMutex<CommunicationMMU>>,
     l0_cache: L0InstructionCache<{ parameter::CORE_COUNT }>,
@@ -317,6 +349,12 @@ impl CommunicationRecorder {
         let mut wfe_busy_wait_count = Vec::with_capacity(parameter::CORE_COUNT);
         let mut wfe_instruction_diff_distribution = Vec::with_capacity(parameter::CORE_COUNT);
         let mut wfe_time_diff_distribution = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut cas_pc_state = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut cas_total_count = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut cas_busy_wait_count = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut cas_busy_wait_entry_count = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut cas_instruction_diff_distribution = Vec::with_capacity(parameter::CORE_COUNT);
+        let mut cas_time_diff_distribution = Vec::with_capacity(parameter::CORE_COUNT);
 
         for _ in 0..parameter::CORE_COUNT {
             last_interrupt_timestamp.push(SpinMutex::new(0));
@@ -329,6 +367,12 @@ impl CommunicationRecorder {
             wfe_busy_wait_count.push(SpinMutex::new(0));
             wfe_instruction_diff_distribution.push(SpinMutex::new(FxHashMap::default()));
             wfe_time_diff_distribution.push(SpinMutex::new(FxHashMap::default()));
+            cas_pc_state.push(SpinMutex::new(FxHashMap::default()));
+            cas_total_count.push(SpinMutex::new(0));
+            cas_busy_wait_count.push(SpinMutex::new(0));
+            cas_busy_wait_entry_count.push(SpinMutex::new(0));
+            cas_instruction_diff_distribution.push(SpinMutex::new(FxHashMap::default()));
+            cas_time_diff_distribution.push(SpinMutex::new(FxHashMap::default()));
         }
 
         CommunicationRecorder {
@@ -342,6 +386,12 @@ impl CommunicationRecorder {
             wfe_busy_wait_count,
             wfe_instruction_diff_distribution,
             wfe_time_diff_distribution,
+            cas_pc_state,
+            cas_total_count,
+            cas_busy_wait_count,
+            cas_busy_wait_entry_count,
+            cas_instruction_diff_distribution,
+            cas_time_diff_distribution,
             mmu_state,
             l0_cache: L0InstructionCache::new(),
             memory_access_count: (0..parameter::CORE_COUNT)
@@ -451,6 +501,68 @@ impl CommunicationRecorder {
         // Update state for next WFE comparison
         state.last_instruction_count = instruction_count;
         state.last_timestamp = ts;
+    }
+
+    /// Record a CAS instruction execution with memory access information.
+    /// 
+    /// The spin detection logic:
+    /// 1. Track state per (core, PC) pair in a hashtable
+    /// 2. A CAS is considered part of a busy-wait loop when:
+    ///    - Same PC executed again
+    ///    - Same memory address (physical)
+    ///    - Instruction difference < threshold (30 instructions)
+    /// 3. A busy-wait "entry" is counted only on the first spin detection for a PC
+    ///    (when in_busy_wait transitions from false to true)
+    fn record_cas(&self, core_id: u32, pc: u64, pa: u64, ts: u64, instruction_count: u64) {
+        // Increment total CAS count for this core
+        *self.cas_total_count[core_id as usize].lock() += 1;
+        
+        let mut pc_states = self.cas_pc_state[core_id as usize].lock();
+        let state = pc_states.entry(pc).or_insert_with(CASPCState::new);
+        
+        // Check if we have a previous CAS at this PC to compare against
+        if state.last_timestamp > 0 {
+            // Calculate differences
+            let instruction_diff = instruction_count.saturating_sub(state.last_instruction_count);
+            let time_diff = ts.saturating_sub(state.last_timestamp);
+            
+            // Record in distributions for later analysis
+            *self.cas_instruction_diff_distribution[core_id as usize]
+                .lock()
+                .entry(instruction_diff)
+                .or_insert(0) += 1;
+            
+            *self.cas_time_diff_distribution[core_id as usize]
+                .lock()
+                .entry(time_diff)
+                .or_insert(0) += 1;
+            
+            // Check if this looks like a busy-wait loop:
+            // - Same address as before
+            // - Instruction difference below threshold
+            let same_address = state.last_address == pa;
+            let is_spinning = same_address && instruction_diff < BUSY_WAIT_INSTRUCTION_THRESHOLD;
+            
+            if is_spinning {
+                // Count this as a busy-wait iteration
+                *self.cas_busy_wait_count[core_id as usize].lock() += 1;
+                
+                // If this is a new entry into busy-wait (wasn't spinning before),
+                // count it as an entry
+                if !state.in_busy_wait {
+                    *self.cas_busy_wait_entry_count[core_id as usize].lock() += 1;
+                    state.in_busy_wait = true;
+                }
+            } else {
+                // Not spinning anymore (address changed or too many instructions)
+                state.in_busy_wait = false;
+            }
+        }
+        
+        // Update state for next CAS comparison at this PC
+        state.last_instruction_count = instruction_count;
+        state.last_timestamp = ts;
+        state.last_address = pa;
     }
 
     fn flush_tlb(&self, core_id: u32, mode: MMUFlushMode) {
@@ -574,6 +686,37 @@ impl CommunicationRecorder {
             let total_busy_wait: u64 = wfe_data.values().map(|(_, count, _, _)| count).sum();
             println!("WFE spin detection summary: {} total WFE instructions, {} busy-wait loop iterations detected", total_wfe, total_busy_wait);
         }
+
+        // Dump CAS spin detection data
+        // Format: (total_cas_count, busy_wait_count, busy_wait_entry_count, instruction_diff_distribution, time_diff_distribution)
+        let mut cas_data: FxHashMap<usize, (u64, u64, u64, FxHashMap<u64, u64>, FxHashMap<u64, u64>)> = FxHashMap::default();
+        for core_id in 0..parameter::CORE_COUNT {
+            let total_count = *self.cas_total_count[core_id].lock();
+            let busy_wait_count = *self.cas_busy_wait_count[core_id].lock();
+            let busy_wait_entry_count = *self.cas_busy_wait_entry_count[core_id].lock();
+            let instruction_diff_dist = self.cas_instruction_diff_distribution[core_id].lock().clone();
+            let time_diff_dist = self.cas_time_diff_distribution[core_id].lock().clone();
+            
+            // Only include cores that have CAS data
+            if total_count > 0 || busy_wait_count > 0 || busy_wait_entry_count > 0 || !instruction_diff_dist.is_empty() || !time_diff_dist.is_empty() {
+                cas_data.insert(core_id, (total_count, busy_wait_count, busy_wait_entry_count, instruction_diff_dist, time_diff_dist));
+            }
+        }
+        
+        if !cas_data.is_empty() {
+            let msgpack_data = rmp_serde::to_vec(&cas_data).unwrap();
+            let cas_file = std::fs::File::create("cas_spin_detection.msgpack.zstd").unwrap();
+            let mut encoder = zstd::stream::Encoder::new(cas_file, 3).unwrap();
+            std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
+            encoder.finish().unwrap();
+            println!("Dumped CAS spin detection data to cas_spin_detection.msgpack.zstd (msgpack+zstd)");
+            
+            // Print summary
+            let total_cas: u64 = cas_data.values().map(|(total, _, _, _, _)| total).sum();
+            let total_busy_wait: u64 = cas_data.values().map(|(_, count, _, _, _)| count).sum();
+            let total_entries: u64 = cas_data.values().map(|(_, _, entries, _, _)| entries).sum();
+            println!("CAS spin detection summary: {} total CAS, {} busy-wait iterations, {} busy-wait entries", total_cas, total_busy_wait, total_entries);
+        }
     }
 }
 
@@ -625,11 +768,13 @@ unsafe extern "C" fn vcpu_mem_access(
             // Bits [48:0]: instruction virtual address (49 bits)
             // Bit  [49]:   is_atomic flag
             // Bit  [50]:   is_load_exclusive flag
-            // Bits [51+]:  offset
+            // Bit  [51]:   is_cas flag
+            // Bits [52+]:  offset
             let userdata = inst_virtual_addr as u64;
             let inst_virtual_addr = userdata & 0x1_ffff_ffff_ffff;
             let is_atomic = ((userdata >> 49) & 1) != 0;
             let is_load_exclusive = ((userdata >> 50) & 1) != 0;
+            let is_cas = ((userdata >> 51) & 1) != 0;
             
             let is_os = (inst_virtual_addr >> 48) & 1 == 1;
             let pc = if is_os { inst_virtual_addr | 0xffff_0000_0000_0000 } else { inst_virtual_addr };
@@ -637,20 +782,34 @@ unsafe extern "C" fn vcpu_mem_access(
 
             let recorder = &*PLUGIN;
 
-            // Record the memory access
-            recorder.record_memory_access(
-                vcpu_idx, 
-                pa, 
-                false,        // is_instruction
-                is_atomic,
-                is_load_exclusive,
-                is_store,
-                is_os,
-                false,        // is_page_walk (handled separately in translate_and_record)
-                ts,
-                pc,
-                vaddr
-            );
+            // Handle CAS instruction spin detection
+            if is_cas {
+                // Get instruction count from statistics
+                let (instruction_count, _, _) = Statistics::global_query_record(vcpu_idx, crate::debug::statistics::EventType::Instruction);
+                
+                // Record CompareAndSwap in global statistics
+                Statistics::global_record(vcpu_idx, crate::debug::statistics::EventType::CompareAndSwap, is_os);
+                
+                // Record CAS with physical address for spin detection
+                recorder.record_cas(vcpu_idx, pc, pa, ts, instruction_count);
+            }
+
+            // Record the memory access (only if MODEL_SHARED_MEMORY is enabled)
+            if MODEL_SHARED_MEMORY {
+                recorder.record_memory_access(
+                    vcpu_idx, 
+                    pa, 
+                    false,        // is_instruction
+                    is_atomic,
+                    is_load_exclusive,
+                    is_store,
+                    is_os,
+                    false,        // is_page_walk (handled separately in translate_and_record)
+                    ts,
+                    pc,
+                    vaddr
+                );
+            }
         }
     }
 }
@@ -743,10 +902,17 @@ unsafe extern "C" fn vcpu_exec_wfe(vcpu_idx: u32, _: *mut ffi::c_void) {
         // Get instruction count from statistics
         let (instruction_count, _, _) = Statistics::global_query_record(vcpu_idx, crate::debug::statistics::EventType::Instruction);
         
+        // Record WaitForEvent in global statistics
+        let is_os = false; // WFE is typically executed in user space for spin locks
+        Statistics::global_record(vcpu_idx, crate::debug::statistics::EventType::WaitForEvent, is_os);
+        
         let recorder = &*PLUGIN;
         recorder.record_wfe(vcpu_idx, ts, instruction_count);
     }
 }
+
+// Note: CAS handling has been moved to vcpu_mem_access callback
+// because CAS spin detection requires the physical address of the memory access
 
 pub struct CommunicationRecordingPlugin {}
 
@@ -835,7 +1001,7 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
             assert!(n_instruction < 32768);
 
             let mut block_id = vec![];
-            let mut insn_flags = vec![]; // Store (is_atomic, is_load_exclusive) for each instruction
+            let mut insn_flags = vec![]; // Store (is_atomic, is_load_exclusive, is_cas) for each instruction
             
             for i in 0..n_instruction {
                 let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
@@ -858,8 +1024,9 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                 
                 let is_atomic = aarch64_decoder::is_atomic_operation(insn_word);
                 let is_load_exclusive = aarch64_decoder::is_load_exclusive(insn_word);
+                let is_cas = aarch64_decoder::is_cas_operation(insn_word);
                 
-                insn_flags.push((is_atomic, is_load_exclusive));
+                insn_flags.push((is_atomic, is_load_exclusive, is_cas));
             }
 
             let fb_info = crate::util::find_fetch_block_from_block_id_sequence(block_id);
@@ -875,12 +1042,14 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                 // Bits [48:0]: instruction virtual address (49 bits)
                 // Bit  [49]:   is_atomic flag
                 // Bit  [50]:   is_load_exclusive flag
-                // Bits [51+]:  offset
-                let (is_atomic, is_load_exclusive) = insn_flags[idx as usize];
+                // Bit  [51]:   is_cas flag  
+                // Bits [52+]:  offset
+                let (is_atomic, is_load_exclusive, is_cas) = insn_flags[idx as usize];
                 let combined = insn_addr 
                     | ((is_atomic as u64) << 49)
                     | ((is_load_exclusive as u64) << 50)
-                    | (offset << 51);
+                    | ((is_cas as u64) << 51)
+                    | (offset << 52);
 
                 if MODEL_SHARED_MEMORY {
                     qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
@@ -918,15 +1087,22 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                         std::ptr::null_mut(),
                     );
                 }
-            }
-
-            if MODEL_SHARED_MEMORY == false {
-                return;
+                
+                // CAS instructions are handled in the memory callback below
+                // where we have access to the physical address
             }
 
             // bind the memory callback.
+            // Note: We register memory callbacks for CAS instructions regardless of MODEL_SHARED_MEMORY
+            // because CAS spin detection requires the physical address from memory accesses.
             for i in 0..n_instruction {
                 let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+                let (is_atomic, is_load_exclusive, is_cas) = insn_flags[i as usize];
+                
+                // Skip non-CAS instructions if MODEL_SHARED_MEMORY is false
+                if !MODEL_SHARED_MEMORY && !is_cas {
+                    continue;
+                }
 
                 let insn_addr =
                     (qemu_api::qemu_plugin_insn_vaddr(inst) as u64) & 0x1_ffff_ffff_ffff;
@@ -936,12 +1112,13 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                 // Bits [48:0]: instruction virtual address (49 bits)
                 // Bit  [49]:   is_atomic flag
                 // Bit  [50]:   is_load_exclusive flag
-                // Bits [51+]:  offset
-                let (is_atomic, is_load_exclusive) = insn_flags[i as usize];
+                // Bit  [51]:   is_cas flag
+                // Bits [52+]:  offset
                 let combined = insn_addr 
                     | ((is_atomic as u64) << 49)
                     | ((is_load_exclusive as u64) << 50)
-                    | (offset << 51);
+                    | ((is_cas as u64) << 51)
+                    | (offset << 52);
 
                 qemu_api::qemu_plugin_register_vcpu_mem_cb(
                     inst,
