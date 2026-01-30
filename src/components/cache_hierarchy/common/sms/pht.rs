@@ -1,20 +1,16 @@
-
-use serde::{Deserialize, Serialize};
-use spin::mutex::SpinMutex;
-use crate::{components::cache_hierarchy::CacheBlockRequest};
 use super::acc::AccTableEntry;
 use super::util;
+use crate::checkpoint::helpers::{PHTEntryHelper, PHTPerCoreHelper, PHTSetHelper};
+use crate::components::cache_hierarchy::CacheBlockRequest;
+use serde::{Deserialize, Serialize};
+use spin::mutex::SpinMutex;
 use zstd::{Decoder, Encoder};
 
 // Store all three types of patterns even if not used
 // TODO: can be optimized later
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PHTEntry<
-    const N_BLK: usize,
-    const ROT: bool,
-    const SEP_RDWR: bool,
-    const SAT_CNT: bool,
-> {
+pub struct PHTEntry<const N_BLK: usize, const ROT: bool, const SEP_RDWR: bool, const SAT_CNT: bool>
+{
     pub tag: u64,
     pub access_pattern: Vec<u8>,
     pub write_pattern: Vec<u8>,
@@ -23,24 +19,15 @@ pub struct PHTEntry<
     pub valid: bool,
 }
 
-impl<
-    const N_BLK: usize,
-    const ROT: bool,
-    const SEP_RDWR: bool,
-    const SAT_CNT: bool,
-> PHTEntry<N_BLK, ROT, SEP_RDWR, SAT_CNT> {
+impl<const N_BLK: usize, const ROT: bool, const SEP_RDWR: bool, const SAT_CNT: bool>
+    PHTEntry<N_BLK, ROT, SEP_RDWR, SAT_CNT>
+{
     pub fn new() -> Self {
         Self {
             tag: 0,
-            access_pattern: Vec::from_iter(
-                std::iter::repeat(1).take(N_BLK)
-            ),
-            write_pattern: Vec::from_iter(
-                std::iter::repeat(1).take(N_BLK)
-            ),
-            read_pattern: Vec::from_iter(
-                std::iter::repeat(1).take(N_BLK)
-            ),
+            access_pattern: Vec::from_iter(std::iter::repeat(1).take(N_BLK)),
+            write_pattern: Vec::from_iter(std::iter::repeat(1).take(N_BLK)),
+            read_pattern: Vec::from_iter(std::iter::repeat(1).take(N_BLK)),
             ts: 0,
             valid: false,
         }
@@ -54,10 +41,14 @@ impl<
             for i in 0..N_BLK {
                 self.read_pattern[i] = if acc_entry.access_pattern[i] {
                     if acc_entry.read_pattern[i] { 2 } else { 1 }
-                } else { 1 };
+                } else {
+                    1
+                };
                 self.write_pattern[i] = if acc_entry.access_pattern[i] {
                     if acc_entry.read_pattern[i] { 1 } else { 2 }
-                } else { 1 };
+                } else {
+                    1
+                };
             }
         } else {
             for i in 0..N_BLK {
@@ -105,7 +96,10 @@ impl<
                     read_pattern[i] = acc_entry.read_pattern[i];
                     write_pattern[i] = !acc_entry.read_pattern[i];
                 } else {
-                    assert!(!acc_entry.read_pattern[i], "Read Bit cannot be set while Access Bit Unset");
+                    assert!(
+                        !acc_entry.read_pattern[i],
+                        "Read Bit cannot be set while Access Bit Unset"
+                    );
                     read_pattern[i] = false;
                     write_pattern[i] = false;
                 }
@@ -122,7 +116,10 @@ impl<
                 access_pattern[i] = acc_entry.access_pattern[i];
             }
             if ROT {
-                util::rotate_left_arr::<bool, N_BLK>(&mut access_pattern, acc_entry.offset as usize);
+                util::rotate_left_arr::<bool, N_BLK>(
+                    &mut access_pattern,
+                    acc_entry.offset as usize,
+                );
             }
             self.update_pattern(&access_pattern, util::PatternType::Access);
         }
@@ -134,7 +131,7 @@ impl<
             true => match is_read {
                 true => &self.read_pattern,
                 false => &self.write_pattern,
-            }
+            },
             false => &self.access_pattern,
         };
         let mut bit_vector = [false; N_BLK];
@@ -142,6 +139,30 @@ impl<
             bit_vector[i] = value >= 2;
         }
         bit_vector
+    }
+
+    /// Convert to checkpoint helper (used for both JSON and rkyv).
+    pub fn to_checkpoint_helper(&self) -> PHTEntryHelper {
+        PHTEntryHelper {
+            tag: self.tag,
+            access_pattern: self.access_pattern.clone(),
+            write_pattern: self.write_pattern.clone(),
+            read_pattern: self.read_pattern.clone(),
+            ts: self.ts,
+            valid: self.valid,
+        }
+    }
+
+    /// Create from checkpoint helper.
+    pub fn from_checkpoint_helper(helper: PHTEntryHelper) -> Self {
+        Self {
+            tag: helper.tag,
+            access_pattern: helper.access_pattern,
+            write_pattern: helper.write_pattern,
+            read_pattern: helper.read_pattern,
+            ts: helper.ts,
+            valid: helper.valid,
+        }
     }
 }
 
@@ -169,7 +190,7 @@ impl<
     pub fn new() -> Self {
         Self {
             entries: Vec::from_iter(
-                std::iter::repeat(PHTEntry::<N_BLK, ROT, SEP_RDWR, SAT_CNT>::new()).take(PHT_WAYS)
+                std::iter::repeat(PHTEntry::<N_BLK, ROT, SEP_RDWR, SAT_CNT>::new()).take(PHT_WAYS),
             ),
         }
     }
@@ -190,7 +211,7 @@ impl<
         let mut lru_idx = 0;
         let mut lru_ts = u64::MAX;
         assert!(acc_entry.valid, "Cannot insert invalid entry into PHT");
-        
+
         for (i, entry) in self.entries.iter_mut().enumerate() {
             if entry.tag == tag && entry.valid {
                 entry.update(acc_entry);
@@ -218,6 +239,27 @@ impl<
         }
     }
 
+    /// Convert to checkpoint helper (used for both JSON and rkyv).
+    pub fn to_checkpoint_helper(&self) -> PHTSetHelper {
+        PHTSetHelper {
+            entries: self
+                .entries
+                .iter()
+                .map(|e| e.to_checkpoint_helper())
+                .collect(),
+        }
+    }
+
+    /// Create from checkpoint helper.
+    pub fn from_checkpoint_helper(helper: PHTSetHelper) -> Self {
+        Self {
+            entries: helper
+                .entries
+                .into_iter()
+                .map(PHTEntry::<N_BLK, ROT, SEP_RDWR, SAT_CNT>::from_checkpoint_helper)
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -230,20 +272,8 @@ pub struct PHTPerCore<
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
 > {
-    pub sets: Box<[SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>>; PHT_SETS]>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PHTPerCoreSerdeHelper<
-    const PHT_SETS: usize,
-    const PHT_WAYS: usize,
-    const N_BLK: usize,
-    const ROT: bool,
-    const SEP_RDWR: bool,
-    const SAT_CNT: bool,
-    const PERFECT_PHT: bool,
-> {
-    pub sets: Vec<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>>
+    pub sets:
+        Box<[SpinMutex<PHTSet<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>>; PHT_SETS]>,
 }
 
 impl<
@@ -258,27 +288,42 @@ impl<
 {
     pub fn new() -> Self {
         Self {
-            sets: crate::util::init_heap_array(|_| SpinMutex::new(PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new())),
+            sets: crate::util::init_heap_array(|_| {
+                SpinMutex::new(
+                    PHTSet::<PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new(),
+                )
+            }),
         }
     }
 
-    fn from_serialize_helper(helper: PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>) -> Self {
-        let mut sets = Vec::with_capacity(PHT_SETS);
-        for set in helper.sets {
-            sets.push(SpinMutex::new(set));
-        }
-        Self {
-            sets: sets.into_boxed_slice().try_into().unwrap(),
-        }
-    }
-
-    fn to_serialize_helper(&self) -> PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT> {
-        PHTPerCoreSerdeHelper {
+    /// Convert to checkpoint helper (used for both JSON and rkyv).
+    pub fn to_checkpoint_helper(&self) -> PHTPerCoreHelper {
+        PHTPerCoreHelper {
             sets: self
                 .sets
                 .iter()
-                .map(|set| set.lock().clone())
+                .map(|set| set.lock().to_checkpoint_helper())
                 .collect(),
+        }
+    }
+
+    /// Create from checkpoint helper.
+    pub fn from_checkpoint_helper(helper: PHTPerCoreHelper) -> Self {
+        let mut sets = Vec::with_capacity(PHT_SETS);
+        for set_helper in helper.sets {
+            sets.push(SpinMutex::new(PHTSet::<
+                PHT_WAYS,
+                N_BLK,
+                ROT,
+                SEP_RDWR,
+                SAT_CNT,
+                PERFECT_PHT,
+            >::from_checkpoint_helper(
+                set_helper
+            )));
+        }
+        Self {
+            sets: sets.into_boxed_slice().try_into().unwrap(),
         }
     }
 
@@ -302,7 +347,10 @@ impl<
         let key = self.build_key(pc, offset);
         let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
         let tag = key >> PHT_SETS.trailing_zeros();
-        match self.sets[set_idx  as usize].lock().lookup(tag, !request.is_store(), ts) {
+        match self.sets[set_idx as usize]
+            .lock()
+            .lookup(tag, !request.is_store(), ts)
+        {
             Some(mut bitvec) => {
                 if ROT {
                     util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
@@ -337,7 +385,9 @@ pub struct PHT<
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
 > {
-    pub tables: Box<[PHTPerCore<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>; CORE_COUNT]>,
+    pub tables: Box<
+        [PHTPerCore<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>; CORE_COUNT],
+    >,
 }
 
 impl<
@@ -353,7 +403,9 @@ impl<
 {
     pub fn new() -> Self {
         Self {
-            tables: crate::util::init_heap_array(|_| PHTPerCore::< PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new()),
+            tables: crate::util::init_heap_array(|_| {
+                PHTPerCore::<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new()
+            }),
         }
     }
 
@@ -367,46 +419,76 @@ impl<
     }
 
     pub fn serialize(&self, name: &str, numa_node_id: usize) {
-        let helper = self
+        use crate::parameter::USE_RKYV_SERIALIZATION;
+
+        let helper: Vec<PHTPerCoreHelper> = self
             .tables
             .iter()
-            .map(|table| table.to_serialize_helper())
-            .collect::<Vec<_>>();
+            .map(|table| table.to_checkpoint_helper())
+            .collect();
 
-        let file = 
-            std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "pht", numa_node_id))
-                .unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.rkyv.zstd", name, "pht", numa_node_id))
+                    .unwrap();
 
-        let mut file = Encoder::new(file, 0).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "pht", numa_node_id))
+                    .unwrap();
 
-        serde_json::to_writer(&mut file, &helper).unwrap();
-
-        file.finish().unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+            serde_json::to_writer(&mut encoder, &helper).unwrap();
+            encoder.finish().unwrap();
+        }
     }
 
     pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
-        let file =
-            std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "pht", numa_node_id));
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        if file.is_err() {
-            println!(
-                "Cannot load the PHT. Error: {:?}",
-                file.err()
-            );
-            return;
-        }
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.rkyv.zstd", name, "pht", numa_node_id));
 
-        let file = file.unwrap();
-        let mut file = Decoder::new(file).unwrap();
+            if file.is_err() {
+                println!("Cannot load the PHT state (rkyv). Error: {:?}", file.err());
+                return;
+            }
 
-        let helper: Vec<PHTPerCoreSerdeHelper<PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>> =
-            serde_json::from_reader(&mut file).unwrap();
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
 
-        for (table, helper) in self.tables.iter_mut().zip(helper.into_iter()) {
-            *table = PHTPerCore::from_serialize_helper(helper);
+            let helper: Vec<PHTPerCoreHelper> =
+                rkyv::from_bytes::<Vec<PHTPerCoreHelper>, rkyv::rancor::Error>(&bytes).unwrap();
+
+            for (table, helper) in self.tables.iter_mut().zip(helper.into_iter()) {
+                *table = PHTPerCore::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "pht", numa_node_id));
+
+            if file.is_err() {
+                println!("Cannot load the PHT state. Error: {:?}", file.err());
+                return;
+            }
+
+            let file = file.unwrap();
+            let decoder = Decoder::new(file).unwrap();
+
+            let helper: Vec<PHTPerCoreHelper> = serde_json::from_reader(decoder).unwrap();
+
+            for (table, helper) in self.tables.iter_mut().zip(helper.into_iter()) {
+                *table = PHTPerCore::from_checkpoint_helper(helper);
+            }
         }
     }
-
 }
 
 pub type ParallelPHT<
