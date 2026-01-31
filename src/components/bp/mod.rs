@@ -118,6 +118,17 @@ const ALLOCATED_CORE: usize = if parameter::MEASURE_HALF_OF_CORES {
 
 static mut FETCH_UNIT: *mut fetch::FetchUnit<{ ALLOCATED_CORE }> = std::ptr::null_mut();
 
+/**
+ * Whether to record BBV inside the fetch unit.
+ *
+ * By default, this should be turned off for serious performance measurement.
+ */
+const RECORDING_BBV: bool = true;
+
+mod bbv;
+
+static mut BBV_RECORDER: *mut bbv::BBVRecorder<{ ALLOCATED_CORE }> = std::ptr::null_mut();
+
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
     unsafe {
         if parameter::MEASURE_HALF_OF_CORES && vcpu_index >= parameter::CORE_COUNT as u32 / 2 {
@@ -125,7 +136,11 @@ unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, f
         }
 
         let result = BranchResolutionResult::from_u32(flags);
-        (*FETCH_UNIT).train(vcpu_index as usize, pc, result, target)
+        (*FETCH_UNIT).train(vcpu_index as usize, pc, result, target);
+
+        if RECORDING_BBV {
+            (*BBV_RECORDER).record(vcpu_index as usize, target);
+        }
     }
 }
 
@@ -150,6 +165,10 @@ impl Plugin for BranchPredictorPlugin {
 
         unsafe {
             FETCH_UNIT = Box::into_raw(Box::new(fetch::FetchUnit::new()));
+
+            if RECORDING_BBV {
+                BBV_RECORDER = Box::into_raw(Box::new(bbv::BBVRecorder::new()));
+            }
         }
     }
 
@@ -175,6 +194,12 @@ impl Plugin for BranchPredictorPlugin {
 
             serde_json::to_writer(&mut encoder, &helper).unwrap();
             encoder.finish().unwrap();
+        }
+
+        if RECORDING_BBV {
+            unsafe {
+                (*BBV_RECORDER).save_and_clear(name);
+            }
         }
     }
 
