@@ -32,7 +32,7 @@
 use rustc_hash::FxHashMap;
 
 use super::Plugin;
-use crate::arch::{aarch64, ISA};
+use crate::arch::{ISA, aarch64};
 use crate::qemu_api;
 use std::ffi::{self, c_void};
 
@@ -76,7 +76,6 @@ unsafe extern "C" fn vcpu_mem_access(
             let _ttbr1 = qemu_api::qemu_plugin_read_ttbr_el1(1);
             // let ttbr = qemu_api::qemu_plugin_read_ttbr_el1(if is_kernel { 1 } else { 0 });
             // let tcr = qemu_api::qemu_plugin_read_tcr_el1();
-
 
             let res = aarch64::AArch64::ptw(va);
 

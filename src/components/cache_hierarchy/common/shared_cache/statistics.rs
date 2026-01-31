@@ -45,7 +45,9 @@ pub trait SharedCacheSetStatistics: Default + Debug + Clone + Serialize {
     fn record(&mut self, access_type: CacheAccessType, is_os: bool, is_hit: bool);
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(
+    Debug, Serialize, Deserialize, Clone, Default, Archive, RkyvDeserialize, RkyvSerialize,
+)]
 pub struct ZeroSharedCacheSetStatistics {}
 
 impl SharedCacheSetStatistics for ZeroSharedCacheSetStatistics {
@@ -143,7 +145,7 @@ impl SharedCacheSetStatistics for SharedCacheSetMissStatistics {
                     self.ptw_miss_count += 1;
                 }
 
-                _ => {},
+                _ => {}
             }
 
             if is_os {
@@ -161,7 +163,7 @@ impl SharedCacheSetStatistics for SharedCacheSetMissStatistics {
                     CacheAccessType::PageWalkRead => {
                         self.ptw_miss_count_k += 1;
                     }
-                    _ => {},
+                    _ => {}
                 }
             } else {
                 self.miss_count_u += 1;
@@ -178,7 +180,7 @@ impl SharedCacheSetStatistics for SharedCacheSetMissStatistics {
                     CacheAccessType::PageWalkRead => {
                         self.ptw_miss_count_u += 1;
                     }
-                    _ => {},
+                    _ => {}
                 }
             }
         }

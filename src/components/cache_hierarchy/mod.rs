@@ -124,10 +124,9 @@ impl CacheBlockRequest {
         match self.access_type {
             CacheAccessType::DataRead => CacheAccessType::PrefetchRead,
             CacheAccessType::DataWrite => CacheAccessType::PrefetchWrite,
-            _  => unreachable!(),
+            _ => unreachable!(),
         }
     }
-
 }
 
 pub trait MemoryHierarchy {

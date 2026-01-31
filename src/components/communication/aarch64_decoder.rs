@@ -4,7 +4,7 @@
 /// if they are atomic operations or load-exclusive operations.
 
 /// Check if an instruction is a load-exclusive operation
-/// 
+///
 /// Load-exclusive instructions include:
 /// - LDXR, LDXRB, LDXRH, LDXP (basic exclusive loads)
 /// - LDAXR, LDAXRB, LDAXRH, LDAXP (acquire exclusive loads)  
@@ -22,25 +22,25 @@ pub fn is_load_exclusive(insn: u32) -> bool {
     if bits_29_24 != 0x08 {
         return false;
     }
-    
+
     // Bit [23] must be 0 for exclusive operations (not atomic)
     let bit_23 = (insn >> 23) & 1;
     if bit_23 != 0 {
         return false;
     }
-    
+
     // Bit [22] = L, must be 1 for loads
     let l_bit = (insn >> 22) & 1;
     if l_bit != 1 {
         return false;
     }
-    
+
     // Bit [21] = o0, affects operation type
     // Bit [15] = o1, affects operation type
     // Rs [20:16] should be 0b11111 for non-pair loads
     // For LDXR/LDAXR: o0 can be 0 or 1, o1 determines acquire semantics
     // For LDXP/LDAXP: o0=1 for pair operations
-    
+
     // All load-exclusive operations are valid here
     // The architecture guarantees this is a load-exclusive variant
     true
@@ -78,17 +78,17 @@ pub fn is_cas_operation(insn: u32) -> bool {
     let bits_29_24 = (insn >> 24) & 0x3F;
     let bit_23 = (insn >> 23) & 1;
     let bit_21 = (insn >> 21) & 1;
-    
+
     if bits_29_24 != 0b001000 || bit_23 != 1 || bit_21 != 1 {
         return false;
     }
-    
+
     // Check bits [14:10] = 11111 (Rt2 field, fixed for CAS/CASP)
     let bits_14_10 = (insn >> 10) & 0x1F;
     if bits_14_10 == 0x1F {
         return true;
     }
-    
+
     false
 }
 
@@ -119,8 +119,8 @@ pub fn is_cas_operation(insn: u32) -> bool {
 /// Also includes traditional store-exclusive operations that pair with load-exclusive.
 #[inline]
 pub fn is_atomic_operation(insn: u32) -> bool {
-    let op0 = (insn >> 28) & 0xF;  // bits [31:28]
-    
+    let op0 = (insn >> 28) & 0xF; // bits [31:28]
+
     // LSE Atomic memory operations (ARMv8.1-A)
     // Encoding: size|111|0|00|A|R|1|Rs|opc|00|Rn|Rt
     //           31 30|29-27|26|25-24|23|22|21|20-16|15-12|11-10|9-5|4-0
@@ -136,7 +136,7 @@ pub fn is_atomic_operation(insn: u32) -> bool {
     // bits [4:0] = Rt (data register)
     //
     // Reference: ARM ARM C6.2.131-C6.2.140 (LDADD through LDUMIN, SWP)
-    
+
     // Check for LSE atomic operations pattern
     // Pattern: size 111 0 00 A R 1
     if op0 == 0b1011 || op0 == 0b1111 || op0 == 0b0011 || op0 == 0b0111 {
@@ -144,33 +144,32 @@ pub fn is_atomic_operation(insn: u32) -> bool {
         // bit [21] should be 1
         let bits_29_24 = (insn >> 24) & 0x3F;
         let bit_21 = (insn >> 21) & 1;
-        
+
         if bits_29_24 == 0b111000 && bit_21 == 1 {
             // Check bits [11:10] should be 00
             let bits_11_10 = (insn >> 10) & 0x3;
             if bits_11_10 != 0 {
                 return false;
             }
-            
+
             // This is an LSE atomic operation
             // opc field determines the operation type
             let opc = (insn >> 12) & 0xF;
-            
+
             // Valid atomic opcodes:
             // 0000: LDADD   0100: LDEOR   1000: LDSMAX   1100: LDUMAX
             // 0001: LDCLR   0101: LDSET   1001: LDSMIN   1101: LDUMIN
             // 0011: SWP
-            
+
             match opc {
-                0b0000 | 0b0001 | 0b0011 | 0b0100 | 0b0101 |
-                0b1000 | 0b1001 | 0b1100 | 0b1101 => {
+                0b0000 | 0b0001 | 0b0011 | 0b0100 | 0b0101 | 0b1000 | 0b1001 | 0b1100 | 0b1101 => {
                     return true;
                 }
                 _ => {}
             }
         }
     }
-    
+
     // Compare and Swap (CAS) family
     // Encoding: size|001000|1|A|R|1|Rs|o|11111|Rn|Rt
     //           31 30|29  24|23|22|21|20-16|15|14-10|9-5|4-0
@@ -184,15 +183,18 @@ pub fn is_atomic_operation(insn: u32) -> bool {
     //
     // Reference: ARM ARM C6.2.40 (CAS), C6.2.41 (CASP)
     let bits_29_21 = (insn >> 21) & 0x1FF;
-    if bits_29_21 == 0b001000111 || bits_29_21 == 0b001000101 ||
-       bits_29_21 == 0b001000110 || bits_29_21 == 0b001000100 {
+    if bits_29_21 == 0b001000111
+        || bits_29_21 == 0b001000101
+        || bits_29_21 == 0b001000110
+        || bits_29_21 == 0b001000100
+    {
         // CAS, CASA, CASAL, CASL variants
         let bits_14_10 = (insn >> 10) & 0x1F;
         if bits_14_10 == 0x1F {
             return true;
         }
     }
-    
+
     // Store-Exclusive operations (STXR, STXRB, STXRH, STXP, STLXR, etc.)
     // These are atomic in the sense they pair with load-exclusive
     // Encoding: size|001000|0|L|o0|Rs|o1|Rt2|Rn|Rt
@@ -209,7 +211,7 @@ pub fn is_atomic_operation(insn: u32) -> bool {
     //         return true;
     //     }
     // }
-    
+
     // LD64B / ST64B family (64-byte atomics)
     // LD64B:  11 011 0 01 0 1 11111 0101 01 Rn Rt
     // ST64B:  11 011 0 01 1 0 11111 0101 00 Rn Rt
@@ -221,7 +223,7 @@ pub fn is_atomic_operation(insn: u32) -> bool {
     //         return true;
     //     }
     // }
-    
+
     // SWPP family (quadword swap) - ARMv8.4-A
     // Encoding similar to other atomics but with pair bit set
     if (insn >> 21) & 0x1FF == 0b111000011 {
@@ -235,7 +237,7 @@ pub fn is_atomic_operation(insn: u32) -> bool {
             }
         }
     }
-    
+
     // RCW (Read-Check-Write) atomics - ARMv8.9-A / ARMv9.4-A
     // RCWCAS, RCWCLR, RCWSET, RCWSWP, RCWSCAS, RCWSCLR, RCWSSET, RCWSSWP
     // Encoding: size 011 000 1 A R 1 Rs opc 0 S Rn Rt
@@ -247,14 +249,14 @@ pub fn is_atomic_operation(insn: u32) -> bool {
             return true;
         }
     }
-    
+
     false
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_load_exclusive_ldxr() {
         // LDXR w0, [x1]  - 32-bit load exclusive
@@ -262,65 +264,65 @@ mod tests {
         let insn: u32 = 0x885f7c20; // LDXR w0, [x1]
         assert!(is_load_exclusive(insn));
     }
-    
+
     #[test]
     fn test_load_exclusive_ldaxr() {
         // LDAXR w0, [x1] - 32-bit load-acquire exclusive
         let insn: u32 = 0x885ffc20; // LDAXR w0, [x1]
         assert!(is_load_exclusive(insn));
     }
-    
+
     #[test]
     fn test_load_exclusive_ldxrb() {
         // LDXRB w0, [x1] - byte load exclusive
         let insn: u32 = 0x085f7c20; // LDXRB w0, [x1]
         assert!(is_load_exclusive(insn));
     }
-    
+
     #[test]
     fn test_load_exclusive_ldxrh() {
         // LDXRH w0, [x1] - halfword load exclusive
         let insn: u32 = 0x485f7c20; // LDXRH w0, [x1]
         assert!(is_load_exclusive(insn));
     }
-    
+
     #[test]
     fn test_atomic_ldadd() {
         // LDADD w0, w1, [x2] - atomic add
         // Encoding: size 111 0 00 A R 1 Rs opc 00 Rn Rt
         // Let's debug the actual encoding
         let insn: u32 = 0xb8200041; // LDADD w0, w1, [x2]
-        
+
         // Debug: print the instruction bits
         println!("LDADD instruction: 0x{:08x}", insn);
         println!("Bits [31:28] (op0): 0b{:04b}", (insn >> 28) & 0xF);
         println!("Bits [29:21]: 0b{:09b}", (insn >> 21) & 0x1FF);
         println!("Bits [15:12] (opc): 0b{:04b}", (insn >> 12) & 0xF);
-        
+
         assert!(is_atomic_operation(insn));
     }
-    
+
     #[test]
     fn test_atomic_swp() {
         // SWP w0, w1, [x2] - swap
         let insn: u32 = 0xb8208041; // SWP w0, w1, [x2]
-        
+
         // Debug: print the instruction bits
         println!("SWP instruction: 0x{:08x}", insn);
         println!("Bits [31:28] (op0): 0b{:04b}", (insn >> 28) & 0xF);
         println!("Bits [29:21]: 0b{:09b}", (insn >> 21) & 0x1FF);
         println!("Bits [15:12] (opc): 0b{:04b}", (insn >> 12) & 0xF);
-        
+
         assert!(is_atomic_operation(insn));
     }
-    
+
     // #[test]
     // fn test_store_exclusive() {
     //     // STXR w0, w1, [x2] - store exclusive (atomic when paired with LDXR)
     //     let insn: u32 = 0x88007c41; // STXR w0, w1, [x2]
     //     assert!(is_atomic_operation(insn));
     // }
-    
+
     #[test]
     fn test_regular_load_not_exclusive() {
         // LDR w0, [x1] - regular load, not exclusive
@@ -328,14 +330,14 @@ mod tests {
         assert!(!is_load_exclusive(insn));
         assert!(!is_atomic_operation(insn));
     }
-    
+
     #[test]
     fn test_regular_store_not_atomic() {
         // STR w0, [x1] - regular store, not atomic
         let insn: u32 = 0xb9000020; // STR w0, [x1]
         assert!(!is_atomic_operation(insn));
     }
-    
+
     #[test]
     fn test_cas_operation() {
         // CAS w0, w1, [x2] - compare and swap
@@ -345,7 +347,7 @@ mod tests {
         assert!(is_cas_operation(insn));
         assert!(is_atomic_operation(insn));
     }
-    
+
     #[test]
     fn test_casa_operation() {
         // CASA w0, w1, [x2] - compare and swap acquire
@@ -353,7 +355,7 @@ mod tests {
         assert!(is_cas_operation(insn));
         assert!(is_atomic_operation(insn));
     }
-    
+
     #[test]
     fn test_casal_operation() {
         // CASAL w0, w1, [x2] - compare and swap acquire-release
@@ -361,7 +363,7 @@ mod tests {
         assert!(is_cas_operation(insn));
         assert!(is_atomic_operation(insn));
     }
-    
+
     #[test]
     fn test_regular_load_not_cas() {
         // LDR w0, [x1] - regular load, not CAS

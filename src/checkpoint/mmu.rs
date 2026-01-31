@@ -2,7 +2,10 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    checkpoint::{FlexusSTLBInclusion, helpers::{TLBHelper, TLBSetHelper}},
+    checkpoint::{
+        FlexusSTLBInclusion,
+        helpers::{TLBHelper, TLBSetHelper},
+    },
     components::cache_hierarchy::mmu::tlb::{AddressSpaceID, FullyAssociativeTLB, TLBEntry},
 };
 use rustc_hash::FxHashMap;
@@ -104,7 +107,12 @@ fn serialize_a_tlb(
     // Step 3: Serialize the entries.
     result
         .into_iter()
-        .map(|set| serialize_a_tlb_set(TLBSetHelper { entries: set, current_pointer: 0 }))
+        .map(|set| {
+            serialize_a_tlb_set(TLBSetHelper {
+                entries: set,
+                current_pointer: 0,
+            })
+        })
         .collect()
 }
 
@@ -279,14 +287,17 @@ fn load_tlb_json(value: serde_json::Value, is_instruction: bool) -> TLBHelper {
         result
     } else {
         // Well, this is a newer version of the checkpoint. It is a FullyAssociativeTLB.
-        let mut fully_assoaicative_tlb: FullyAssociativeTLB = serde_json::from_value(value).unwrap();
+        let mut fully_assoaicative_tlb: FullyAssociativeTLB =
+            serde_json::from_value(value).unwrap();
 
         // process the deferred insertions in the TLB.
         fully_assoaicative_tlb.run_lru();
 
         // do the type conversion.
         let entries: Vec<_> = fully_assoaicative_tlb
-            .elements.into_iter().map(|(hash, entry)| {
+            .elements
+            .into_iter()
+            .map(|(hash, entry)| {
                 let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
                 TLBEntry {
                     vpn,
@@ -294,32 +305,46 @@ fn load_tlb_json(value: serde_json::Value, is_instruction: bool) -> TLBHelper {
                     ppn: entry.ppn,
                     ts: entry.ts,
                     valid: true,
-                    is_instruction
+                    is_instruction,
                 }
-            }).collect();
+            })
+            .collect();
 
         TLBHelper {
-            entries: vec![TLBSetHelper { entries, current_pointer: 0 }],
+            entries: vec![TLBSetHelper {
+                entries,
+                current_pointer: 0,
+            }],
         }
     }
 }
 
 /// Convert a FullyAssociativeTLBHelper to SerializedTLB for processing.
-fn fully_associative_tlb_helper_to_serialized(helper: crate::checkpoint::helpers::FullyAssociativeTLBHelper, is_instruction: bool) -> TLBHelper {
-    let entries: Vec<_> = helper.elements.into_iter().map(|(hash, entry)| {
-        let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
-        TLBEntry {
-            vpn,
-            asid,
-            ppn: entry.ppn,
-            ts: entry.ts,
-            valid: true,
-            is_instruction
-        }
-    }).collect();
+fn fully_associative_tlb_helper_to_serialized(
+    helper: crate::checkpoint::helpers::FullyAssociativeTLBHelper,
+    is_instruction: bool,
+) -> TLBHelper {
+    let entries: Vec<_> = helper
+        .elements
+        .into_iter()
+        .map(|(hash, entry)| {
+            let (vpn, asid) = FullyAssociativeTLB::unpack_hash(hash);
+            TLBEntry {
+                vpn,
+                asid,
+                ppn: entry.ppn,
+                ts: entry.ts,
+                valid: true,
+                is_instruction,
+            }
+        })
+        .collect();
 
     TLBHelper {
-        entries: vec![TLBSetHelper { entries, current_pointer: 0 }]
+        entries: vec![TLBSetHelper {
+            entries,
+            current_pointer: 0,
+        }],
     }
 }
 
@@ -340,7 +365,11 @@ fn detect_mmu_format(checkpoint_folder: &str) -> (bool, String) {
         .collect();
 
     if !rkyv_files.is_empty() {
-        assert_eq!(rkyv_files.len(), 1, "Expected exactly one mmu.rkyv.zstd file");
+        assert_eq!(
+            rkyv_files.len(),
+            1,
+            "Expected exactly one mmu.rkyv.zstd file"
+        );
         return (true, rkyv_files.into_iter().next().unwrap());
     }
 
@@ -358,7 +387,11 @@ fn detect_mmu_format(checkpoint_folder: &str) -> (bool, String) {
         })
         .collect();
 
-    assert_eq!(json_files.len(), 1, "Expected exactly one mmu.json.zstd file");
+    assert_eq!(
+        json_files.len(),
+        1,
+        "Expected exactly one mmu.json.zstd file"
+    );
     (false, json_files.into_iter().next().unwrap())
 }
 
@@ -384,10 +417,10 @@ pub fn process_mmus(
         // Load rkyv format
         let mut bytes = Vec::new();
         std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
-        
-        let mmus_helper: MMUsHelper = 
+
+        let mmus_helper: MMUsHelper =
             rkyv::from_bytes::<MMUsHelper, rkyv::rancor::Error>(&bytes).unwrap();
-        
+
         let mut i_tlbs = Vec::new();
         let mut d_tlbs = Vec::new();
         let mut s_tlbs = Vec::new();
@@ -400,8 +433,14 @@ pub fn process_mmus(
                     s_tlbs.push(helper.stlb);
                 }
                 MMUHelper::FullyAssociativeL1MMU(helper) => {
-                    i_tlbs.push(fully_associative_tlb_helper_to_serialized(helper.itlb, true));
-                    d_tlbs.push(fully_associative_tlb_helper_to_serialized(helper.dtlb, false));
+                    i_tlbs.push(fully_associative_tlb_helper_to_serialized(
+                        helper.itlb,
+                        true,
+                    ));
+                    d_tlbs.push(fully_associative_tlb_helper_to_serialized(
+                        helper.dtlb,
+                        false,
+                    ));
                     s_tlbs.push(helper.stlb);
                 }
                 MMUHelper::NoMMU(_) => {

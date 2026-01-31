@@ -7,7 +7,6 @@ use crate::util::get_monotonic_ts;
 static mut QEMU_INITIALIZING_TIMESTAMP: u64 = 0;
 static mut CHECKPOINT_TIMESTAMP: u64 = 0;
 
-
 pub fn initialize() {
     unsafe {
         QEMU_INITIALIZING_TIMESTAMP = get_monotonic_ts();
@@ -20,14 +19,13 @@ pub fn get_ts() -> u64 {
     return current_ts - unsafe { QEMU_INITIALIZING_TIMESTAMP } + unsafe { CHECKPOINT_TIMESTAMP };
 }
 
-
 // Save the starting timestamp.
 pub fn serialize(name: &str) {
     let current_ts = get_ts();
     // dump the current_ts to a file.
     let mut file = std::fs::File::create(format!("{}/timestamp", name)).unwrap();
     file.write_all(current_ts.to_string().as_bytes()).unwrap();
-    file.flush().unwrap();    
+    file.flush().unwrap();
 }
 
 // Load the starting timestamp.
@@ -52,4 +50,3 @@ pub fn deserialize(name: &str) {
     // print the timestamp.
     println!("Checkpoint timestamp: {}", unsafe { CHECKPOINT_TIMESTAMP });
 }
-

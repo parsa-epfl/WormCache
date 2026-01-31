@@ -34,14 +34,18 @@
 // the trace file is encoded in binary and continuous records in the following data structure
 
 use std::env;
-use std::io::BufReader;
 use std::fs::File;
-use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
+use std::io::BufReader;
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
-use worm_cache::components::cache_hierarchy::common::{CacheAccessType, InfiniteDirectory, ParallelHarvardPrivateCache, ParallelLRUSharedCache};
-use worm_cache::components::cache_hierarchy::common::statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics};
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheHierarchyAccessResult;
+use worm_cache::components::cache_hierarchy::common::statistics::{
+    SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics,
+};
+use worm_cache::components::cache_hierarchy::common::{
+    CacheAccessType, InfiniteDirectory, ParallelHarvardPrivateCache, ParallelLRUSharedCache,
+};
+use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
 use worm_cache::parameter;
@@ -89,15 +93,15 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { ALLOCATED_CORE_COUNT },
-    {parameter::N_ACC},
-    {parameter::N_FILTER},
-    {parameter::PHT_SETS},
-    {parameter::PHT_WAYS},
-    {parameter::N_BLK},
-    {parameter::ROT},
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
-    {parameter::PERFECT_PHT},
+    { parameter::PERFECT_PHT },
 >;
 
 fn main() {
@@ -135,19 +139,22 @@ fn main() {
     let rot = if parameter::ROT { 'y' } else { 'n' };
     let str = format!("{}{}{}{}", parameter::N_BLK, is_sat, rd_wr, rot);
 
-    let (mut all, mut old_miss, mut new_miss, mut covered): (usize, usize, usize, usize) = (0, 0, 0, 0);
+    let (mut all, mut old_miss, mut new_miss, mut covered): (usize, usize, usize, usize) =
+        (0, 0, 0, 0);
     let (mut total, mut useful, mut useless) = (0, 0, 0);
     let mut prev_ts = 0;
     for (idx, result) in rdr.records().enumerate() {
-        if (idx+1) % 100_000_000 == 0 {
-            println!("Processed {} records", (idx+1));
+        if (idx + 1) % 100_000_000 == 0 {
+            println!("Processed {} records", (idx + 1));
             let old_mr = old_miss as f64 / all as f64 * 100.0;
             let new_mr = new_miss as f64 / all as f64 * 100.0;
             let coverage = covered as f64 / old_miss as f64 * 100.0;
-            let accuracy  = useful as f64 / total as f64 * 100.0;
+            let accuracy = useful as f64 / total as f64 * 100.0;
             let overpred = useless as f64 / total as f64 * 100.0;
-            println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
-                        str, old_mr, new_mr, coverage, accuracy, overpred);
+            println!(
+                "Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
+                str, old_mr, new_mr, coverage, accuracy, overpred
+            );
         }
         match result {
             Ok(record) => {
@@ -167,7 +174,7 @@ fn main() {
                 let is_os = record[4].parse::<bool>().unwrap();
                 let pc = record[5].parse::<u64>().unwrap();
                 let code = record[6].parse::<u8>().unwrap();
-                if prev_ts != 0 && (ts as f64) > 1.5*(prev_ts as f64) {
+                if prev_ts != 0 && (ts as f64) > 1.5 * (prev_ts as f64) {
                     eprintln!("Warning: Timestamp gap detected: {} -> {}", prev_ts, ts);
                     continue;
                 }
@@ -188,7 +195,7 @@ fn main() {
                     5 => CacheAccessType::PageWalkRead,
                     _ => unreachable!("Invalid access type"),
                 };
-                let req = CacheBlockRequest{
+                let req = CacheBlockRequest {
                     core_id,
                     block_id,
                     access_type,
@@ -227,8 +234,10 @@ fn main() {
     let old_mr = old_miss as f64 / all as f64 * 100.0;
     let new_mr = new_miss as f64 / all as f64 * 100.0;
     let coverage = covered as f64 / old_miss as f64 * 100.0;
-    let accuracy  = useful as f64 / total as f64 * 100.0;
-    let overpred =  useless as f64 / total as f64 * 100.0;
-    println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
-                str, old_mr, new_mr, coverage, accuracy, overpred);
+    let accuracy = useful as f64 / total as f64 * 100.0;
+    let overpred = useless as f64 / total as f64 * 100.0;
+    println!(
+        "Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
+        str, old_mr, new_mr, coverage, accuracy, overpred
+    );
 }

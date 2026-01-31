@@ -7,8 +7,8 @@ mod sms;
 pub use cache_hierarchy::process_cache_hierarchy;
 pub use frontend::process_frontend;
 pub use mmu::process_mmus;
-pub use sms::process_sms;
 use serde::{Deserialize, Serialize};
+pub use sms::process_sms;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]

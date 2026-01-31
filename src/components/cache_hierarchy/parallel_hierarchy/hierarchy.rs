@@ -39,14 +39,14 @@ use crate::debug::statistics::{EventType, Statistics};
 
 use crate::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
-use super::super::common::{Directory, DirectorySet, SharedCache};
 use super::super::common::agt::ParallelAGT;
 use super::super::common::pht::ParallelPHT;
+use super::super::common::{Directory, DirectorySet, SharedCache};
 
+use spin::mutex::SpinMutex;
 use std::cell::UnsafeCell;
 use std::collections::HashSet;
 use std::ops::DerefMut;
-use spin::mutex::SpinMutex;
 
 #[cfg(test)]
 mod debug_tests;
@@ -142,7 +142,16 @@ impl<
             directory: Directory::new(),
             shared_cache: SCache::new(),
             agt: ParallelAGT::<CORE_COUNT, N_ACC, N_FILTER, N_BLK>::new(),
-            pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new(),
+            pht: ParallelPHT::<
+                CORE_COUNT,
+                PHT_SETS,
+                PHT_WAYS,
+                N_BLK,
+                ROT,
+                SEP_RDWR,
+                SAT_CNT,
+                PERFECT_PHT,
+            >::new(),
             pf_blocks: std::array::from_fn(|_| SpinMutex::new(HashSet::new())),
             pf_stats: std::array::from_fn(|_| SpinMutex::new((0, 0, 0))), // (total, useless, useful)
         }
@@ -307,23 +316,26 @@ impl<
         // Try rkyv format first, fall back to JSON for backward compatibility
         let rkyv_path = format!("{}/mmus-{}.rkyv.zstd", name, numa_node_id);
         let json_path = format!("{}/mmus-{}.json.zstd", name, numa_node_id);
-        
+
         if let Ok(file) = std::fs::File::open(&rkyv_path) {
             // Load rkyv format
             let mut decoder = Decoder::new(file).unwrap();
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
-            
-            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = 
-                rkyv::from_bytes::<crate::checkpoint::helpers::MMUsHelper, rkyv::rancor::Error>(&bytes).unwrap();
-            
+
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = rkyv::from_bytes::<
+                crate::checkpoint::helpers::MMUsHelper,
+                rkyv::rancor::Error,
+            >(&bytes)
+            .unwrap();
+
             for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
                 unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
             }
         } else if let Ok(file) = std::fs::File::open(&json_path) {
             // Fall back to JSON format for backward compatibility
             let decoder = Decoder::new(file).unwrap();
-            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = 
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper =
                 serde_json::from_reader(decoder).unwrap();
 
             for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {

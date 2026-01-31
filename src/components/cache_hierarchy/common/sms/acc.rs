@@ -1,13 +1,11 @@
 use rustc_hash::FxHashMap;
 use spin::mutex::SpinMutex;
 
-use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::util;
+use crate::components::cache_hierarchy::CacheBlockRequest;
 
 #[derive(Debug, Clone, Copy)]
-struct AccTableDataEntry<
-    const N_BLK: usize,
-> {
+struct AccTableDataEntry<const N_BLK: usize> {
     pub pc: u64,
     pub offset: u64,
     pub access_pattern: [bool; N_BLK],
@@ -16,9 +14,7 @@ struct AccTableDataEntry<
 }
 
 // To preserve outside APIs
-pub struct AccTableEntry<
-    const N_BLK: usize,
-> {
+pub struct AccTableEntry<const N_BLK: usize> {
     pub tag: u64,
     pub pc: u64,
     pub offset: u64,
@@ -28,10 +24,7 @@ pub struct AccTableEntry<
     pub valid: bool,
 }
 
-impl <
-    const N_BLK: usize,
-> AccTableEntry<N_BLK>
-{
+impl<const N_BLK: usize> AccTableEntry<N_BLK> {
     pub const fn new() -> Self {
         Self {
             tag: 0,
@@ -46,18 +39,11 @@ impl <
 }
 
 #[derive(Debug)]
-pub struct AccTable<
-    const N_ACC: usize,
-    const N_BLK: usize,
-> {
+pub struct AccTable<const N_ACC: usize, const N_BLK: usize> {
     entries: SpinMutex<FxHashMap<u64, AccTableDataEntry<N_BLK>>>,
 }
 
-impl<
-    const N_ACC: usize,
-    const N_BLK: usize,
-> AccTable<N_ACC, N_BLK>
-{
+impl<const N_ACC: usize, const N_BLK: usize> AccTable<N_ACC, N_BLK> {
     pub fn new() -> Self {
         Self {
             entries: SpinMutex::new(FxHashMap::default()),

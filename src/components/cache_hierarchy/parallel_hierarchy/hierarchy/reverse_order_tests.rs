@@ -63,15 +63,15 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     32,
-    {parameter::N_ACC},
-    {parameter::N_FILTER},
-    {parameter::PHT_SETS},
-    {parameter::PHT_WAYS},
-    {parameter::N_BLK},
-    {parameter::ROT},
-    {parameter::SEP_RDWR},
-    {parameter::SAT_CNT},
-    {parameter::PERFECT_PHT},
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    { parameter::PERFECT_PHT },
 >;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -158,10 +158,11 @@ fn reversed_timestamp_from_the_same_core() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
-                pc: 0,
+                    pc: 0,
                 },
                 l as u64 + ts + 1,
-            ).0,
+            )
+            .0,
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         );
     }
@@ -179,7 +180,8 @@ fn reversed_timestamp_from_the_same_core() {
                 pc: 0,
             },
             1,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 }
@@ -200,7 +202,8 @@ fn write_invalidation_coherence() {
                 pc: 0,
             },
             1,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
@@ -214,7 +217,8 @@ fn write_invalidation_coherence() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 50.
@@ -228,7 +232,8 @@ fn write_invalidation_coherence() {
                 pc: 0,
             },
             50,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Now, core 0 and core 1 should have invalid the cache.
@@ -247,7 +252,8 @@ fn write_invalidation_coherence() {
                 pc: 0,
             },
             100,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     let sharers = mh.get_all_private_replicas(block_id);
@@ -272,7 +278,8 @@ fn raw_and_war() {
                 pc: 0,
             },
             1,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
     // Core 1 get a read permission at 10.
@@ -286,7 +293,8 @@ fn raw_and_war() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
     // Core 2 get a write permission at 5.
@@ -300,7 +308,8 @@ fn raw_and_war() {
                 pc: 0,
             },
             5,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
     // Now, core 0 should have invalid the cache.
@@ -325,7 +334,8 @@ fn rarw() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
     // Core 0 get a write permission at 20.
@@ -339,7 +349,8 @@ fn rarw() {
                 pc: 0,
             },
             20,
-        ).0,
+        )
+        .0,
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         } else {
@@ -358,7 +369,8 @@ fn rarw() {
                 pc: 0,
             },
             1,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -383,7 +395,8 @@ fn waw() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -398,7 +411,8 @@ fn waw() {
                 pc: 0,
             },
             5,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -422,7 +436,8 @@ fn wwaw() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -437,7 +452,8 @@ fn wwaw() {
                 pc: 0,
             },
             20,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -452,7 +468,8 @@ fn wwaw() {
                 pc: 0,
             },
             15,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -477,7 +494,8 @@ fn rae() {
                 pc: 0,
             },
             10
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -511,7 +529,8 @@ fn rae() {
                 pc: 0,
             },
             5,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -534,7 +553,8 @@ fn eae() {
                 pc: 0,
             },
             200,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -567,7 +587,8 @@ fn eae() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -611,7 +632,8 @@ fn wae() {
                 pc: 0,
             },
             200,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -644,7 +666,8 @@ fn wae() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -675,7 +698,8 @@ fn eaw() {
                 pc: 0,
             },
             200,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -690,7 +714,8 @@ fn eaw() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -729,7 +754,8 @@ fn ear() {
                 pc: 0,
             },
             100,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -744,7 +770,8 @@ fn ear() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -782,7 +809,8 @@ fn rar() {
                 pc: 0,
             },
             10,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -797,7 +825,8 @@ fn rar() {
                 pc: 0,
             },
             5,
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 

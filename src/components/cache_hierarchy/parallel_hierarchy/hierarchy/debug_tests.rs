@@ -63,15 +63,15 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     32,
-    {parameter::N_ACC},
-    {parameter::N_FILTER},
-    {parameter::PHT_SETS},
-    {parameter::PHT_WAYS},
-    {parameter::N_BLK},
-    {parameter::ROT},
-    {parameter::SEP_RDWR},
-    {parameter::SAT_CNT},
-    {parameter::PERFECT_PHT},
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    { parameter::PERFECT_PHT },
 >;
 
 #[test]
@@ -90,7 +90,8 @@ fn read_evict_and_other_core_read_back() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -107,7 +108,8 @@ fn read_evict_and_other_core_read_back() {
                     pc: 0,
                 },
                 get_monotonic_ts(),
-            ).0,
+            )
+            .0,
             CacheHierarchyAccessResult::Miss
         );
     }
@@ -123,7 +125,8 @@ fn read_evict_and_other_core_read_back() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 }
@@ -144,7 +147,8 @@ fn one_core_write_first_then_read() {
                 pc: 0,
             },
             10
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -159,7 +163,8 @@ fn one_core_write_first_then_read() {
                 pc: 0,
             },
             20
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 }
@@ -182,7 +187,8 @@ fn write_write_read_then_old_write() {
                 pc: 0,
             },
             100
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -197,7 +203,8 @@ fn write_write_read_then_old_write() {
                 pc: 0,
             },
             150
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -212,7 +219,8 @@ fn write_write_read_then_old_write() {
                 pc: 0,
             },
             200
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -227,7 +235,8 @@ fn write_write_read_then_old_write() {
                 pc: 0,
             },
             125
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 }
@@ -248,7 +257,8 @@ fn write_read_then_early_read() {
                 pc: 0,
             },
             100
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -263,7 +273,8 @@ fn write_read_then_early_read() {
                 pc: 0,
             },
             150
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -278,7 +289,8 @@ fn write_read_then_early_read() {
                 pc: 0,
             },
             50
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 }
@@ -299,7 +311,8 @@ fn read_then_write() {
                 pc: 0,
             },
             100
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -314,7 +327,8 @@ fn read_then_write() {
                 pc: 0,
             },
             150
-        ).0,
+        )
+        .0,
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         } else {
@@ -339,7 +353,8 @@ fn write_read_after_write() {
                 pc: 0,
             },
             100
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -354,7 +369,8 @@ fn write_read_after_write() {
                 pc: 0,
             },
             150
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -369,7 +385,8 @@ fn write_read_after_write() {
                 pc: 0,
             },
             200
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 }
@@ -390,7 +407,8 @@ fn later_read_after_write_cancel_sharers() {
                 pc: 0,
             },
             10
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -405,7 +423,8 @@ fn later_read_after_write_cancel_sharers() {
                 pc: 0,
             },
             20
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -420,7 +439,8 @@ fn later_read_after_write_cancel_sharers() {
                 pc: 0,
             },
             30
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -435,7 +455,8 @@ fn later_read_after_write_cancel_sharers() {
                 pc: 0,
             },
             15
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -450,7 +471,8 @@ fn later_read_after_write_cancel_sharers() {
                 pc: 0,
             },
             35
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -465,7 +487,8 @@ fn later_read_after_write_cancel_sharers() {
                 pc: 0,
             },
             40
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -482,7 +505,8 @@ fn later_read_after_write_cancel_sharers() {
                     pc: 0,
                 },
                 (50 + i) as u64
-            ).0,
+            )
+            .0,
             CacheHierarchyAccessResult::Miss
         );
     }
@@ -503,7 +527,8 @@ fn write_evict_read_write() {
                 pc: 0,
             },
             10
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -520,7 +545,8 @@ fn write_evict_read_write() {
                     pc: 0,
                 },
                 20 + i as u64 * 10
-            ).0,
+            )
+            .0,
             CacheHierarchyAccessResult::Miss
         );
     }
@@ -538,7 +564,8 @@ fn write_evict_read_write() {
                 pc: 0,
             },
             1024
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 
@@ -554,7 +581,8 @@ fn write_evict_read_write() {
                 pc: 0,
             },
             5
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 }
@@ -575,7 +603,8 @@ fn share_directory_entry_inseter_ts_update() {
                 pc: 0,
             },
             30
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -590,7 +619,8 @@ fn share_directory_entry_inseter_ts_update() {
                 pc: 0,
             },
             40
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -605,7 +635,8 @@ fn share_directory_entry_inseter_ts_update() {
                 pc: 0,
             },
             20
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
@@ -622,7 +653,8 @@ fn share_directory_entry_inseter_ts_update() {
                 pc: 0,
             },
             25
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::MissDueToPermission
     );
 }
@@ -645,7 +677,8 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
                 pc: 0,
             },
             30
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -660,10 +693,11 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
                     block_id,
                     access_type: CacheAccessType::DataRead,
                     is_os: false,
-                pc: 0,
+                    pc: 0,
                 },
                 40 + i as u64 * 10
-            ).0,
+            )
+            .0,
             CacheHierarchyAccessResult::Miss
         );
     }
@@ -681,7 +715,8 @@ fn write_to_llc_cannot_invalidate_larger_ts() {
                 pc: 0,
             },
             10
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 

@@ -313,7 +313,7 @@ impl<
 
     fn serialize(&self) -> crate::checkpoint::helpers::MMUHelper {
         use crate::checkpoint::helpers::*;
-        
+
         crate::checkpoint::helpers::MMUHelper::OrdinaryMMU(OrdinaryMMUHelper {
             itlb: self.itlb.to_checkpoint_helper(),
             dtlb: self.dtlb.to_checkpoint_helper(),
@@ -325,7 +325,7 @@ impl<
 
     fn deserialize(&mut self, value: crate::checkpoint::helpers::MMUHelper) {
         use crate::checkpoint::helpers::MMUHelper;
-        
+
         match value {
             MMUHelper::OrdinaryMMU(helper) => {
                 self.itlb = TLB::from_checkpoint_helper(helper.itlb);

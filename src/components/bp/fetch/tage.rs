@@ -234,14 +234,27 @@ impl TAGEPredictor {
             phist: helper.phist,
             ghist: helper.ghist.try_into().expect("ghist size mismatch"),
             ch_i: helper.ch_i.try_into().expect("ch_i size mismatch"),
-            ch_t: helper.ch_t.into_iter()
+            ch_t: helper
+                .ch_t
+                .into_iter()
                 .map(|row| row.try_into().expect("ch_t row size mismatch"))
                 .collect::<Vec<_>>()
                 .try_into()
                 .expect("ch_t size mismatch"),
-            btable: helper.btable.into_boxed_slice().try_into().expect("btable size mismatch"),
-            gtable: helper.gtable.into_iter()
-                .map(|table| table.into_boxed_slice().try_into().expect("gtable size mismatch"))
+            btable: helper
+                .btable
+                .into_boxed_slice()
+                .try_into()
+                .expect("btable size mismatch"),
+            gtable: helper
+                .gtable
+                .into_iter()
+                .map(|table| {
+                    table
+                        .into_boxed_slice()
+                        .try_into()
+                        .expect("gtable size mismatch")
+                })
                 .collect::<Vec<_>>()
                 .try_into()
                 .expect("gtable size mismatch"),

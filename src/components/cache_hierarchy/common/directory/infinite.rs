@@ -187,16 +187,18 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
         let helper = self.to_checkpoint_helper();
 
         if USE_RKYV_SERIALIZATION {
-            let file = std::fs::File::create(format!("{}/directory-{}.rkyv.zstd", name, numa_node_id))
-                .unwrap();
+            let file =
+                std::fs::File::create(format!("{}/directory-{}.rkyv.zstd", name, numa_node_id))
+                    .unwrap();
 
             let mut encoder = Encoder::new(file, 0).unwrap();
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
             std::io::Write::write_all(&mut encoder, &bytes).unwrap();
             encoder.finish().unwrap();
         } else {
-            let file = std::fs::File::create(format!("{}/directory-{}.json.zstd", name, numa_node_id))
-                .unwrap();
+            let file =
+                std::fs::File::create(format!("{}/directory-{}.json.zstd", name, numa_node_id))
+                    .unwrap();
 
             let mut file = Encoder::new(file, 0).unwrap();
 
@@ -210,10 +212,14 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
         use crate::parameter::USE_RKYV_SERIALIZATION;
 
         if USE_RKYV_SERIALIZATION {
-            let file = std::fs::File::open(format!("{}/directory-{}.rkyv.zstd", name, numa_node_id));
+            let file =
+                std::fs::File::open(format!("{}/directory-{}.rkyv.zstd", name, numa_node_id));
 
             if file.is_err() {
-                println!("Cannot load the directory state (rkyv). Error: {:?}", file.err());
+                println!(
+                    "Cannot load the directory state (rkyv). Error: {:?}",
+                    file.err()
+                );
                 return;
             }
 
@@ -226,7 +232,8 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
                 rkyv::from_bytes::<DirectoryHelper, rkyv::rancor::Error>(&bytes).unwrap();
             *self = Self::from_checkpoint_helper(helper);
         } else {
-            let file = std::fs::File::open(format!("{}/directory-{}.json.zstd", name, numa_node_id));
+            let file =
+                std::fs::File::open(format!("{}/directory-{}.json.zstd", name, numa_node_id));
 
             if file.is_err() {
                 println!("Cannot load the directory state. Error: {:?}", file.err());

@@ -102,23 +102,26 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
         // Try rkyv format first, fall back to JSON for backward compatibility
         let rkyv_path = format!("{}/mmus-{}.rkyv.zstd", name, numa_node_id);
         let json_path = format!("{}/mmus-{}.json.zstd", name, numa_node_id);
-        
+
         if let Ok(file) = std::fs::File::open(&rkyv_path) {
             // Load rkyv format
             let mut decoder = Decoder::new(file).unwrap();
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
-            
-            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = 
-                rkyv::from_bytes::<crate::checkpoint::helpers::MMUsHelper, rkyv::rancor::Error>(&bytes).unwrap();
-            
+
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = rkyv::from_bytes::<
+                crate::checkpoint::helpers::MMUsHelper,
+                rkyv::rancor::Error,
+            >(&bytes)
+            .unwrap();
+
             for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
                 unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
             }
         } else if let Ok(file) = std::fs::File::open(&json_path) {
             // Fall back to JSON format for backward compatibility
             let decoder = Decoder::new(file).unwrap();
-            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = 
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper =
                 serde_json::from_reader(decoder).unwrap();
 
             for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
@@ -139,7 +142,6 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
 }
 
 impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
-    
     fn prefetch_blocks(&self, _request: &CacheBlockRequest, _ts: u64) {
         unimplemented!();
     }
@@ -210,13 +212,16 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             }
         }
 
-        (match res {
-            SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
-            SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
-            SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
-            SharedCacheLookupResult::LookupLate(_, _) => CacheHierarchyAccessResult::Unknown,
-            SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
-        }, (0, 0, 0))
+        (
+            match res {
+                SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+                SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
+                SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
+                SharedCacheLookupResult::LookupLate(_, _) => CacheHierarchyAccessResult::Unknown,
+                SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
+            },
+            (0, 0, 0),
+        )
     }
 
     fn translate(

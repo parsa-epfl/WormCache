@@ -1,8 +1,8 @@
 use super::FlexusParameter;
-use serde_json;
 pub use crate::checkpoint::helpers::{
-    SharedCacheHelper, HarvardPrivateCacheHelper, UnifiedPrivateCacheHelper,
+    HarvardPrivateCacheHelper, SharedCacheHelper, UnifiedPrivateCacheHelper,
 };
+use serde_json;
 use zstd::stream::read::Decoder;
 
 use crate::components::cache_hierarchy::common::SharedCacheAccessSource;
@@ -52,8 +52,10 @@ pub fn process_cache_hierarchy(
     flexus_configuration: &FlexusParameter,
     output_folder: &String,
 ) {
-    let (harvard_is_rkyv, harvard_cache_checkpoints) = detect_rkyv_format(checkpoint_folder, "harvard");
-    let (unified_is_rkyv, unified_cache_checkpoints) = detect_rkyv_format(checkpoint_folder, "unified");
+    let (harvard_is_rkyv, harvard_cache_checkpoints) =
+        detect_rkyv_format(checkpoint_folder, "harvard");
+    let (unified_is_rkyv, unified_cache_checkpoints) =
+        detect_rkyv_format(checkpoint_folder, "unified");
 
     let is_harvard_cache = !harvard_cache_checkpoints.is_empty();
     let is_unified_cache = !unified_cache_checkpoints.is_empty();

@@ -171,7 +171,6 @@ unsafe extern "C" fn vcpu_invalid_tlb(
     }
 }
 
-
 pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::super::Plugin for ParallelCacheHierarchyPlugin {
@@ -201,7 +200,6 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
         }
 
         unsafe {
-
             PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
             L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
             qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_invalid_tlb));

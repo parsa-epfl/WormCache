@@ -1,9 +1,9 @@
 use rustc_hash::FxHashMap;
 use spin::mutex::SpinMutex;
 
-use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::acc::AccTableEntry;
 use super::util;
+use crate::components::cache_hierarchy::CacheBlockRequest;
 
 #[derive(Debug, Clone, Copy)]
 struct FilterTableDataEntry {
@@ -15,17 +15,13 @@ struct FilterTableDataEntry {
 
 #[derive(Debug)]
 pub struct FilterTable<
-    const N_FILTER: usize,  // Number of entries in the filter table
-    const N_BLK: usize,     // Number of blocks per spatial region
+    const N_FILTER: usize, // Number of entries in the filter table
+    const N_BLK: usize,    // Number of blocks per spatial region
 > {
     entries: SpinMutex<FxHashMap<u64, FilterTableDataEntry>>,
 }
 
-impl<
-    const N_FILTER: usize,
-    const N_BLK: usize,
-> FilterTable<N_FILTER, N_BLK>
-{
+impl<const N_FILTER: usize, const N_BLK: usize> FilterTable<N_FILTER, N_BLK> {
     pub fn new() -> Self {
         Self {
             entries: SpinMutex::new(FxHashMap::default()),
@@ -44,7 +40,11 @@ impl<
             .map(|(key, _)| *key)
     }
 
-    pub fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> Option<AccTableEntry<N_BLK>> {
+    pub fn poke_and_update(
+        &self,
+        request: &CacheBlockRequest,
+        ts: u64,
+    ) -> Option<AccTableEntry<N_BLK>> {
         let (base, pc, offset) = self.get_base_pc_offset(request);
         let is_read = !request.is_store();
 

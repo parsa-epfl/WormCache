@@ -32,7 +32,7 @@
 use crate::checkpoint::helpers::UnifiedPrivateCacheHelper;
 use crate::components::cache_hierarchy::CacheBlockRequest;
 
-use super::{PrivateCachePokeResult, PrivateCacheSet, PrivateCache};
+use super::{PrivateCache, PrivateCachePokeResult, PrivateCacheSet};
 use spin::mutex::SpinMutex;
 use std::collections::HashMap;
 use std::ops::DerefMut;
@@ -273,7 +273,8 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
             std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
 
             let helper: Vec<UnifiedPrivateCacheHelper> =
-                rkyv::from_bytes::<Vec<UnifiedPrivateCacheHelper>, rkyv::rancor::Error>(&bytes).unwrap();
+                rkyv::from_bytes::<Vec<UnifiedPrivateCacheHelper>, rkyv::rancor::Error>(&bytes)
+                    .unwrap();
 
             for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
                 *cache = UnifiedPerCorePrivateCache::from_checkpoint_helper(helper);
@@ -293,8 +294,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
             let file = file.unwrap();
             let file = Decoder::new(file).unwrap();
 
-            let helper: Vec<UnifiedPrivateCacheHelper> =
-                serde_json::from_reader(file).unwrap();
+            let helper: Vec<UnifiedPrivateCacheHelper> = serde_json::from_reader(file).unwrap();
 
             for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
                 *cache = UnifiedPerCorePrivateCache::from_checkpoint_helper(helper);

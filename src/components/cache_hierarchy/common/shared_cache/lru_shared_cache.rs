@@ -75,7 +75,9 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
     pub fn from_checkpoint_helper(helper: SharedCacheHelper) -> Self {
         let mut blocks = Vec::with_capacity(SET);
         for set_helper in helper.blocks {
-            blocks.push(SpinMutex::new(set_helper.into_set::<WAY, SET, EXCLUSIVE, S>()));
+            blocks.push(SpinMutex::new(
+                set_helper.into_set::<WAY, SET, EXCLUSIVE, S>(),
+            ));
         }
         Self {
             blocks: blocks.into_boxed_slice().try_into().unwrap(),
@@ -235,7 +237,10 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             let file = std::fs::File::open(format!("{}/llc-{}.rkyv.zstd", name, numa_node_id));
 
             if file.is_err() {
-                println!("Cannot load the shared cache (rkyv). Error: {:?}", file.err());
+                println!(
+                    "Cannot load the shared cache (rkyv). Error: {:?}",
+                    file.err()
+                );
                 return;
             }
 

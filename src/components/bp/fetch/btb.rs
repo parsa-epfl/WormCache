@@ -61,9 +61,11 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
 
     pub fn from_checkpoint_helper(helper: BTBHelper) -> Self {
         Self {
-            array: helper.array.into_iter().map(|set| {
-                set.try_into().expect("BTB set size mismatch")
-            }).collect(),
+            array: helper
+                .array
+                .into_iter()
+                .map(|set| set.try_into().expect("BTB set size mismatch"))
+                .collect(),
             local_ts: helper.local_ts,
         }
     }

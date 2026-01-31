@@ -32,7 +32,9 @@
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, PartialEq, Archive, RkyvDeserialize, RkyvSerialize,
+)]
 pub struct PrivateCacheLine {
     pub block_id_with_v: u64, // the last bit is the valid bit.
 

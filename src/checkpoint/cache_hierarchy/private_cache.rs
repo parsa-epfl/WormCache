@@ -3,10 +3,11 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    checkpoint::{helpers::{HarvardPrivateCacheHelper, UnifiedPrivateCacheHelper}, FlexusDirectoryType, FlexusParameter},
-    components::cache_hierarchy::common::{
-        PrivateCacheLine, PrivateCacheSet,
+    checkpoint::{
+        FlexusDirectoryType, FlexusParameter,
+        helpers::{HarvardPrivateCacheHelper, UnifiedPrivateCacheHelper},
     },
+    components::cache_hierarchy::common::{PrivateCacheLine, PrivateCacheSet},
 };
 
 pub struct BackReferencedEntry {

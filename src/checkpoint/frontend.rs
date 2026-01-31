@@ -1,6 +1,7 @@
-use crate::{checkpoint::helpers::{BTBHelper, FetchUnitHelper, TAGEHelper}, components::bp::fetch::{
-    tage::*,
-}};
+use crate::{
+    checkpoint::helpers::{BTBHelper, FetchUnitHelper, TAGEHelper},
+    components::bp::fetch::tage::*,
+};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -121,9 +122,7 @@ struct FlexusTAGEPredictorState {
     pub m: Vec<usize>,
 }
 
-fn serialize_a_tage(
-    tage: TAGEHelper,
-) -> FlexusTAGEPredictorState {
+fn serialize_a_tage(tage: TAGEHelper) -> FlexusTAGEPredictorState {
     FlexusTAGEPredictorState {
         pwin: 0,
         tick: tage.tick,
@@ -166,7 +165,11 @@ fn detect_fetch_format(checkpoint_folder: &str) -> (bool, String) {
         .collect();
 
     if !rkyv_files.is_empty() {
-        assert_eq!(rkyv_files.len(), 1, "Expected exactly one fetch.rkyv.zstd file");
+        assert_eq!(
+            rkyv_files.len(),
+            1,
+            "Expected exactly one fetch.rkyv.zstd file"
+        );
         return (true, rkyv_files.into_iter().next().unwrap());
     }
 
@@ -184,7 +187,11 @@ fn detect_fetch_format(checkpoint_folder: &str) -> (bool, String) {
         })
         .collect();
 
-    assert_eq!(json_files.len(), 1, "Expected exactly one fetch.json.zstd file");
+    assert_eq!(
+        json_files.len(),
+        1,
+        "Expected exactly one fetch.json.zstd file"
+    );
     (false, json_files.into_iter().next().unwrap())
 }
 

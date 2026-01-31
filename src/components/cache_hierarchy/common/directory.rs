@@ -29,8 +29,8 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rustc_hash::FxHashMap as HashMap;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+use rustc_hash::FxHashMap as HashMap;
 use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutexGuard;
 

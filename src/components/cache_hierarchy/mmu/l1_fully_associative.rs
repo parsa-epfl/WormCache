@@ -190,7 +190,7 @@ impl<
 
     fn serialize(&self) -> crate::checkpoint::helpers::MMUHelper {
         use crate::checkpoint::helpers::*;
-        
+
         crate::checkpoint::helpers::MMUHelper::FullyAssociativeL1MMU(FullyAssociativeL1MMUHelper {
             l0_itlb: (self.l0_itlb.0, self.l0_itlb.1.into(), self.l0_itlb.2),
             stlb: self.stlb.to_checkpoint_helper(),
@@ -203,7 +203,7 @@ impl<
 
     fn deserialize(&mut self, value: crate::checkpoint::helpers::MMUHelper) {
         use crate::checkpoint::helpers::MMUHelper;
-        
+
         match value {
             MMUHelper::FullyAssociativeL1MMU(helper) => {
                 self.l0_itlb = (helper.l0_itlb.0, helper.l0_itlb.1.into(), helper.l0_itlb.2);

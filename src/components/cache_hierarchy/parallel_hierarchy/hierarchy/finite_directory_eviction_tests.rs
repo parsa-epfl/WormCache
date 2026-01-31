@@ -36,7 +36,7 @@ use crate::components::cache_hierarchy::{
         ParallelUnifiedPrivateCache, statistics::ZeroSharedCacheSetStatistics,
     },
     mmu::NoMMU,
-    parameter
+    parameter,
 };
 
 use crate::util::get_monotonic_ts;
@@ -67,7 +67,7 @@ type MH = super::ParallelMemoryHierarchy<
     { parameter::ROT },
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
-    true
+    true,
 >;
 
 #[test]
@@ -90,7 +90,8 @@ fn test_finite_directory_eviction_on_allocation() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -106,7 +107,8 @@ fn test_finite_directory_eviction_on_allocation() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -124,7 +126,8 @@ fn test_finite_directory_eviction_on_allocation() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -140,7 +143,8 @@ fn test_finite_directory_eviction_on_allocation() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 }
@@ -163,7 +167,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -178,7 +183,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
@@ -193,7 +199,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
     assert_eq!(
@@ -206,7 +213,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -223,7 +231,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -239,7 +248,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -256,7 +266,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 
@@ -270,7 +281,8 @@ fn test_directory_eviction_with_multiple_replicas() {
                 pc: 0,
             },
             get_monotonic_ts(),
-        ).0,
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache // Hit in core 0's p-cache now
     );
 }

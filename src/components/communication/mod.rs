@@ -1,10 +1,13 @@
 use crate::{
-    arch::AArch64, components::cache_hierarchy::{
+    arch::AArch64,
+    components::cache_hierarchy::{
         common::L0InstructionCache,
         mmu::{self, AbstractMMU, MMUFlushMode, MMUTranslationResult, tlb::AddressSpaceID},
-    }, debug::statistics::Statistics, parameter, qemu_api
+    },
+    debug::statistics::Statistics,
+    parameter, qemu_api,
 };
-use bitvec::{array::BitArray, order::Lsb0, BitArr};
+use bitvec::{BitArr, array::BitArray, order::Lsb0};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
@@ -13,7 +16,6 @@ use std::ffi;
 mod aarch64_decoder;
 
 const MODEL_SHARED_MEMORY: bool = false;
-
 
 // Global timestamp updated by QEMU's quantum incremental handler
 #[unsafe(no_mangle)]
@@ -50,7 +52,6 @@ struct CacheLineAccessRecord {
     per_core_os_access_count: FxHashMap<u32, u64>,
     per_core_load_exclusive_count: FxHashMap<u32, u64>,
     per_core_atomic_access_count: FxHashMap<u32, u64>,
-
     // trace: Vec<(u32, u64, bool, bool, bool, bool, bool, bool, u64, u64, u64)>, // (core_id, cache_line_id, is_instruction, is_write, is_os, is_page_walk, is_atomic, is_load_exclusive, ts, pc, va)
 }
 
@@ -125,14 +126,17 @@ impl ShardedCacheLineRecords {
 
         if is_write {
             // This is a write access
-            let record = shard.entry(cache_line_id).or_insert_with(CacheLineAccessRecord::new);
+            let record = shard
+                .entry(cache_line_id)
+                .or_insert_with(CacheLineAccessRecord::new);
 
             // Check if different core wrote to the same cache line
             if record.last_writer_core != core_id && record.last_write_timestamp > 0 {
                 let interval = ts.saturating_sub(record.last_write_timestamp);
-                
+
                 // Record interval for this core (using HashMap entry API)
-                *record.per_core_intervals
+                *record
+                    .per_core_intervals
                     .entry(core_id)
                     .or_insert_with(FxHashMap::default)
                     .entry(interval)
@@ -147,15 +151,24 @@ impl ShardedCacheLineRecords {
                 }
 
                 if is_atomic {
-                    *record.per_core_atomic_access_count.entry(core_id).or_insert(0) += 1;
+                    *record
+                        .per_core_atomic_access_count
+                        .entry(core_id)
+                        .or_insert(0) += 1;
                 }
 
                 if is_load_exclusive {
-                    *record.per_core_load_exclusive_count.entry(core_id).or_insert(0) += 1;
+                    *record
+                        .per_core_load_exclusive_count
+                        .entry(core_id)
+                        .or_insert(0) += 1;
                 }
 
                 if is_instruction {
-                    *record.per_core_instruction_fetch_count.entry(core_id).or_insert(0) += 1;
+                    *record
+                        .per_core_instruction_fetch_count
+                        .entry(core_id)
+                        .or_insert(0) += 1;
                 }
 
                 // Record PC access
@@ -172,12 +185,15 @@ impl ShardedCacheLineRecords {
         } else {
             // This is a read access
             if let Some(record) = shard.get_mut(&cache_line_id) {
-                if record.last_writer_core != core_id && record.recent_readers[core_id as usize] == false {
+                if record.last_writer_core != core_id
+                    && record.recent_readers[core_id as usize] == false
+                {
                     // Different core reading after a write
                     let interval = ts.saturating_sub(record.last_write_timestamp);
-                    
+
                     // Record interval for this core (using HashMap entry API)
-                    *record.per_core_intervals
+                    *record
+                        .per_core_intervals
                         .entry(core_id)
                         .or_insert_with(FxHashMap::default)
                         .entry(interval)
@@ -192,15 +208,24 @@ impl ShardedCacheLineRecords {
                     }
 
                     if is_atomic {
-                        *record.per_core_atomic_access_count.entry(core_id).or_insert(0) += 1;
+                        *record
+                            .per_core_atomic_access_count
+                            .entry(core_id)
+                            .or_insert(0) += 1;
                     }
 
                     if is_load_exclusive {
-                        *record.per_core_load_exclusive_count.entry(core_id).or_insert(0) += 1;
+                        *record
+                            .per_core_load_exclusive_count
+                            .entry(core_id)
+                            .or_insert(0) += 1;
                     }
 
                     if is_instruction {
-                        *record.per_core_instruction_fetch_count.entry(core_id).or_insert(0) += 1;
+                        *record
+                            .per_core_instruction_fetch_count
+                            .entry(core_id)
+                            .or_insert(0) += 1;
                     }
 
                     record.recent_readers.set(core_id as usize, true);
@@ -230,19 +255,35 @@ impl ShardedCacheLineRecords {
             let mut shard_guard = shard.lock();
             for (cache_line_id, record) in shard_guard.iter_mut() {
                 // Check if any core has recorded intervals for this cache line
-                let has_data = record.per_core_intervals.values().any(|intervals| !intervals.is_empty());
-                
+                let has_data = record
+                    .per_core_intervals
+                    .values()
+                    .any(|intervals| !intervals.is_empty());
+
                 if has_data {
-                    cache_comm_data.insert(*cache_line_id, SerializedCacheLineRecord {
-                        per_core_intervals: std::mem::take(&mut record.per_core_intervals),
-                        per_core_instruction_fetch_count: std::mem::take(&mut record.per_core_instruction_fetch_count),
-                        per_core_page_walk_count: std::mem::take(&mut record.per_core_page_walk_count),
-                        per_core_os_access_count: std::mem::take(&mut record.per_core_os_access_count),
-                        per_core_load_exclusive_count: std::mem::take(&mut record.per_core_load_exclusive_count),
-                        per_core_atomic_access_count: std::mem::take(&mut record.per_core_atomic_access_count),
-                        // per_core_access_pc: record.per_core_access_pc.clone(),
-                        // trace: std::mem::take(&mut record.trace),
-                    });
+                    cache_comm_data.insert(
+                        *cache_line_id,
+                        SerializedCacheLineRecord {
+                            per_core_intervals: std::mem::take(&mut record.per_core_intervals),
+                            per_core_instruction_fetch_count: std::mem::take(
+                                &mut record.per_core_instruction_fetch_count,
+                            ),
+                            per_core_page_walk_count: std::mem::take(
+                                &mut record.per_core_page_walk_count,
+                            ),
+                            per_core_os_access_count: std::mem::take(
+                                &mut record.per_core_os_access_count,
+                            ),
+                            per_core_load_exclusive_count: std::mem::take(
+                                &mut record.per_core_load_exclusive_count,
+                            ),
+                            per_core_atomic_access_count: std::mem::take(
+                                &mut record.per_core_atomic_access_count,
+                            ),
+                            // per_core_access_pc: record.per_core_access_pc.clone(),
+                            // trace: std::mem::take(&mut record.trace),
+                        },
+                    );
                 }
             }
         }
@@ -252,7 +293,10 @@ impl ShardedCacheLineRecords {
         let compressed_data = zstd::encode_all(msgpack_data.as_slice(), 3).unwrap();
         let compressed_len = compressed_data.len();
         std::fs::write(file_path, compressed_data).unwrap();
-        println!("Dumped cache line communication to {} (msgpack+zstd, {} bytes)", file_path, compressed_len);
+        println!(
+            "Dumped cache line communication to {} (msgpack+zstd, {} bytes)",
+            file_path, compressed_len
+        );
     }
 }
 
@@ -290,8 +334,8 @@ impl WFEState {
 struct CASPCState {
     last_instruction_count: u64,
     last_timestamp: u64,
-    last_address: u64,        // Physical address of last CAS access
-    in_busy_wait: bool,       // Whether this PC is currently in a busy-wait loop
+    last_address: u64,  // Physical address of last CAS access
+    in_busy_wait: bool, // Whether this PC is currently in a busy-wait loop
 }
 
 impl CASPCState {
@@ -434,7 +478,7 @@ impl CommunicationRecorder {
             is_load_exclusive,
             ts,
             pc,
-            va
+            va,
         );
     }
 
@@ -472,39 +516,41 @@ impl CommunicationRecorder {
     fn record_wfe(&self, core_id: u32, ts: u64, instruction_count: u64) {
         // Increment total WFE count for this core
         *self.wfe_total_count[core_id as usize].lock() += 1;
-        
+
         let mut state = self.wfe_state[core_id as usize].lock();
-        
+
         // Check if we have a previous WFE to compare against
         if state.last_timestamp > 0 {
             // Calculate differences
             let instruction_diff = instruction_count.saturating_sub(state.last_instruction_count);
             let time_diff = ts.saturating_sub(state.last_timestamp);
-            
+
             // Record in distributions for later analysis
             *self.wfe_instruction_diff_distribution[core_id as usize]
                 .lock()
                 .entry(instruction_diff)
                 .or_insert(0) += 1;
-            
+
             *self.wfe_time_diff_distribution[core_id as usize]
                 .lock()
                 .entry(time_diff)
                 .or_insert(0) += 1;
-            
+
             // Check if this looks like a busy-wait loop
-            if instruction_diff < BUSY_WAIT_INSTRUCTION_THRESHOLD && time_diff < BUSY_WAIT_TIME_THRESHOLD {
+            if instruction_diff < BUSY_WAIT_INSTRUCTION_THRESHOLD
+                && time_diff < BUSY_WAIT_TIME_THRESHOLD
+            {
                 *self.wfe_busy_wait_count[core_id as usize].lock() += 1;
             }
         }
-        
+
         // Update state for next WFE comparison
         state.last_instruction_count = instruction_count;
         state.last_timestamp = ts;
     }
 
     /// Record a CAS instruction execution with memory access information.
-    /// 
+    ///
     /// The spin detection logic:
     /// 1. Track state per (core, PC) pair in a hashtable
     /// 2. A CAS is considered part of a busy-wait loop when:
@@ -516,37 +562,37 @@ impl CommunicationRecorder {
     fn record_cas(&self, core_id: u32, pc: u64, pa: u64, ts: u64, instruction_count: u64) {
         // Increment total CAS count for this core
         *self.cas_total_count[core_id as usize].lock() += 1;
-        
+
         let mut pc_states = self.cas_pc_state[core_id as usize].lock();
         let state = pc_states.entry(pc).or_insert_with(CASPCState::new);
-        
+
         // Check if we have a previous CAS at this PC to compare against
         if state.last_timestamp > 0 {
             // Calculate differences
             let instruction_diff = instruction_count.saturating_sub(state.last_instruction_count);
             let time_diff = ts.saturating_sub(state.last_timestamp);
-            
+
             // Record in distributions for later analysis
             *self.cas_instruction_diff_distribution[core_id as usize]
                 .lock()
                 .entry(instruction_diff)
                 .or_insert(0) += 1;
-            
+
             *self.cas_time_diff_distribution[core_id as usize]
                 .lock()
                 .entry(time_diff)
                 .or_insert(0) += 1;
-            
+
             // Check if this looks like a busy-wait loop:
             // - Same address as before
             // - Instruction difference below threshold
             let same_address = state.last_address == pa;
             let is_spinning = same_address && instruction_diff < BUSY_WAIT_INSTRUCTION_THRESHOLD;
-            
+
             if is_spinning {
                 // Count this as a busy-wait iteration
                 *self.cas_busy_wait_count[core_id as usize].lock() += 1;
-                
+
                 // If this is a new entry into busy-wait (wasn't spinning before),
                 // count it as an entry
                 if !state.in_busy_wait {
@@ -558,7 +604,7 @@ impl CommunicationRecorder {
                 state.in_busy_wait = false;
             }
         }
-        
+
         // Update state for next CAS comparison at this PC
         state.last_instruction_count = instruction_count;
         state.last_timestamp = ts;
@@ -601,7 +647,7 @@ impl CommunicationRecorder {
                         false,
                         ts,
                         0,
-                        0
+                        0,
                     );
                     self.memory_access_count[core_id as usize]
                         .lock()
@@ -640,7 +686,9 @@ impl CommunicationRecorder {
         let mut encoder = zstd::stream::Encoder::new(interrupt_file, 3).unwrap();
         std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
         encoder.finish().unwrap();
-        println!("Dumped per-core interrupt intervals to interrupt_intervals.msgpack.zstd (msgpack+zstd)");
+        println!(
+            "Dumped per-core interrupt intervals to interrupt_intervals.msgpack.zstd (msgpack+zstd)"
+        );
 
         // Dump per-core idle intervals (WFI to interrupt)
         let mut per_core_idle_intervals = FxHashMap::default();
@@ -660,62 +708,106 @@ impl CommunicationRecorder {
 
         // Dump WFE spin detection data
         // Format: (total_wfe_count, busy_wait_count, instruction_diff_distribution, time_diff_distribution)
-        let mut wfe_data: FxHashMap<usize, (u64, u64, FxHashMap<u64, u64>, FxHashMap<u64, u64>)> = FxHashMap::default();
+        let mut wfe_data: FxHashMap<usize, (u64, u64, FxHashMap<u64, u64>, FxHashMap<u64, u64>)> =
+            FxHashMap::default();
         for core_id in 0..parameter::CORE_COUNT {
             let total_count = *self.wfe_total_count[core_id].lock();
             let busy_wait_count = *self.wfe_busy_wait_count[core_id].lock();
-            let instruction_diff_dist = self.wfe_instruction_diff_distribution[core_id].lock().clone();
+            let instruction_diff_dist = self.wfe_instruction_diff_distribution[core_id]
+                .lock()
+                .clone();
             let time_diff_dist = self.wfe_time_diff_distribution[core_id].lock().clone();
-            
+
             // Only include cores that have WFE data
-            if total_count > 0 || busy_wait_count > 0 || !instruction_diff_dist.is_empty() || !time_diff_dist.is_empty() {
-                wfe_data.insert(core_id, (total_count, busy_wait_count, instruction_diff_dist, time_diff_dist));
+            if total_count > 0
+                || busy_wait_count > 0
+                || !instruction_diff_dist.is_empty()
+                || !time_diff_dist.is_empty()
+            {
+                wfe_data.insert(
+                    core_id,
+                    (
+                        total_count,
+                        busy_wait_count,
+                        instruction_diff_dist,
+                        time_diff_dist,
+                    ),
+                );
             }
         }
-        
+
         if !wfe_data.is_empty() {
             let msgpack_data = rmp_serde::to_vec(&wfe_data).unwrap();
             let wfe_file = std::fs::File::create("wfe_spin_detection.msgpack.zstd").unwrap();
             let mut encoder = zstd::stream::Encoder::new(wfe_file, 3).unwrap();
             std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
             encoder.finish().unwrap();
-            println!("Dumped WFE spin detection data to wfe_spin_detection.msgpack.zstd (msgpack+zstd)");
-            
+            println!(
+                "Dumped WFE spin detection data to wfe_spin_detection.msgpack.zstd (msgpack+zstd)"
+            );
+
             // Print summary
             let total_wfe: u64 = wfe_data.values().map(|(total, _, _, _)| total).sum();
             let total_busy_wait: u64 = wfe_data.values().map(|(_, count, _, _)| count).sum();
-            println!("WFE spin detection summary: {} total WFE instructions, {} busy-wait loop iterations detected", total_wfe, total_busy_wait);
+            println!(
+                "WFE spin detection summary: {} total WFE instructions, {} busy-wait loop iterations detected",
+                total_wfe, total_busy_wait
+            );
         }
 
         // Dump CAS spin detection data
         // Format: (total_cas_count, busy_wait_count, busy_wait_entry_count, instruction_diff_distribution, time_diff_distribution)
-        let mut cas_data: FxHashMap<usize, (u64, u64, u64, FxHashMap<u64, u64>, FxHashMap<u64, u64>)> = FxHashMap::default();
+        let mut cas_data: FxHashMap<
+            usize,
+            (u64, u64, u64, FxHashMap<u64, u64>, FxHashMap<u64, u64>),
+        > = FxHashMap::default();
         for core_id in 0..parameter::CORE_COUNT {
             let total_count = *self.cas_total_count[core_id].lock();
             let busy_wait_count = *self.cas_busy_wait_count[core_id].lock();
             let busy_wait_entry_count = *self.cas_busy_wait_entry_count[core_id].lock();
-            let instruction_diff_dist = self.cas_instruction_diff_distribution[core_id].lock().clone();
+            let instruction_diff_dist = self.cas_instruction_diff_distribution[core_id]
+                .lock()
+                .clone();
             let time_diff_dist = self.cas_time_diff_distribution[core_id].lock().clone();
-            
+
             // Only include cores that have CAS data
-            if total_count > 0 || busy_wait_count > 0 || busy_wait_entry_count > 0 || !instruction_diff_dist.is_empty() || !time_diff_dist.is_empty() {
-                cas_data.insert(core_id, (total_count, busy_wait_count, busy_wait_entry_count, instruction_diff_dist, time_diff_dist));
+            if total_count > 0
+                || busy_wait_count > 0
+                || busy_wait_entry_count > 0
+                || !instruction_diff_dist.is_empty()
+                || !time_diff_dist.is_empty()
+            {
+                cas_data.insert(
+                    core_id,
+                    (
+                        total_count,
+                        busy_wait_count,
+                        busy_wait_entry_count,
+                        instruction_diff_dist,
+                        time_diff_dist,
+                    ),
+                );
             }
         }
-        
+
         if !cas_data.is_empty() {
             let msgpack_data = rmp_serde::to_vec(&cas_data).unwrap();
             let cas_file = std::fs::File::create("cas_spin_detection.msgpack.zstd").unwrap();
             let mut encoder = zstd::stream::Encoder::new(cas_file, 3).unwrap();
             std::io::Write::write_all(&mut encoder, &msgpack_data).unwrap();
             encoder.finish().unwrap();
-            println!("Dumped CAS spin detection data to cas_spin_detection.msgpack.zstd (msgpack+zstd)");
-            
+            println!(
+                "Dumped CAS spin detection data to cas_spin_detection.msgpack.zstd (msgpack+zstd)"
+            );
+
             // Print summary
             let total_cas: u64 = cas_data.values().map(|(total, _, _, _, _)| total).sum();
             let total_busy_wait: u64 = cas_data.values().map(|(_, count, _, _, _)| count).sum();
             let total_entries: u64 = cas_data.values().map(|(_, _, entries, _, _)| entries).sum();
-            println!("CAS spin detection summary: {} total CAS, {} busy-wait iterations, {} busy-wait entries", total_cas, total_busy_wait, total_entries);
+            println!(
+                "CAS spin detection summary: {} total CAS, {} busy-wait iterations, {} busy-wait entries",
+                total_cas, total_busy_wait, total_entries
+            );
         }
     }
 }
@@ -763,7 +855,7 @@ unsafe extern "C" fn vcpu_mem_access(
         if !is_device {
             let is_store = qemu_api::qemu_plugin_mem_is_store(info);
             let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
-            
+
             // Decode user data:
             // Bits [48:0]: instruction virtual address (49 bits)
             // Bit  [49]:   is_atomic flag
@@ -775,9 +867,13 @@ unsafe extern "C" fn vcpu_mem_access(
             let is_atomic = ((userdata >> 49) & 1) != 0;
             let is_load_exclusive = ((userdata >> 50) & 1) != 0;
             let is_cas = ((userdata >> 51) & 1) != 0;
-            
+
             let is_os = (inst_virtual_addr >> 48) & 1 == 1;
-            let pc = if is_os { inst_virtual_addr | 0xffff_0000_0000_0000 } else { inst_virtual_addr };
+            let pc = if is_os {
+                inst_virtual_addr | 0xffff_0000_0000_0000
+            } else {
+                inst_virtual_addr
+            };
             let ts = std::ptr::addr_of!(QUANTUM_GENERATION).read_volatile() * 100;
 
             let recorder = &*PLUGIN;
@@ -785,11 +881,18 @@ unsafe extern "C" fn vcpu_mem_access(
             // Handle CAS instruction spin detection
             if is_cas {
                 // Get instruction count from statistics
-                let (instruction_count, _, _) = Statistics::global_query_record(vcpu_idx, crate::debug::statistics::EventType::Instruction);
-                
+                let (instruction_count, _, _) = Statistics::global_query_record(
+                    vcpu_idx,
+                    crate::debug::statistics::EventType::Instruction,
+                );
+
                 // Record CompareAndSwap in global statistics
-                Statistics::global_record(vcpu_idx, crate::debug::statistics::EventType::CompareAndSwap, is_os);
-                
+                Statistics::global_record(
+                    vcpu_idx,
+                    crate::debug::statistics::EventType::CompareAndSwap,
+                    is_os,
+                );
+
                 // Record CAS with physical address for spin detection
                 recorder.record_cas(vcpu_idx, pc, pa, ts, instruction_count);
             }
@@ -797,17 +900,17 @@ unsafe extern "C" fn vcpu_mem_access(
             // Record the memory access (only if MODEL_SHARED_MEMORY is enabled)
             if MODEL_SHARED_MEMORY {
                 recorder.record_memory_access(
-                    vcpu_idx, 
-                    pa, 
-                    false,        // is_instruction
+                    vcpu_idx,
+                    pa,
+                    false, // is_instruction
                     is_atomic,
                     is_load_exclusive,
                     is_store,
                     is_os,
-                    false,        // is_page_walk (handled separately in translate_and_record)
+                    false, // is_page_walk (handled separately in translate_and_record)
                     ts,
                     pc,
-                    vaddr
+                    vaddr,
                 );
             }
         }
@@ -829,21 +932,10 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, inst_virtual_addr: *mut ffi::
         let ts = std::ptr::addr_of!(QUANTUM_GENERATION).read_volatile() * 100;
         let is_os = vaddr >> 63 == 1;
 
-
         // Translate through MMU and record page walks if necessary
         if let Some(pa) = recorder.translate_and_record(vcpu_idx, vaddr, ts, true, is_os) {
             recorder.record_memory_access(
-                vcpu_idx, 
-                pa,
-                true,
-                 false, 
-                 false,
-                 false,
-                 is_os,
-                 false,
-                 ts,
-                 vaddr,
-                 vaddr
+                vcpu_idx, pa, true, false, false, false, is_os, false, ts, vaddr, vaddr,
             );
         }
     }
@@ -898,14 +990,21 @@ unsafe extern "C" fn vcpu_exec_wfi(vcpu_idx: u32, _: *mut ffi::c_void) {
 unsafe extern "C" fn vcpu_exec_wfe(vcpu_idx: u32, _: *mut ffi::c_void) {
     unsafe {
         let ts = std::ptr::addr_of!(QUANTUM_GENERATION).read_volatile() * 100;
-        
+
         // Get instruction count from statistics
-        let (instruction_count, _, _) = Statistics::global_query_record(vcpu_idx, crate::debug::statistics::EventType::Instruction);
-        
+        let (instruction_count, _, _) = Statistics::global_query_record(
+            vcpu_idx,
+            crate::debug::statistics::EventType::Instruction,
+        );
+
         // Record WaitForEvent in global statistics
         let is_os = false; // WFE is typically executed in user space for spin locks
-        Statistics::global_record(vcpu_idx, crate::debug::statistics::EventType::WaitForEvent, is_os);
-        
+        Statistics::global_record(
+            vcpu_idx,
+            crate::debug::statistics::EventType::WaitForEvent,
+            is_os,
+        );
+
         let recorder = &*PLUGIN;
         recorder.record_wfe(vcpu_idx, ts, instruction_count);
     }
@@ -1002,18 +1101,18 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
 
             let mut block_id = vec![];
             let mut insn_flags = vec![]; // Store (is_atomic, is_load_exclusive, is_cas) for each instruction
-            
+
             for i in 0..n_instruction {
                 let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
                 block_id.push(
                     qemu_api::qemu_plugin_insn_haddr(inst) as usize
                         >> crate::parameter::CACHE_LINE_SIZE.trailing_zeros(),
                 );
-                
+
                 // Decode the instruction to determine if it's atomic or load-exclusive
                 let insn_data_ptr = qemu_api::qemu_plugin_insn_data(inst);
                 let insn_bytes = std::slice::from_raw_parts(insn_data_ptr as *const u8, 4);
-                
+
                 // AArch64 instructions are little-endian 32-bit values
                 let insn_word = u32::from_le_bytes([
                     insn_bytes[0],
@@ -1021,11 +1120,11 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                     insn_bytes[2],
                     insn_bytes[3],
                 ]);
-                
+
                 let is_atomic = aarch64_decoder::is_atomic_operation(insn_word);
                 let is_load_exclusive = aarch64_decoder::is_load_exclusive(insn_word);
                 let is_cas = aarch64_decoder::is_cas_operation(insn_word);
-                
+
                 insn_flags.push((is_atomic, is_load_exclusive, is_cas));
             }
 
@@ -1037,15 +1136,15 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
 
                 let insn_addr = (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0x1_ffff_ffff_ffff;
                 let offset = idx as u64;
-                
+
                 // Encode flags in user data:
                 // Bits [48:0]: instruction virtual address (49 bits)
                 // Bit  [49]:   is_atomic flag
                 // Bit  [50]:   is_load_exclusive flag
-                // Bit  [51]:   is_cas flag  
+                // Bit  [51]:   is_cas flag
                 // Bits [52+]:  offset
                 let (is_atomic, is_load_exclusive, is_cas) = insn_flags[idx as usize];
-                let combined = insn_addr 
+                let combined = insn_addr
                     | ((is_atomic as u64) << 49)
                     | ((is_load_exclusive as u64) << 50)
                     | ((is_cas as u64) << 51)
@@ -1076,7 +1175,7 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                         std::ptr::null_mut(),
                     );
                 }
-                
+
                 // WFE instruction encoding for AArch64: 0xD503205F
                 // Binary: 1101_0101_0000_0011_0010_0000_0101_1111
                 if literal == 0b_1101_0101_0000_0011_0010_0000_0101_1111 {
@@ -1087,7 +1186,7 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                         std::ptr::null_mut(),
                     );
                 }
-                
+
                 // CAS instructions are handled in the memory callback below
                 // where we have access to the physical address
             }
@@ -1098,7 +1197,7 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
             for i in 0..n_instruction {
                 let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
                 let (is_atomic, is_load_exclusive, is_cas) = insn_flags[i as usize];
-                
+
                 // Skip non-CAS instructions if MODEL_SHARED_MEMORY is false
                 if !MODEL_SHARED_MEMORY && !is_cas {
                     continue;
@@ -1107,14 +1206,14 @@ impl super::super::Plugin for CommunicationRecordingPlugin {
                 let insn_addr =
                     (qemu_api::qemu_plugin_insn_vaddr(inst) as u64) & 0x1_ffff_ffff_ffff;
                 let offset = i as u64;
-                
+
                 // Encode flags in user data:
                 // Bits [48:0]: instruction virtual address (49 bits)
                 // Bit  [49]:   is_atomic flag
                 // Bit  [50]:   is_load_exclusive flag
                 // Bit  [51]:   is_cas flag
                 // Bits [52+]:  offset
-                let combined = insn_addr 
+                let combined = insn_addr
                     | ((is_atomic as u64) << 49)
                     | ((is_load_exclusive as u64) << 50)
                     | ((is_cas as u64) << 51)

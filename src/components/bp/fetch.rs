@@ -167,12 +167,18 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
 
     pub fn to_checkpoint_helper(&self) -> FetchUnitHelper {
         FetchUnitHelper {
-            private_units: self.private_units.iter().map(|u| u.to_checkpoint_helper()).collect(),
+            private_units: self
+                .private_units
+                .iter()
+                .map(|u| u.to_checkpoint_helper())
+                .collect(),
         }
     }
 
     pub fn from_checkpoint_helper(helper: FetchUnitHelper) -> Self {
-        let private_units: Vec<_> = helper.private_units.into_iter()
+        let private_units: Vec<_> = helper
+            .private_units
+            .into_iter()
             .map(PerCoreFetchUnit::from_checkpoint_helper)
             .collect();
         Self {

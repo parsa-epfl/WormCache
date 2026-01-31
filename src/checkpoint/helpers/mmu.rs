@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 // Re-export the original types that can be used directly
 pub use crate::components::cache_hierarchy::mmu::tlb::{
-    AddressSpaceID, TLBEntry, FullyAssociativeTLBEntry,
+    AddressSpaceID, FullyAssociativeTLBEntry, TLBEntry,
 };
 
 /// Helper for serializing a TLB set.
@@ -47,7 +47,9 @@ pub struct FullyAssociativeTLBHelper {
     pub deferred_elements_exist: bool,
 }
 
-impl From<&crate::components::cache_hierarchy::mmu::tlb::FullyAssociativeTLB> for FullyAssociativeTLBHelper {
+impl From<&crate::components::cache_hierarchy::mmu::tlb::FullyAssociativeTLB>
+    for FullyAssociativeTLBHelper
+{
     fn from(tlb: &crate::components::cache_hierarchy::mmu::tlb::FullyAssociativeTLB) -> Self {
         Self {
             elements: tlb.elements.iter().map(|(k, v)| (*k, v.clone())).collect(),
@@ -58,7 +60,9 @@ impl From<&crate::components::cache_hierarchy::mmu::tlb::FullyAssociativeTLB> fo
 }
 
 impl FullyAssociativeTLBHelper {
-    pub fn into_fully_associative_tlb(self) -> crate::components::cache_hierarchy::mmu::tlb::FullyAssociativeTLB {
+    pub fn into_fully_associative_tlb(
+        self,
+    ) -> crate::components::cache_hierarchy::mmu::tlb::FullyAssociativeTLB {
         crate::components::cache_hierarchy::mmu::tlb::FullyAssociativeTLB {
             elements: self.elements.into_iter().collect(),
             associativity: self.associativity,
@@ -78,7 +82,10 @@ pub struct HugeTLBHelper {
 impl HugeTLBHelper {
     pub fn from_hashmap(map: &rustc_hash::FxHashMap<u64, (AddressSpaceID, u64)>) -> Self {
         Self {
-            entries: map.iter().map(|(k, (asid, ppn))| (*k, (*asid, *ppn))).collect(),
+            entries: map
+                .iter()
+                .map(|(k, (asid, ppn))| (*k, (*asid, *ppn)))
+                .collect(),
         }
     }
 

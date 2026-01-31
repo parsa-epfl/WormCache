@@ -42,7 +42,9 @@ use super::{
     statistics::{SharedCacheSetStatistics, ZeroSharedCacheSetStatistics},
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize,
+)]
 pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.
     pub ts: u64,

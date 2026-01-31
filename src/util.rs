@@ -65,7 +65,8 @@ where
     }
 }
 
-impl<const N: usize, D> rkyv::with::DeserializeWith<rkyv::Archived<Vec<u64>>, BitArray<[u64; N], Lsb0>, D>
+impl<const N: usize, D>
+    rkyv::with::DeserializeWith<rkyv::Archived<Vec<u64>>, BitArray<[u64; N], Lsb0>, D>
     for RkyvBitArray
 where
     D: rkyv::rancor::Fallible + ?Sized,

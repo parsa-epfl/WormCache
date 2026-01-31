@@ -1,13 +1,17 @@
 use std::env;
-use std::io::{BufReader};
 use std::fs::File;
-use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
+use std::io::BufReader;
+use std::process::exit;
 use worm_cache::components::cache_hierarchy::CacheBlockRequest;
-use worm_cache::components::cache_hierarchy::common::{CacheAccessType, InfiniteDirectory, ParallelHarvardPrivateCache, ParallelLRUSharedCache};
-use worm_cache::components::cache_hierarchy::common::statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics};
 use worm_cache::components::cache_hierarchy::MemoryHierarchy;
 use worm_cache::components::cache_hierarchy::common::CacheHierarchyAccessResult;
-use std::process::exit;
+use worm_cache::components::cache_hierarchy::common::statistics::{
+    SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics,
+};
+use worm_cache::components::cache_hierarchy::common::{
+    CacheAccessType, InfiniteDirectory, ParallelHarvardPrivateCache, ParallelLRUSharedCache,
+};
+use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
 use worm_cache::parameter;
@@ -36,11 +40,11 @@ type SharedCacheStatisticsWithPlugin =
 type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelHarvardPrivateCache<
-        {ALLOCATED_CORE_COUNT}, 
-        {parameter::HARVARD_PRI_I_CACHE_SET}, 
-        {parameter::HARVARD_PRI_I_CACHE_ASSO}, 
-        {parameter::HARVARD_PRI_D_CACHE_SET}, 
-        {parameter::HARVARD_PRI_D_CACHE_ASSO}
+        { ALLOCATED_CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
     ParallelLRUSharedCache<
         SharedCacheStatisticsWithPlugin,
@@ -54,15 +58,15 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
     { ALLOCATED_CORE_COUNT },
-    {parameter::N_ACC},
-    {parameter::N_FILTER},
-    {parameter::PHT_SETS},
-    {parameter::PHT_WAYS},
-    {parameter::N_BLK},
-    {parameter::ROT},
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
-    {parameter::PERFECT_PHT},
+    { parameter::PERFECT_PHT },
 >;
 
 fn main() {
@@ -115,13 +119,23 @@ fn main() {
     for (iter, record) in rdr.records().enumerate() {
         if (iter + 1) % 100_000 == 0 {
             let mr = (miss_count as f64 / (hit_count + miss_count) as f64) * 100.0;
-            println!("Processed {} records. Hits: {}, Misses: {}, Miss Rate: {:.1}%", iter + 1, hit_count, miss_count, mr);
+            println!(
+                "Processed {} records. Hits: {}, Misses: {}, Miss Rate: {:.1}%",
+                iter + 1,
+                hit_count,
+                miss_count,
+                mr
+            );
         }
         match record {
             Ok(record) => {
                 let record_str = record.iter().collect::<Vec<&str>>().join(",");
                 if record.len() != 5 {
-                    eprintln!("Invalid record length: {} for record: {}", record.len(), record_str);
+                    eprintln!(
+                        "Invalid record length: {} for record: {}",
+                        record.len(),
+                        record_str
+                    );
                     exit(1);
                 }
                 // println!("Processing record: {}", record_str);
@@ -151,7 +165,7 @@ fn main() {
                         match result {
                             CacheHierarchyAccessResult::HitInSelfPrivateCache => {
                                 hit_count += 1;
-                            },
+                            }
                             _ => {
                                 miss_count += 1;
                             }

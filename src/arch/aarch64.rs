@@ -69,7 +69,7 @@ impl ISA for AArch64 {
     fn ptw(va: u64) -> TranslationResult {
         let is_kernel = va & 0xFFFF000000000000 != 0;
         let tcr = unsafe { qemu_api::qemu_plugin_read_tcr_el1() };
-        let which_ttbr_for_base = if va < (1 << 48 ) { 0 } else { 1 };
+        let which_ttbr_for_base = if va < (1 << 48) { 0 } else { 1 };
         let ttbr = unsafe { qemu_api::qemu_plugin_read_ttbr_el1(which_ttbr_for_base) };
 
         let t1_size = 64 - ((tcr >> 16) & 0b111111);

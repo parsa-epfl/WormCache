@@ -9,8 +9,7 @@ use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::components::cache_hierarchy::common::{
-    SharedCacheBlock, SharedCacheSet,
-    statistics::SharedCacheSetStatistics,
+    SharedCacheBlock, SharedCacheSet, statistics::SharedCacheSetStatistics,
 };
 
 /// Helper for serializing a single shared cache set.
@@ -38,14 +37,19 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
 
 impl SharedCacheSetHelper {
     /// Convert back to a SharedCacheSet with default statistics.
-    pub fn into_set<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>(
+    pub fn into_set<
+        const WAY: usize,
+        const SET: usize,
+        const EXCLUSIVE: bool,
+        S: SharedCacheSetStatistics,
+    >(
         self,
     ) -> SharedCacheSet<WAY, SET, EXCLUSIVE, S> {
         let blocks: [SharedCacheBlock; WAY] = self
             .blocks
             .try_into()
             .expect("Block count mismatch during deserialization");
-        
+
         SharedCacheSet {
             blocks,
             touched_count: self.touched_count,
@@ -65,10 +69,16 @@ pub struct SharedCacheHelper {
 
 impl SharedCacheHelper {
     /// Create a new helper from an iterator of cache sets.
-    pub fn from_sets<'a, const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSetStatistics>(
+    pub fn from_sets<
+        'a,
+        const WAY: usize,
+        const SET: usize,
+        const EXCLUSIVE: bool,
+        S: SharedCacheSetStatistics,
+    >(
         sets: impl Iterator<Item = &'a SharedCacheSet<WAY, SET, EXCLUSIVE, S>>,
         warmed_sets: usize,
-    ) -> Self 
+    ) -> Self
     where
         S: 'a,
     {

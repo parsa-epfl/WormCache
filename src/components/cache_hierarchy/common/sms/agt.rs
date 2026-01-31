@@ -1,22 +1,15 @@
-use crate::components::cache_hierarchy::CacheBlockRequest;
 use super::acc::{AccTable, AccTableEntry};
 use super::filter::FilterTable;
+use crate::components::cache_hierarchy::CacheBlockRequest;
 
 #[derive(Debug)]
-struct AGTPerCore<
-    const N_ACC: usize,
-    const N_FILTER: usize,
-    const N_BLK: usize,
-> {
+struct AGTPerCore<const N_ACC: usize, const N_FILTER: usize, const N_BLK: usize> {
     acc_table: AccTable<N_ACC, N_BLK>,
     filter_table: FilterTable<N_FILTER, N_BLK>,
 }
 
-impl<
-    const N_ACC: usize,
-    const N_FILTER: usize,
-    const N_BLK: usize,
-> AGTPerCore<N_ACC, N_FILTER, N_BLK>
+impl<const N_ACC: usize, const N_FILTER: usize, const N_BLK: usize>
+    AGTPerCore<N_ACC, N_FILTER, N_BLK>
 {
     fn new() -> Self {
         Self {
@@ -51,12 +44,8 @@ pub struct AGT<
     tables: Box<[AGTPerCore<N_ACC, N_FILTER, N_BLK>; CORE_COUNT]>,
 }
 
-impl<
-    const CORE_COUNT: usize,
-    const N_ACC: usize,
-    const N_FILTER: usize,
-    const N_BLK: usize,
-> AGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>
+impl<const CORE_COUNT: usize, const N_ACC: usize, const N_FILTER: usize, const N_BLK: usize>
+    AGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>
 {
     pub fn new() -> Self {
         Self {

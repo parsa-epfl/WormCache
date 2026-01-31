@@ -335,11 +335,10 @@ mod directory_tests {
 
 mod shared_cache_tests {
     use crate::checkpoint::helpers::{SharedCacheHelper, SharedCacheSetHelper};
-    use crate::components::cache_hierarchy::common::{
-        CacheAccessType, SharedCacheAccessRequest, SharedCacheAccessSource,
-        SharedCacheSet,
-    };
     use crate::components::cache_hierarchy::common::statistics::ZeroSharedCacheSetStatistics;
+    use crate::components::cache_hierarchy::common::{
+        CacheAccessType, SharedCacheAccessRequest, SharedCacheAccessSource, SharedCacheSet,
+    };
 
     type TestSet = SharedCacheSet<8, 256, false, ZeroSharedCacheSetStatistics>;
 
@@ -414,7 +413,9 @@ mod shared_cache_tests {
 
     #[test]
     fn test_shared_cache_helper_json_roundtrip() {
-        let sets: Vec<TestSet> = (0..4).map(|_| create_and_modify_shared_cache_set()).collect();
+        let sets: Vec<TestSet> = (0..4)
+            .map(|_| create_and_modify_shared_cache_set())
+            .collect();
 
         let helper = SharedCacheHelper::from_sets(sets.iter(), 4);
 
@@ -434,7 +435,9 @@ mod shared_cache_tests {
 
     #[test]
     fn test_shared_cache_helper_rkyv_roundtrip() {
-        let sets: Vec<TestSet> = (0..4).map(|_| create_and_modify_shared_cache_set()).collect();
+        let sets: Vec<TestSet> = (0..4)
+            .map(|_| create_and_modify_shared_cache_set())
+            .collect();
 
         let helper = SharedCacheHelper::from_sets(sets.iter(), 4);
 
@@ -649,7 +652,11 @@ mod fetch_unit_tests {
 
         // Verify
         assert_eq!(helper.private_units.len(), helper2.private_units.len());
-        for (u1, u2) in helper.private_units.iter().zip(helper2.private_units.iter()) {
+        for (u1, u2) in helper
+            .private_units
+            .iter()
+            .zip(helper2.private_units.iter())
+        {
             assert_eq!(u1.btb.local_ts, u2.btb.local_ts);
             assert_eq!(u1.ras.stack, u2.ras.stack);
             assert_eq!(u1.tage.seed, u2.tage.seed);
@@ -683,9 +690,9 @@ mod fetch_unit_tests {
 
 mod mmu_tests {
     use crate::checkpoint::helpers::{
-        AddressSpaceID, TLBEntry, FullyAssociativeTLBEntry, FullyAssociativeTLBHelper,
-        HugeTLBHelper, MMUHelper, MMUsHelper, NoMMUHelper, OrdinaryMMUHelper,
-        TLBHelper, TLBSetHelper, FullyAssociativeL1MMUHelper,
+        AddressSpaceID, FullyAssociativeL1MMUHelper, FullyAssociativeTLBEntry,
+        FullyAssociativeTLBHelper, HugeTLBHelper, MMUHelper, MMUsHelper, NoMMUHelper,
+        OrdinaryMMUHelper, TLBEntry, TLBHelper, TLBSetHelper,
     };
 
     fn create_tlb_entry(vpn: u64, ppn: u64, ts: u64, valid: bool) -> TLBEntry {
@@ -727,8 +734,20 @@ mod mmu_tests {
     fn create_fully_associative_tlb_helper() -> FullyAssociativeTLBHelper {
         FullyAssociativeTLBHelper {
             elements: vec![
-                (0x12345678, FullyAssociativeTLBEntry { ts: 100, ppn: 0x1000 }),
-                (0x87654321, FullyAssociativeTLBEntry { ts: 200, ppn: 0x2000 }),
+                (
+                    0x12345678,
+                    FullyAssociativeTLBEntry {
+                        ts: 100,
+                        ppn: 0x1000,
+                    },
+                ),
+                (
+                    0x87654321,
+                    FullyAssociativeTLBEntry {
+                        ts: 200,
+                        ppn: 0x2000,
+                    },
+                ),
             ],
             associativity: 64,
             deferred_elements_exist: false,
@@ -791,8 +810,7 @@ mod mmu_tests {
     fn test_tlb_entry_rkyv_roundtrip() {
         let entry = create_tlb_entry(0x1000, 0x2000, 100, true);
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&entry).unwrap();
-        let entry2: TLBEntry =
-            rkyv::from_bytes::<TLBEntry, rkyv::rancor::Error>(&bytes).unwrap();
+        let entry2: TLBEntry = rkyv::from_bytes::<TLBEntry, rkyv::rancor::Error>(&bytes).unwrap();
 
         assert_eq!(entry.valid, entry2.valid);
         assert_eq!(entry.ts, entry2.ts);
@@ -817,8 +835,7 @@ mod mmu_tests {
     fn test_tlb_helper_rkyv_roundtrip() {
         let tlb = create_tlb_helper();
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&tlb).unwrap();
-        let tlb2: TLBHelper =
-            rkyv::from_bytes::<TLBHelper, rkyv::rancor::Error>(&bytes).unwrap();
+        let tlb2: TLBHelper = rkyv::from_bytes::<TLBHelper, rkyv::rancor::Error>(&bytes).unwrap();
 
         assert_eq!(tlb.entries.len(), tlb2.entries.len());
     }

@@ -41,7 +41,18 @@ use serde::Serialize;
 // 3. It will be probably OK to use Mutex.
 //
 
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    Archive,
+    RkyvDeserialize,
+    RkyvSerialize,
+)]
 pub enum SharedCacheAccessSource {
     Core(u32),
     Device,

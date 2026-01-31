@@ -29,14 +29,26 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
 use super::MMUFlushMode;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy, Eq, Hash, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    PartialEq,
+    Clone,
+    Copy,
+    Eq,
+    Hash,
+    Archive,
+    RkyvDeserialize,
+    RkyvSerialize,
+)]
 pub enum AddressSpaceID {
     Global,
     NonGlobal(u16),
@@ -156,7 +168,11 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
         }
     }
 
-    pub fn peek(&mut self, vpn: u64, asid: AddressSpaceID) -> Option<(u64, AddressSpaceID, &mut u64)> {
+    pub fn peek(
+        &mut self,
+        vpn: u64,
+        asid: AddressSpaceID,
+    ) -> Option<(u64, AddressSpaceID, &mut u64)> {
         let set_index = vpn % SET_COUNT as u64;
         let set = &mut self.entries[set_index as usize];
         for entry in set.entries.iter_mut() {
@@ -248,25 +264,33 @@ impl<const SET_COUNT: usize, const ASSO: usize> TLB<SET_COUNT, ASSO> {
     /// Convert TLB to a helper struct for serialization.
     pub fn to_checkpoint_helper(&self) -> crate::checkpoint::helpers::TLBHelper {
         crate::checkpoint::helpers::TLBHelper {
-            entries: self.entries.iter().map(|set| {
-                crate::checkpoint::helpers::TLBSetHelper {
+            entries: self
+                .entries
+                .iter()
+                .map(|set| crate::checkpoint::helpers::TLBSetHelper {
                     entries: set.entries.to_vec(),
                     current_pointer: set.current_pointer,
-                }
-            }).collect(),
+                })
+                .collect(),
         }
     }
 
     /// Restore TLB from a helper struct.
     pub fn from_checkpoint_helper(helper: crate::checkpoint::helpers::TLBHelper) -> Self {
-        let entries: Vec<TLBSet<ASSO>> = helper.entries.into_iter().map(|set_helper| {
-            let entries: [TLBEntry; ASSO] = set_helper.entries.try_into()
-                .expect("TLB set size mismatch during deserialization");
-            TLBSet {
-                entries,
-                current_pointer: set_helper.current_pointer,
-            }
-        }).collect();
+        let entries: Vec<TLBSet<ASSO>> = helper
+            .entries
+            .into_iter()
+            .map(|set_helper| {
+                let entries: [TLBEntry; ASSO] = set_helper
+                    .entries
+                    .try_into()
+                    .expect("TLB set size mismatch during deserialization");
+                TLBSet {
+                    entries,
+                    current_pointer: set_helper.current_pointer,
+                }
+            })
+            .collect();
         Self { entries }
     }
 }

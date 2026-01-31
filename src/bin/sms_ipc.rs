@@ -1,7 +1,12 @@
-use worm_cache::{components::cache_hierarchy::{CacheBlockRequest, common::{CacheAccessType, agt::ParallelAGT, pht::ParallelPHT}}, parameter};
-use std::{fs::File, io::BufReader, io::Write, process::exit};
 use std::env;
-
+use std::{fs::File, io::BufReader, io::Write, process::exit};
+use worm_cache::{
+    components::cache_hierarchy::{
+        CacheBlockRequest,
+        common::{CacheAccessType, agt::ParallelAGT, pht::ParallelPHT},
+    },
+    parameter,
+};
 
 const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT / 2
@@ -10,21 +15,21 @@ const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
 };
 
 type AGT = ParallelAGT<
-    {ALLOCATED_CORE_COUNT},
-    {parameter::N_ACC},
-    {parameter::N_FILTER},
-    {parameter::N_BLK}
+    { ALLOCATED_CORE_COUNT },
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::N_BLK },
 >;
 
 type PHT = ParallelPHT<
-    {ALLOCATED_CORE_COUNT},
-    {parameter::PHT_SETS},
-    {parameter::PHT_WAYS},
-    {parameter::N_BLK},
-    {parameter::ROT},
-    {parameter::SEP_RDWR},
-    {parameter::SAT_CNT},
-    {parameter::PERFECT_PHT}
+    { ALLOCATED_CORE_COUNT },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    { parameter::PERFECT_PHT },
 >;
 
 fn main() {
@@ -68,7 +73,11 @@ fn main() {
             Ok(record) => {
                 let record_str = record.iter().collect::<Vec<&str>>().join(",") + "\n";
                 if record.len() != 5 {
-                    eprintln!("Invalid record length: {} for record: {}", record.len(), record_str);
+                    eprintln!(
+                        "Invalid record length: {} for record: {}",
+                        record.len(),
+                        record_str
+                    );
                     exit(1);
                 }
                 println!("Processing record: {}", record_str);
@@ -91,7 +100,7 @@ fn main() {
                     pc,
                 };
                 match op {
-                    0 => {     
+                    0 => {
                         out_f.write(record_str.as_bytes()).unwrap();
                         match pht.lookup(&req, ts) {
                             Some(addrs) => {
@@ -99,24 +108,26 @@ fn main() {
                                     if *addr == block_id {
                                         continue;
                                     }
-                                    out_f.write(format!("3,{},{},0,{}\n", addr, pc, ts).as_bytes()).unwrap();
+                                    out_f
+                                        .write(format!("3,{},{},0,{}\n", addr, pc, ts).as_bytes())
+                                        .unwrap();
                                 }
-                            },
-                            None => {},
+                            }
+                            None => {}
                         }
                     }
                     1 => {
                         out_f.write(record_str.as_bytes()).unwrap();
                         match agt.record(&req, ts) {
                             Some(entry) => pht.insert(&entry, core_id as usize),
-                            None => {},
+                            None => {}
                         }
                     }
                     2 => {
                         out_f.write(record_str.as_bytes()).unwrap();
-                        match agt.evict( &req) {
+                        match agt.evict(&req) {
                             Some(entry) => pht.insert(&entry, core_id as usize),
-                            None => {},
+                            None => {}
                         }
                     }
                     3 => {}
@@ -132,6 +143,4 @@ fn main() {
             }
         }
     }
-
-
 }

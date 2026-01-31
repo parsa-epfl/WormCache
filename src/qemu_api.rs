@@ -842,7 +842,7 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " qemu_plugin_hwaddr_translate_walk_trace - returns the trace of walking the\n page table to get the specific translation.\n\n The returned array has 4 elements. Every element is the hardware address of a\n specific page table entry. For huge pages or translation error, you will see\n -1 in the array ahead of time.\n\n This function can be only called from threads that run a vCPU. Otherwise, it\n will return NULL.\n\n The function reads the recorded trace in the TLB entry. There is a better way\n to optimize the storage.\n"]
     pub fn qemu_plugin_hwaddr_translate_walk_trace(hwaddr: *const qemu_plugin_hwaddr)
-        -> *const u64;
+    -> *const u64;
 }
 unsafe extern "C" {
     #[doc = " qemu_plugin_read_physical_memory - returns the value of the given physical\n memory address.\n\n This function calls cpu_physical_memory_rw to read the physical memory.\n\n This function will not trigger memory access plugin."]
@@ -942,7 +942,7 @@ pub type qemu_plugin_flushing_local_tlb_t = ::std::option::Option<
 >;
 unsafe extern "C" {
     pub fn qemu_plugin_register_flushing_local_tlb_cb(cb: qemu_plugin_flushing_local_tlb_t)
-        -> bool;
+    -> bool;
 }
 pub type qemu_plugin_on_deliver_interrupt_cb_t =
     ::std::option::Option<unsafe extern "C" fn(vcpu_idx: u32)>;
@@ -953,5 +953,5 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn qemu_plugin_register_plugin_quantum_generation_increment_variable(var: *mut u64)
-        -> bool;
+    -> bool;
 }

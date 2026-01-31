@@ -326,7 +326,8 @@ impl<
             std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
 
             let helper: Vec<HarvardPrivateCacheHelper> =
-                rkyv::from_bytes::<Vec<HarvardPrivateCacheHelper>, rkyv::rancor::Error>(&bytes).unwrap();
+                rkyv::from_bytes::<Vec<HarvardPrivateCacheHelper>, rkyv::rancor::Error>(&bytes)
+                    .unwrap();
 
             for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
                 *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);
@@ -346,8 +347,7 @@ impl<
             let file = file.unwrap();
             let file = Decoder::new(file).unwrap();
 
-            let helper: Vec<HarvardPrivateCacheHelper> =
-                serde_json::from_reader(file).unwrap();
+            let helper: Vec<HarvardPrivateCacheHelper> = serde_json::from_reader(file).unwrap();
 
             for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
                 *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);

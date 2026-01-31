@@ -45,7 +45,9 @@ use zstd::{Decoder, Encoder};
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Archive, RkyvDeserialize, RkyvSerialize,
+)]
 pub enum BranchType {
     NonBranch = 0,
     Conditional = 1,
@@ -177,14 +179,17 @@ impl Plugin for BranchPredictorPlugin {
     }
 
     fn deserialize(name: &str) {
-        use crate::parameter::USE_RKYV_SERIALIZATION;
         use crate::checkpoint::helpers::FetchUnitHelper;
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
         if USE_RKYV_SERIALIZATION {
             let file = std::fs::File::open(format!("{}/fetch.rkyv.zstd", name));
 
             if file.is_err() {
-                println!("Cannot load the fetch unit state (rkyv). Error: {:?}", file.err());
+                println!(
+                    "Cannot load the fetch unit state (rkyv). Error: {:?}",
+                    file.err()
+                );
                 return;
             }
 
