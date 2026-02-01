@@ -2,13 +2,13 @@ use std::panic;
 
 use crate::{
     components::cache_hierarchy::{
-        CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
         common::{
             CacheAccessType, CacheHierarchyAccessResult, Directory, DirectorySet, PrivateCache,
             PrivateCacheEvictedSlot, PrivateCachePokeResult, SharedCache, SharedCacheAccessRequest,
             SharedCacheAccessSource, SharedCacheLookupResult,
         },
         mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
+        CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
     },
     debug::{
         cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
@@ -20,25 +20,25 @@ use crate::{
 use super::ParallelMemoryHierarchy;
 
 impl<
-    MMU: AbstractMMU,
-    PCache: PrivateCache,
-    SCache: SharedCache,
-    Dir: Directory,
-    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-    const FILL_SCACHE_ON_PCACHE_EVICTION: bool,
-    const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-    const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
-    const CORE_COUNT: usize,
-    const N_ACC: usize,
-    const N_FILTER: usize,
-    const PHT_SETS: usize,
-    const PHT_WAYS: usize,
-    const N_BLK: usize,
-    const ROT: bool,
-    const SEP_RDWR: bool,
-    const SAT_CNT: bool,
-    const PERFECT_PHT: bool,
-> MemoryHierarchy
+        MMU: AbstractMMU,
+        PCache: PrivateCache,
+        SCache: SharedCache,
+        Dir: Directory,
+        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+        const FILL_SCACHE_ON_PCACHE_EVICTION: bool,
+        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+        const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
+        const CORE_COUNT: usize,
+        const N_ACC: usize,
+        const N_FILTER: usize,
+        const PHT_SETS: usize,
+        const PHT_WAYS: usize,
+        const N_BLK: usize,
+        const ROT: bool,
+        const SEP_RDWR: bool,
+        const SAT_CNT: bool,
+        const PERFECT_PHT: bool,
+    > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
         PCache,
@@ -62,159 +62,82 @@ impl<
 {
     fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
         let core_id = request.core_id as usize;
-        match self.pht.lookup(&request, ts) {
-            Some(addrs) => {
-                let mut cnt: u64 = 0;
-                let mut pf_addrs = Vec::new();
-                for addr in &addrs {
-                    if *addr == request.block_id {
-                        continue;
-                    }
-                    // println!("Adding block to prefetch queue: {:x}", addr);
-                    pf_addrs.push(*addr);
-                    let mut set = self.pf_blocks[core_id].lock();
-                    set.insert(*addr);
-                    drop(set);
+        let addrs = self.pht.lookup(&request, ts);
+        let mut cnt: u64 = 0;
+        for addr in &addrs {
+            if *addr == request.block_id {
+                continue;
+            }
+            let mut set = self.pf_blocks[core_id].lock();
+            set.insert(*addr);
+            drop(set);
 
-                    let r = CacheBlockRequest {
-                        core_id: request.core_id,
-                        block_id: *addr,
-                        access_type: request.get_prefetch_type(),
-                        is_os: request.is_os,
-                        pc: request.pc,
-                    };
-                    let (ret, _) = self.access_memory_pblock_id(&r, ts);
-                    match ret {
-                        CacheHierarchyAccessResult::HitInSelfPrivateCache => {
-                            Statistics::global_record(
-                                request.core_id,
-                                EventType::PfL1,
-                                request.is_os,
-                            );
-                        }
-                        CacheHierarchyAccessResult::HitInSharedCache => {
-                            Statistics::global_record(
-                                request.core_id,
-                                EventType::PfL2,
-                                request.is_os,
-                            );
-                        }
-                        CacheHierarchyAccessResult::Miss => {
-                            Statistics::global_record(
-                                request.core_id,
-                                EventType::PfMem,
-                                request.is_os,
-                            );
-                        }
-                        _ => {
-                            Statistics::global_record(
-                                request.core_id,
-                                EventType::PfUnk,
-                                request.is_os,
-                            );
-                        }
-                    }
-                    cnt += 1;
+            let r = CacheBlockRequest {
+                core_id: request.core_id,
+                block_id: *addr,
+                access_type: request.get_prefetch_type(),
+                is_os: request.is_os,
+                pc: request.pc,
+            };
+            let (ret, _) = self.access_memory_pblock_id(&r, ts);
+            match ret {
+                CacheHierarchyAccessResult::HitInSelfPrivateCache => {
+                    Statistics::global_record(request.core_id, EventType::PfL1, request.is_os);
                 }
-                self.pf_stats[core_id].lock().0 += cnt as usize; // total
-                Statistics::global_record_by(
-                    request.core_id,
-                    EventType::UnknownPrefetches,
-                    false,
-                    cnt,
-                );
-                // if !pf_addrs.is_empty() {
-                //     println!("{:?}", pf_addrs);
-                // }
-                Statistics::global_record_by(
-                    request.core_id,
-                    EventType::Prefetches,
-                    request.is_os,
-                    cnt as u64,
-                );
-                match cnt {
-                    0 => Statistics::global_record(request.core_id, EventType::Pf0, request.is_os),
-                    1 => Statistics::global_record(request.core_id, EventType::Pf1, request.is_os),
-                    2 => Statistics::global_record(request.core_id, EventType::Pf2, request.is_os),
-                    3 => Statistics::global_record(request.core_id, EventType::Pf3, request.is_os),
-                    4 => Statistics::global_record(request.core_id, EventType::Pf4, request.is_os),
-                    5 => Statistics::global_record(request.core_id, EventType::Pf5, request.is_os),
-                    6 => Statistics::global_record(request.core_id, EventType::Pf6, request.is_os),
-                    7 => Statistics::global_record(request.core_id, EventType::Pf7, request.is_os),
-                    8 => Statistics::global_record(request.core_id, EventType::Pf8, request.is_os),
-                    9 => Statistics::global_record(request.core_id, EventType::Pf9, request.is_os),
-                    10 => {
-                        Statistics::global_record(request.core_id, EventType::Pf10, request.is_os)
-                    }
-                    11 => {
-                        Statistics::global_record(request.core_id, EventType::Pf11, request.is_os)
-                    }
-                    12 => {
-                        Statistics::global_record(request.core_id, EventType::Pf12, request.is_os)
-                    }
-                    13 => {
-                        Statistics::global_record(request.core_id, EventType::Pf13, request.is_os)
-                    }
-                    14 => {
-                        Statistics::global_record(request.core_id, EventType::Pf14, request.is_os)
-                    }
-                    15 => {
-                        Statistics::global_record(request.core_id, EventType::Pf15, request.is_os)
-                    }
-                    16 => {
-                        Statistics::global_record(request.core_id, EventType::Pf16, request.is_os)
-                    }
-                    17 => {
-                        Statistics::global_record(request.core_id, EventType::Pf17, request.is_os)
-                    }
-                    18 => {
-                        Statistics::global_record(request.core_id, EventType::Pf18, request.is_os)
-                    }
-                    19 => {
-                        Statistics::global_record(request.core_id, EventType::Pf19, request.is_os)
-                    }
-                    20 => {
-                        Statistics::global_record(request.core_id, EventType::Pf20, request.is_os)
-                    }
-                    21 => {
-                        Statistics::global_record(request.core_id, EventType::Pf21, request.is_os)
-                    }
-                    22 => {
-                        Statistics::global_record(request.core_id, EventType::Pf22, request.is_os)
-                    }
-                    23 => {
-                        Statistics::global_record(request.core_id, EventType::Pf23, request.is_os)
-                    }
-                    24 => {
-                        Statistics::global_record(request.core_id, EventType::Pf24, request.is_os)
-                    }
-                    25 => {
-                        Statistics::global_record(request.core_id, EventType::Pf25, request.is_os)
-                    }
-                    26 => {
-                        Statistics::global_record(request.core_id, EventType::Pf26, request.is_os)
-                    }
-                    27 => {
-                        Statistics::global_record(request.core_id, EventType::Pf27, request.is_os)
-                    }
-                    28 => {
-                        Statistics::global_record(request.core_id, EventType::Pf28, request.is_os)
-                    }
-                    29 => {
-                        Statistics::global_record(request.core_id, EventType::Pf29, request.is_os)
-                    }
-                    30 => {
-                        Statistics::global_record(request.core_id, EventType::Pf30, request.is_os)
-                    }
-                    31 => {
-                        Statistics::global_record(request.core_id, EventType::Pf31, request.is_os)
-                    }
-                    _ => {}
+                CacheHierarchyAccessResult::HitInSharedCache => {
+                    Statistics::global_record(request.core_id, EventType::PfL2, request.is_os);
+                }
+                CacheHierarchyAccessResult::Miss => {
+                    Statistics::global_record(request.core_id, EventType::PfMem, request.is_os);
+                }
+                _ => {
+                    Statistics::global_record(request.core_id, EventType::PfUnk, request.is_os);
                 }
             }
-            None => {
-                Statistics::global_record(request.core_id, EventType::Pf0, request.is_os);
-            }
+            cnt += 1;
+        }
+        self.pf_stats[core_id].lock().0 += cnt as usize;
+        Statistics::global_record_by(request.core_id, EventType::UnknownPrefetches, false, cnt);
+        Statistics::global_record_by(
+            request.core_id,
+            EventType::Prefetches,
+            request.is_os,
+            cnt as u64,
+        );
+        match cnt {
+            0 => Statistics::global_record(request.core_id, EventType::Pf0, request.is_os),
+            1 => Statistics::global_record(request.core_id, EventType::Pf1, request.is_os),
+            2 => Statistics::global_record(request.core_id, EventType::Pf2, request.is_os),
+            3 => Statistics::global_record(request.core_id, EventType::Pf3, request.is_os),
+            4 => Statistics::global_record(request.core_id, EventType::Pf4, request.is_os),
+            5 => Statistics::global_record(request.core_id, EventType::Pf5, request.is_os),
+            6 => Statistics::global_record(request.core_id, EventType::Pf6, request.is_os),
+            7 => Statistics::global_record(request.core_id, EventType::Pf7, request.is_os),
+            8 => Statistics::global_record(request.core_id, EventType::Pf8, request.is_os),
+            9 => Statistics::global_record(request.core_id, EventType::Pf9, request.is_os),
+            10 => Statistics::global_record(request.core_id, EventType::Pf10, request.is_os),
+            11 => Statistics::global_record(request.core_id, EventType::Pf11, request.is_os),
+            12 => Statistics::global_record(request.core_id, EventType::Pf12, request.is_os),
+            13 => Statistics::global_record(request.core_id, EventType::Pf13, request.is_os),
+            14 => Statistics::global_record(request.core_id, EventType::Pf14, request.is_os),
+            15 => Statistics::global_record(request.core_id, EventType::Pf15, request.is_os),
+            16 => Statistics::global_record(request.core_id, EventType::Pf16, request.is_os),
+            17 => Statistics::global_record(request.core_id, EventType::Pf17, request.is_os),
+            18 => Statistics::global_record(request.core_id, EventType::Pf18, request.is_os),
+            19 => Statistics::global_record(request.core_id, EventType::Pf19, request.is_os),
+            20 => Statistics::global_record(request.core_id, EventType::Pf20, request.is_os),
+            21 => Statistics::global_record(request.core_id, EventType::Pf21, request.is_os),
+            22 => Statistics::global_record(request.core_id, EventType::Pf22, request.is_os),
+            23 => Statistics::global_record(request.core_id, EventType::Pf23, request.is_os),
+            24 => Statistics::global_record(request.core_id, EventType::Pf24, request.is_os),
+            25 => Statistics::global_record(request.core_id, EventType::Pf25, request.is_os),
+            26 => Statistics::global_record(request.core_id, EventType::Pf26, request.is_os),
+            27 => Statistics::global_record(request.core_id, EventType::Pf27, request.is_os),
+            28 => Statistics::global_record(request.core_id, EventType::Pf28, request.is_os),
+            29 => Statistics::global_record(request.core_id, EventType::Pf29, request.is_os),
+            30 => Statistics::global_record(request.core_id, EventType::Pf30, request.is_os),
+            31 => Statistics::global_record(request.core_id, EventType::Pf31, request.is_os),
+            _ => {}
         }
     }
 

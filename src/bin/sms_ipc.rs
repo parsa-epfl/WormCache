@@ -2,8 +2,8 @@ use std::env;
 use std::{fs::File, io::BufReader, io::Write, process::exit};
 use worm_cache::{
     components::cache_hierarchy::{
+        common::{agt::ParallelAGT, pht::ParallelPHT, CacheAccessType},
         CacheBlockRequest,
-        common::{CacheAccessType, agt::ParallelAGT, pht::ParallelPHT},
     },
     parameter,
 };
@@ -102,18 +102,14 @@ fn main() {
                 match op {
                     0 => {
                         out_f.write(record_str.as_bytes()).unwrap();
-                        match pht.lookup(&req, ts) {
-                            Some(addrs) => {
-                                for addr in &addrs {
-                                    if *addr == block_id {
-                                        continue;
-                                    }
-                                    out_f
-                                        .write(format!("3,{},{},0,{}\n", addr, pc, ts).as_bytes())
-                                        .unwrap();
-                                }
+                        let addrs = pht.lookup(&req, ts);
+                        for addr in &addrs {
+                            if *addr == block_id {
+                                continue;
                             }
-                            None => {}
+                            out_f
+                                .write(format!("3,{},{},0,{}\n", addr, pc, ts).as_bytes())
+                                .unwrap();
                         }
                     }
                     1 => {

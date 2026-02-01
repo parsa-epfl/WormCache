@@ -46,7 +46,10 @@ pub struct AccTable<const N_ACC: usize, const N_BLK: usize> {
 impl<const N_ACC: usize, const N_BLK: usize> AccTable<N_ACC, N_BLK> {
     pub fn new() -> Self {
         Self {
-            entries: SpinMutex::new(FxHashMap::default()),
+            entries: SpinMutex::new(FxHashMap::with_capacity_and_hasher(
+                N_ACC,
+                Default::default(),
+            )),
         }
     }
 

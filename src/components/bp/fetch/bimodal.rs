@@ -45,9 +45,7 @@ struct BimodalPredictor<const S: usize> {
 
 impl<const S: usize> BimodalPredictor<S> {
     pub fn new() -> BimodalPredictor<S> {
-        BimodalPredictor {
-            array: Vec::from_iter(std::iter::repeat(0).take(S)),
-        }
+        BimodalPredictor { array: vec![0; S] }
     }
 
     fn saturaing_add(&mut self, index: usize) {

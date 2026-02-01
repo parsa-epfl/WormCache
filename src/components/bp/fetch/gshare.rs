@@ -47,7 +47,7 @@ impl<const S: usize> GShare<S> {
     pub fn new() -> GShare<S> {
         GShare {
             history: 0,
-            table: Vec::from_iter(std::iter::repeat(0).take(S)),
+            table: vec![0; S],
         }
     }
 

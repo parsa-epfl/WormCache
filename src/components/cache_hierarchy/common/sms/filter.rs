@@ -24,7 +24,10 @@ pub struct FilterTable<
 impl<const N_FILTER: usize, const N_BLK: usize> FilterTable<N_FILTER, N_BLK> {
     pub fn new() -> Self {
         Self {
-            entries: SpinMutex::new(FxHashMap::default()),
+            entries: SpinMutex::new(FxHashMap::with_capacity_and_hasher(
+                N_FILTER,
+                Default::default(),
+            )),
         }
     }
 

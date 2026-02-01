@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use spin::mutex::SpinMutex;
 use zstd::{Decoder, Encoder};
 
+type PhtLookupResult<const N_BLK: usize> = heapless::Vec<u64, N_BLK>;
+
 // Store all three types of patterns even if not used
 // TODO: can be optimized later
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,9 +27,9 @@ impl<const N_BLK: usize, const ROT: bool, const SEP_RDWR: bool, const SAT_CNT: b
     pub fn new() -> Self {
         Self {
             tag: 0,
-            access_pattern: Vec::from_iter(std::iter::repeat(1).take(N_BLK)),
-            write_pattern: Vec::from_iter(std::iter::repeat(1).take(N_BLK)),
-            read_pattern: Vec::from_iter(std::iter::repeat(1).take(N_BLK)),
+            access_pattern: vec![1; N_BLK],
+            write_pattern: vec![1; N_BLK],
+            read_pattern: vec![1; N_BLK],
             ts: 0,
             valid: false,
         }
@@ -189,9 +191,7 @@ impl<
 {
     pub fn new() -> Self {
         Self {
-            entries: Vec::from_iter(
-                std::iter::repeat(PHTEntry::<N_BLK, ROT, SEP_RDWR, SAT_CNT>::new()).take(PHT_WAYS),
-            ),
+            entries: vec![PHTEntry::<N_BLK, ROT, SEP_RDWR, SAT_CNT>::new(); PHT_WAYS],
         }
     }
 
@@ -217,7 +217,7 @@ impl<
                 entry.update(acc_entry);
                 return;
             }
-            if !entry.valid & !empty {
+            if !entry.valid && !empty {
                 empty = true;
                 empty_idx = i;
             }
@@ -342,7 +342,7 @@ impl<
         util::get_address::<N_BLK>(base, offset)
     }
 
-    pub fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<u64>> {
+    pub fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> PhtLookupResult<N_BLK> {
         let (base, pc, offset) = self.get_base_pc_offset(request);
         let key = self.build_key(pc, offset);
         let set_idx = key & ((1 << PHT_SETS.trailing_zeros()) - 1);
@@ -355,15 +355,15 @@ impl<
                 if ROT {
                     util::rotate_right::<bool, N_BLK>(&mut bitvec, offset as usize);
                 }
-                let mut result = Vec::new();
+                let mut result = PhtLookupResult::new();
                 for (i, &bit) in bitvec.iter().enumerate() {
                     if bit {
-                        result.push(self.get_address(base, i as u64));
+                        result.push(self.get_address(base, i as u64)).ok();
                     }
                 }
-                Some(result)
+                result
             }
-            None => None,
+            None => PhtLookupResult::new(),
         }
     }
 
@@ -409,7 +409,7 @@ impl<
         }
     }
 
-    pub fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> Option<Vec<u64>> {
+    pub fn lookup(&self, request: &CacheBlockRequest, ts: u64) -> PhtLookupResult<N_BLK> {
         let core_id = request.core_id as usize;
         self.tables[core_id].lookup(request, ts)
     }

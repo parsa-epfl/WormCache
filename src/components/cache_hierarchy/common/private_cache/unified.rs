@@ -116,7 +116,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
         impl DerefMut<Target = PrivateCacheSet>,
         Option<usize>,
     )> {
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(sharers.count_ones());
 
         for core_id in sharers.iter_ones() {
             let set = self.caches[core_id].get_set(block_id);
@@ -130,7 +130,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
 
     #[inline]
     fn in_which_cores(&self, block_id: u64) -> Vec<u32> {
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(CORE_COUNT);
         for core_id in 0..CORE_COUNT {
             let set = self.caches[core_id].get_set(block_id);
             let guard = set.lock();
