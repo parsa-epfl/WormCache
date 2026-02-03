@@ -67,6 +67,7 @@ impl<const N_BLK: usize, const ROT: bool, const SEP_RDWR: bool, const SAT_CNT: b
         }
     }
 
+    #[inline]
     fn update_pattern(&mut self, pattern: &[bool; N_BLK], pat_type: util::PatternType) {
         let target_pattern = match pat_type {
             util::PatternType::Access => &mut self.access_pattern,
@@ -88,6 +89,7 @@ impl<const N_BLK: usize, const ROT: bool, const SEP_RDWR: bool, const SAT_CNT: b
         }
     }
 
+    #[inline]
     pub fn update(&mut self, acc_entry: &AccTableEntry<N_BLK>) {
         assert!(self.valid, "Cannot update invalid PHT entry");
         if SEP_RDWR {

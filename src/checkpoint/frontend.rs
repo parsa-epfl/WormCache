@@ -87,8 +87,6 @@ fn serialize_a_btb(
 
 #[derive(Serialize, Deserialize)]
 struct FlexusTAGEPredictorState {
-    #[serde(rename = "PWIN")]
-    pub pwin: i32,
     #[serde(rename = "TICK")]
     pub tick: i32,
     #[serde(rename = "SEED")]
@@ -124,7 +122,6 @@ struct FlexusTAGEPredictorState {
 
 fn serialize_a_tage(tage: TAGEHelper) -> FlexusTAGEPredictorState {
     FlexusTAGEPredictorState {
-        pwin: 0,
         tick: tage.tick,
         seed: tage.seed,
         phist: tage.phist,
