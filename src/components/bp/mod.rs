@@ -123,7 +123,7 @@ static mut FETCH_UNIT: *mut fetch::FetchUnit<{ ALLOCATED_CORE }> = std::ptr::nul
  *
  * By default, this should be turned off for serious performance measurement.
  */
-const RECORDING_BBV: bool = true;
+const RECORDING_BBV: bool = false;
 
 mod bbv;
 
