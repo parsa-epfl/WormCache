@@ -110,7 +110,7 @@ pub const STLB_ASSO: usize = 4;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 1024;
+pub const STLB_SET: usize = 256;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -189,7 +189,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 32 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 1 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -265,12 +265,21 @@ pub const FINITE_DIRECTORY_ASSO: usize = 16;
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
 
 /**
+* Parameters for stride-based prefetching
+*/
+pub const STRIDE_PREFETCHING: bool = true;
+pub const RPT_SETS: usize = 1024; // Number of sets in the RPT
+pub const RPT_WAYS: usize = 4; // Number of ways in the RPT
+pub const N_PC: usize = 16; // Number of PC bits to use for indexing
+pub const LOOKAHEAD: usize = 3; // Number of future accesses to look ahead for prefetching
+
+/**
 * Parameters for SMS Prefetching
 */
-pub const SMS_PREFETCHING: bool = true;
+pub const SMS_PREFETCHING: bool = false;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
-pub const PHT_SETS: usize = 1024;    // Number of sets in the PHT.
+pub const PHT_SETS: usize = 256;    // Number of sets in the PHT.
 pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
 pub const IDX_WIDTH: usize = 21;    // Number of bits used to index the PHT.
 pub const N_BLK: usize = 32; // Number of blocks in the region.

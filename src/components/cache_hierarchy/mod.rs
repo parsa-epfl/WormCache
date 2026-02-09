@@ -52,6 +52,7 @@ pub use single_cache_hierarchy::SingleCacheHierarchyPlugin;
 use crate::parameter;
 use crate::parameter::ADJACENT_LINE_PREFETCHING;
 use crate::parameter::SMS_PREFETCHING;
+use crate::parameter::STRIDE_PREFETCHING;
 
 #[derive(Clone)]
 pub struct MemoryAccessRequest {
@@ -148,7 +149,9 @@ pub trait MemoryHierarchy {
 
     fn flush_mmu(&self, core_id: u32, info: mmu::MMUFlushMode);
 
-    fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64);
+    fn prefetch_blocks_sms(&self, request: &CacheBlockRequest, ts: u64);
+
+    fn prefetch_blocks_stride(&self, request: &CacheBlockRequest, ts: u64);
 
     fn record_access(&self, request: &CacheBlockRequest, ts: u64);
 
@@ -258,15 +261,18 @@ pub trait MemoryHierarchy {
         //     CacheAccessType::PageWalkRead => 5,
         // };
         // println!("{},{},{},{},{},{},{}", ts, translated_request.core_id, translated_request.block_id, access_code, translated_request.is_os, translated_request.pc, code);
-        if ADJACENT_LINE_PREFETCHING {
+        if ADJACENT_LINE_PREFETCHING && translated_request.is_instruction() {
             let mut prefetch_request = translated_request.clone();
             prefetch_request.block_id += 1;
             prefetch_request.access_type = prefetch_request.get_prefetch_type();
             self.access_memory_pblock_id(&prefetch_request, ts);
         }
         if SMS_PREFETCHING && !translated_request.is_instruction() {
-            self.prefetch_blocks(&translated_request, ts);
+            self.prefetch_blocks_sms(&translated_request, ts);
             self.record_access(&translated_request, ts);
+        }
+        if STRIDE_PREFETCHING && !translated_request.is_instruction() {
+            self.prefetch_blocks_stride(&translated_request, ts);
         }
         result
     }

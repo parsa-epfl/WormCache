@@ -98,6 +98,10 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
     {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 fn main() {
@@ -130,24 +134,24 @@ fn main() {
 
     let mh = MH::new();
 
-    let is_sat = if parameter::SAT_CNT { 'y' } else { 'n' };
-    let rd_wr = if parameter::SEP_RDWR { 'y' } else { 'n' };
-    let rot = if parameter::ROT { 'y' } else { 'n' };
-    let str = format!("{}{}{}{}", parameter::N_BLK, is_sat, rd_wr, rot);
+    let (mut data_all, mut old_data_l1d_miss, mut old_data_llc_miss, mut new_data_l1d_miss, mut new_data_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
+    let (mut instr_all, mut old_instr_l1i_miss, mut old_instr_llc_miss, mut new_instr_l1i_miss, mut new_instr_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
 
-    let (mut all, mut old_miss, mut new_miss, mut covered): (usize, usize, usize, usize) = (0, 0, 0, 0);
-    let (mut total, mut useful, mut useless) = (0, 0, 0);
     let mut prev_ts = 0;
     for (idx, result) in rdr.records().enumerate() {
         if (idx+1) % 100_000_000 == 0 {
             println!("Processed {} records", (idx+1));
-            let old_mr = old_miss as f64 / all as f64 * 100.0;
-            let new_mr = new_miss as f64 / all as f64 * 100.0;
-            let coverage = covered as f64 / old_miss as f64 * 100.0;
-            let accuracy  = useful as f64 / total as f64 * 100.0;
-            let overpred = useless as f64 / total as f64 * 100.0;
-            println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
-                        str, old_mr, new_mr, coverage, accuracy, overpred);
+            let old_l1d_mr = old_data_l1d_miss as f64 / data_all as f64 * 100.0;
+            let new_l1d_mr = new_data_l1d_miss as f64 / data_all as f64 * 100.0;
+            let old_llc_mr_data = old_data_llc_miss as f64 / data_all as f64 * 100.0;
+            let new_llc_mr_data = new_data_llc_miss as f64 / data_all as f64 * 100.0;
+            let old_l1i_mr = old_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+            let new_l1i_mr = new_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+            let old_llc_mr_instr = old_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+            let new_llc_mr_instr = new_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+
+            println!("Old L1D Miss Rate: {:.2}%, New L1D Miss Rate: {:.2}%, Old LLC Miss Rate (Data): {:.2}%, New LLC Miss Rate (Data): {:.2}%", old_l1d_mr, new_l1d_mr, old_llc_mr_data, new_llc_mr_data);
+            println!("Old L1I Miss Rate: {:.2}%, New L1I Miss Rate: {:.2}%, Old LLC Miss Rate (Instr): {:.2}%, New LLC Miss Rate (Instr): {:.2}%", old_l1i_mr, new_l1i_mr, old_llc_mr_instr, new_llc_mr_instr);
         }
         match result {
             Ok(record) => {
@@ -161,6 +165,7 @@ fn main() {
                     eprintln!("Invalid timestamp: {:?}", record);
                     continue;
                 }
+                let cnt = (idx + 1) > 1_000_000_000;
                 let core_id = record[1].parse::<u32>().unwrap();
                 let block_id = record[2].parse::<u64>().unwrap();
                 let access_code = record[3].parse::<u8>().unwrap();
@@ -172,13 +177,33 @@ fn main() {
                     continue;
                 }
                 prev_ts = ts;
-                all += 1;
 
                 let is_data = access_code == 0 || access_code == 1;
-                if code != 0 && is_data {
-                    old_miss += 1;
+                let is_instr: bool = access_code == 2;
+                if is_data && cnt {
+                    data_all += 1;
+                    match code {
+                        0 => {},
+                        1 => {old_data_l1d_miss += 1},                          // Only L1 Miss
+                        2 => {old_data_l1d_miss += 1; old_data_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {old_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {old_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
                 }
-
+                if is_instr && cnt {
+                    instr_all += 1;
+                    match code {
+                        0 => {},
+                        1 => {old_instr_l1i_miss += 1},                          // Only L1 Miss
+                        2 => {old_instr_l1i_miss += 1; old_instr_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {old_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {old_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
+                }
                 let access_type = match access_code {
                     0 => CacheAccessType::DataRead,
                     1 => CacheAccessType::DataWrite,
@@ -195,40 +220,65 @@ fn main() {
                     is_os,
                     pc,
                 };
-                let (result, stats) = mh.access_memory_pblock_id(&req, ts);
+                let (result, _) = mh.access_memory_pblock_id(&req, ts);
+                if parameter::ADJACENT_LINE_PREFETCHING && is_instr {
+                    let mut prefetch_request = req.clone();
+                    prefetch_request.block_id += 1;
+                    prefetch_request.access_type = prefetch_request.get_prefetch_type();
+                    mh.access_memory_pblock_id(&prefetch_request, ts);
+                }
                 if parameter::SMS_PREFETCHING && is_data {
-                    mh.prefetch_blocks(&req, ts);
+                    mh.prefetch_blocks_sms(&req, ts);
                     mh.record_access(&req, ts);
                 }
-                total = stats.0;
-                useless = stats.1;
-                useful = stats.2;
+                if parameter::STRIDE_PREFETCHING && is_data {
+                    mh.prefetch_blocks_stride(&req, ts);
+                }
                 let new_code: u8 = match result {
                     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
                     CacheHierarchyAccessResult::HitInSharedCache => 1,
-                    CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
                     CacheHierarchyAccessResult::Miss => 2,
+                    CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
                     CacheHierarchyAccessResult::MissDueToPermission => 4,
                     CacheHierarchyAccessResult::Unknown => 5,
                 };
-                if new_code != 0 && is_data {
-                    new_miss += 1;
+                if is_data && cnt {
+                    match new_code {
+                        0 => {},
+                        1 => {new_data_l1d_miss += 1},                          // Only L1 Miss
+                        2 => {new_data_l1d_miss += 1; new_data_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {new_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {new_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
                 }
-                if code != 0 && new_code == 0 && is_data {
-                    covered += 1;
+                if is_instr && cnt {
+                    match new_code {
+                        0 => {},
+                        1 => {new_instr_l1i_miss += 1},                          // Only L1 Miss
+                        2 => {new_instr_l1i_miss += 1; new_instr_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {new_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {new_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
                 }
-                // println!("{},{},{},{},{},{},{}", ts, core_id, block_id, access_code, is_os, pc, new_code);
             }
             Err(e) => {
                 eprintln!("Error reading record: {}", e);
             }
         }
     }
-    let old_mr = old_miss as f64 / all as f64 * 100.0;
-    let new_mr = new_miss as f64 / all as f64 * 100.0;
-    let coverage = covered as f64 / old_miss as f64 * 100.0;
-    let accuracy  = useful as f64 / total as f64 * 100.0;
-    let overpred =  useless as f64 / total as f64 * 100.0;
-    println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
-                str, old_mr, new_mr, coverage, accuracy, overpred);
+    let old_l1d_mr = old_data_l1d_miss as f64 / data_all as f64 * 100.0;
+    let new_l1d_mr = new_data_l1d_miss as f64 / data_all as f64 * 100.0;
+    let old_llc_mr_data = old_data_llc_miss as f64 / data_all as f64 * 100.0;
+    let new_llc_mr_data = new_data_llc_miss as f64 / data_all as f64 * 100.0;
+    let old_l1i_mr = old_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+    let new_l1i_mr = new_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+    let old_llc_mr_instr = old_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+    let new_llc_mr_instr = new_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+
+    println!("Old L1D Miss Rate: {:.2}%, New L1D Miss Rate: {:.2}%, Old LLC Miss Rate (Data): {:.2}%, New LLC Miss Rate (Data): {:.2}%", old_l1d_mr, new_l1d_mr, old_llc_mr_data, new_llc_mr_data);
+    println!("Old L1I Miss Rate: {:.2}%, New L1I Miss Rate: {:.2}%, Old LLC Miss Rate (Instr): {:.2}%, New LLC Miss Rate (Instr): {:.2}%", old_l1i_mr, new_l1i_mr, old_llc_mr_instr, new_llc_mr_instr);
 }

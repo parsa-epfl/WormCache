@@ -38,6 +38,10 @@ impl<
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
+    const RPT_SETS: usize,
+    const RPT_WAYS: usize,
+    const N_PC: usize,
+    const LOOKAHEAD: usize,
 > MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
@@ -58,10 +62,39 @@ impl<
         SEP_RDWR,
         SAT_CNT,
         PERFECT_PHT,
+        RPT_SETS,
+        RPT_WAYS,
+        N_PC,
+        LOOKAHEAD,
     >
 {
 
-    fn prefetch_blocks(&self, request: &CacheBlockRequest, ts: u64) {
+    fn prefetch_blocks_stride(&self, request: &CacheBlockRequest, ts: u64) {
+        if request.is_store() {
+            return;
+        }
+        match self.rpt.lookup(&request, ts) {
+            Some(stride) => {
+                if stride == 0 {
+                    return;
+                }
+                for idx in 0..LOOKAHEAD {
+                    let addr = (request.block_id as i64).wrapping_add((idx as i64 + 1) * stride) as u64;
+                    let r = CacheBlockRequest {
+                        core_id: request.core_id,
+                        block_id: addr,
+                        access_type: request.get_prefetch_type(),
+                        is_os: request.is_os,
+                        pc: request.pc,
+                    };
+                    self.access_memory_pblock_id(&r, ts);
+                }
+            },
+            None => {},
+        }
+    }
+
+    fn prefetch_blocks_sms(&self, request: &CacheBlockRequest, ts: u64) {
         let core_id = request.core_id as usize;
         match self.pht.lookup(&request, ts) {
             Some(addrs) => {
