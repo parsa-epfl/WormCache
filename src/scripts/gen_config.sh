@@ -1,61 +1,34 @@
+#!/bin/bash
 
-oldfile="$(pwd)/../configs/ref_parameter_sms.rs"
+ref_prefix="/root/ref_files"
 
-# for type in os an
-# do
-#     for cnt in 1 2 4 8 16 32 64
-#     do
-#         for cache in 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536 131072 262144 524288 1048576
-#         do
-#             newfile="$(pwd)/../configs/${type}_${cnt}_${cache}.rs"
-#             if [ "$type" = "os" ] && [ $cnt -eq 1 ]; then
-#                 continue
-#             fi
+BTB=16384
+BTB_SETS=$((BTB / 4))  # Hardcoded
+for type in os an; do
+    for sms in 0 1024 2048 4096 8192 16384; do
+        for stlb in 256 512 1024 2048 4096; do
+            for l1 in 8 16 32 64; do
+                for llc in 1 8 32; do
+                    prefix="SMS_${sms}_STLB_${stlb}_L1_${l1}_LLC_${llc}"
 
-#             cp $oldfile $newfile
+                    ref_file="${ref_prefix}/parameter_${type}.rs"
+                    new_file="$(pwd)/../configs/single_core/parameter_${type}_${prefix}.rs"
+                    cp $ref_file $new_file
 
-#             sed -i -e "s/CORE_COUNT: usize = 1/CORE_COUNT: usize = ${cnt}/g" "$newfile"
-#             if [ "$type" = "os" ]; then
-#                 sed -i -e "s/MEASURE_HALF_OF_CORES: bool = false/MEASURE_HALF_OF_CORES: bool = true/g" "$newfile"
-#             fi
-            
-#             sed -i -E "s/(SHARED_CACHE_SET: usize = )32/\1${cache}/" "$newfile"
-#         done
-#     done
-# done
+                    if [ "$sms" == "0" ]; then
+                        sed -i -e "s/SMS_PREFETCHING: bool = false/SMS_PREFETCHING: bool = false/g" "$new_file"
+                    else
+                        sed -i -e "s/SMS_PREFETCHING: bool = false/SMS_PREFETCHING: bool = true/g" "$new_file"
+                        PHT_SETS=$((sms / 16))  # Hardcoded  
+                        sed -i -e "s/PHT_SETS: usize = 256/PHT_SETS: usize = ${PHT_SETS}/g" "$new_file"
+                    fi
 
-for type in os an
-do
-    for region in 2 4 8 16 32 64 128
-    do
-        for satcnt in true false
-        do
-            for rdwr in true false
-            do
-                for rot in true false
-                do
-                    for pht in 16 32 64 128 256 512 1024 perfect
-                    do
-                        newfile="$(pwd)/../configs/parameter_${type}_${region}_${satcnt}_${rdwr}_${rot}_${pht}.rs"
-                        cp $oldfile $newfile
-
-                        if [ "$type" = "os" ]; then
-                            sed -i -e "s/CORE_COUNT: usize = 1/CORE_COUNT: usize = 2/g" "$newfile"
-                            sed -i -e "s/MEASURE_HALF_OF_CORES: bool = false/MEASURE_HALF_OF_CORES: bool = true/g" "$newfile"
-                        fi
-
-                        sed -i -e "s/SAT_CNT: bool = false/SAT_CNT: bool = ${satcnt}/g" "$newfile"
-                        sed -i -e "s/SEP_RDWR: bool = false/SEP_RDWR: bool = ${rdwr}/g" "$newfile"
-                        sed -i -e "s/ROT: bool = false/ROT: bool = ${rot}/g" "$newfile"
-                        sed -i -e "s/N_BLK: usize = 32/N_BLK: usize = ${region}/g" "$newfile"
-
-                        if [ "$pht" = "perfect" ]; then
-                            sed -i -e "s/PERFECT_PHT: bool = false/PERFECT_PHT: bool = true/g" "$newfile"
-                        else
-                            sed -i -e "s/PHT_SETS: usize = 256/PHT_SETS: usize = ${pht}/g" "$newfile"
-                            sed -i -e "s/PERFECT_PHT: bool = false/PERFECT_PHT: bool = false/g" "$newfile"
-                        fi
-                    done
+                    STLB_SETS=$((stlb / 4))     # Hardcoded
+                    sed -i -e "s/STLB_SET: usize = 256/STLB_SET: usize = ${STLB_SETS}/g" "$new_file"
+                    sed -i -e "s/BTB_SET: usize = 4096/BTB_SET: usize = ${BTB_SETS}/g" "$new_file"
+                    sed -i -e "s/HARVARD_PRI_I_CACHE_SET: usize = 64/HARVARD_PRI_I_CACHE_SET: usize = ${l1}/g" "$new_file"
+                    sed -i -e "s/HARVARD_PRI_D_CACHE_SET: usize = 64/HARVARD_PRI_D_CACHE_SET: usize = ${l1}/g" "$new_file"
+                    sed -i -e "s/SHARED_CACHE_SET: usize = 32/SHARED_CACHE_SET: usize = ${llc}/g" "$new_file"
                 done
             done
         done
