@@ -97,7 +97,11 @@ type MH = ParallelMemoryHierarchy<
     { parameter::ROT },
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
-    { parameter::PERFECT_PHT },
+    {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 pub struct Metric {
@@ -260,7 +264,7 @@ fn main() {
                     mh.access_memory_pblock_id(&prefetch_request, ts);
                 }
                 if parameter::SMS_PREFETCHING && is_data {
-                    mh.prefetch_blocks(&req, ts);
+                    mh.prefetch_blocks_sms(&req, ts);
                     mh.record_access(&req, ts);
                 }
             }

@@ -166,6 +166,10 @@ type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
     {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 #[allow(dead_code)]
@@ -199,6 +203,10 @@ type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
     {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 impl CacheModelParser<true> for DummyParser {

@@ -119,8 +119,12 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
 
 impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
     
-    fn prefetch_blocks(&self, _request: &CacheBlockRequest, _ts: u64) {
+    fn prefetch_blocks_sms(&self, _request: &CacheBlockRequest, _ts: u64) {
         unimplemented!();
+    }
+
+    fn prefetch_blocks_stride(&self, _request: &CacheBlockRequest, _ts: u64) {
+        unimplemented!()
     }
 
     fn record_access(&self, _request: &CacheBlockRequest, _ts: u64) {

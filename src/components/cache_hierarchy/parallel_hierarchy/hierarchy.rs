@@ -42,6 +42,7 @@ use crate::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperation
 use super::super::common::{Directory, DirectorySet, SharedCache};
 use super::super::common::agt::ParallelAGT;
 use super::super::common::pht::ParallelPHT;
+use crate::components::cache_hierarchy::common::rpt::RPT;
 
 use std::cell::UnsafeCell;
 use std::collections::HashSet;
@@ -80,6 +81,10 @@ pub struct ParallelMemoryHierarchy<
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
+    const RPT_SETS: usize,
+    const RPT_WAYS: usize,
+    const N_PC: usize,
+    const LOOKAHEAD: usize,
 > {
     mmus: [UnsafeCell<MMU>; CORE_COUNT],
 
@@ -88,6 +93,7 @@ pub struct ParallelMemoryHierarchy<
 
     agt: ParallelAGT<CORE_COUNT, N_ACC, N_FILTER, N_BLK>,
     pht: ParallelPHT<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>,
+    rpt: RPT<CORE_COUNT, RPT_SETS, RPT_WAYS, N_PC>,
     pf_blocks: [SpinMutex<HashSet<u64>>; CORE_COUNT],
     pf_stats: [SpinMutex<(usize, usize, usize)>; CORE_COUNT], // (total, useless, useful)
 
@@ -113,6 +119,10 @@ impl<
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
+    const RPT_SETS: usize,
+    const RPT_WAYS: usize,
+    const N_PC: usize,
+    const LOOKAHEAD: usize,
 >
     ParallelMemoryHierarchy<
         MMU,
@@ -133,6 +143,10 @@ impl<
         SEP_RDWR,
         SAT_CNT,
         PERFECT_PHT,
+        RPT_SETS,
+        RPT_WAYS,
+        N_PC,
+        LOOKAHEAD,
     >
 {
     pub fn new() -> Self {
@@ -145,6 +159,7 @@ impl<
             pht: ParallelPHT::<CORE_COUNT, PHT_SETS, PHT_WAYS, N_BLK, ROT, SEP_RDWR, SAT_CNT, PERFECT_PHT>::new(),
             pf_blocks: std::array::from_fn(|_| SpinMutex::new(HashSet::new())),
             pf_stats: std::array::from_fn(|_| SpinMutex::new((0, 0, 0))), // (total, useless, useful)
+            rpt: RPT::<CORE_COUNT, RPT_SETS, RPT_WAYS, N_PC>::new(),
         }
     }
 

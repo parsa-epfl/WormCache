@@ -34,6 +34,7 @@ mod l0i;
 mod private_cache;
 mod shared_cache;
 mod sms;
+mod ibsp;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CacheAccessType {
@@ -65,3 +66,4 @@ pub use l0i::*;
 pub use private_cache::*;
 pub use shared_cache::*;
 pub use sms::*;
+pub use ibsp::*;

@@ -63,6 +63,10 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
     {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 fn main() {
@@ -147,7 +151,7 @@ fn main() {
                     0 => {
                         println!("{}", record_str);
                         let (result, _) = mh.access_memory_pblock_id(&req, ts);
-                        mh.prefetch_blocks(&req, ts);
+                        mh.prefetch_blocks_sms(&req, ts);
                         match result {
                             CacheHierarchyAccessResult::HitInSelfPrivateCache => {
                                 hit_count += 1;

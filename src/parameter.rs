@@ -265,9 +265,18 @@ pub const FINITE_DIRECTORY_ASSO: usize = 16;
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
 
 /**
+* Parameters for stride-based prefetching
+*/
+pub const STRIDE_PREFETCHING: bool = true;
+pub const RPT_SETS: usize = 1024; // Number of sets in the RPT
+pub const RPT_WAYS: usize = 4; // Number of ways in the RPT
+pub const N_PC: usize = 16; // Number of PC bits to use for indexing
+pub const LOOKAHEAD: usize = 3; // Number of future accesses to look ahead for prefetching
+
+/**
 * Parameters for SMS Prefetching
 */
-pub const SMS_PREFETCHING: bool = true;
+pub const SMS_PREFETCHING: bool = false;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
 pub const PHT_SETS: usize = 256;    // Number of sets in the PHT.
