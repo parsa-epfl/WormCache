@@ -68,6 +68,10 @@ type MH = super::ParallelMemoryHierarchy<
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
     true,
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 #[test]

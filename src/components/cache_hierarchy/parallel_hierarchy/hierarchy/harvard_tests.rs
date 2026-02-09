@@ -74,6 +74,10 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
     { parameter::PERFECT_PHT },
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 #[test]

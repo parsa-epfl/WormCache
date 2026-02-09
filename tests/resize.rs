@@ -269,6 +269,10 @@ fn test_resize_cache_hierarchy() {
         false,
         false,
         false,
+        1024,
+        4,
+        16,
+        4,
     >;
 
     type LargeHierarchy = ParallelMemoryHierarchy<
@@ -290,6 +294,10 @@ fn test_resize_cache_hierarchy() {
         false,
         false,
         false,
+        1024,
+        4,
+        16,
+        4,
     >;
 
     let special_cache_line = 490;
