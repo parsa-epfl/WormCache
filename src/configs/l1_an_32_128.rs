@@ -57,11 +57,14 @@ pub const MEASURE_HALF_OF_CORES: bool = false;
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
 
-const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
-    CORE_COUNT / 2
-} else {
-    CORE_COUNT
-};
+/**
+ * USE_SERIAL_CACHE_MODEL
+ *
+ * Whether to use the serial cache model.
+ *
+ * Please only make this model to true when you enables the round-robin TCG mode in QEMU. Otherwise, there will be contention.
+ */
+pub const USE_SERIAL_CACHE_MODEL: bool = false;
 
 /**
  * CACHE_LINE_SIZE
@@ -71,6 +74,7 @@ const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
 
 pub const CACHE_LINE_SIZE: usize = 64;
 static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
+
 
 // Use FullyAssociativeTLB
 pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
@@ -110,7 +114,7 @@ pub const STLB_ASSO: usize = 4;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 256;
+pub const STLB_SET: usize = 1024;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -157,7 +161,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 32 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -174,7 +178,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 32 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -182,16 +186,15 @@ static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
  *
  * The associativity of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1KB.
+pub const SHARED_CACHE_ASSO: usize = 8; // with 16 and 64, each cache set is 1KB.
 
 /**
  * SHARED_CACHE_SET
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 1 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
-static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
-static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
+pub const SHARED_CACHE_SET: usize = 8 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
 
 /**
  * SHARED_CACHE_EXCLUSIVE
@@ -246,40 +249,31 @@ static_assertions::const_assert!(
     !(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_REPLICA_CREATION)
 );
 
-pub const USE_INFINITE_DIRECTORY: bool = false;
-
-pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
-static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
-
-pub const FINITE_DIRECTORY_SET: usize = 512 * SIMULATED_CORE_COUNT;
-static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
-static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
-
-pub const FINITE_DIRECTORY_ASSO: usize = 16;
+/**
+ * DIRECTORY_SHARD_COUNT
+ *
+ * The number of sets of the directory. It should be much larger than the number of sets of all private caches to prevent directory contention.
+ *
+ * It should be a power of 2.
+ *
+*/
+pub const DIRECTORY_SHARD_COUNT: usize = 32768;
+static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
 
 /**
 * ADJACENT_LINE_PREFETCHING
 *
 * Whether to enable the adjacent (in PA) line prefetching for functional warming.
 */
-pub const ADJACENT_LINE_PREFETCHING: bool = true;
-
-/**
-* Parameters for stride-based prefetching
-*/
-pub const STRIDE_PREFETCHING: bool = false;
-pub const RPT_SETS: usize = 1024; // Number of sets in the RPT
-pub const RPT_WAYS: usize = 4; // Number of ways in the RPT
-pub const N_PC: usize = 16; // Number of PC bits to use for indexing
-pub const LOOKAHEAD: usize = 3; // Number of future accesses to look ahead for prefetching
+pub const ADJACENT_LINE_PREFETCHING: bool = false;
 
 /**
 * Parameters for SMS Prefetching
 */
-pub const SMS_PREFETCHING: bool = false;
+pub const SMS_PREFETCHING: bool = true;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
-pub const PHT_SETS: usize = 256;    // Number of sets in the PHT.
+pub const PHT_SETS: usize = 128;    // Number of sets in the PHT.
 pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
 pub const IDX_WIDTH: usize = 21;    // Number of bits used to index the PHT.
 pub const N_BLK: usize = 32; // Number of blocks in the region.
@@ -290,7 +284,7 @@ pub const ROT: bool = false;     // Whether to rotate the patterns when stored
 pub const PERFECT_PHT: bool = false; // Whether to use perfect PHT
 
 pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
-pub const N_PRINT_UP: u64 = 0; // The upper bound of the access counter to print the access.
+pub const N_PRINT_UP: u64 = 100_000_000; // The upper bound of the access counter to print the access.
 
 /**
  * BP_GSHARE_SET
@@ -313,12 +307,32 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 4;
+pub const BTB_ASSO: usize = 3;
 
 /**
  * BP_RAS_COUNT
  */
 pub const BP_RAS_COUNT: usize = 32;
+
+/**
+ * INIT_HOST_TIME_SCALE
+ *
+ * The initial denominator of taking host time to advance target CPU clock.
+ *
+ * By default, the VirtualTime plugin calculate the denominator by periodically picking the fast core, and uses its speed
+ * to calculate this denominator. This parameter is used to set the initial value of this denominator.
+ *
+ */
+pub const INIT_HOST_TIME_SCALE: usize = 1000;
+
+/**
+ * HOST_TIME_SCALING_PROFILING_PERIOD
+ *
+ * The period of profiling the host time scaling, in milliseconds.
+ *
+ * The VirtualTime plugin will profile the icount and determine host time scaling every this number of instructions.
+ */
+pub const HOST_TIME_SCALING_PROFILING_PERIOD: usize = 100;
 
 /**
  * The list of plugins.
@@ -329,6 +343,8 @@ use crate::components::Plugin;
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
     _pb: crate::BranchPredictorPlugin,
+    _vt: crate::VirtualTimePlugin,
+    // _mk: crate::MarkerPlugin,
     _lm: crate::ParallelCacheHierarchyPlugin,
     // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
@@ -362,3 +378,25 @@ pub const ENABLE_EXCLUSIVE_CACHE_STATE: bool = true;
  * This is used to record the cache line coherence history so that you can debug the cache coherence protocol.
  */
 pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
+
+/**
+ * Whether to disable precise coherence message reconstruction.
+ *
+ * This option is for testing the accuracy of the functional warming model.
+ *
+ * This option is only effective when the parallel cache model is used.
+ */
+pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
+
+/**
+ * Whether to use the target time (calculated with the instruction count the IPC) for cache state construction.
+ *
+ * When this option is enabled,
+ * the previous options, DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION and DISABLE_PRECISE_SHARED_CACHE_LRU_RECONSTRUCTION,
+ * must be set to true.
+ */
+pub const USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION: bool = false;
+static_assertions::const_assert!(
+    !(DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION
+        && USE_TARGET_TIME_FOR_CACHE_STATE_CONSTRUCTION)
+);

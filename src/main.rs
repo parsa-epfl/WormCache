@@ -104,6 +104,42 @@ type MH = ParallelMemoryHierarchy<
     {parameter::LOOKAHEAD},
 >;
 
+type MHNoPrefetch = ParallelMemoryHierarchy<
+    NoMMU,
+    ParallelHarvardPrivateCache<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    ParallelLRUSharedCache<
+        SharedCacheStatisticsWithPlugin,
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
+    InfiniteDirectory<{ parameter::INFINITE_DIRECTORY_SHARED_COUNT }>,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
+    { ALLOCATED_CORE_COUNT },
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
+    {parameter::N_BLK},
+    {parameter::ROT},
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
+>;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let filename = if args.len() > 1 {
@@ -133,25 +169,26 @@ fn main() {
         .from_reader(buf_reader);
 
     let mh = MH::new();
+    let mh_nopf = MHNoPrefetch::new();
 
-    let (mut data_all, mut old_data_l1d_miss, mut old_data_llc_miss, mut new_data_l1d_miss, mut new_data_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
-    let (mut instr_all, mut old_instr_l1i_miss, mut old_instr_llc_miss, mut new_instr_l1i_miss, mut new_instr_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
+    let (mut data_all, mut pf_data_l1d_miss, mut pf_data_llc_miss, mut nopf_data_l1d_miss, mut nopf_data_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
+    let (mut instr_all, mut pf_instr_l1i_miss, mut pf_instr_llc_miss, mut nopf_instr_l1i_miss, mut nopf_instr_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
 
     let mut prev_ts = 0;
     for (idx, result) in rdr.records().enumerate() {
         if (idx+1) % 100_000_000 == 0 {
             println!("Processed {} records", (idx+1));
-            let old_l1d_mr = old_data_l1d_miss as f64 / data_all as f64 * 100.0;
-            let new_l1d_mr = new_data_l1d_miss as f64 / data_all as f64 * 100.0;
-            let old_llc_mr_data = old_data_llc_miss as f64 / data_all as f64 * 100.0;
-            let new_llc_mr_data = new_data_llc_miss as f64 / data_all as f64 * 100.0;
-            let old_l1i_mr = old_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
-            let new_l1i_mr = new_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
-            let old_llc_mr_instr = old_instr_llc_miss as f64 / instr_all as f64 * 100.0;
-            let new_llc_mr_instr = new_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+            let pf_l1d_mr = pf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+            let nopf_l1d_mr = nopf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+            let pf_llc_mr_data = pf_data_llc_miss as f64 / data_all as f64 * 100.0;
+            let nopf_llc_mr_data = nopf_data_llc_miss as f64 / data_all as f64 * 100.0;
+            let pf_l1i_mr = pf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+            let nopf_l1i_mr = nopf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+            let pf_llc_mr_instr = pf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+            let nopf_llc_mr_instr = nopf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
 
-            println!("Old L1D Miss Rate: {:.2}%, New L1D Miss Rate: {:.2}%, Old LLC Miss Rate (Data): {:.2}%, New LLC Miss Rate (Data): {:.2}%", old_l1d_mr, new_l1d_mr, old_llc_mr_data, new_llc_mr_data);
-            println!("Old L1I Miss Rate: {:.2}%, New L1I Miss Rate: {:.2}%, Old LLC Miss Rate (Instr): {:.2}%, New LLC Miss Rate (Instr): {:.2}%", old_l1i_mr, new_l1i_mr, old_llc_mr_instr, new_llc_mr_instr);
+            println!("PF L1D Miss Rate: {:.2}%, NOPF L1D Miss Rate: {:.2}%, PF LLC Miss Rate (Data): {:.2}%, NOPF LLC Miss Rate (Data): {:.2}%", pf_l1d_mr, nopf_l1d_mr, pf_llc_mr_data, nopf_llc_mr_data);
+            println!("PF L1I Miss Rate: {:.2}%, NOPF L1I Miss Rate: {:.2}%, PF LLC Miss Rate (Instr): {:.2}%, NOPF LLC Miss Rate (Instr): {:.2}%", pf_l1i_mr, nopf_l1i_mr, pf_llc_mr_instr, nopf_llc_mr_instr);
         }
         match result {
             Ok(record) => {
@@ -171,7 +208,7 @@ fn main() {
                 let access_code = record[3].parse::<u8>().unwrap();
                 let is_os = record[4].parse::<bool>().unwrap();
                 let pc = record[5].parse::<u64>().unwrap();
-                let code = record[6].parse::<u8>().unwrap();
+                // let code = record[6].parse::<u8>().unwrap();
                 if prev_ts != 0 && (ts as f64) > 1.5*(prev_ts as f64) {
                     eprintln!("Warning: Timestamp gap detected: {} -> {}", prev_ts, ts);
                     continue;
@@ -180,30 +217,6 @@ fn main() {
 
                 let is_data = access_code == 0 || access_code == 1;
                 let is_instr: bool = access_code == 2;
-                if is_data && cnt {
-                    data_all += 1;
-                    match code {
-                        0 => {},
-                        1 => {old_data_l1d_miss += 1},                          // Only L1 Miss
-                        2 => {old_data_l1d_miss += 1; old_data_llc_miss += 1},  // L1 Miss + LLC Miss
-                        3 => {old_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
-                        4 => {old_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
-                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
-                        _ => unreachable!("Invalid code"),
-                    };
-                }
-                if is_instr && cnt {
-                    instr_all += 1;
-                    match code {
-                        0 => {},
-                        1 => {old_instr_l1i_miss += 1},                          // Only L1 Miss
-                        2 => {old_instr_l1i_miss += 1; old_instr_llc_miss += 1},  // L1 Miss + LLC Miss
-                        3 => {old_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
-                        4 => {old_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
-                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
-                        _ => unreachable!("Invalid code"),
-                    };
-                }
                 let access_type = match access_code {
                     0 => CacheAccessType::DataRead,
                     1 => CacheAccessType::DataWrite,
@@ -220,7 +233,8 @@ fn main() {
                     is_os,
                     pc,
                 };
-                let (result, _) = mh.access_memory_pblock_id(&req, ts);
+                let (pf_result, _) = mh.access_memory_pblock_id(&req, ts);
+                let (nopf_result, _) = mh_nopf.access_memory_pblock_id(&req, ts);
                 if parameter::ADJACENT_LINE_PREFETCHING && is_instr {
                     let mut prefetch_request = req.clone();
                     prefetch_request.block_id += 1;
@@ -234,7 +248,15 @@ fn main() {
                 if parameter::STRIDE_PREFETCHING && is_data {
                     mh.prefetch_blocks_stride(&req, ts);
                 }
-                let new_code: u8 = match result {
+                let nopf_code: u8 = match nopf_result {
+                    CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+                    CacheHierarchyAccessResult::HitInSharedCache => 1,
+                    CacheHierarchyAccessResult::Miss => 2,
+                    CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
+                    CacheHierarchyAccessResult::MissDueToPermission => 4,
+                    CacheHierarchyAccessResult::Unknown => 5,
+                };
+                let pf_code: u8 = match pf_result {
                     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
                     CacheHierarchyAccessResult::HitInSharedCache => 1,
                     CacheHierarchyAccessResult::Miss => 2,
@@ -243,23 +265,43 @@ fn main() {
                     CacheHierarchyAccessResult::Unknown => 5,
                 };
                 if is_data && cnt {
-                    match new_code {
+                    data_all += 1;
+                    match pf_code {
                         0 => {},
-                        1 => {new_data_l1d_miss += 1},                          // Only L1 Miss
-                        2 => {new_data_l1d_miss += 1; new_data_llc_miss += 1},  // L1 Miss + LLC Miss
-                        3 => {new_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
-                        4 => {new_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        1 => {pf_data_l1d_miss += 1},                          // Only L1 Miss
+                        2 => {pf_data_l1d_miss += 1; pf_data_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {pf_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {pf_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
+                    match nopf_code {
+                        0 => {},
+                        1 => {nopf_data_l1d_miss += 1},                          // Only L1 Miss
+                        2 => {nopf_data_l1d_miss += 1; nopf_data_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {nopf_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {nopf_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
                         5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
                         _ => unreachable!("Invalid code"),
                     };
                 }
                 if is_instr && cnt {
-                    match new_code {
+                    instr_all += 1;
+                    match pf_code {
                         0 => {},
-                        1 => {new_instr_l1i_miss += 1},                          // Only L1 Miss
-                        2 => {new_instr_l1i_miss += 1; new_instr_llc_miss += 1},  // L1 Miss + LLC Miss
-                        3 => {new_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
-                        4 => {new_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        1 => {pf_instr_l1i_miss += 1},                          // Only L1 Miss
+                        2 => {pf_instr_l1i_miss += 1; pf_instr_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {pf_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {pf_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
+                    match nopf_code {
+                        0 => {},
+                        1 => {nopf_instr_l1i_miss += 1},                          // Only L1 Miss
+                        2 => {nopf_instr_l1i_miss += 1; nopf_instr_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {nopf_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {nopf_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
                         5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
                         _ => unreachable!("Invalid code"),
                     };
@@ -270,15 +312,15 @@ fn main() {
             }
         }
     }
-    let old_l1d_mr = old_data_l1d_miss as f64 / data_all as f64 * 100.0;
-    let new_l1d_mr = new_data_l1d_miss as f64 / data_all as f64 * 100.0;
-    let old_llc_mr_data = old_data_llc_miss as f64 / data_all as f64 * 100.0;
-    let new_llc_mr_data = new_data_llc_miss as f64 / data_all as f64 * 100.0;
-    let old_l1i_mr = old_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
-    let new_l1i_mr = new_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
-    let old_llc_mr_instr = old_instr_llc_miss as f64 / instr_all as f64 * 100.0;
-    let new_llc_mr_instr = new_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+    let pf_l1d_mr = pf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+    let nopf_l1d_mr = nopf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+    let pf_llc_mr_data = pf_data_llc_miss as f64 / data_all as f64 * 100.0;
+    let nopf_llc_mr_data = nopf_data_llc_miss as f64 / data_all as f64 * 100.0;
+    let pf_l1i_mr = pf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+    let nopf_l1i_mr = nopf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+    let pf_llc_mr_instr = pf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+    let nopf_llc_mr_instr = nopf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
 
-    println!("Old L1D Miss Rate: {:.2}%, New L1D Miss Rate: {:.2}%, Old LLC Miss Rate (Data): {:.2}%, New LLC Miss Rate (Data): {:.2}%", old_l1d_mr, new_l1d_mr, old_llc_mr_data, new_llc_mr_data);
-    println!("Old L1I Miss Rate: {:.2}%, New L1I Miss Rate: {:.2}%, Old LLC Miss Rate (Instr): {:.2}%, New LLC Miss Rate (Instr): {:.2}%", old_l1i_mr, new_l1i_mr, old_llc_mr_instr, new_llc_mr_instr);
+    println!("PF L1D Miss Rate: {:.2}%, NOPF L1D Miss Rate: {:.2}%, PF LLC Miss Rate (Data): {:.2}%, NOPF LLC Miss Rate (Data): {:.2}%", pf_l1d_mr, nopf_l1d_mr, pf_llc_mr_data, nopf_llc_mr_data);
+    println!("PF L1I Miss Rate: {:.2}%, NOPF L1I Miss Rate: {:.2}%, PF LLC Miss Rate (Instr): {:.2}%, NOPF LLC Miss Rate (Instr): {:.2}%", pf_l1i_mr, nopf_l1i_mr, pf_llc_mr_instr, nopf_llc_mr_instr);
 }
