@@ -68,7 +68,7 @@ impl SharedCacheStatisticsParser<false> for DummyParser {
 type SharedCacheStatisticsWithPlugin =
     <DummyParser as SharedCacheStatisticsParser<{ parameter::ENABLE_STATISTICS }>>::Output;
 
-type MH = ParallelMemoryHierarchy<
+type MHPrefetch = ParallelMemoryHierarchy<
     NoMMU,
     ParallelHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },
@@ -98,6 +98,46 @@ type MH = ParallelMemoryHierarchy<
     { parameter::SEP_RDWR },
     { parameter::SAT_CNT },
     {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
+>;
+
+type MHNoPrefetch = ParallelMemoryHierarchy<
+    NoMMU,
+    ParallelHarvardPrivateCache<
+        { ALLOCATED_CORE_COUNT },
+        { parameter::HARVARD_PRI_I_CACHE_SET },
+        { parameter::HARVARD_PRI_I_CACHE_ASSO },
+        { parameter::HARVARD_PRI_D_CACHE_SET },
+        { parameter::HARVARD_PRI_D_CACHE_ASSO },
+    >,
+    ParallelLRUSharedCache<
+        SharedCacheStatisticsWithPlugin,
+        { parameter::SHARED_CACHE_SET },
+        { parameter::SHARED_CACHE_ASSO },
+        { parameter::SHARED_CACHE_EXCLUSIVE },
+    >,
+    InfiniteDirectory<{ parameter::INFINITE_DIRECTORY_SHARED_COUNT }>,
+    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
+    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
+    { ALLOCATED_CORE_COUNT },
+    {parameter::N_ACC},
+    {parameter::N_FILTER},
+    {parameter::PHT_SETS},
+    {parameter::PHT_WAYS},
+    {parameter::N_BLK},
+    {parameter::ROT},
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    {parameter::PERFECT_PHT},
+    {parameter::RPT_SETS},
+    {parameter::RPT_WAYS},
+    {parameter::N_PC},
+    {parameter::LOOKAHEAD},
 >;
 
 fn main() {
@@ -128,26 +168,27 @@ fn main() {
         .has_headers(false)
         .from_reader(buf_reader);
 
-    let mh = MH::new();
+    let mh_pf = MHPrefetch::new();
+    let mh_nopf = MHNoPrefetch::new();
 
-    let is_sat = if parameter::SAT_CNT { 'y' } else { 'n' };
-    let rd_wr = if parameter::SEP_RDWR { 'y' } else { 'n' };
-    let rot = if parameter::ROT { 'y' } else { 'n' };
-    let str = format!("{}{}{}{}", parameter::N_BLK, is_sat, rd_wr, rot);
+    let (mut data_all, mut pf_data_l1d_miss, mut pf_data_llc_miss, mut nopf_data_l1d_miss, mut nopf_data_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
+    let (mut instr_all, mut pf_instr_l1i_miss, mut pf_instr_llc_miss, mut nopf_instr_l1i_miss, mut nopf_instr_llc_miss): (usize, usize, usize, usize, usize) = (0, 0, 0, 0, 0);
 
-    let (mut all, mut old_miss, mut new_miss, mut covered): (usize, usize, usize, usize) = (0, 0, 0, 0);
-    let (mut total, mut useful, mut useless) = (0, 0, 0);
     let mut prev_ts = 0;
     for (idx, result) in rdr.records().enumerate() {
         if (idx+1) % 100_000_000 == 0 {
             println!("Processed {} records", (idx+1));
-            let old_mr = old_miss as f64 / all as f64 * 100.0;
-            let new_mr = new_miss as f64 / all as f64 * 100.0;
-            let coverage = covered as f64 / old_miss as f64 * 100.0;
-            let accuracy  = useful as f64 / total as f64 * 100.0;
-            let overpred = useless as f64 / total as f64 * 100.0;
-            println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
-                        str, old_mr, new_mr, coverage, accuracy, overpred);
+            let pf_l1d_mr = pf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+            let nopf_l1d_mr = nopf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+            let pf_llc_mr_data = pf_data_llc_miss as f64 / data_all as f64 * 100.0;
+            let nopf_llc_mr_data = nopf_data_llc_miss as f64 / data_all as f64 * 100.0;
+            let pf_l1i_mr = pf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+            let nopf_l1i_mr = nopf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+            let pf_llc_mr_instr = pf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+            let nopf_llc_mr_instr = nopf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+
+            println!("PF L1D Miss Rate: {:.2}%, NOPF L1D Miss Rate: {:.2}%, PF LLC Miss Rate (Data): {:.2}%, NOPF LLC Miss Rate (Data): {:.2}%", pf_l1d_mr, nopf_l1d_mr, pf_llc_mr_data, nopf_llc_mr_data);
+            println!("PF L1I Miss Rate: {:.2}%, NOPF L1I Miss Rate: {:.2}%, PF LLC Miss Rate (Instr): {:.2}%, NOPF LLC Miss Rate (Instr): {:.2}%", pf_l1i_mr, nopf_l1i_mr, pf_llc_mr_instr, nopf_llc_mr_instr);
         }
         match result {
             Ok(record) => {
@@ -161,24 +202,21 @@ fn main() {
                     eprintln!("Invalid timestamp: {:?}", record);
                     continue;
                 }
+                let cnt = (idx + 1) > 1_000_000_000;
                 let core_id = record[1].parse::<u32>().unwrap();
                 let block_id = record[2].parse::<u64>().unwrap();
                 let access_code = record[3].parse::<u8>().unwrap();
                 let is_os = record[4].parse::<bool>().unwrap();
                 let pc = record[5].parse::<u64>().unwrap();
-                let code = record[6].parse::<u8>().unwrap();
+                // let code = record[6].parse::<u8>().unwrap();
                 if prev_ts != 0 && (ts as f64) > 1.5*(prev_ts as f64) {
                     eprintln!("Warning: Timestamp gap detected: {} -> {}", prev_ts, ts);
                     continue;
                 }
                 prev_ts = ts;
-                all += 1;
 
                 let is_data = access_code == 0 || access_code == 1;
-                if code != 0 && is_data {
-                    old_miss += 1;
-                }
-
+                let is_instr: bool = access_code == 2;
                 let access_type = match access_code {
                     0 => CacheAccessType::DataRead,
                     1 => CacheAccessType::DataWrite,
@@ -195,40 +233,94 @@ fn main() {
                     is_os,
                     pc,
                 };
-                let (result, stats) = mh.access_memory_pblock_id(&req, ts);
+                let (pf_result, _) = mh.access_memory_pblock_id(&req, ts);
+                let (nopf_result, _) = mh_nopf.access_memory_pblock_id(&req, ts);
+                if parameter::ADJACENT_LINE_PREFETCHING && is_instr {
+                    let mut prefetch_request = req.clone();
+                    prefetch_request.block_id += 1;
+                    prefetch_request.access_type = prefetch_request.get_prefetch_type();
+                    mh.access_memory_pblock_id(&prefetch_request, ts);
+                }
                 if parameter::SMS_PREFETCHING && is_data {
-                    mh.prefetch_blocks(&req, ts);
+                    mh.prefetch_blocks_sms(&req, ts);
                     mh.record_access(&req, ts);
                 }
-                total = stats.0;
-                useless = stats.1;
-                useful = stats.2;
-                let new_code: u8 = match result {
+                if parameter::STRIDE_PREFETCHING && is_data {
+                    mh.prefetch_blocks_stride(&req, ts);
+                }
+                let nopf_code: u8 = match nopf_result {
                     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
                     CacheHierarchyAccessResult::HitInSharedCache => 1,
-                    CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
                     CacheHierarchyAccessResult::Miss => 2,
+                    CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
                     CacheHierarchyAccessResult::MissDueToPermission => 4,
                     CacheHierarchyAccessResult::Unknown => 5,
                 };
-                if new_code != 0 && is_data {
-                    new_miss += 1;
+                let pf_code: u8 = match pf_result {
+                    CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+                    CacheHierarchyAccessResult::HitInSharedCache => 1,
+                    CacheHierarchyAccessResult::Miss => 2,
+                    CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
+                    CacheHierarchyAccessResult::MissDueToPermission => 4,
+                    CacheHierarchyAccessResult::Unknown => 5,
+                };
+                if is_data && cnt {
+                    data_all += 1;
+                    match pf_code {
+                        0 => {},
+                        1 => {pf_data_l1d_miss += 1},                          // Only L1 Miss
+                        2 => {pf_data_l1d_miss += 1; pf_data_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {pf_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {pf_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
+                    match nopf_code {
+                        0 => {},
+                        1 => {nopf_data_l1d_miss += 1},                          // Only L1 Miss
+                        2 => {nopf_data_l1d_miss += 1; nopf_data_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {nopf_data_l1d_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {nopf_data_l1d_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
                 }
-                if code != 0 && new_code == 0 && is_data {
-                    covered += 1;
+                if is_instr && cnt {
+                    instr_all += 1;
+                    match pf_code {
+                        0 => {},
+                        1 => {pf_instr_l1i_miss += 1},                          // Only L1 Miss
+                        2 => {pf_instr_l1i_miss += 1; pf_instr_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {pf_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {pf_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
+                    match nopf_code {
+                        0 => {},
+                        1 => {nopf_instr_l1i_miss += 1},                          // Only L1 Miss
+                        2 => {nopf_instr_l1i_miss += 1; nopf_instr_llc_miss += 1},  // L1 Miss + LLC Miss
+                        3 => {nopf_instr_l1i_miss += 1},                          // Hit in other private cache (treated as L1 Miss)
+                        4 => {nopf_instr_l1i_miss += 1},                          // Miss due to permission (treated as L1 Miss)
+                        5 => {},                                                // Unknown, we don't know where it misses, so we don't count it in the miss statistics
+                        _ => unreachable!("Invalid code"),
+                    };
                 }
-                // println!("{},{},{},{},{},{},{}", ts, core_id, block_id, access_code, is_os, pc, new_code);
             }
             Err(e) => {
                 eprintln!("Error reading record: {}", e);
             }
         }
     }
-    let old_mr = old_miss as f64 / all as f64 * 100.0;
-    let new_mr = new_miss as f64 / all as f64 * 100.0;
-    let coverage = covered as f64 / old_miss as f64 * 100.0;
-    let accuracy  = useful as f64 / total as f64 * 100.0;
-    let overpred =  useless as f64 / total as f64 * 100.0;
-    println!("Metadata: {}, Old Miss Rate: {:.2}%, New Miss Rate: {:.2}%, Coverage: {:.2}%, Useful: {:.2}%, Useless: {:.2}%",
-                str, old_mr, new_mr, coverage, accuracy, overpred);
+    let pf_l1d_mr = pf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+    let nopf_l1d_mr = nopf_data_l1d_miss as f64 / data_all as f64 * 100.0;
+    let pf_llc_mr_data = pf_data_llc_miss as f64 / data_all as f64 * 100.0;
+    let nopf_llc_mr_data = nopf_data_llc_miss as f64 / data_all as f64 * 100.0;
+    let pf_l1i_mr = pf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+    let nopf_l1i_mr = nopf_instr_l1i_miss as f64 / instr_all as f64 * 100.0;
+    let pf_llc_mr_instr = pf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+    let nopf_llc_mr_instr = nopf_instr_llc_miss as f64 / instr_all as f64 * 100.0;
+
+    println!("PF L1D Miss Rate: {:.2}%, NOPF L1D Miss Rate: {:.2}%, PF LLC Miss Rate (Data): {:.2}%, NOPF LLC Miss Rate (Data): {:.2}%", pf_l1d_mr, nopf_l1d_mr, pf_llc_mr_data, nopf_llc_mr_data);
+    println!("PF L1I Miss Rate: {:.2}%, NOPF L1I Miss Rate: {:.2}%, PF LLC Miss Rate (Instr): {:.2}%, NOPF LLC Miss Rate (Instr): {:.2}%", pf_l1i_mr, nopf_l1i_mr, pf_llc_mr_instr, nopf_llc_mr_instr);
 }
