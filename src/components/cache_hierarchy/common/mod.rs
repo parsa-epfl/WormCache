@@ -35,7 +35,7 @@ mod private_cache;
 mod shared_cache;
 mod sms;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CacheAccessType {
     InstructionFetch,
 

@@ -204,11 +204,10 @@ pub trait MemoryHierarchy {
                     // let code: u8 = match result {
                     //     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
                     //     CacheHierarchyAccessResult::HitInSharedCache => 1,
-                    //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
                     //     CacheHierarchyAccessResult::Miss => 2,
+                    //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
                     //     CacheHierarchyAccessResult::MissDueToPermission => 4,
-                    //     CacheHierarchyAccessResult::MissInPrivateCache => 5,
-                    //     CacheHierarchyAccessResult::Unknown => 6,
+                    //     CacheHierarchyAccessResult::Unknown => 5,
                     // };
                     // let access_code: u8 = match request.access_type {
                     //     CacheAccessType::DataRead => 0,
@@ -243,11 +242,10 @@ pub trait MemoryHierarchy {
         // let code: u8 = match result {
         //     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
         //     CacheHierarchyAccessResult::HitInSharedCache => 1,
-        //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
         //     CacheHierarchyAccessResult::Miss => 2,
+        //     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
         //     CacheHierarchyAccessResult::MissDueToPermission => 4,
-        //     CacheHierarchyAccessResult::MissInPrivateCache => 5,
-        //     CacheHierarchyAccessResult::Unknown => 6,
+        //     CacheHierarchyAccessResult::Unknown => 5,
         // };
         // let access_code: u8 = match translated_request.access_type {
         //     CacheAccessType::DataRead => 0,

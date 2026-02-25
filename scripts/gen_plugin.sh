@@ -18,15 +18,25 @@ for type in os an; do
                     echo "Building ..."
                     cargo build --release
 
-                    srcfile="$(pwd)/target/release/libworm_cache.so"
-                    dstfile="$(pwd)/../bins/single_core/libworm_cache_${type}_${prefix}.so"
+                    # srcfile="$(pwd)/target/release/libworm_cache.so"
+                    # dstfile="$(pwd)/../bins/single_core/libworm_cache_${type}_${prefix}.so"
+                    # echo "Copying ${srcfile} to ${dstfile}"
+                    # cp $srcfile $dstfile
+
+                    # srcfile="$(pwd)/target/release/checkpoint_conversion"
+                    # dstfile="$(pwd)/../bins/single_core/checkpoint_conversion_${type}_${prefix}"
+                    # echo "Copying ${srcfile} to ${dstfile}"
+                    # cp $srcfile $dstfile
+
+                    srcfile="$(pwd)/target/release/worm_cache"
+                    dstfile="$(pwd)/../bins/trace/worm_cache_${type}_${prefix}"
                     echo "Copying ${srcfile} to ${dstfile}"
                     cp $srcfile $dstfile
 
-                    srcfile="$(pwd)/target/release/checkpoint_conversion"
-                    dstfile="$(pwd)/../bins/single_core/checkpoint_conversion_${type}_${prefix}"
-                    echo "Copying ${srcfile} to ${dstfile}"
-                    cp $srcfile $dstfile
+                    # srcfile="$(pwd)/target/release/libworm_cache.so"
+                    # dstfile="$(pwd)/../bins/trace/libworm_cache_${type}_${prefix}.so"
+                    # echo "Copying ${srcfile} to ${dstfile}"
+                    # cp $srcfile $dstfile
                 done
             done
         done
