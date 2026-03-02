@@ -9,7 +9,7 @@ for type in os an; do
                 for llc in 1 8 32; do
                     prefix="SMS_${sms}_STLB_${stlb}_L1_${l1}_LLC_${llc}"
 
-                    srcfile="$(pwd)/src/configs/single_core/parameter_${type}_${prefix}.rs"
+                    srcfile="$(pwd)/src/configs/1_core/parameter_${type}_${prefix}.rs"
                     dstfile="$(pwd)/src/parameter.rs"
 
                     echo "Copying ${srcfile} to ${dstfile}"
@@ -19,12 +19,12 @@ for type in os an; do
                     cargo build --release
 
                     # srcfile="$(pwd)/target/release/libworm_cache.so"
-                    # dstfile="$(pwd)/../bins/single_core/libworm_cache_${type}_${prefix}.so"
+                    # dstfile="$(pwd)/../bins/1_core/libworm_cache_${type}_${prefix}.so"
                     # echo "Copying ${srcfile} to ${dstfile}"
                     # cp $srcfile $dstfile
 
                     # srcfile="$(pwd)/target/release/checkpoint_conversion"
-                    # dstfile="$(pwd)/../bins/single_core/checkpoint_conversion_${type}_${prefix}"
+                    # dstfile="$(pwd)/../bins/1_core/checkpoint_conversion_${type}_${prefix}"
                     # echo "Copying ${srcfile} to ${dstfile}"
                     # cp $srcfile $dstfile
 

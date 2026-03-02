@@ -2,3 +2,4 @@
 include
 .vscode
 aux
+src/configs

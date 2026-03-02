@@ -239,8 +239,9 @@ fn main() {
                     _ => unreachable!("Invalid access type"),
                 };
                 let is_instr = access_type == CacheAccessType::InstructionFetch;
-                let is_data = access_type == CacheAccessType::DataRead || access_type == CacheAccessType::DataWrite || access_type == CacheAccessType::PageWalkRead;
-                assert!(is_instr || is_data, "Invalid access type for recording metrics");
+                let is_data = access_type == CacheAccessType::DataRead || access_type == CacheAccessType::DataWrite;
+                let is_pw = access_type == CacheAccessType::PageWalkRead;
+                assert!(is_instr || is_data || is_pw, "Invalid access type for recording metrics");
                 let req = CacheBlockRequest{
                     core_id,
                     block_id,
@@ -255,7 +256,7 @@ fn main() {
                 if parameter::ADJACENT_LINE_PREFETCHING && is_instr {
                     let mut prefetch_request = req.clone();
                     prefetch_request.block_id += 1;
-                    prefetch_request.access_type = prefetch_request.get_prefetch_type();
+                    prefetch_request.access_type = prefetch_request.get_prefetch_type();    // TODO: Check later whether these prefetches go into instr cache actually.
                     mh.access_memory_pblock_id(&prefetch_request, ts);
                 }
                 if parameter::SMS_PREFETCHING && is_data {

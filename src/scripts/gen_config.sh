@@ -10,7 +10,7 @@ for type in os an; do
                     prefix="SMS_${sms}_STLB_${stlb}_L1_${l1}_LLC_${llc}"
 
                     ref_file="$(pwd)/../ref_files/parameter_${type}.rs"
-                    new_file="$(pwd)/../configs/single_core/parameter_${type}_${prefix}.rs"
+                    new_file="$(pwd)/../configs/1_core/parameter_${type}_${prefix}.rs"
                     cp $ref_file $new_file
 
                     if [ "$sms" == "0" ]; then

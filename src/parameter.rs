@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 1;
+pub const CORE_COUNT: usize = 48;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -110,7 +110,7 @@ pub const STLB_ASSO: usize = 4;
  * The number of sets of the private & last-level TLB.
  */
 
-pub const STLB_SET: usize = 1024;
+pub const STLB_SET: usize = 256;
 static_assertions::const_assert!(STLB_SET.is_power_of_two());
 
 // No huge pages?
@@ -189,7 +189,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 32 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 12 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -270,7 +270,7 @@ pub const ADJACENT_LINE_PREFETCHING: bool = false;
 pub const SMS_PREFETCHING: bool = true;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
-pub const PHT_SETS: usize = 1024;    // Number of sets in the PHT.
+pub const PHT_SETS: usize = 256;    // Number of sets in the PHT.
 pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
 pub const IDX_WIDTH: usize = 21;    // Number of bits used to index the PHT.
 pub const N_BLK: usize = 32; // Number of blocks in the region.
@@ -296,7 +296,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 4096;
+pub const BTB_SET: usize = 512;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
