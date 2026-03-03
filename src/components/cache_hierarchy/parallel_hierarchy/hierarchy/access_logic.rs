@@ -879,7 +879,7 @@ impl<
         access_type: CacheAccessType,
         ts: u64,
     ) -> CacheHierarchyAccessResult {
-        let block_id = paddr >> CACHE_LINE_SIZE.trailing_ones();
+        let block_id = paddr >> CACHE_LINE_SIZE.trailing_zeros();
         // get directory lock.
         let mut directory_set_lock_guard = self.directory.fetch_one_entry(block_id);
 
@@ -918,7 +918,12 @@ impl<
                             }
                         }
 
-                        (true, directory_entry.sharers.count_ones() > 0, directory_entry.sharers)
+                        let old_sharers = directory_entry.sharers;
+
+                        directory_entry.shared  = false;
+                        directory_entry.sharers = SharerList::ZERO;
+
+                        (true, old_sharers.count_ones() > 0, old_sharers)
                     }
 
                     CacheAccessType::PrefetchRead => unreachable!(),
@@ -1048,7 +1053,7 @@ impl<
             let r = SharedCacheAccessRequest {
                 is_os: true,
                 source: SharedCacheAccessSource::Device,
-                block_id: a >> CACHE_LINE_SIZE.trailing_ones(),
+                block_id: a >> CACHE_LINE_SIZE.trailing_zeros(),
                 access_type: CacheAccessType::DataRead
             };
 
