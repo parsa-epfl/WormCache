@@ -259,6 +259,7 @@ fn test_resize_cache_hierarchy() {
         true,
         true,
         65536,
+        16,
         { CORE_COUNT },
     >;
 
@@ -271,6 +272,7 @@ fn test_resize_cache_hierarchy() {
         true,
         true,
         65536,
+        16,
         { CORE_COUNT },
     >;
 

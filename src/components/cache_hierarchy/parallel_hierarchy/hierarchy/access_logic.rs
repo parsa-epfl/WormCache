@@ -7,7 +7,7 @@ use crate::{
                 CacheAccessType, CacheHierarchyAccessResult, DirectorySet, PrivateCacheEvictedSlot,
                 PrivateCachePokeResult, PrivateCaches, SharedCache, SharedCacheAccessRequest,
                 SharedCacheAccessSource, SharedCacheLookupResult, SharerList,
-            }, hierarchy::timing_bridge::timing_bridge_push, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
+            }, hierarchy::timing_bridge::{timing_bridge_push, ICT}, mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult}, CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy
         },
         debug::{
             cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
@@ -160,13 +160,26 @@ impl<
 
                 // write this back to the shared cache.
                 // TODO: Here we should record the causality violation.
-                let (_, eviction_violated, _) = self.shared_cache.insert(
+                let (_, eviction_violated, _, dirty_wb) = self.shared_cache.insert(
                     SharedCacheAccessSource::Core(core_id),
                     evicted_directory_entry.0,
                     ts,
                     false,
                     true,
                 );
+
+                if let Some(dirty_wb_addr) = dirty_wb {
+                    timing_bridge_push(
+                        4096,
+                        dirty_wb_addr,
+                        SharerList::ZERO,
+                        false,
+                        false,
+                        false,
+                        self.do_ict(dirty_wb_addr, ts),
+                        ts
+                    );
+                }
 
                 if eviction_violated {
                     if self.with_statistics {
@@ -234,7 +247,7 @@ impl<
 
             let modified = match shared_cache_result {
                 SharedCacheLookupResult::Hit(is_modified) => is_store || is_modified,
-                SharedCacheLookupResult::Miss
+                SharedCacheLookupResult::Miss(_)
                 | SharedCacheLookupResult::ColdMiss
                 | SharedCacheLookupResult::EvictedLate(_) => is_store,
                 SharedCacheLookupResult::LookupLate(_, _) => false,
@@ -248,7 +261,7 @@ impl<
                         request_to_llc.is_store()
                     }
                 }
-                SharedCacheLookupResult::Miss
+                SharedCacheLookupResult::Miss(_)
                 | SharedCacheLookupResult::ColdMiss
                 | SharedCacheLookupResult::EvictedLate(_) => request_to_llc.is_store(),
                 SharedCacheLookupResult::LookupLate(_, _) => false,
@@ -267,14 +280,17 @@ impl<
                 line!(),
             );
 
+            let shared_cache_hit = matches!(shared_cache_result, SharedCacheLookupResult::Hit(_));
+
             timing_bridge_push(
                 core_id,
                 paddr,
                 sharers, // 0
                 // both read and write need to access memory
-                matches!(shared_cache_result, SharedCacheLookupResult::Hit(_)),
+                shared_cache_hit,
                 false,
                 false,
+                if shared_cache_hit { 0 } else { self.do_ict(paddr, ts) },
                 ts,
             );
 
@@ -322,7 +338,7 @@ impl<
 
             return match shared_cache_result {
                 SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
-                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                SharedCacheLookupResult::Miss(_) | SharedCacheLookupResult::ColdMiss => {
                     if !is_prefetch && self.with_statistics {
                         if is_page_walk {
                             Statistics::global_record(
@@ -436,6 +452,7 @@ impl<
                 true,
                 false,
                 false,
+                0,
                 ts,
             );
 
@@ -559,14 +576,18 @@ impl<
                         next_sharers,
                         // skip memory access as only invalidation is needed
                         true,
-                        true,
                         false,
+                        true,
+                        0,
                         ts,
                     );
                 } else {
                     // different semantics: a write can miss in the directory or
                     // the core is not in the sharer list. treat the write as
                     // GetX instead
+                    let hit = matches!(inv_result, SharedCacheLookupResult::Hit(_)) ||
+                                !FILL_SCACLE_ON_PCACPE_REPLICA_CREATION;
+
                     timing_bridge_push(
                         core_id,
                         paddr,
@@ -574,11 +595,11 @@ impl<
                         // skip memory access if
                         //   1. the block is already in llc
                         //   2. the read is non-allocating
-                        matches!(inv_result, SharedCacheLookupResult::Hit(_)) ||
-                            !FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
+                        hit,
                         // might be true
-                        next_sharers.count_ones() > 0,
                         false,
+                        next_sharers.count_ones() > 0,
+                        if hit { 0 } else { self.do_ict(paddr, ts) },
                         ts,
                     );
                 }
@@ -679,7 +700,7 @@ impl<
                     assert!(!miss_directory_guard.shared);
                 }
 
-                let (_, _, llc_hit) = if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
+                let (_, _, llc_hit, dirty_wb) = if FILL_SCACLE_ON_PCACPE_REPLICA_CREATION || modified_replica {
                     self.shared_cache.insert(
                         SharedCacheAccessSource::Core(core_id),
                         block_id,
@@ -688,11 +709,26 @@ impl<
                         true,
                     )
                 } else {
-                    (false, false, false)
+                    (false, false, false, None)
                 };
+
+                if let Some(dirty_wb_addr) = dirty_wb {
+                    timing_bridge_push(
+                        4096,
+                        dirty_wb_addr,
+                        SharerList::ZERO,
+                        false,
+                        false,
+                        false,
+                        self.do_ict(dirty_wb_addr, ts),
+                        ts
+                    );
+                }
 
                 // cpu reads a non-shared block
                 assert_eq!(sharers.get(p_cache_id).unwrap(), false);
+
+                let hit = llc_hit && !modified_replica || !FILL_SCACLE_ON_PCACPE_REPLICA_CREATION;
 
                 timing_bridge_push(
                     core_id,
@@ -701,11 +737,12 @@ impl<
                     // skip memory access if
                     //   1. llc hits and no writeback is needed
                     //   2. the read is non-allocating
-                    llc_hit && !modified_replica || !FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
+                    hit,
                     // even if no core keeps a modified copy, the broadcast is
                     // still needed
-                    true,
                     false,
+                    true,
+                    if hit { 0 } else { self.do_ict(paddr, ts) },
                     ts,
                 );
 
@@ -910,20 +947,47 @@ impl<
                         paddr,
                         sharers,
                         true,
-                        broadcast,
                         false,
+                        broadcast,
+                        0,
                         ts,
                     );
                     CacheHierarchyAccessResult::HitInSharedCache
                 }
-                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                SharedCacheLookupResult::Miss(dirty_wb) => {
+                    if let Some(dirty_wb_addr) = dirty_wb {
+                        timing_bridge_push(
+                            4096,
+                            dirty_wb_addr,
+                            SharerList::ZERO,
+                            false,
+                            false,
+                            false,
+                            self.do_ict(dirty_wb_addr, ts),
+                            ts
+                        );
+                    }
                     timing_bridge_push(
                         dev_id,
                         paddr,
                         sharers,
                         false,
-                        broadcast,
                         false,
+                        broadcast,
+                        self.do_ict(paddr, ts),
+                        ts,
+                    );
+                    CacheHierarchyAccessResult::Miss
+                }
+                SharedCacheLookupResult::ColdMiss => {
+                    timing_bridge_push(
+                        dev_id,
+                        paddr,
+                        sharers,
+                        false,
+                        false,
+                        broadcast,
+                        self.do_ict(paddr, ts),
                         ts,
                     );
                     CacheHierarchyAccessResult::Miss
@@ -937,11 +1001,67 @@ impl<
                 paddr,
                 sharers,
                 false, // irrelevant
-                false,
                 true,
+                false,
+                0,
                 ts,
             );
             return CacheHierarchyAccessResult::HitInOtherPrivateCache;
         }
+    }
+}
+
+impl<
+    MMU: AbstractMMU,
+    PCache: PrivateCaches,
+    SCache: SharedCache,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACLE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    const FILL_SCACLE_ON_PCACPE_REPLICA_CREATION: bool,
+    const DIRECTORY_SHARD_COUNT: usize,
+    const DIRECTORY_ASSO: usize,
+    const CORE_COUNT: usize,
+> ParallelMemoryHierarchy<
+        MMU,
+        PCache,
+        SCache,
+        FILL_SCACHE_ON_FILLING_PCACHE,
+        FILL_SCACLE_ON_PCACHE_EVICTION,
+        FILL_SCACHE_ON_PCACHE_WRITEBACK,
+        FILL_SCACLE_ON_PCACPE_REPLICA_CREATION,
+        DIRECTORY_SHARD_COUNT,
+        DIRECTORY_ASSO,
+        CORE_COUNT,
+> {
+    fn do_ict(&self, paddr: u64, ts: u64) -> u64 {
+        if !unsafe { ICT } {
+            return 0u64;
+        }
+
+        let mut l = 0u64;
+        let mut a = paddr;
+
+        for i in 0 ..= 4 {
+            a = (1u64 << 48) | (((a >> 12) & 0x1fffffffffffu64) << 3);
+
+            let r = SharedCacheAccessRequest {
+                is_os: true,
+                source: SharedCacheAccessSource::Device,
+                block_id: a >> CACHE_LINE_SIZE.trailing_ones(),
+                access_type: CacheAccessType::DataRead
+            };
+
+            // let's assume that the effect of mlb is minimal
+            match self.shared_cache.lookup_and_insert_on_miss(&r, ts, true) {
+                SharedCacheLookupResult::Hit(_) => {
+                    l |= 1u64 << i;
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        l
     }
 }

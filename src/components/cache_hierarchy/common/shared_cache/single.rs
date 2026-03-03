@@ -133,7 +133,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) -> (bool, bool, bool) {
+    ) -> (bool, bool, bool, Option<u64>) {
         let set_idx = (block_id % SET as u64) as usize;
         let insertion_result = self.blocks[set_idx].lock().insert(
             block_id,
@@ -165,14 +165,13 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             SharedCacheLookupAndInsertResult::Hit(modified) => {
                 SharedCacheLookupResult::Hit(modified)
             }
-            SharedCacheLookupAndInsertResult::Miss => SharedCacheLookupResult::Miss,
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed) => {
                 if just_warmed {
                     self.warmed_sets.fetch_add(1, Ordering::Relaxed);
                 }
                 SharedCacheLookupResult::ColdMiss
             }
-            SharedCacheLookupAndInsertResult::Inserted => SharedCacheLookupResult::Miss,
+            SharedCacheLookupAndInsertResult::Inserted(dirty_wb) => SharedCacheLookupResult::Miss(dirty_wb),
             SharedCacheLookupAndInsertResult::LookupLate(diff, is_modified) => {
                 SharedCacheLookupResult::LookupLate(diff, is_modified)
             }

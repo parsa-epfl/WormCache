@@ -34,7 +34,7 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::components::debug::cache_line_history::CacheLineCoherenceHistory;
+use crate::{components::debug::cache_line_history::CacheLineCoherenceHistory, parameter::CACHE_LINE_SIZE};
 
 use super::{
     SharedCacheAccessRequest, SharedCacheAccessSource, SharedCacheLookupAndInsertResult,
@@ -161,7 +161,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         if self.touched_count < WAY {
             SharedCacheLookupResult::ColdMiss
         } else {
-            SharedCacheLookupResult::Miss
+            SharedCacheLookupResult::Miss(None)
         }
     }
 
@@ -223,7 +223,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         if self.touched_count < WAY {
             SharedCacheLookupResult::ColdMiss
         } else {
-            SharedCacheLookupResult::Miss
+            SharedCacheLookupResult::Miss(None)
         }
     }
 
@@ -236,7 +236,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         ts: u64,
         is_modified: bool,
         increase_touched_count: bool,
-    ) -> (bool, bool, bool) // (was_just_warmed, causality violation?)
+    ) -> (bool, bool, bool, Option<u64>) // (was_just_warmed, causality violation?)
     {
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
@@ -262,7 +262,7 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
                     }
                     hit_block.last_accessor = source;
                 }
-                return (false, false, true);
+                return (false, false, true, None);
             }
         }
 
@@ -289,6 +289,9 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         let oldest_block = &mut self.blocks[minimal_index];
         let causality_violation = oldest_block.ts > ts;
 
+        let old_block_id =   oldest_block.block_id_with_v >> 1;
+        let old_modified = ((oldest_block.block_id_with_v &  1) != 0) && oldest_block.modified;
+
         // otherwise, we replace the oldest block.
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = is_modified;
@@ -301,7 +304,11 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         }
 
         // push the evicted line to the history.
-        (result, causality_violation, false)
+        (result, causality_violation, false, if old_modified {
+            Some(old_block_id << CACHE_LINE_SIZE.trailing_zeros())
+        } else {
+            None
+        })
     }
 
     #[inline]
@@ -414,6 +421,10 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
         };
 
         let oldest_block = &mut self.blocks[index_to_replace];
+
+        let old_block_id =   oldest_block.block_id_with_v >> 1;
+        let old_modified = ((oldest_block.block_id_with_v &  1) != 0) && oldest_block.modified;
+
         oldest_block.block_id_with_v = block_id_with_v;
         oldest_block.modified = r.is_store();
         oldest_block.ts = ts;
@@ -423,7 +434,11 @@ impl<const WAY: usize, const SET: usize, const EXCLUSIVE: bool, S: SharedCacheSe
             SharedCacheLookupAndInsertResult::InsertedAndCold(just_warmed)
         } else {
             if !causality_violation {
-                SharedCacheLookupAndInsertResult::Inserted
+                SharedCacheLookupAndInsertResult::Inserted(if old_modified {
+                    Some(old_block_id << CACHE_LINE_SIZE.trailing_zeros())
+                } else {
+                    None
+                })
             } else {
                 SharedCacheLookupAndInsertResult::EvictedLate(ts_diff)
             }
@@ -442,7 +457,7 @@ fn minimum_can_find_invalid() {
     for i in 0..8 {
         assert_eq!(
             set.insert(i, SharedCacheAccessSource::Core(0), ts, false, true),
-            (i == 7, false, false)
+            (i == 7, false, false, None)
         );
         ts += 1;
     }
@@ -470,7 +485,7 @@ fn minimum_can_find_invalid() {
     // If we now insert another one, line[1] will be replaced.
     assert_eq!(
         set.insert(10, SharedCacheAccessSource::Core(0), ts, false, true),
-        (false, false, false)
+        (false, false, false, None)
     );
 
     assert_eq!(
@@ -513,7 +528,7 @@ fn cold_miss_exist() {
     for i in 0..8 {
         assert_eq!(
             set.insert(i + 10, SharedCacheAccessSource::Core(0), ts, false, true),
-            (i == 7, false, false)
+            (i == 7, false, false, None)
         );
         ts += 1;
     }
@@ -529,7 +544,7 @@ fn cold_miss_exist() {
             },
             ts,
         ),
-        SharedCacheLookupResult::Miss,
+        SharedCacheLookupResult::Miss(None),
     );
 }
 
@@ -596,7 +611,7 @@ fn test_lookup_and_insert() {
             } else if i == 2 {
                 SharedCacheLookupAndInsertResult::InsertedAndCold(true)
             } else {
-                SharedCacheLookupAndInsertResult::Inserted
+                SharedCacheLookupAndInsertResult::Inserted(None)
             },
         );
 
@@ -617,7 +632,7 @@ fn test_lookup_and_insert() {
             },
             ts
         ),
-        SharedCacheLookupResult::Miss,
+        SharedCacheLookupResult::Miss(None),
     );
 
     ts += 1;
@@ -633,6 +648,6 @@ fn test_lookup_and_insert() {
             ts,
             true,
         ),
-        SharedCacheLookupAndInsertResult::Inserted,
+        SharedCacheLookupAndInsertResult::Inserted(None),
     );
 }

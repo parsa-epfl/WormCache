@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 16;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -247,7 +247,7 @@ static_assertions::const_assert!(
  * It should be a power of 2.
  *
 */
-pub const DIRECTORY_SHARD_COUNT: usize = 32768;
+pub const DIRECTORY_SHARD_COUNT: usize = 131072;
 static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
 
 /**

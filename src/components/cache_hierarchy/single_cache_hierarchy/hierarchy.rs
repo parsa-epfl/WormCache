@@ -150,7 +150,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             core_id,
             match res {
                 SharedCacheLookupResult::Hit(_) => EventType::SharedCacheAccess,
-                SharedCacheLookupResult::Miss => EventType::SharedCacheMiss,
+                SharedCacheLookupResult::Miss(_) => EventType::SharedCacheMiss,
                 SharedCacheLookupResult::ColdMiss => EventType::SharedCacheColdMiss,
                 SharedCacheLookupResult::LookupLate(_, _) => {
                     EventType::SharedCacheAccessCausalityViolation
@@ -162,7 +162,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
             is_os,
         );
 
-        if matches!(res, SharedCacheLookupResult::Miss) {
+        if matches!(res, SharedCacheLookupResult::Miss(_)) {
             if is_store {
                 Statistics::global_record(core_id, EventType::SharedCacheMissDueToDataWrite, is_os);
             } else if is_fetch {
@@ -180,7 +180,7 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
 
         match res {
             SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
-            SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
+            SharedCacheLookupResult::Miss(_) => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
             SharedCacheLookupResult::LookupLate(_, _) => CacheHierarchyAccessResult::Unknown,
             SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,

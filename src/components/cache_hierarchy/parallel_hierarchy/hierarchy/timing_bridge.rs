@@ -1,7 +1,7 @@
 use spin::Mutex;
 use std::sync::OnceLock;
 
-use crate::{components::cache_hierarchy::common::SharerList, parameter::CORE_COUNT};
+use crate::{components::cache_hierarchy::common::SharerList};
 
 #[repr(C)]
 pub struct Raw {
@@ -25,8 +25,10 @@ unsafe impl Sync for BufPtr {}
 
 static BUFFER: OnceLock<Mutex<BufPtr>> = OnceLock::new();
 
+pub static mut ICT: bool = false;
+
 #[unsafe(no_mangle)]
-unsafe extern "C" fn dev_trace_init(buf: *mut Raw, max_len: u64) {
+unsafe extern "C" fn dev_trace_init(buf: *mut Raw, max_len: u64, ict: bool) {
     let buf_ptr = BufPtr {
         ptr: buf,
         current_idx: 0,
@@ -34,34 +36,36 @@ unsafe extern "C" fn dev_trace_init(buf: *mut Raw, max_len: u64) {
         seq: 0,
     };
     BUFFER.get_or_init(|| Mutex::new(buf_ptr));
+
+    unsafe {
+        ICT = ict;
+    }
 }
 
 pub fn timing_bridge_push(
     core_id: u32,
     pa: u64,
     sharer_list: SharerList,
-    llc_hit: bool,
-    is_broadcast_invalidation: bool,
-    is_forward: bool,
+    is_hit: bool,
+    is_fwd: bool,
+    is_inv: bool,
+    is_ict: u64,
     ts: u64,
 ) {
-    // cast the buf into an array of Raw
-    // then push the data into the array
-    assert!(CORE_COUNT <= 32);
-
     if let Some(mutex) = BUFFER.get() {
         let mut buf_ptr = mutex.lock();
         let dst = unsafe { buf_ptr.ptr.add(buf_ptr.current_idx as usize) };
 
-        let flag = (llc_hit as u64) << 2
-                | (is_broadcast_invalidation as u64) << 0
-                | (is_forward as u64) << 1;
+        let flag = (is_ict) << 8
+                 | (is_hit as u64) << 2
+                 | (is_fwd as u64) << 1
+                 | (is_inv as u64) << 0;
 
         unsafe {
-            if std::ptr::read(std::ptr::addr_of!((*dst).flag)) != 0x8 {
-                println!("overflow e{0}", buf_ptr.current_idx);
-                return;
-            }
+            assert_eq!(std::ptr::read(std::ptr::addr_of!((*dst).flag)), 0x10,
+                      "timing bridge buffer overflowed!!! addr: {:x} seq: {:x}",
+                       dst as u64,
+                       std::ptr::read(std::ptr::addr_of!((*dst).seq)));
 
             std::ptr::write(std::ptr::addr_of_mut!((*dst).seq),  buf_ptr.seq);
             std::ptr::write(std::ptr::addr_of_mut!((*dst).src),  core_id as u64);
