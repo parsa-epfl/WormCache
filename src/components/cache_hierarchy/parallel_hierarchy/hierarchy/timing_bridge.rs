@@ -45,10 +45,11 @@ unsafe extern "C" fn dev_trace_init(buf: *mut Raw, max_len: u64, ict: bool) {
 pub fn timing_bridge_push(
     core_id: u32,
     pa: u64,
+    wr: bool,
     sharer_list: SharerList,
     is_hit: bool,
     is_fwd: bool,
-    is_inv: bool,
+    is_snp: bool,
     is_ict: u64,
     ts: u64,
 ) {
@@ -57,9 +58,10 @@ pub fn timing_bridge_push(
         let dst = unsafe { buf_ptr.ptr.add(buf_ptr.current_idx as usize) };
 
         let flag = (is_ict) << 8
-                 | (is_hit as u64) << 2
-                 | (is_fwd as u64) << 1
-                 | (is_inv as u64) << 0;
+                 | (wr as     u64) << 0
+                 | (is_hit as u64) << 1
+                 | (is_fwd as u64) << 2
+                 | (is_snp as u64) << 3;
 
         unsafe {
             assert_eq!(std::ptr::read(std::ptr::addr_of!((*dst).flag)), 0x10,

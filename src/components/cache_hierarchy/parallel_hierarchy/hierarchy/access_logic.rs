@@ -172,6 +172,7 @@ impl<
                     timing_bridge_push(
                         4096,
                         dirty_wb_addr,
+                        true,
                         SharerList::ZERO,
                         false,
                         false,
@@ -285,6 +286,7 @@ impl<
             timing_bridge_push(
                 core_id,
                 paddr,
+                is_store,
                 sharers, // 0
                 // both read and write need to access memory
                 shared_cache_hit,
@@ -448,6 +450,7 @@ impl<
             timing_bridge_push(
                 core_id,
                 paddr,
+                is_store,
                 sharers, // not relevant
                 true,
                 false,
@@ -573,6 +576,7 @@ impl<
                     timing_bridge_push(
                         core_id,
                         paddr,
+                        is_store,
                         next_sharers,
                         // skip memory access as only invalidation is needed
                         true,
@@ -591,6 +595,7 @@ impl<
                     timing_bridge_push(
                         core_id,
                         paddr,
+                        is_store,
                         next_sharers,
                         // skip memory access if
                         //   1. the block is already in llc
@@ -716,6 +721,7 @@ impl<
                     timing_bridge_push(
                         4096,
                         dirty_wb_addr,
+                        true,
                         SharerList::ZERO,
                         false,
                         false,
@@ -733,6 +739,7 @@ impl<
                 timing_bridge_push(
                     core_id,
                     paddr,
+                    is_store,
                     sharers,
                     // skip memory access if
                     //   1. llc hits and no writeback is needed
@@ -741,7 +748,7 @@ impl<
                     // even if no core keeps a modified copy, the broadcast is
                     // still needed
                     false,
-                    true,
+                    false,
                     if hit { 0 } else { self.do_ict(paddr, ts) },
                     ts,
                 );
@@ -933,6 +940,8 @@ impl<
                 (true, false, SharerList::ZERO)
             };
 
+        let wr = matches!(access_type, CacheAccessType::DataWrite);
+
         if require_llc_access {
             let llc_request = SharedCacheAccessRequest {
                 is_os: true, // Note: I/O request is always treated as OS.
@@ -950,6 +959,7 @@ impl<
                     timing_bridge_push(
                         dev_id,
                         paddr,
+                        wr,
                         sharers,
                         true,
                         false,
@@ -964,6 +974,7 @@ impl<
                         timing_bridge_push(
                             4096,
                             dirty_wb_addr,
+                            true,
                             SharerList::ZERO,
                             false,
                             false,
@@ -972,14 +983,16 @@ impl<
                             ts
                         );
                     }
+
                     timing_bridge_push(
                         dev_id,
                         paddr,
+                        wr,
                         sharers,
-                        false,
+                        wr,
                         false,
                         broadcast,
-                        self.do_ict(paddr, ts),
+                        if wr { 0 } else { self.do_ict(paddr, ts) },
                         ts,
                     );
                     CacheHierarchyAccessResult::Miss
@@ -988,6 +1001,7 @@ impl<
                     timing_bridge_push(
                         dev_id,
                         paddr,
+                        wr,
                         sharers,
                         false,
                         false,
@@ -1004,6 +1018,7 @@ impl<
             timing_bridge_push(
                 dev_id,
                 paddr,
+                wr,
                 sharers,
                 false, // irrelevant
                 true,
