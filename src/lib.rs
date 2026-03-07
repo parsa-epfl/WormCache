@@ -209,6 +209,10 @@ unsafe extern "C" fn qemu_plugin_install(
 
         if parameter::ENABLE_STATISTICS {
             debug::statistics::create_thread_for_periodic_log();
+            // register a callback to save statistics to a certain file
+            assert!(qemu_api::qemu_plugin_register_save_statistics_callback(
+                Some(debug::statistics::save_statistics_to_certain_file)
+            ));
         }
 
         // Dump the PARAMETER_RS to a log file.

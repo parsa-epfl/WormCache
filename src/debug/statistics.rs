@@ -383,6 +383,19 @@ pub fn create_thread_for_periodic_log() {
     });
 }
 
+pub unsafe extern "C" fn save_statistics_to_certain_file(file_path: *const ffi::c_char) {
+    unsafe {
+        let file_path = std::ffi::CStr::from_ptr(file_path).to_str();
+        if file_path.is_err() {
+            // report the error.
+            println!("Failed to convert file path to str: {:?}", file_path);
+            return;
+        }
+        let file_path = file_path.unwrap();
+        Statistics::save_to_csv(file_path, 0);
+    }
+}
+
 unsafe extern "C" fn user_vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block
