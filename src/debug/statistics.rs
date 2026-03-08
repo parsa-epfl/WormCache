@@ -59,13 +59,15 @@ pub fn init_qemu_stat_ptr(core_id: u32) {
 /// Inline function to record a statistic to QEMU's exposed statistics structure.
 /// This has minimal overhead (~3-5 cycles) due to direct pointer access.
 #[inline(always)]
-pub fn record_qemu_stat(core_id: u32, event: EventType) {
+pub fn record_qemu_stat(core_id: u32, event: EventType, increments: u64) {
     if let Some(offset) = event.to_qemu_offset() {
         unsafe {
             let stat_ptr = QEMU_STAT_PTRS[core_id as usize];
             if !stat_ptr.is_null() {
                 let field_ptr = (stat_ptr as *mut u8).add(offset) as *mut u64;
-                *field_ptr += 1;
+                // *field_ptr += 1;
+                let value = field_ptr.read_volatile();
+                field_ptr.write_volatile(value + increments);
             }
         }
     }
@@ -349,7 +351,7 @@ impl Statistics {
     pub fn global_record(core_id: u32, event: EventType, is_os: bool) {
         GLOBAL_STATISTICS.record(core_id, event, is_os);
         // Also record to QEMU's exposed statistics for performance modeling
-        record_qemu_stat(core_id, event);
+        record_qemu_stat(core_id, event, 1);
     }
 
     #[inline]
@@ -357,7 +359,7 @@ impl Statistics {
         GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
         // For increment > 1, we record once to QEMU stats (it's an approximation)
         if increment > 0 {
-            record_qemu_stat(core_id, event);
+            record_qemu_stat(core_id, event, increment);
         }
     }
 
