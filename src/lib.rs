@@ -45,7 +45,7 @@ pub mod timestamp;
 use crate::chronic::chronic_behavior_init;
 use crate::chronic::on_finish_loading_snapshot;
 use crate::debug::statistics;
-use crate::debug::statistics::Statistics;
+use crate::debug::statistics::{init_qemu_stat_ptr, Statistics};
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
 #[allow(unused_imports)]
@@ -204,6 +204,11 @@ unsafe extern "C" fn qemu_plugin_install(
         qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
         qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
         PluginList::init(id, &options);
+
+        // Initialize QEMU statistics pointers for all cores
+        for core_id in 0..parameter::CORE_COUNT {
+            init_qemu_stat_ptr(core_id as u32);
+        }
 
         chronic_behavior_init(&options);
 
