@@ -216,7 +216,7 @@ impl<
 
     pub fn information() -> String {
         format!(
-            "Private Cache: {}\nShared Cache: {}\nFill Shared Cache on Filling Private Cache: {} \nFill Shared Cache on Private Cache Clean Eviction: {} \nFill Shared Cache on Private Cache Dirty Eviction: {} \nFill Shared Cache on Private Cache Replica Creation: {}",
+            "Private Cache: {}\nShared Cache: {}\nFill Shared Cache on Filling Private Cache: {}\nFill Shared Cache on Private Cache Clean Eviction: {}\nFill Shared Cache on Private Cache Dirty Eviction: {}\nFill Shared Cache on Private Cache Replica Creation: {}",
             PCache::information(),
             SCache::information(),
             FILL_SCACHE_ON_FILLING_PCACHE,

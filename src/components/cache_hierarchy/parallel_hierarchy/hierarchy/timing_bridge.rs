@@ -58,10 +58,11 @@ pub fn timing_bridge_push(
         let dst = unsafe { buf_ptr.ptr.add(buf_ptr.current_idx as usize) };
 
         let flag = (is_ict) << 8
-                 | (wr as     u64) << 0
-                 | (is_hit as u64) << 1
-                 | (is_fwd as u64) << 2
-                 | (is_snp as u64) << 3;
+                 | (pa &        1) << 7
+                 | (wr as     u64) << 6
+                 | (is_hit as u64) << 0
+                 | (is_fwd as u64) << 1
+                 | (is_snp as u64) << 2;
 
         unsafe {
             assert_eq!(std::ptr::read(std::ptr::addr_of!((*dst).flag)), 0x10,
@@ -71,7 +72,7 @@ pub fn timing_bridge_push(
 
             std::ptr::write(std::ptr::addr_of_mut!((*dst).seq),  buf_ptr.seq);
             std::ptr::write(std::ptr::addr_of_mut!((*dst).src),  core_id as u64);
-            std::ptr::write(std::ptr::addr_of_mut!((*dst).addr), pa);
+            std::ptr::write(std::ptr::addr_of_mut!((*dst).addr), pa & !1u64);
             std::ptr::write(std::ptr::addr_of_mut!((*dst).list), sharer_list.data[0]);
             std::ptr::write(std::ptr::addr_of_mut!((*dst).time), ts);
 
