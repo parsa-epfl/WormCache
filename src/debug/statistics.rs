@@ -173,6 +173,11 @@ pub enum EventType {
     UnknownPrefetches,
     WaitForEvent,
     CompareAndSwap,
+
+    // Some events from QEMU:
+    VirtIOBlkRead,  // ID = 0
+    VirtIOBlkWrite, // ID = 1
+    VirtIOComplete, // ID = 2
 }
 
 impl EventType {
@@ -455,6 +460,21 @@ pub unsafe extern "C" fn save_statistics_to_certain_file(file_path: *const ffi::
         }
         let file_path = file_path.unwrap();
         Statistics::save_to_csv(file_path, 0);
+    }
+}
+
+pub unsafe extern "C" fn qemu_record_certain_statistics(
+    cpu_idx: u64,
+    event_id: u64,
+    increments: u64,
+) {
+    assert!(event_id < 3);
+    if event_id == 0 {
+        Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOBlkRead, false, increments);
+    } else if event_id == 1 {
+        Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOBlkWrite, false, increments);
+    } else if event_id == 2 {
+        Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOComplete, false, increments);
     }
 }
 

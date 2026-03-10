@@ -45,7 +45,7 @@ pub mod timestamp;
 use crate::chronic::chronic_behavior_init;
 use crate::chronic::on_finish_loading_snapshot;
 use crate::debug::statistics;
-use crate::debug::statistics::{init_qemu_stat_ptr, Statistics};
+use crate::debug::statistics::{Statistics, init_qemu_stat_ptr};
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
 #[allow(unused_imports)]
@@ -218,6 +218,10 @@ unsafe extern "C" fn qemu_plugin_install(
             assert!(qemu_api::qemu_plugin_register_save_statistics_callback(
                 Some(debug::statistics::save_statistics_to_certain_file)
             ));
+            // register a callback to allow QEMU to record events.
+            assert!(qemu_api::qemu_plugin_register_record_statistics_cb(Some(
+                debug::statistics::qemu_record_certain_statistics
+            )));
         }
 
         // Dump the PARAMETER_RS to a log file.
