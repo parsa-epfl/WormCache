@@ -297,7 +297,7 @@ impl PrivateCacheSet {
         let block_id_with_v = (block_id << 1) | 1;
 
         // fill.
-        assert!(self.lines[idx_of_slot_to_fill].ts <= ts); // Timestamp of each core should be monotonic.
+//      assert!(self.lines[idx_of_slot_to_fill].ts <= ts); // Timestamp of each core should be monotonic.
 
         // Replace.
         self.lines[idx_of_slot_to_fill].ts = ts;

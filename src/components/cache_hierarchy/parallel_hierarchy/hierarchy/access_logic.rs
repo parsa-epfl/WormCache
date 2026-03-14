@@ -896,7 +896,6 @@ impl<
                     .private_caches
                     .get_set_guard_by_sharer_list(block_id, directory_entry.sharers);
                 match access_type {
-                    CacheAccessType::InstructionFetch => unreachable!(),
                     CacheAccessType::DataRead | CacheAccessType::PageWalkRead => {
                         let res = (acquire_list.len() == 0,
                                   !directory_entry.shared && directory_entry.sharers.count_ones() > 0,
@@ -915,6 +914,8 @@ impl<
                             }
                         }
 
+                        directory_entry.update_lru_ts(ts);
+
                         res
                     }
 
@@ -929,12 +930,14 @@ impl<
 
                         directory_entry.shared  = false;
                         directory_entry.sharers = SharerList::ZERO;
+                        directory_entry.update_lru_ts(ts);
 
                         (true, old_sharers.count_ones() > 0, old_sharers)
                     }
 
-                    CacheAccessType::PrefetchRead => unreachable!(),
-                    CacheAccessType::PrefetchWrite => unreachable!(),
+                    CacheAccessType::InstructionFetch
+                    | CacheAccessType::PrefetchRead
+                    | CacheAccessType::PrefetchWrite => unreachable!(),
                 }
             } else {
                 (true, false, SharerList::ZERO)
@@ -989,10 +992,10 @@ impl<
                         paddr,
                         wr,
                         sharers,
-                        wr,
+                        false,
                         false,
                         broadcast,
-                        if wr { 0 } else { self.do_ict(paddr, ts) },
+                        self.do_ict(paddr, ts),
                         ts,
                     );
                     CacheHierarchyAccessResult::Miss
