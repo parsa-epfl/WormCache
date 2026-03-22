@@ -57,9 +57,9 @@ pub fn timing_bridge_push(
         let mut buf_ptr = mutex.lock();
         let dst = unsafe { buf_ptr.ptr.add(buf_ptr.current_idx as usize) };
 
-        let flag =  is_ict         << 8
-                 | (pa &        1) << 7
-                 | (wr as     u64) << 6
+        let flag =  is_ict         << 16
+                 | (pa &     0x3f) << 7
+                 | (wr     as u64) << 6
                  | (is_snp as u64) << 2
                  | (is_fwd as u64) << 1
                  | (is_hit as u64) << 0;
