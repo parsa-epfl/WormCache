@@ -35,6 +35,7 @@ use std::io::Write;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    debug::statistics::{EventType, Statistics},
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
     timestamp::get_ts,
@@ -98,7 +99,8 @@ unsafe extern "C" fn vcpu_mem_access(
                 );
             };
         } else {
-            // TODO: check the I/O event
+            Statistics::global_record(vcpu_idx, EventType::MemoryAccessToIO, true);
+            Statistics::global_record(vcpu_idx, EventType::DrainStoreBuffer, true);
         }
     }
 }

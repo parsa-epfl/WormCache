@@ -2,18 +2,18 @@ use crate::{
     arch::AArch64,
     components::cache_hierarchy::{
         common::L0InstructionCache,
-        mmu::{self, AbstractMMU, MMUFlushMode, MMUTranslationResult, tlb::AddressSpaceID},
+        mmu::{self, tlb::AddressSpaceID, AbstractMMU, MMUFlushMode, MMUTranslationResult},
     },
     debug::statistics::Statistics,
     parameter, qemu_api,
 };
-use bitvec::{BitArr, array::BitArray, order::Lsb0};
+use bitvec::{array::BitArray, order::Lsb0, BitArr};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
 use std::ffi;
 
-mod aarch64_decoder;
+pub mod aarch64_decoder;
 
 const MODEL_SHARED_MEMORY: bool = false;
 

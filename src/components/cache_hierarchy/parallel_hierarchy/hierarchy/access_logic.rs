@@ -2,43 +2,46 @@ use std::panic;
 
 use crate::{
     components::cache_hierarchy::{
+        CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
         common::{
             CacheAccessType, CacheHierarchyAccessResult, Directory, DirectorySet, PrivateCache,
             PrivateCacheEvictedSlot, PrivateCachePokeResult, SharedCache, SharedCacheAccessRequest,
-            SharedCacheAccessSource, SharedCacheLookupResult,
+            SharedCacheAccessSource, SharedCacheLookupResult, calculate_hop_count,
         },
         mmu::{AbstractMMU, MMUFlushMode, MMUTranslationResult},
-        CacheBlockRequest, MemoryAccessRequest, MemoryHierarchy,
     },
     debug::{
         cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
         statistics::{EventType, Statistics},
     },
-    parameter::{CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE, SMS_PREFETCHING},
+    parameter::{
+        self, CACHE_LINE_SIZE, ENABLE_EXCLUSIVE_CACHE_STATE, RECORD_ON_CHIP_NETWORK_HOP,
+        SMS_PREFETCHING,
+    },
 };
 
 use super::ParallelMemoryHierarchy;
 
 impl<
-        MMU: AbstractMMU,
-        PCache: PrivateCache,
-        SCache: SharedCache,
-        Dir: Directory,
-        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-        const FILL_SCACHE_ON_PCACHE_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
-        const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
-        const CORE_COUNT: usize,
-        const N_ACC: usize,
-        const N_FILTER: usize,
-        const PHT_SETS: usize,
-        const PHT_WAYS: usize,
-        const N_BLK: usize,
-        const ROT: bool,
-        const SEP_RDWR: bool,
-        const SAT_CNT: bool,
-        const PERFECT_PHT: bool,
-    > MemoryHierarchy
+    MMU: AbstractMMU,
+    PCache: PrivateCache,
+    SCache: SharedCache,
+    Dir: Directory,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACHE_ON_PCACHE_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_WRITEBACK: bool,
+    const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
+    const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
+    const N_BLK: usize,
+    const ROT: bool,
+    const SEP_RDWR: bool,
+    const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
+> MemoryHierarchy
     for ParallelMemoryHierarchy<
         MMU,
         PCache,
@@ -249,6 +252,25 @@ impl<
             }
         };
 
+        let directory_slice_id: u32 = (block_id as u32) % (CORE_COUNT as u32);
+
+        if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+            let e = if is_instruction {
+                EventType::InstructionFetchHopCount
+            } else if is_store {
+                EventType::WriteHopCount
+            } else {
+                EventType::ReadHopCount
+            };
+
+            Statistics::global_record_by(
+                core_id,
+                e,
+                is_os,
+                calculate_hop_count(core_id, directory_slice_id) as u64, // request.
+            );
+        }
+
         let (miss_directory_guard, evicted) = miss_directory_set_guard.get_or_create(block_id);
 
         let sharers = miss_directory_guard.sharers;
@@ -271,6 +293,8 @@ impl<
                     evicted_directory_entry.1.sharers,
                 );
 
+                let mut maximum_hop_count = 0;
+
                 // invalidte these blocks.
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                     if let Some(index) = index {
@@ -280,6 +304,14 @@ impl<
                         let core_id = (*replica_cache_id / 2) as u32;
                         if SMS_PREFETCHING && !is_instruction {
                             self.evict_sms(core_id, entry.block_id());
+                        }
+
+                        if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                            let hop_count =
+                                calculate_hop_count(core_id, directory_slice_id as u32) * 2; // round trip
+                            if hop_count > maximum_hop_count {
+                                maximum_hop_count = hop_count;
+                            }
                         }
 
                         // require recording the timestamp of the operation.
@@ -329,6 +361,19 @@ impl<
                         EventType::SharedCacheEvictionCausalityViolation,
                         is_os,
                     );
+                }
+
+                // record the hop count of eviction if needed.
+                if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                    let e = if is_instruction {
+                        EventType::InstructionFetchHopCount
+                    } else if is_store {
+                        EventType::WriteHopCount
+                    } else {
+                        EventType::ReadHopCount
+                    };
+
+                    Statistics::global_record_by(core_id, e, is_os, maximum_hop_count as u64);
                 }
             }
 
@@ -454,8 +499,21 @@ impl<
                 if is_instruction {
                     Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
                 } else if is_page_walk {
-                    Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
+                    Statistics::global_record(core_id, EventType::PrivateDCacheMissDueToPTW, is_os);
+                    Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
+                } else if is_store {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::PrivateDCacheMissDueToStore,
+                        is_os,
+                    );
+                    Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
                 } else {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::PrivateDCacheMissDueToLoad,
+                        is_os,
+                    );
                     Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
                 }
 
@@ -494,6 +552,36 @@ impl<
                             }
 
                             Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
+
+                            if RECORD_ON_CHIP_NETWORK_HOP {
+                                // This is the traffic going to DRAM.
+                                let e = if is_instruction {
+                                    EventType::InstructionFetchHopCount
+                                } else if is_store {
+                                    EventType::WriteHopCount
+                                } else {
+                                    EventType::ReadHopCount
+                                };
+
+                                let which_dram_controller = parameter::DRAM_POSITION
+                                    [block_id as usize % parameter::DRAM_CONTROLLER_COUNT];
+
+                                let dram_hop = calculate_hop_count(
+                                    directory_slice_id,
+                                    which_dram_controller as u32,
+                                ) as u64
+                                    * 2;
+
+                                let reply_hop =
+                                    calculate_hop_count(directory_slice_id, core_id) as u64;
+
+                                Statistics::global_record_by(
+                                    core_id,
+                                    e,
+                                    is_os,
+                                    dram_hop + reply_hop,
+                                );
+                            }
                         }
 
                         CacheHierarchyAccessResult::Miss
@@ -549,6 +637,50 @@ impl<
             } else {
                 CacheHierarchyAccessResult::HitInOtherPrivateCache
             };
+
+            if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                // check the LLC to see whether the replica is in LLC.
+                let request_to_llc = SharedCacheAccessRequest {
+                    source: SharedCacheAccessSource::Core(core_id),
+                    block_id,
+                    access_type: CacheAccessType::DataRead, // we just want to check whether the block is in the shared cache. So it is not a store.
+                    is_os,
+                };
+
+                let hop_count = if self.shared_cache.peek(&request_to_llc) {
+                    0
+                } else {
+                    // this is the traffic from the the private cache to the requestor.
+                    // we need to find the cloest sharer
+                    let mut min_hop = usize::MAX;
+                    for sharer_id in 0..(CORE_COUNT as u32 * 2) {
+                        if *miss_directory_guard
+                            .sharers
+                            .get(sharer_id as usize)
+                            .unwrap()
+                        {
+                            let hop_count = calculate_hop_count(core_id, sharer_id / 2 as u32);
+                            if hop_count < min_hop {
+                                min_hop = hop_count;
+                            }
+                        }
+                    }
+                    min_hop
+                };
+
+                // record the hop count of this access to the private cache.
+                let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
+
+                let e = if is_instruction {
+                    EventType::InstructionFetchHopCount
+                } else if is_store {
+                    EventType::WriteHopCount
+                } else {
+                    EventType::ReadHopCount
+                };
+
+                Statistics::global_record_by(core_id, e, is_os, hop_count as u64 + reply_hop);
+            }
 
             // add myself to the sharer list.
             miss_directory_guard.update_lru_ts(ts);
@@ -616,6 +748,7 @@ impl<
                 let mut incoming_sharer = miss_directory_guard.sharers;
                 let mut set_for_refill_lock = None;
                 let mut causality_violation = false;
+                let mut maximum_hop_count = 0;
 
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                     if let Some(index) = index {
@@ -640,6 +773,14 @@ impl<
                             EventType::PrivateCacheInvalidation,
                             is_os,
                         );
+
+                        if parameter::RECORD_ON_CHIP_NETWORK_HOP {
+                            let hop_count =
+                                calculate_hop_count(core_id, directory_slice_id as u32) * 2; // round trip
+                            if hop_count > maximum_hop_count {
+                                maximum_hop_count = hop_count;
+                            }
+                        }
 
                         if access_ts > ts {
                             Statistics::global_record(
@@ -720,6 +861,18 @@ impl<
 
                 drop(acquired_sets);
 
+                if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                    // we just need to reply.
+                    let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
+                    let e = EventType::WriteHopCount;
+                    Statistics::global_record_by(
+                        core_id,
+                        e,
+                        is_os,
+                        maximum_hop_count as u64 + reply_hop,
+                    );
+                }
+
                 evicted
             } else {
                 // You need to find currently whether there are cores that have modified permission.
@@ -727,6 +880,8 @@ impl<
                 let mut modified_replica = false;
                 let mut set_for_refill_lock = None;
                 let mut causality_violation = false;
+                let mut writable_hop_count = 0;
+                let mut minimum_nonwritable_hop_count = u64::MAX;
 
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                     if let Some(index) = index {
@@ -747,12 +902,30 @@ impl<
                             set.request_sharer(*index, ts);
                             find_writable_replica = true;
 
+                            if parameter::RECORD_ON_CHIP_NETWORK_HOP {
+                                writable_hop_count = calculate_hop_count(
+                                    *replica_cache_id as u32 / 2 as u32,
+                                    directory_slice_id,
+                                ) as u64;
+                            }
+
                             if access_ts > ts {
                                 Statistics::global_record(
                                     core_id,
                                     EventType::PrivateCacheDowngradeCausalityViolation,
                                     is_os,
                                 );
+                            }
+                        } else {
+                            if parameter::RECORD_ON_CHIP_NETWORK_HOP {
+                                let current_hop = calculate_hop_count(
+                                    *replica_cache_id as u32 / 2 as u32,
+                                    directory_slice_id,
+                                ) as u64;
+
+                                if current_hop < minimum_nonwritable_hop_count {
+                                    minimum_nonwritable_hop_count = current_hop;
+                                }
                             }
                         }
                     }
@@ -815,6 +988,39 @@ impl<
                     line!(),
                 );
 
+                if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                    // record the hop count of this access to the private cache.
+                    let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
+
+                    let e = if is_instruction {
+                        EventType::InstructionFetchHopCount
+                    } else if is_store {
+                        EventType::WriteHopCount
+                    } else {
+                        EventType::ReadHopCount
+                    };
+
+                    let coherence_hop = if find_writable_replica {
+                        writable_hop_count
+                    } else {
+                        // check LLC.
+                        let request_to_llc = SharedCacheAccessRequest {
+                            source: SharedCacheAccessSource::Core(core_id),
+                            block_id,
+                            access_type: CacheAccessType::DataRead, // we just want to check whether the block is in the shared cache. So it is not a store.
+                            is_os,
+                        };
+
+                        if self.shared_cache.peek(&request_to_llc) {
+                            0
+                        } else {
+                            minimum_nonwritable_hop_count
+                        }
+                    };
+
+                    Statistics::global_record_by(core_id, e, is_os, reply_hop + coherence_hop);
+                }
+
                 drop(acquired_sets);
 
                 evicted
@@ -844,8 +1050,13 @@ impl<
             if is_instruction {
                 Statistics::global_record(core_id, EventType::PrivateICacheMiss, is_os);
             } else if is_page_walk {
-                Statistics::global_record(core_id, EventType::PrivateCacheMissDueToPTW, is_os);
+                Statistics::global_record(core_id, EventType::PrivateDCacheMissDueToPTW, is_os);
+                Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
+            } else if is_store {
+                Statistics::global_record(core_id, EventType::PrivateDCacheMissDueToStore, is_os);
+                Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
             } else {
+                Statistics::global_record(core_id, EventType::PrivateDCacheMissDueToLoad, is_os);
                 Statistics::global_record(core_id, EventType::PrivateDCacheMiss, is_os);
             }
 

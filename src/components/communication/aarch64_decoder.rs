@@ -253,6 +253,218 @@ pub fn is_atomic_operation(insn: u32) -> bool {
     false
 }
 
+/// Check if an instruction has acquire semantics (memory ordering constraint)
+///
+/// Instructions with acquire semantics:
+/// - LDAXR, LDAXRB, LDAXRH, LDAXP (load-acquire exclusive)
+/// - LDAR, LDARB, LDARH (load-acquire)
+/// - LDLAR, LDLARB, LDLARH (load-LOAcquire)
+/// - CASA, CASAL, CASAB, CASALB, CASAH, CASALH, CASPA, CASPAL (CAS with acquire)
+/// - LSE atomics with acquire: LDADDA, LDADDAL, LDCLRA, LDCLRAL, LDEORA, LDEORAL,
+///   LDSETA, LDSETAL, LDSMAXA, LDSMAXAL, LDSMINA, LDSMINAL, LDUMAXA, LDUMAXAL,
+///   LDUMINA, LDUMINAL, SWPA, SWPAL
+/// - DMB barriers with load-acquire semantics: DMB LD, DMB ISHLD, DMB OSHLD, DMB NSHLD
+///
+/// Reference: ARM ARM DDI0602, verified against QEMU target/arm/tcg/a64.decode
+#[inline]
+pub fn is_acquire_memory_instruction(insn: u32) -> bool {
+    // Check for Load-Acquire Exclusive (LDAXR, LDAXRB, LDAXRH, LDAXP)
+    // QEMU encoding: LDXR .. 001000 010 ..... . ..... ..... .....@stxr
+    // LDAXR has lasr=1 (bit 15)
+    // Pattern: size|001000|0|1|o0|Rs|1|Rt2|Rn|Rt
+    let bits_29_24 = (insn >> 24) & 0x3F;
+    if bits_29_24 == 0b001000 {
+        let bit_23 = (insn >> 23) & 1; // 0 for exclusive
+        let bit_22 = (insn >> 22) & 1; // L=1 for load
+        let _bit_21 = (insn >> 21) & 1; // o0
+        let bit_15 = (insn >> 15) & 1; // lasr/acquire bit
+
+        if bit_23 == 0 && bit_22 == 1 && bit_15 == 1 {
+            // LDAXR/LDAXP family
+            return true;
+        }
+    }
+
+    // Check for Load-Acquire (LDAR, LDARB, LDARH) and Load-LOAcquire (LDLAR, LDLARB, LDLARH)
+    // QEMU encoding: LDAR .. 001000 110 11111 . 11111 ..... .....@stlr
+    // Pattern: size|001000|1|1|0|11111|lasr|11111|Rn|Rt
+    // bit [15] = lasr: 0=LDLAR, 1=LDAR
+    if bits_29_24 == 0b001000 {
+        let bit_23 = (insn >> 23) & 1; // 1 for acquire group
+        let bit_22 = (insn >> 22) & 1; // L=1
+        let bit_21 = (insn >> 21) & 1; // 0
+        let bits_20_16 = (insn >> 16) & 0x1F; // 11111
+        let _lasr = (insn >> 15) & 1; // lasr (both LDAR=1 and LDLAR=0 have acquire semantics)
+        let bits_14_10 = (insn >> 10) & 0x1F; // 11111
+
+        if bit_23 == 1
+            && bit_22 == 1
+            && bit_21 == 0
+            && bits_20_16 == 0b11111
+            && bits_14_10 == 0b11111
+        {
+            // Both LDAR (lasr=1) and LDLAR (lasr=0) have acquire semantics
+            return true;
+        }
+    }
+
+    // Check for CAS with acquire (CASA, CASAL, CASAB, CASALB, CASAH, CASALH, CASPA, CASPAL)
+    // QEMU encoding: CAS sz:2 001000 1 - 1 rs:5 - 11111 rn:5 rt:5
+    // Pattern: size|001000|1|A|1|Rs|o0|11111|Rn|Rt
+    // bit [22] = A (acquire)
+    if bits_29_24 == 0b001000 {
+        let bit_23 = (insn >> 23) & 1; // 1 for CAS
+        let bit_22 = (insn >> 22) & 1; // A (acquire)
+        let bit_21 = (insn >> 21) & 1; // 1
+        let bits_14_10 = (insn >> 10) & 0x1F; // 11111
+
+        if bit_23 == 1 && bit_21 == 1 && bits_14_10 == 0b11111 && bit_22 == 1 {
+            // CASA, CASAL, CASPA, CASPAL
+            return true;
+        }
+    }
+
+    // Check for LSE atomics with acquire
+    // QEMU encoding: @atomic sz:2 ... . .. a:1 r:1 . rs:5 . ... .. rn:5 rt:5
+    // Pattern: size|111000|A|R|1|Rs|opc|00|Rn|Rt
+    // bit [23] = A (acquire)
+    let bits_29_24_lse = (insn >> 24) & 0x3F;
+    if bits_29_24_lse == 0b111000 {
+        let bit_21 = (insn >> 21) & 1; // 1 for atomic
+        let bit_23_a = (insn >> 23) & 1; // A (acquire)
+        let bits_11_10 = (insn >> 10) & 0x3; // 00
+
+        if bit_21 == 1 && bits_11_10 == 0 && bit_23_a == 1 {
+            // Check Rt != 11111 for acquire semantics to apply
+            let rt = insn & 0x1F;
+            if rt != 0b11111 {
+                let opc = (insn >> 12) & 0xF;
+                // Valid opcodes with acquire: LDADDA, LDCLRA, LDEORA, LDSETA,
+                // LDSMAXA, LDSMINA, LDUMAXA, LDUMINA, SWPA
+                match opc {
+                    0b0000 | 0b0001 | 0b0011 | 0b0100 | 0b0101 | 0b1000 | 0b1001 | 0b1100
+                    | 0b1101 => {
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Check for DMB with load-acquire semantics
+    // DMB instruction pattern: 11010101 00000011 0011 CRm:4 101 11111
+    // Base encoding: 0xD5033xxx with bits 7-5 = 101 (0x5)
+    // Verified against aarch64-linux-gnu-as output
+    // CRm (bits 11:8) encodes both domain and types:
+    // - CRm<3:2> = domain (00=OSH, 01=NSH, 10=ISH, 11=SY)
+    // - CRm<1:0> = types (00=ALL, 01=LD, 10=ST, 11=SY)
+    // DMB instructions that provide acquire semantics:
+    // - DMB SY (CRm=0xF): full barrier
+    // - DMB LD (CRm=0xD): load barrier
+    // - DMB ISH (CRm=0xB): inner shareable full barrier
+    // - DMB ISHLD (CRm=0x9): inner shareable load barrier
+    // - DMB OSHLD (CRm=0x1), DMB NSHLD (CRm=0x5): load barriers
+    let bits_31_12 = (insn >> 12) & 0xFFFFF;
+    if bits_31_12 == 0xD5033 {
+        // Check bits 7-5 = 101 (0x5) for DMB
+        let bits_7_5 = (insn >> 5) & 0x7;
+        if bits_7_5 == 0b101 {
+            let crm = (insn >> 8) & 0xF;
+            // Check if this DMB has acquire semantics
+            // types = CRm & 0x3
+            // types = 00: ALL/SY (full barrier with loads)
+            // types = 01: LD (load barrier, prevents load reordering)
+            // types = 10: ST (store barrier, NO acquire semantics)
+            // types = 11: SY (full system barrier)
+            let types = crm & 0x3;
+            if types == 0b00 || types == 0b01 || types == 0b11 {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Check if an instruction is a DSB (Data Synchronization Barrier)
+///
+/// DSB instructions ensure completion of memory accesses:
+/// - DSB SY: Full system data synchronization barrier
+/// - DSB ISH: Inner shareable data synchronization barrier
+/// - DSB OSH: Outer shareable data synchronization barrier
+/// - DSB NSH: Non-shareable data synchronization barrier
+/// - DSB LD/ST/ISHLD/ISHST/OSHLD/OSHST/NSHLD/NSHST: Load/store variants
+///
+/// Encoding pattern: 11010101 00000011 0011 CRm:4 100 11111
+/// - bits 31-12 = 0xD5033
+/// - bits 7-5 = 100 (0x4)
+/// - bits 4-0 = 11111 (0x1F)
+/// - CRm (bits 11:8) encodes domain and types
+///
+/// Verified against aarch64-linux-gnu-as
+#[inline]
+pub fn is_dsb_instruction(insn: u32) -> bool {
+    // Check base pattern: bits 31-12 = 0xD5033
+    let bits_31_12 = (insn >> 12) & 0xFFFFF;
+    if bits_31_12 != 0xD5033 {
+        return false;
+    }
+
+    // Check bits 7-5 = 100 (0x4) for DSB
+    let bits_7_5 = (insn >> 5) & 0x7;
+    if bits_7_5 != 0b100 {
+        return false;
+    }
+
+    // Check bits 4-0 = 11111 (0x1F)
+    let bits_4_0 = insn & 0x1F;
+    if bits_4_0 != 0x1F {
+        return false;
+    }
+
+    true
+}
+
+/// Check if an instruction is an ISB (Instruction Synchronization Barrier)
+///
+/// ISB instructions ensure that subsequent instructions are fetched from cache/memory
+/// after all prior context-altering operations complete:
+/// - ISB: Instruction synchronization barrier
+/// - ISB SY: Full system instruction synchronization barrier
+///
+/// Encoding pattern: 11010101 00000011 0011 CRm:4 110 11111
+/// - bits 31-12 = 0xD5033
+/// - bits 7-5 = 110 (0x6)
+/// - bits 4-0 = 11111 (0x1F)
+/// - CRm (bits 11:8) = 0xF (1111) for ISB
+///
+/// Verified against aarch64-linux-gnu-as
+#[inline]
+pub fn is_isb_instruction(insn: u32) -> bool {
+    // Check base pattern: bits 31-12 = 0xD5033
+    let bits_31_12 = (insn >> 12) & 0xFFFFF;
+    if bits_31_12 != 0xD5033 {
+        return false;
+    }
+
+    // Check bits 7-5 = 110 (0x6) for ISB
+    let bits_7_5 = (insn >> 5) & 0x7;
+    if bits_7_5 != 0b110 {
+        return false;
+    }
+
+    // Check bits 4-0 = 11111 (0x1F)
+    let bits_4_0 = insn & 0x1F;
+    if bits_4_0 != 0x1F {
+        return false;
+    }
+
+    // ISB uses CRm = 0xF (1111)
+    let crm = (insn >> 8) & 0xF;
+    crm == 0xF
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,5 +581,286 @@ mod tests {
         // LDR w0, [x1] - regular load, not CAS
         let insn: u32 = 0xb9400020; // LDR w0, [x1]
         assert!(!is_cas_operation(insn));
+    }
+
+    // Tests for is_acquire_memory_instruction
+
+    #[test]
+    fn test_acquire_ldaxr() {
+        // LDAXR w0, [x1] - load-acquire exclusive
+        // Encoding verified against QEMU
+        let insn: u32 = 0x885ffc20;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_ldaxrb() {
+        // LDAXRB w0, [x1] - byte load-acquire exclusive
+        let insn: u32 = 0x085ffc20;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_ldaxrh() {
+        // LDAXRH w0, [x1] - halfword load-acquire exclusive
+        let insn: u32 = 0x485ffc20;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_ldaxp() {
+        // LDAXP w0, w1, [x2] - load-acquire exclusive pair
+        // Verified encoding from aarch64-linux-gnu-as
+        // 0x887f8440 = ldaxp w0, w1, [x2]
+        let insn: u32 = 0x887f8440;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_ldar() {
+        // LDAR w0, [x1] - load-acquire
+        // QEMU: LDAR .. 001000 110 11111 . 11111 ..... .....@stlr
+        let insn: u32 = 0x88dffc20;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_ldlar() {
+        // LDLAR w0, [x1] - load-LOAcquire
+        // Encoding: 1x 001000 110 11111 0 11111 Rn Rt
+        // size=10, bit 23=1, bit 22=1 (L), bit 21=0, bit 15=0 (lasr)
+        let insn: u32 = 0x88df7c20;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_casa() {
+        // CASA w0, w1, [x2] - compare and swap with acquire
+        // QEMU: CAS sz:2 001000 1 - 1 rs:5 - 11111 rn:5 rt:5
+        let insn: u32 = 0x88e07c41;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_casal() {
+        // CASAL w0, w1, [x2] - compare and swap with acquire-release
+        let insn: u32 = 0x88e0fc41;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_ldadda() {
+        // LDADDA w0, w1, [x2] - atomic add with acquire
+        // QEMU: LDADD .. 111 0 00 . . 1 ..... 0000 00 ..... .....@atomic
+        // Bit [23] = A = 1 for acquire
+        // LDADDA = LDADD | (1 << 23)
+        // 0xb8200041 is LDADD, so LDADDA = 0xb8200041 | 0x00800000 = 0xb8a00041
+        let insn: u32 = 0xb8a00041;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_ldclra() {
+        // LDCLRA w0, w1, [x2] - atomic bit clear with acquire
+        // QEMU: LDCLR .. 111 0 00 . . 1 ..... 0001 00 ..... .....@atomic
+        // Bit [23] = A = 1 for acquire
+        let insn: u32 = 0xb8a01041;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_dmb_ishld() {
+        // DMB ISHLD - data memory barrier inner shareable load
+        // Verified encoding from aarch64-linux-gnu-as: 0xd50339bf
+        // Pattern: 0xD5033 | (CRm << 8) | (0b101 << 5) | 0x1F
+        // CRm = 0x9 (1001): domain=10 (ISH), types=01 (LD)
+        let insn: u32 = 0xd50339bf;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_dmb_ld() {
+        // DMB LD - data memory barrier load (full system)
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033dbf
+        // CRm = 0xD (1101): domain=11 (SY), types=01 (LD)
+        let insn: u32 = 0xd5033dbf;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_dmb_sy() {
+        // DMB SY - data memory barrier full system
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033fbf
+        // CRm = 0xF (1111): domain=11 (SY), types=11 (SY)
+        let insn: u32 = 0xd5033fbf;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_acquire_dmb_ish() {
+        // DMB ISH - data memory barrier inner shareable
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033bbf
+        // CRm = 0xB (1011): domain=10 (ISH), types=11 (SY)
+        let insn: u32 = 0xd5033bbf;
+        assert!(is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_acquire_ldxr() {
+        // LDXR w0, [x1] - load exclusive WITHOUT acquire
+        let insn: u32 = 0x885f7c20;
+        assert!(!is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_acquire_ldadd() {
+        // LDADD w0, w1, [x2] - atomic add WITHOUT acquire
+        let insn: u32 = 0xb8200041;
+        assert!(!is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_acquire_cas() {
+        // CAS w0, w1, [x2] - compare and swap WITHOUT acquire
+        let insn: u32 = 0x88a07c41;
+        assert!(!is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_acquire_regular_load() {
+        // LDR w0, [x1] - regular load
+        let insn: u32 = 0xb9400020;
+        assert!(!is_acquire_memory_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_acquire_dmb_ishst() {
+        // DMB ISHST - store barrier (not acquire)
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033abf
+        // CRm = 0xA (1010): domain=10 (ISH), types=10 (ST)
+        let insn: u32 = 0xd5033abf;
+        assert!(!is_acquire_memory_instruction(insn));
+    }
+
+    // Tests for is_dsb_instruction
+
+    #[test]
+    fn test_dsb_sy() {
+        // DSB SY - data synchronization barrier full system
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033f9f
+        let insn: u32 = 0xd5033f9f;
+        assert!(is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_dsb_ish() {
+        // DSB ISH - data synchronization barrier inner shareable
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033b9f
+        let insn: u32 = 0xd5033b9f;
+        assert!(is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_dsb_ishld() {
+        // DSB ISHLD - data synchronization barrier inner shareable load
+        // Verified encoding from aarch64-linux-gnu-as: 0xd503399f
+        let insn: u32 = 0xd503399f;
+        assert!(is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_dsb_ishst() {
+        // DSB ISHST - data synchronization barrier inner shareable store
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033a9f
+        let insn: u32 = 0xd5033a9f;
+        assert!(is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_dsb_ld() {
+        // DSB LD - data synchronization barrier load
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033d9f
+        let insn: u32 = 0xd5033d9f;
+        assert!(is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_dsb_st() {
+        // DSB ST - data synchronization barrier store
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033e9f
+        let insn: u32 = 0xd5033e9f;
+        assert!(is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_dsb_dmb() {
+        // DMB ISH - not a DSB
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033bbf
+        let insn: u32 = 0xd5033bbf;
+        assert!(!is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_dsb_isb() {
+        // ISB - not a DSB
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033fdf
+        let insn: u32 = 0xd5033fdf;
+        assert!(!is_dsb_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_dsb_regular_load() {
+        // LDR w0, [x1] - regular load, not DSB
+        let insn: u32 = 0xb9400020;
+        assert!(!is_dsb_instruction(insn));
+    }
+
+    // Tests for is_isb_instruction
+
+    #[test]
+    fn test_isb() {
+        // ISB - instruction synchronization barrier
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033fdf
+        let insn: u32 = 0xd5033fdf;
+        assert!(is_isb_instruction(insn));
+    }
+
+    #[test]
+    fn test_isb_sy() {
+        // ISB SY - instruction synchronization barrier full system
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033fdf
+        let insn: u32 = 0xd5033fdf;
+        assert!(is_isb_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_isb_dmb() {
+        // DMB ISH - not an ISB
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033bbf
+        let insn: u32 = 0xd5033bbf;
+        assert!(!is_isb_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_isb_dsb() {
+        // DSB SY - not an ISB
+        // Verified encoding from aarch64-linux-gnu-as: 0xd5033f9f
+        let insn: u32 = 0xd5033f9f;
+        assert!(!is_isb_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_isb_regular_load() {
+        // LDR w0, [x1] - regular load, not ISB
+        let insn: u32 = 0xb9400020;
+        assert!(!is_isb_instruction(insn));
+    }
+
+    #[test]
+    fn test_not_isb_sb() {
+        // SB - speculation barrier (not ISB)
+        // SB has bits 7-5 = 111, CRm = 0000
+        let insn: u32 = 0xd50330df;
+        assert!(!is_isb_instruction(insn));
     }
 }

@@ -30,6 +30,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod directory;
+mod hop_calculator;
 mod l0i;
 mod private_cache;
 mod shared_cache;
@@ -61,6 +62,7 @@ pub enum CacheHierarchyAccessResult {
 pub use directory::finite::*;
 pub use directory::infinite::*;
 pub use directory::*;
+pub use hop_calculator::*;
 pub use l0i::*;
 pub use private_cache::*;
 pub use shared_cache::*;

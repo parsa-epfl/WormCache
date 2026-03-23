@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 1;
+pub const CORE_COUNT: usize = 4;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,12 +52,12 @@ pub const CORE_COUNT: usize = 1;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = false;
+pub const MEASURE_HALF_OF_CORES: bool = true;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
 
-const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
+pub const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
     CORE_COUNT / 2
 } else {
     CORE_COUNT
@@ -102,7 +102,7 @@ static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIV
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 4;
+pub const STLB_ASSO: usize = 5;
 
 /**
  * STLB_SET
@@ -157,7 +157,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_I_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 256;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -174,7 +174,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 64 * 1024 / HARVARD_PRI_D_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 256;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -189,7 +189,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 32 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const SHARED_CACHE_SET: usize = 2048;
 static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -251,7 +251,7 @@ pub const USE_INFINITE_DIRECTORY: bool = false;
 pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
 static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
 
-pub const FINITE_DIRECTORY_SET: usize = 256 * CORE_COUNT;
+pub const FINITE_DIRECTORY_SET: usize = 1024;
 static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -296,7 +296,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 16384;
+pub const BTB_SET: usize = 2048;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
@@ -304,7 +304,7 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 4;
+pub const BTB_ASSO: usize = 3;
 
 /**
  * BP_RAS_COUNT
@@ -363,3 +363,19 @@ pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
  * Note: MMU serialization always uses JSON due to checkpoint conversion requirements.
  */
 pub const USE_RKYV_SERIALIZATION: bool = true;
+
+/**
+ * Whether to record the on-chip network hop count for each memory access.
+ *
+ * This is used for a finer-grained IPC model that considers the on-chip network latency. It can be useful for debugging and testing the cache hierarchy and the coherence protocol.
+ */
+pub const RECORD_ON_CHIP_NETWORK_HOP: bool = true;
+static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_ON_CHIP_NETWORK_HOP);
+
+/**
+ * The position of DRAM controller.
+ *
+ * This is used to calculate the on-chip network hop count for each memory access. The DRAM controller is considered as the root of the on-chip network, and the hop count is calculated based on the distance from the core to the DRAM controller.
+ */
+pub const DRAM_CONTROLLER_COUNT: usize = 1;
+pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [0];

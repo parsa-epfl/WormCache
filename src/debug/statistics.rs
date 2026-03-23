@@ -82,10 +82,14 @@ pub enum EventType {
     InstructionAccess,
     DataAccess,
 
-    PrivateICacheMiss,
-    PrivateDCacheMiss,
     PrivateCacheMiss,
-    PrivateCacheMissDueToPTW,
+
+    PrivateICacheMiss,
+
+    PrivateDCacheMiss,
+    PrivateDCacheMissDueToPTW,
+    PrivateDCacheMissDueToLoad,
+    PrivateDCacheMissDueToStore,
 
     PrivateCacheMissTriggerCoherenceDueToFetch, // All misses that involve the coherence activity (GetS, GetX)
     PrivateCacheMissTriggerCoherenceDueToRead, // All misses that involve the coherence activity (GetS, GetX)
@@ -173,11 +177,27 @@ pub enum EventType {
     UnknownPrefetches,
     WaitForEvent,
     CompareAndSwap,
+    AcquireMemoryInstruction,
 
     // Some events from QEMU:
-    VirtIOBlkRead,  // ID = 0
-    VirtIOBlkWrite, // ID = 1
-    VirtIOComplete, // ID = 2
+    VirtIOBlkRead,        // ID = 0
+    VirtIOBlkWrite,       // ID = 1
+    VirtIOComplete,       // ID = 2
+    ExceptionLevelChange, // ID = 3, from QEMU.
+
+    MemoryAccessToIO, // This is a memory access that goes to the IO device, which can be captured by QEMU and has a significant performance impact.
+
+    // Some metrics for IPC modeling.
+    InstructionFetchHopCount,
+    ReadHopCount,
+    WriteHopCount,
+
+    // Some events that wait for the empty of store buffer.
+    // mainly including the fence instructions, memory access with side effect, and the memory access with acquire semantics.
+    DrainStoreBuffer,
+
+    // Some events require drain the pipeline, e.g., like exception, interrupts, and instruction barrier in ARM.
+    DrainPipeline,
 }
 
 impl EventType {
@@ -468,13 +488,23 @@ pub unsafe extern "C" fn qemu_record_certain_statistics(
     event_id: u64,
     increments: u64,
 ) {
-    assert!(event_id < 3);
+    assert!(event_id < 4);
     if event_id == 0 {
         Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOBlkRead, false, increments);
     } else if event_id == 1 {
         Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOBlkWrite, false, increments);
     } else if event_id == 2 {
         Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOComplete, false, increments);
+    } else if event_id == 3 {
+        Statistics::global_record_by(
+            cpu_idx as u32,
+            EventType::ExceptionLevelChange,
+            false,
+            increments,
+        );
+
+        // drain pipeline will happen.
+        Statistics::global_record_by(cpu_idx as u32, EventType::DrainPipeline, false, increments);
     }
 }
 
@@ -490,6 +520,27 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     size: *mut ffi::c_void, // the size of the basic block
 ) {
     Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
+}
+
+unsafe extern "C" fn acquire_memory_insn_exec(vcpu_idx: u32, userdata: *mut ffi::c_void) {
+    // Extract is_os from user data (bit 0: 0=user, 1=kernel/OS)
+    let is_os = (userdata as u64) & 1 != 0;
+    Statistics::global_record(vcpu_idx, EventType::AcquireMemoryInstruction, is_os);
+    Statistics::global_record(vcpu_idx, EventType::DrainStoreBuffer, is_os);
+}
+
+unsafe extern "C" fn dsb_insn_exec(vcpu_idx: u32, userdata: *mut ffi::c_void) {
+    // Extract is_os from user data (bit 0: 0=user, 1=kernel/OS)
+    let is_os = (userdata as u64) & 1 != 0;
+    // Record DSB instruction - using DrainStoreBuffer event since DSB drains the store buffer
+    Statistics::global_record(vcpu_idx, EventType::DrainStoreBuffer, is_os);
+}
+
+unsafe extern "C" fn isb_insn_exec(vcpu_idx: u32, userdata: *mut ffi::c_void) {
+    // Extract is_os from user data (bit 0: 0=user, 1=kernel/OS)
+    let is_os = (userdata as u64) & 1 != 0;
+    // Record ISB instruction - using DrainPipeline event since ISB drains the pipeline
+    Statistics::global_record(vcpu_idx, EventType::DrainPipeline, is_os);
 }
 
 pub unsafe extern "C" fn on_translation_instructions(tb: *mut qemu_api::qemu_plugin_tb) {
@@ -513,6 +564,65 @@ pub unsafe extern "C" fn on_translation_instructions(tb: *mut qemu_api::qemu_plu
                 qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
                 size as *mut ffi::c_void,
             );
+        }
+
+        // Check each instruction in the translation block for acquire semantics, DSB, and ISB
+        let n_insns = qemu_api::qemu_plugin_tb_n_insns(tb);
+        for i in 0..n_insns {
+            let insn = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+            let insn_data_ptr = qemu_api::qemu_plugin_insn_data(insn);
+            let insn_size = qemu_api::qemu_plugin_insn_size(insn);
+            let insn_pc = qemu_api::qemu_plugin_insn_vaddr(insn);
+
+            // Determine if instruction is in OS/kernel space (bit 63 set)
+            let is_os = (insn_pc & 0x8000_0000_0000_0000) != 0;
+            // Encode is_os in user data (bit 0: 0=user, 1=kernel/OS)
+            let os_bit = if is_os { 1u64 } else { 0u64 };
+
+            // ARM64 instructions are always 4 bytes
+            if insn_size == 4 {
+                let insn_bytes = std::slice::from_raw_parts(insn_data_ptr as *const u8, 4);
+                let insn_word = u32::from_le_bytes([
+                    insn_bytes[0],
+                    insn_bytes[1],
+                    insn_bytes[2],
+                    insn_bytes[3],
+                ]);
+
+                // Check for acquire semantics
+                if crate::components::communication::aarch64_decoder::is_acquire_memory_instruction(
+                    insn_word,
+                ) {
+                    qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                        insn,
+                        Some(acquire_memory_insn_exec),
+                        qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                        os_bit as *mut ffi::c_void,
+                    );
+                }
+
+                // Check for DSB instructions
+                if crate::components::communication::aarch64_decoder::is_dsb_instruction(insn_word)
+                {
+                    qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                        insn,
+                        Some(dsb_insn_exec),
+                        qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                        os_bit as *mut ffi::c_void,
+                    );
+                }
+
+                // Check for ISB instructions
+                if crate::components::communication::aarch64_decoder::is_isb_instruction(insn_word)
+                {
+                    qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                        insn,
+                        Some(isb_insn_exec),
+                        qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                        os_bit as *mut ffi::c_void,
+                    );
+                }
+            }
         }
     }
 }
