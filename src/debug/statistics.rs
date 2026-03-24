@@ -198,6 +198,10 @@ pub enum EventType {
 
     // Some events require drain the pipeline, e.g., like exception, interrupts, and instruction barrier in ARM.
     DrainPipeline,
+
+    // User-mode and kernel-mode instruction counts for IPC modeling.
+    InstructionUser,
+    InstructionKernel,
 }
 
 impl EventType {
@@ -209,15 +213,19 @@ impl EventType {
     #[inline(always)]
     pub fn to_qemu_offset(self) -> Option<usize> {
         match self {
-            EventType::Instruction => Some(0),
-            EventType::InstructionAccess => Some(8),
-            EventType::DataAccess => Some(16),
-            EventType::PrivateICacheMiss => Some(24),
-            EventType::PrivateDCacheMiss => Some(32),
-            EventType::SharedCacheMiss => Some(40),
-            EventType::BranchCount => Some(48),
-            EventType::BPMiss => Some(56),
-            EventType::TLBMiss => Some(64),
+            EventType::PrivateICacheMiss             => Some(0),
+            EventType::PrivateDCacheMissDueToLoad    => Some(8),   // combined with PTW into load_ptw
+            EventType::PrivateDCacheMissDueToPTW     => Some(8),   // combined with Load into load_ptw
+            EventType::PrivateDCacheMissDueToStore   => Some(16),
+            EventType::SharedCacheMiss               => Some(24),
+            EventType::BPMiss                        => Some(32),
+            EventType::DrainPipeline                 => Some(40),
+            EventType::DrainStoreBuffer              => Some(48),
+            EventType::ReadHopCount                  => Some(56),
+            EventType::WriteHopCount                 => Some(64),
+            EventType::InstructionFetchHopCount      => Some(72),
+            EventType::InstructionUser               => Some(80),
+            EventType::InstructionKernel             => Some(88),
             _ => None,
         }
     }
@@ -513,6 +521,7 @@ unsafe extern "C" fn user_vcpu_insn_exec(
     size: *mut ffi::c_void, // the size of the basic block
 ) {
     Statistics::global_record_by(vcpu_idx, EventType::Instruction, false, size as u64);
+    record_qemu_stat(vcpu_idx, EventType::InstructionUser, size as u64);
 }
 
 unsafe extern "C" fn kernel_vcpu_insn_exec(
@@ -520,6 +529,7 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     size: *mut ffi::c_void, // the size of the basic block
 ) {
     Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
+    record_qemu_stat(vcpu_idx, EventType::InstructionKernel, size as u64);
 }
 
 unsafe extern "C" fn acquire_memory_insn_exec(vcpu_idx: u32, userdata: *mut ffi::c_void) {

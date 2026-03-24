@@ -968,24 +968,30 @@ unsafe extern "C" {
 #[repr(align(64))]
 #[derive(Debug, Copy, Clone)]
 pub struct qemu_plugin_exposed_statistics {
-    #[doc = "< Total instructions executed"]
-    pub instruction: u64,
-    #[doc = "< Instruction fetch accesses"]
-    pub instruction_access: u64,
-    #[doc = "< Data memory accesses"]
-    pub data_access: u64,
-    #[doc = "< Private instruction cache misses"]
+    #[doc = "< Private instruction cache misses (offset 0)"]
     pub private_icache_miss: u64,
-    #[doc = "< Private data cache misses"]
-    pub private_dcache_miss: u64,
-    #[doc = "< Shared (LLC) cache misses"]
+    #[doc = "< Private dcache misses: load + PTW combined (offset 8)"]
+    pub private_dcache_miss_load_ptw: u64,
+    #[doc = "< Private dcache misses due to store (offset 16)"]
+    pub private_dcache_miss_store: u64,
+    #[doc = "< Shared (LLC) cache misses (offset 24)"]
     pub shared_cache_miss: u64,
-    #[doc = "< Branch instructions executed"]
-    pub branch_count: u64,
-    #[doc = "< Branch prediction misses"]
+    #[doc = "< Branch prediction misses (offset 32)"]
     pub bp_miss: u64,
-    #[doc = "< TLB misses"]
-    pub tlb_miss: u64,
+    #[doc = "< Pipeline drain events (ISB, exceptions) (offset 40)"]
+    pub drain_pipeline: u64,
+    #[doc = "< Store buffer drain events (DSB, acquire) (offset 48)"]
+    pub drain_store_buffer: u64,
+    #[doc = "< NoC hop count for data reads (offset 56)"]
+    pub read_noc_hop: u64,
+    #[doc = "< NoC hop count for data writes (offset 64)"]
+    pub write_noc_hop: u64,
+    #[doc = "< NoC hop count for instruction fetches (offset 72)"]
+    pub ifetch_noc_hop: u64,
+    #[doc = "< User-mode instructions executed (offset 80)"]
+    pub instruction_u: u64,
+    #[doc = "< Kernel-mode instructions executed (offset 88)"]
+    pub instruction_k: u64,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -993,24 +999,34 @@ const _: () = {
         [::std::mem::size_of::<qemu_plugin_exposed_statistics>() - 128usize];
     ["Alignment of qemu_plugin_exposed_statistics"]
         [::std::mem::align_of::<qemu_plugin_exposed_statistics>() - 64usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::instruction"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, instruction) - 0usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::instruction_access"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, instruction_access) - 8usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::data_access"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, data_access) - 16usize];
     ["Offset of field: qemu_plugin_exposed_statistics::private_icache_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, private_icache_miss) - 24usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::private_dcache_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, private_dcache_miss) - 32usize];
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, private_icache_miss) - 0usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::private_dcache_miss_load_ptw"][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics,
+        private_dcache_miss_load_ptw
+    ) - 8usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::private_dcache_miss_store"][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics,
+        private_dcache_miss_store
+    ) - 16usize];
     ["Offset of field: qemu_plugin_exposed_statistics::shared_cache_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, shared_cache_miss) - 40usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::branch_count"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, branch_count) - 48usize];
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, shared_cache_miss) - 24usize];
     ["Offset of field: qemu_plugin_exposed_statistics::bp_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, bp_miss) - 56usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::tlb_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, tlb_miss) - 64usize];
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, bp_miss) - 32usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::drain_pipeline"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, drain_pipeline) - 40usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::drain_store_buffer"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, drain_store_buffer) - 48usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::read_noc_hop"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, read_noc_hop) - 56usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::write_noc_hop"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, write_noc_hop) - 64usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::ifetch_noc_hop"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, ifetch_noc_hop) - 72usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::instruction_u"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, instruction_u) - 80usize];
+    ["Offset of field: qemu_plugin_exposed_statistics::instruction_k"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, instruction_k) - 88usize];
 };
 unsafe extern "C" {
     #[doc = " qemu_plugin_get_exposed_statistics() - Get pointer to statistics for a core\n @core_idx: The CPU core index (0 to QEMU_PLUGIN_MAX_CORES-1)\n\n Returns a pointer to the statistics structure for the specified core,\n or NULL if the core index is out of range.\n\n The plugin can directly increment the counters in this structure.\n Each core's structure is aligned to prevent false sharing.\n\n Note: Statistics are zeroed when plugins are loaded."]
