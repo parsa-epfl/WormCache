@@ -30,4 +30,21 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod cache_line_history;
+pub mod noc_traffic;
 pub mod statistics;
+
+pub unsafe extern "C" fn save_statistics_to_certain_file(file_path: *const std::ffi::c_char) {
+    unsafe {
+        let file_path = match std::ffi::CStr::from_ptr(file_path).to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                println!("Failed to convert file path to str: {:?}", e);
+                return;
+            }
+        };
+        statistics::Statistics::save_to_csv(file_path, 0);
+
+        let hopcount_path = file_path.replace(".csv", ".noc_traffic.csv");
+        noc_traffic::NocTraffic::save_to_csv(&hopcount_path);
+    }
+}

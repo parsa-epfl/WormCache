@@ -12,6 +12,7 @@ use crate::{
     },
     debug::{
         cache_line_history::{CacheLineCoherenceHistory, CacheOperationType},
+        noc_traffic::{AccessReason, NocTraffic},
         statistics::{EventType, Statistics},
     },
     parameter::{
@@ -274,6 +275,7 @@ impl<
             let request_hop = calculate_hop_count(core_id, directory_slice_id) as u64;
             Statistics::global_record_by(core_id, e, is_os, request_hop); // request.
             Statistics::global_record_by(core_id, e_dir, is_os, request_hop);
+            NocTraffic::global_record(core_id, directory_slice_id, AccessReason::Directory);
         }
 
         let (miss_directory_guard, evicted) = miss_directory_set_guard.get_or_create(block_id);
@@ -304,9 +306,9 @@ impl<
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), evicted_directory_entry.0);
                         let access_ts = entry.access_ts();
-                        let core_id = (*replica_cache_id / 2) as u32;
+                        let victim_core_id = (*replica_cache_id / 2) as u32;
                         if SMS_PREFETCHING && !is_instruction {
-                            self.evict_sms(core_id, entry.block_id());
+                            self.evict_sms(victim_core_id, entry.block_id());
                         }
 
                         // require recording the timestamp of the operation.
@@ -314,14 +316,14 @@ impl<
 
                         if !is_prefetch {
                             Statistics::global_record(
-                                core_id,
+                                victim_core_id,
                                 EventType::PrivateCacheInvalidation,
                                 is_os,
                             );
 
                             if access_ts > ts {
                                 Statistics::global_record(
-                                    core_id,
+                                    victim_core_id,
                                     EventType::PrivateCacheInvalidationCausailityViolation,
                                     is_os,
                                 );
@@ -336,7 +338,15 @@ impl<
                             false,
                             evicted_directory_entry.1.sharers,
                             line!(),
-                        )
+                        );
+
+                        if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                            NocTraffic::global_record(
+                                core_id,
+                                victim_core_id,
+                                AccessReason::PrivateCacheInvalidateDueToDirectoryEviction,
+                            );
+                        }
                     }
                 }
 
@@ -525,6 +535,11 @@ impl<
                             let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
                             Statistics::global_record_by(core_id, e, is_os, reply_hop);
                             Statistics::global_record_by(core_id, e_dir, is_os, reply_hop);
+                            NocTraffic::global_record(
+                                core_id,
+                                directory_slice_id,
+                                AccessReason::LLC,
+                            );
                         }
 
                         CacheHierarchyAccessResult::HitInSharedCache
@@ -599,6 +614,11 @@ impl<
                                     e_mem,
                                     is_os,
                                     dram_hop + reply_hop,
+                                );
+                                NocTraffic::global_record(
+                                    core_id,
+                                    directory_slice_id,
+                                    AccessReason::DRAM,
                                 );
                             }
                         }
@@ -685,15 +705,22 @@ impl<
 
                     Statistics::global_record_by(core_id, e, is_os, reply_hop);
                     Statistics::global_record_by(core_id, sub_e, is_os, reply_hop);
+                    NocTraffic::global_record(
+                        core_id,
+                        directory_slice_id,
+                        AccessReason::LLC,
+                    );
                 } else {
                     // this is harder.
                     //  We need to find the cloest sharer to the directly, get it back, then reply to the requester. The hop count is the sum of these two parts.
                     let mut min_hop = usize::MAX;
+                    let mut which_core = u32::MAX;
                     for idx in miss_directory_guard.sharers.iter_ones() {
                         let hop_count =
                             calculate_hop_count(directory_slice_id, idx as u32 / 2 as u32) * 2;
                         if hop_count < min_hop {
                             min_hop = hop_count;
+                            which_core = idx as u32 / 2;
                         }
                     }
 
@@ -718,6 +745,11 @@ impl<
                     Statistics::global_record_by(core_id, e, is_os, min_hop as u64 + reply_hop);
                     Statistics::global_record_by(core_id, e_l2, is_os, min_hop as u64 + reply_hop);
                     Statistics::global_record_by(core_id, e_l3, is_os, min_hop as u64 + reply_hop);
+                    NocTraffic::global_record(
+                        core_id,
+                        which_core,
+                        AccessReason::PrivateCacheDemandBlock,
+                    );
                 }
             }
 
@@ -797,9 +829,9 @@ impl<
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id, false);
 
-                        let core_id = (*replica_cache_id / 2) as u32;
+                        let victim_core_id = (*replica_cache_id / 2) as u32;
                         if SMS_PREFETCHING && !is_instruction {
-                            self.evict_sms(core_id, entry.block_id());
+                            self.evict_sms(victim_core_id, entry.block_id());
                         }
 
                         // invalid the private cache entry.
@@ -813,12 +845,21 @@ impl<
                             is_os,
                         );
 
-                        if parameter::RECORD_ON_CHIP_NETWORK_HOP {
+                        if parameter::RECORD_ON_CHIP_NETWORK_HOP
+                            && victim_core_id != core_id
+                            && !is_prefetch
+                        {
                             let hop_count =
-                                calculate_hop_count(core_id, directory_slice_id as u32) * 2; // round trip
+                                calculate_hop_count(victim_core_id, directory_slice_id as u32) * 2; // round trip
                             if hop_count > maximum_hop_count {
                                 maximum_hop_count = hop_count;
                             }
+
+                            NocTraffic::global_record(
+                                core_id,
+                                victim_core_id,
+                                AccessReason::PrivateCacheInvalidateDueToGetX,
+                            );
                         }
 
                         if access_ts > ts {
@@ -933,6 +974,7 @@ impl<
                 let mut causality_violation = false;
                 let mut writable_hop_count = 0;
                 let mut minimum_nonwritable_hop_count = u64::MAX;
+                let mut minimum_nonwritable_hop_count_core = u32::MAX;
 
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                     if let Some(index) = index {
@@ -959,6 +1001,14 @@ impl<
                                     directory_slice_id,
                                 ) as u64
                                     * 2;
+
+                                if !is_prefetch {
+                                    NocTraffic::global_record(
+                                        core_id,
+                                        *replica_cache_id as u32 / 2 as u32,
+                                        AccessReason::PrivateCacheDowngrade,
+                                    );
+                                }
                             }
 
                             if access_ts > ts {
@@ -978,6 +1028,8 @@ impl<
 
                                 if current_hop < minimum_nonwritable_hop_count {
                                     minimum_nonwritable_hop_count = current_hop;
+                                    minimum_nonwritable_hop_count_core =
+                                        *replica_cache_id as u32 / 2 as u32;
                                 }
                             }
                         }
@@ -1114,6 +1166,23 @@ impl<
                             is_os,
                             reply_hop + coherence_hop,
                         );
+                    }
+
+                    if !find_writable_replica {
+                        if coherence_hop == 0 {
+                            NocTraffic::global_record(
+                                core_id,
+                                directory_slice_id,
+                                AccessReason::LLC,
+                            );
+                        } else {
+                            assert!(minimum_nonwritable_hop_count_core != u32::MAX);
+                            NocTraffic::global_record(
+                                core_id,
+                                minimum_nonwritable_hop_count_core,
+                                AccessReason::PrivateCacheDemandBlock,
+                            );
+                        }
                     }
                 }
 

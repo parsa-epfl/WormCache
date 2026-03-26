@@ -44,6 +44,7 @@ pub mod timestamp;
 // Plugin
 use crate::chronic::chronic_behavior_init;
 use crate::chronic::on_finish_loading_snapshot;
+use crate::debug::noc_traffic::NocTraffic;
 use crate::debug::statistics;
 use crate::debug::statistics::{Statistics, init_qemu_stat_ptr};
 #[allow(unused_imports)]
@@ -125,6 +126,7 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
         let current_time = std::time::SystemTime::now();
         PluginList::serialize(&name);
         Statistics::save_to_csv(&format!("{}/statistics.csv", name), get_monotonic_ts());
+        NocTraffic::save_to_csv(&format!("{}/noc_traffic.csv", name));
         timestamp::serialize(&name);
 
         let elapsed_time = std::time::SystemTime::now()
@@ -210,13 +212,15 @@ unsafe extern "C" fn qemu_plugin_install(
             init_qemu_stat_ptr(core_id as u32);
         }
 
+        debug::noc_traffic::init();
+
         chronic_behavior_init(&options);
 
         if parameter::ENABLE_STATISTICS {
             debug::statistics::create_thread_for_periodic_log();
             // register a callback to save statistics to a certain file
             assert!(qemu_api::qemu_plugin_register_save_statistics_callback(
-                Some(debug::statistics::save_statistics_to_certain_file)
+                Some(debug::save_statistics_to_certain_file)
             ));
             // register a callback to allow QEMU to record events.
             assert!(qemu_api::qemu_plugin_register_record_statistics_cb(Some(

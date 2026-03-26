@@ -4,7 +4,7 @@ use crate::{
         common::L0InstructionCache,
         mmu::{self, tlb::AddressSpaceID, AbstractMMU, MMUFlushMode, MMUTranslationResult},
     },
-    debug::statistics::Statistics,
+    debug::{noc_traffic::NocTraffic, statistics::Statistics},
     parameter, qemu_api,
 };
 use bitvec::{array::BitArray, order::Lsb0, BitArr};
@@ -836,6 +836,7 @@ unsafe extern "C" fn periodic_checking_callback(_diff: u64) -> bool {
 
             // Save the statistics.
             Statistics::save_to_csv("statistics.final.csv", current_time);
+            NocTraffic::save_to_csv("noc_traffic.final.csv");
             std::process::exit(0);
         }
     }
