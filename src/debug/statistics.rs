@@ -184,13 +184,34 @@ pub enum EventType {
     VirtIOBlkWrite,       // ID = 1
     VirtIOComplete,       // ID = 2
     ExceptionLevelChange, // ID = 3, from QEMU.
+    IdleNanoSecond, // ID = 4, from QEMU, the time spent in idle state (e.g., waiting for interrupt) in nanosecond.
 
     MemoryAccessToIO, // This is a memory access that goes to the IO device, which can be captured by QEMU and has a significant performance impact.
 
     // Some metrics for IPC modeling.
     InstructionFetchHopCount,
+    InstructionFetchHopCountToDirectory,
+    InstructionFetchHopCountToMemory,
+    InstructionFetchHopCountToOtherCore,
+    InstructionFetchHopCountToOtherCoreDueToGetS,
+    InstructionFetchHopCountToOtherCoreDueToGetX,
+    InstructionFetchHopCountToOtherCoreDueToGetXInvalidation,
+
     ReadHopCount,
+    ReadHopCountToDirectory,
+    ReadHopCountToMemory,
+    ReadHopCountToOtherCore,
+    ReadHopCountToOtherCoreDueToGetS,
+    ReadHopCountToOtherCoreDueToGetX,
+    ReadHopCountToOtherCoreDueToGetXInvalidation,
+
     WriteHopCount,
+    WriteHopCountToDirectory,
+    WriteHopCountToMemory,
+    WriteHopCountToOtherCore,
+    WriteHopCountToOtherCoreDueToGetS,
+    WriteHopCountToOtherCoreDueToGetX,
+    WriteHopCountToOtherCoreDueToGetXInvalidation,
 
     // Some events that wait for the empty of store buffer.
     // mainly including the fence instructions, memory access with side effect, and the memory access with acquire semantics.
@@ -213,19 +234,19 @@ impl EventType {
     #[inline(always)]
     pub fn to_qemu_offset(self) -> Option<usize> {
         match self {
-            EventType::PrivateICacheMiss             => Some(0),
-            EventType::PrivateDCacheMissDueToLoad    => Some(8),   // combined with PTW into load_ptw
-            EventType::PrivateDCacheMissDueToPTW     => Some(8),   // combined with Load into load_ptw
-            EventType::PrivateDCacheMissDueToStore   => Some(16),
-            EventType::SharedCacheMiss               => Some(24),
-            EventType::BPMiss                        => Some(32),
-            EventType::DrainPipeline                 => Some(40),
-            EventType::DrainStoreBuffer              => Some(48),
-            EventType::ReadHopCount                  => Some(56),
-            EventType::WriteHopCount                 => Some(64),
-            EventType::InstructionFetchHopCount      => Some(72),
-            EventType::InstructionUser               => Some(80),
-            EventType::InstructionKernel             => Some(88),
+            EventType::PrivateICacheMiss => Some(0),
+            EventType::PrivateDCacheMissDueToLoad => Some(8), // combined with PTW into load_ptw
+            EventType::PrivateDCacheMissDueToPTW => Some(8),  // combined with Load into load_ptw
+            EventType::PrivateDCacheMissDueToStore => Some(16),
+            EventType::SharedCacheMiss => Some(24),
+            EventType::BPMiss => Some(32),
+            EventType::DrainPipeline => Some(40),
+            EventType::DrainStoreBuffer => Some(48),
+            EventType::ReadHopCount => Some(56),
+            EventType::WriteHopCount => Some(64),
+            EventType::InstructionFetchHopCount => Some(72),
+            EventType::InstructionUser => Some(80),
+            EventType::InstructionKernel => Some(88),
             _ => None,
         }
     }
@@ -496,7 +517,7 @@ pub unsafe extern "C" fn qemu_record_certain_statistics(
     event_id: u64,
     increments: u64,
 ) {
-    assert!(event_id < 4);
+    assert!(event_id < 5);
     if event_id == 0 {
         Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOBlkRead, false, increments);
     } else if event_id == 1 {
@@ -513,6 +534,8 @@ pub unsafe extern "C" fn qemu_record_certain_statistics(
 
         // drain pipeline will happen.
         Statistics::global_record_by(cpu_idx as u32, EventType::DrainPipeline, false, increments);
+    } else if event_id == 4 {
+        Statistics::global_record_by(cpu_idx as u32, EventType::IdleNanoSecond, true, increments);
     }
 }
 

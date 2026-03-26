@@ -255,6 +255,7 @@ impl<
         let directory_slice_id: u32 = (block_id as u32) % (CORE_COUNT as u32);
 
         if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+            // core -> directory.
             let e = if is_instruction {
                 EventType::InstructionFetchHopCount
             } else if is_store {
@@ -262,13 +263,17 @@ impl<
             } else {
                 EventType::ReadHopCount
             };
+            let e_dir = if is_instruction {
+                EventType::InstructionFetchHopCountToDirectory
+            } else if is_store {
+                EventType::WriteHopCountToDirectory
+            } else {
+                EventType::ReadHopCountToDirectory
+            };
 
-            Statistics::global_record_by(
-                core_id,
-                e,
-                is_os,
-                calculate_hop_count(core_id, directory_slice_id) as u64, // request.
-            );
+            let request_hop = calculate_hop_count(core_id, directory_slice_id) as u64;
+            Statistics::global_record_by(core_id, e, is_os, request_hop); // request.
+            Statistics::global_record_by(core_id, e_dir, is_os, request_hop);
         }
 
         let (miss_directory_guard, evicted) = miss_directory_set_guard.get_or_create(block_id);
@@ -293,8 +298,6 @@ impl<
                     evicted_directory_entry.1.sharers,
                 );
 
-                let mut maximum_hop_count = 0;
-
                 // invalidte these blocks.
                 for (replica_cache_id, set, index) in acquired_sets.iter_mut() {
                     if let Some(index) = index {
@@ -304,14 +307,6 @@ impl<
                         let core_id = (*replica_cache_id / 2) as u32;
                         if SMS_PREFETCHING && !is_instruction {
                             self.evict_sms(core_id, entry.block_id());
-                        }
-
-                        if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
-                            let hop_count =
-                                calculate_hop_count(core_id, directory_slice_id as u32) * 2; // round trip
-                            if hop_count > maximum_hop_count {
-                                maximum_hop_count = hop_count;
-                            }
                         }
 
                         // require recording the timestamp of the operation.
@@ -361,19 +356,6 @@ impl<
                         EventType::SharedCacheEvictionCausalityViolation,
                         is_os,
                     );
-                }
-
-                // record the hop count of eviction if needed.
-                if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
-                    let e = if is_instruction {
-                        EventType::InstructionFetchHopCount
-                    } else if is_store {
-                        EventType::WriteHopCount
-                    } else {
-                        EventType::ReadHopCount
-                    };
-
-                    Statistics::global_record_by(core_id, e, is_os, maximum_hop_count as u64);
                 }
             }
 
@@ -522,7 +504,31 @@ impl<
 
             return (
                 match shared_cache_result {
-                    SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+                    SharedCacheLookupResult::Hit(_) => {
+                        if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                            let e = if is_instruction {
+                                EventType::InstructionFetchHopCount
+                            } else if is_store {
+                                EventType::WriteHopCount
+                            } else {
+                                EventType::ReadHopCount
+                            };
+                            let e_dir = if is_instruction {
+                                EventType::InstructionFetchHopCountToDirectory
+                            } else if is_store {
+                                EventType::WriteHopCountToDirectory
+                            } else {
+                                EventType::ReadHopCountToDirectory
+                            };
+
+                            // directory -> core.
+                            let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
+                            Statistics::global_record_by(core_id, e, is_os, reply_hop);
+                            Statistics::global_record_by(core_id, e_dir, is_os, reply_hop);
+                        }
+
+                        CacheHierarchyAccessResult::HitInSharedCache
+                    }
                     SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
                         if !is_prefetch {
                             if is_page_walk {
@@ -562,6 +568,13 @@ impl<
                                 } else {
                                     EventType::ReadHopCount
                                 };
+                                let e_mem = if is_instruction {
+                                    EventType::InstructionFetchHopCountToMemory
+                                } else if is_store {
+                                    EventType::WriteHopCountToMemory
+                                } else {
+                                    EventType::ReadHopCountToMemory
+                                };
 
                                 let which_dram_controller = parameter::DRAM_POSITION
                                     [block_id as usize % parameter::DRAM_CONTROLLER_COUNT];
@@ -578,6 +591,12 @@ impl<
                                 Statistics::global_record_by(
                                     core_id,
                                     e,
+                                    is_os,
+                                    dram_hop + reply_hop,
+                                );
+                                Statistics::global_record_by(
+                                    core_id,
+                                    e_mem,
                                     is_os,
                                     dram_hop + reply_hop,
                                 );
@@ -647,39 +666,59 @@ impl<
                     is_os,
                 };
 
-                let hop_count = if self.shared_cache.peek(&request_to_llc) {
-                    0
-                } else {
-                    // this is the traffic from the the private cache to the requestor.
-                    // we need to find the cloest sharer
-                    let mut min_hop = usize::MAX;
-                    for sharer_id in 0..(CORE_COUNT as u32 * 2) {
-                        if *miss_directory_guard
-                            .sharers
-                            .get(sharer_id as usize)
-                            .unwrap()
-                        {
-                            let hop_count = calculate_hop_count(core_id, sharer_id / 2 as u32);
-                            if hop_count < min_hop {
-                                min_hop = hop_count;
-                            }
-                        }
-                    }
-                    min_hop
-                };
-
-                // record the hop count of this access to the private cache.
                 let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
 
-                let e = if is_instruction {
-                    EventType::InstructionFetchHopCount
-                } else if is_store {
-                    EventType::WriteHopCount
-                } else {
-                    EventType::ReadHopCount
-                };
+                if self.shared_cache.peek(&request_to_llc) {
+                    // hitting the LLC, so the reply is directly from the LLC to the core. This is the best case, and we can directly record the hop count.
+                    // increase the hop count.
+                    let e = if is_instruction {
+                        EventType::InstructionFetchHopCount
+                    } else {
+                        EventType::ReadHopCount
+                    };
 
-                Statistics::global_record_by(core_id, e, is_os, hop_count as u64 + reply_hop);
+                    let sub_e = if is_instruction {
+                        EventType::InstructionFetchHopCountToDirectory
+                    } else {
+                        EventType::ReadHopCountToDirectory
+                    };
+
+                    Statistics::global_record_by(core_id, e, is_os, reply_hop);
+                    Statistics::global_record_by(core_id, sub_e, is_os, reply_hop);
+                } else {
+                    // this is harder.
+                    //  We need to find the cloest sharer to the directly, get it back, then reply to the requester. The hop count is the sum of these two parts.
+                    let mut min_hop = usize::MAX;
+                    for idx in miss_directory_guard.sharers.iter_ones() {
+                        let hop_count =
+                            calculate_hop_count(directory_slice_id, idx as u32 / 2 as u32) * 2;
+                        if hop_count < min_hop {
+                            min_hop = hop_count;
+                        }
+                    }
+
+                    let e = if is_instruction {
+                        EventType::InstructionFetchHopCount
+                    } else {
+                        EventType::ReadHopCount
+                    };
+
+                    let e_l2 = if is_instruction {
+                        EventType::InstructionFetchHopCountToOtherCore
+                    } else {
+                        EventType::ReadHopCountToOtherCore
+                    };
+
+                    let e_l3 = if is_instruction {
+                        EventType::InstructionFetchHopCountToOtherCoreDueToGetS
+                    } else {
+                        EventType::ReadHopCountToOtherCoreDueToGetS
+                    };
+
+                    Statistics::global_record_by(core_id, e, is_os, min_hop as u64 + reply_hop);
+                    Statistics::global_record_by(core_id, e_l2, is_os, min_hop as u64 + reply_hop);
+                    Statistics::global_record_by(core_id, e_l3, is_os, min_hop as u64 + reply_hop);
+                }
             }
 
             // add myself to the sharer list.
@@ -871,6 +910,18 @@ impl<
                         is_os,
                         maximum_hop_count as u64 + reply_hop,
                     );
+                    Statistics::global_record_by(
+                        core_id,
+                        EventType::WriteHopCountToOtherCore,
+                        is_os,
+                        maximum_hop_count as u64 + reply_hop,
+                    );
+                    Statistics::global_record_by(
+                        core_id,
+                        EventType::WriteHopCountToOtherCoreDueToGetXInvalidation,
+                        is_os,
+                        maximum_hop_count as u64 + reply_hop,
+                    );
                 }
 
                 evicted
@@ -906,7 +957,8 @@ impl<
                                 writable_hop_count = calculate_hop_count(
                                     *replica_cache_id as u32 / 2 as u32,
                                     directory_slice_id,
-                                ) as u64;
+                                ) as u64
+                                    * 2;
                             }
 
                             if access_ts > ts {
@@ -921,7 +973,8 @@ impl<
                                 let current_hop = calculate_hop_count(
                                     *replica_cache_id as u32 / 2 as u32,
                                     directory_slice_id,
-                                ) as u64;
+                                ) as u64
+                                    * 2;
 
                                 if current_hop < minimum_nonwritable_hop_count {
                                     minimum_nonwritable_hop_count = current_hop;
@@ -1018,7 +1071,50 @@ impl<
                         }
                     };
 
+                    let e_breakdown = if coherence_hop == 0 {
+                        if is_instruction {
+                            EventType::InstructionFetchHopCountToDirectory
+                        } else if is_store {
+                            EventType::WriteHopCountToDirectory
+                        } else {
+                            EventType::ReadHopCountToDirectory
+                        }
+                    } else {
+                        if is_instruction {
+                            EventType::InstructionFetchHopCountToOtherCore
+                        } else if is_store {
+                            EventType::WriteHopCountToOtherCore
+                        } else {
+                            EventType::ReadHopCountToOtherCore
+                        }
+                    };
+                    let e_breakdown_sub = if coherence_hop == 0 {
+                        None
+                    } else {
+                        Some(if is_instruction {
+                            EventType::InstructionFetchHopCountToOtherCoreDueToGetS
+                        } else if is_store {
+                            EventType::WriteHopCountToOtherCoreDueToGetS
+                        } else {
+                            EventType::ReadHopCountToOtherCoreDueToGetS
+                        })
+                    };
+
                     Statistics::global_record_by(core_id, e, is_os, reply_hop + coherence_hop);
+                    Statistics::global_record_by(
+                        core_id,
+                        e_breakdown,
+                        is_os,
+                        reply_hop + coherence_hop,
+                    );
+                    if let Some(e_sub) = e_breakdown_sub {
+                        Statistics::global_record_by(
+                            core_id,
+                            e_sub,
+                            is_os,
+                            reply_hop + coherence_hop,
+                        );
+                    }
                 }
 
                 drop(acquired_sets);
