@@ -617,7 +617,7 @@ impl<
                                 );
                                 NocTraffic::global_record(
                                     core_id,
-                                    directory_slice_id,
+                                    which_dram_controller as u32,
                                     AccessReason::DRAM,
                                 );
                             }
@@ -705,11 +705,7 @@ impl<
 
                     Statistics::global_record_by(core_id, e, is_os, reply_hop);
                     Statistics::global_record_by(core_id, sub_e, is_os, reply_hop);
-                    NocTraffic::global_record(
-                        core_id,
-                        directory_slice_id,
-                        AccessReason::LLC,
-                    );
+                    NocTraffic::global_record(core_id, directory_slice_id, AccessReason::LLC);
                 } else {
                     // this is harder.
                     //  We need to find the cloest sharer to the directly, get it back, then reply to the requester. The hop count is the sum of these two parts.
