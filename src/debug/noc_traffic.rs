@@ -2,16 +2,16 @@ use std::cell::UnsafeCell;
 use std::io::Write;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::parameter::{CORE_COUNT, ENABLE_STATISTICS};
+use crate::parameter::{ENABLE_STATISTICS, SIMULATED_CORE_COUNT};
 
 #[derive(Clone, Copy)]
 pub enum AccessReason {
-    Directory                                    = 0,
-    LLC                                          = 1,
-    DRAM                                         = 2,
-    PrivateCacheDemandBlock                      = 3,
-    PrivateCacheInvalidateDueToGetX              = 4,
-    PrivateCacheDowngrade                        = 5,
+    Directory = 0,
+    LLC = 1,
+    DRAM = 2,
+    PrivateCacheDemandBlock = 3,
+    PrivateCacheInvalidateDueToGetX = 4,
+    PrivateCacheDowngrade = 5,
     PrivateCacheInvalidateDueToDirectoryEviction = 6,
 }
 
@@ -21,11 +21,11 @@ impl AccessReason {
 
 #[repr(align(64))]
 struct PerAccessorCounts {
-    counts: [[u64; AccessReason::COUNT]; CORE_COUNT],
+    counts: [[u64; AccessReason::COUNT]; SIMULATED_CORE_COUNT],
 }
 
 pub struct NocTraffic {
-    per_accessor: [UnsafeCell<PerAccessorCounts>; CORE_COUNT],
+    per_accessor: [UnsafeCell<PerAccessorCounts>; SIMULATED_CORE_COUNT],
 }
 
 unsafe impl Sync for NocTraffic {}
@@ -52,11 +52,10 @@ impl NocTraffic {
         let mut file = std::fs::File::create(file_name).unwrap();
         file.write_fmt(format_args!("{}\n", Self::get_header()))
             .unwrap();
-        for destination_id in 0..CORE_COUNT {
-            for accessor_id in 0..CORE_COUNT {
+        for destination_id in 0..SIMULATED_CORE_COUNT {
+            for accessor_id in 0..SIMULATED_CORE_COUNT {
                 unsafe {
-                    let counts =
-                        &(*self.per_accessor[accessor_id].get()).counts[destination_id];
+                    let counts = &(*self.per_accessor[accessor_id].get()).counts[destination_id];
                     file.write_fmt(format_args!(
                         "{},{},{},{},{},{},{},{},{}\n",
                         destination_id,
@@ -96,8 +95,6 @@ fn global() -> &'static NocTraffic {
 /// Allocates the global NocTraffic directly on the heap.
 /// Must be called once before any recording begins.
 pub fn init() {
-    let ptr = unsafe {
-        Box::into_raw(Box::<NocTraffic>::new_zeroed().assume_init())
-    };
+    let ptr = unsafe { Box::into_raw(Box::<NocTraffic>::new_zeroed().assume_init()) };
     GLOBAL_NOC_TRAFFIC.store(ptr, Ordering::Relaxed);
 }
