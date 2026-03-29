@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::io::Write;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::parameter::{ENABLE_STATISTICS, SIMULATED_CORE_COUNT};
+use crate::parameter::{ENABLE_STATISTICS, RECORD_NOC_TRAFFIC, SIMULATED_CORE_COUNT};
 
 #[derive(Clone, Copy)]
 pub enum AccessReason {
@@ -33,11 +33,9 @@ unsafe impl Sync for NocTraffic {}
 impl NocTraffic {
     #[inline]
     fn record(&self, accessor_id: u32, destination_id: u32, reason: AccessReason) {
-        if ENABLE_STATISTICS {
-            unsafe {
-                (*self.per_accessor[accessor_id as usize].get()).counts[destination_id as usize]
-                    [reason as usize] += 1;
-            }
+        unsafe {
+            (*self.per_accessor[accessor_id as usize].get()).counts[destination_id as usize]
+                [reason as usize] += 1;
         }
     }
 
@@ -77,7 +75,9 @@ impl NocTraffic {
 
     #[inline]
     pub fn global_record(accessor_id: u32, destination_id: u32, reason: AccessReason) {
-        global().record(accessor_id, destination_id, reason);
+        if ENABLE_STATISTICS && RECORD_NOC_TRAFFIC {
+            global().record(accessor_id, destination_id, reason);
+        }
     }
 
     pub fn save_to_csv(file_name: &str) {

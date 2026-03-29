@@ -21,17 +21,21 @@ const fn figure_out_mesh_size() -> (usize, usize) {
 }
 
 const MESH_WIDTH: usize = figure_out_mesh_size().1;
+#[cfg(debug_assertions)]
 const MESH_HEIGHT: usize = figure_out_mesh_size().0;
 
+#[inline(always)]
 const fn map_core_to_coordinate(core_id: usize) -> (usize, usize) {
     let x = core_id % MESH_WIDTH;
     let y = core_id / MESH_WIDTH;
+    #[cfg(debug_assertions)]
     if y >= MESH_HEIGHT {
         panic!("Core ID exceeds the number of cores in the mesh.");
     }
     (x, y)
 }
 
+#[inline(always)]
 pub const fn calculate_hop_count(src_core_id: u32, dst_core_id: u32) -> usize {
     let (src_x, src_y) = map_core_to_coordinate(src_core_id as usize);
     let (dst_x, dst_y) = map_core_to_coordinate(dst_core_id as usize);

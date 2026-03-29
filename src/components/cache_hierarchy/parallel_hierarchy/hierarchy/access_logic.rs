@@ -255,8 +255,8 @@ impl<
 
         let directory_slice_id: u32 = (block_id as u32) % (CORE_COUNT as u32);
 
-        if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
-            // core -> directory.
+        // Hoisted once for all recording sites below. EventType is Copy so this is zero-cost.
+        let (hop_event, reply_hop, mut hop_count) = if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
             let e = if is_instruction {
                 EventType::InstructionFetchHopCount
             } else if is_store {
@@ -264,17 +264,17 @@ impl<
             } else {
                 EventType::ReadHopCount
             };
-            let e_dir = if is_instruction {
-                EventType::InstructionFetchHopCountToDirectory
-            } else if is_store {
-                EventType::WriteHopCountToDirectory
-            } else {
-                EventType::ReadHopCountToDirectory
-            };
+            let rh = calculate_hop_count(directory_slice_id, core_id) as u64;
+            (e, rh, 0u64)
+        } else {
+            (EventType::InstructionFetchHopCount, 0u64, 0u64) // dummy values; never used
+        };
 
+        if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+            // core -> directory.
             let request_hop = calculate_hop_count(core_id, directory_slice_id) as u64;
-            Statistics::global_record_by(core_id, e, is_os, request_hop); // request.
-            Statistics::global_record_by(core_id, e_dir, is_os, request_hop);
+            hop_count += request_hop;
+            // hop_event and second-level breakdown are hoisted/removed; recorded once at return site.
             NocTraffic::global_record(core_id, directory_slice_id, AccessReason::Directory);
         }
 
@@ -512,136 +512,94 @@ impl<
                 Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
             }
 
-            return (
-                match shared_cache_result {
-                    SharedCacheLookupResult::Hit(_) => {
-                        if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
-                            let e = if is_instruction {
-                                EventType::InstructionFetchHopCount
-                            } else if is_store {
-                                EventType::WriteHopCount
-                            } else {
-                                EventType::ReadHopCount
-                            };
-                            let e_dir = if is_instruction {
-                                EventType::InstructionFetchHopCountToDirectory
-                            } else if is_store {
-                                EventType::WriteHopCountToDirectory
-                            } else {
-                                EventType::ReadHopCountToDirectory
-                            };
+            let path_a_result = match shared_cache_result {
+                SharedCacheLookupResult::Hit(_) => {
+                    if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                        // directory -> core
+                        hop_count += reply_hop;
+                        NocTraffic::global_record(core_id, directory_slice_id, AccessReason::LLC);
+                    }
 
-                            // directory -> core.
-                            let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
-                            Statistics::global_record_by(core_id, e, is_os, reply_hop);
-                            Statistics::global_record_by(core_id, e_dir, is_os, reply_hop);
-                            NocTraffic::global_record(
+                    CacheHierarchyAccessResult::HitInSharedCache
+                }
+                SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
+                    if !is_prefetch {
+                        if is_page_walk {
+                            Statistics::global_record(
                                 core_id,
-                                directory_slice_id,
-                                AccessReason::LLC,
+                                EventType::SharedCacheMissDueToPTW,
+                                is_os,
+                            );
+                        } else if is_instruction {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToInstructionFetch,
+                                is_os,
+                            );
+                        } else if is_store {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToDataWrite,
+                                is_os,
+                            );
+                        } else {
+                            Statistics::global_record(
+                                core_id,
+                                EventType::SharedCacheMissDueToDataRead,
+                                is_os,
                             );
                         }
 
-                        CacheHierarchyAccessResult::HitInSharedCache
-                    }
-                    SharedCacheLookupResult::Miss | SharedCacheLookupResult::ColdMiss => {
-                        if !is_prefetch {
-                            if is_page_walk {
-                                Statistics::global_record(
-                                    core_id,
-                                    EventType::SharedCacheMissDueToPTW,
-                                    is_os,
-                                );
-                            } else if is_instruction {
-                                Statistics::global_record(
-                                    core_id,
-                                    EventType::SharedCacheMissDueToInstructionFetch,
-                                    is_os,
-                                );
-                            } else if is_store {
-                                Statistics::global_record(
-                                    core_id,
-                                    EventType::SharedCacheMissDueToDataWrite,
-                                    is_os,
-                                );
-                            } else {
-                                Statistics::global_record(
-                                    core_id,
-                                    EventType::SharedCacheMissDueToDataRead,
-                                    is_os,
-                                );
-                            }
+                        Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
 
-                            Statistics::global_record(core_id, EventType::SharedCacheMiss, is_os);
+                        if RECORD_ON_CHIP_NETWORK_HOP {
+                            // This is the traffic going to DRAM.
+                            // hop_event and reply_hop are hoisted; e_mem (second-level) removed.
+                            let which_dram_controller = parameter::DRAM_POSITION
+                                [block_id as usize % parameter::DRAM_CONTROLLER_COUNT];
 
-                            if RECORD_ON_CHIP_NETWORK_HOP {
-                                // This is the traffic going to DRAM.
-                                let e = if is_instruction {
-                                    EventType::InstructionFetchHopCount
-                                } else if is_store {
-                                    EventType::WriteHopCount
-                                } else {
-                                    EventType::ReadHopCount
-                                };
-                                let e_mem = if is_instruction {
-                                    EventType::InstructionFetchHopCountToMemory
-                                } else if is_store {
-                                    EventType::WriteHopCountToMemory
-                                } else {
-                                    EventType::ReadHopCountToMemory
-                                };
+                            let dram_hop = calculate_hop_count(
+                                directory_slice_id,
+                                which_dram_controller as u32,
+                            ) as u64
+                                * 2;
 
-                                let which_dram_controller = parameter::DRAM_POSITION
-                                    [block_id as usize % parameter::DRAM_CONTROLLER_COUNT];
-
-                                let dram_hop = calculate_hop_count(
-                                    directory_slice_id,
-                                    which_dram_controller as u32,
-                                ) as u64
-                                    * 2;
-
-                                let reply_hop =
-                                    calculate_hop_count(directory_slice_id, core_id) as u64;
-
-                                Statistics::global_record_by(
-                                    core_id,
-                                    e,
-                                    is_os,
-                                    dram_hop + reply_hop,
-                                );
-                                Statistics::global_record_by(
-                                    core_id,
-                                    e_mem,
-                                    is_os,
-                                    dram_hop + reply_hop,
-                                );
-                                NocTraffic::global_record(
-                                    core_id,
-                                    which_dram_controller as u32,
-                                    AccessReason::DRAM,
-                                );
-                            }
+                            hop_count += dram_hop + reply_hop;
+                            NocTraffic::global_record(
+                                core_id,
+                                which_dram_controller as u32,
+                                AccessReason::DRAM,
+                            );
                         }
+                    }
 
-                        CacheHierarchyAccessResult::Miss
-                    }
-                    SharedCacheLookupResult::LookupLate(_, _) => {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheAccessCausalityViolation,
-                            is_os,
-                        );
-                        CacheHierarchyAccessResult::Unknown
-                    }
-                    SharedCacheLookupResult::EvictedLate(_) => {
-                        Statistics::global_record(
-                            core_id,
-                            EventType::SharedCacheEvictionCausalityViolation,
-                            is_os,
-                        );
-                        CacheHierarchyAccessResult::Miss
-                    }
-                },
+                    CacheHierarchyAccessResult::Miss
+                }
+                SharedCacheLookupResult::LookupLate(_, _) => {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::SharedCacheAccessCausalityViolation,
+                        is_os,
+                    );
+                    CacheHierarchyAccessResult::Unknown
+                }
+                SharedCacheLookupResult::EvictedLate(_) => {
+                    Statistics::global_record(
+                        core_id,
+                        EventType::SharedCacheEvictionCausalityViolation,
+                        is_os,
+                    );
+                    CacheHierarchyAccessResult::Miss
+                }
+            };
+
+            // Single recording for PATH A (sharers == 0).
+            if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+                Statistics::global_record_by(core_id, hop_event, is_os, hop_count);
+            }
+
+            return (
+                path_a_result,
                 self.pf_stats[r.core_id as usize].lock().clone(),
             );
         }
@@ -678,7 +636,8 @@ impl<
             };
 
             if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
-                // check the LLC to see whether the replica is in LLC.
+                // Check the LLC to see whether the replica is in LLC.
+                // hop_event and reply_hop are hoisted; second-level breakdown removed.
                 let request_to_llc = SharedCacheAccessRequest {
                     source: SharedCacheAccessSource::Core(core_id),
                     block_id,
@@ -686,61 +645,24 @@ impl<
                     is_os,
                 };
 
-                let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
-
                 if self.shared_cache.peek(&request_to_llc) {
-                    // hitting the LLC, so the reply is directly from the LLC to the core. This is the best case, and we can directly record the hop count.
-                    // increase the hop count.
-                    let e = if is_instruction {
-                        EventType::InstructionFetchHopCount
-                    } else {
-                        EventType::ReadHopCount
-                    };
-
-                    let sub_e = if is_instruction {
-                        EventType::InstructionFetchHopCountToDirectory
-                    } else {
-                        EventType::ReadHopCountToDirectory
-                    };
-
-                    Statistics::global_record_by(core_id, e, is_os, reply_hop);
-                    Statistics::global_record_by(core_id, sub_e, is_os, reply_hop);
+                    // Hitting the LLC: reply is directly from LLC to core.
+                    hop_count += reply_hop;
                     NocTraffic::global_record(core_id, directory_slice_id, AccessReason::LLC);
                 } else {
-                    // this is harder.
-                    //  We need to find the cloest sharer to the directly, get it back, then reply to the requester. The hop count is the sum of these two parts.
+                    // Find the closest sharer to the directory, get it back, then reply to the requester.
                     let mut min_hop = usize::MAX;
                     let mut which_core = u32::MAX;
                     for idx in miss_directory_guard.sharers.iter_ones() {
-                        let hop_count =
+                        let sharer_hop =
                             calculate_hop_count(directory_slice_id, idx as u32 / 2 as u32) * 2;
-                        if hop_count < min_hop {
-                            min_hop = hop_count;
+                        if sharer_hop < min_hop {
+                            min_hop = sharer_hop;
                             which_core = idx as u32 / 2;
                         }
                     }
 
-                    let e = if is_instruction {
-                        EventType::InstructionFetchHopCount
-                    } else {
-                        EventType::ReadHopCount
-                    };
-
-                    let e_l2 = if is_instruction {
-                        EventType::InstructionFetchHopCountToOtherCore
-                    } else {
-                        EventType::ReadHopCountToOtherCore
-                    };
-
-                    let e_l3 = if is_instruction {
-                        EventType::InstructionFetchHopCountToOtherCoreDueToGetS
-                    } else {
-                        EventType::ReadHopCountToOtherCoreDueToGetS
-                    };
-
-                    Statistics::global_record_by(core_id, e, is_os, min_hop as u64 + reply_hop);
-                    Statistics::global_record_by(core_id, e_l2, is_os, min_hop as u64 + reply_hop);
-                    Statistics::global_record_by(core_id, e_l3, is_os, min_hop as u64 + reply_hop);
+                    hop_count += min_hop as u64 + reply_hop;
                     NocTraffic::global_record(
                         core_id,
                         which_core,
@@ -938,27 +860,7 @@ impl<
                 drop(acquired_sets);
 
                 if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
-                    // we just need to reply.
-                    let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
-                    let e = EventType::WriteHopCount;
-                    Statistics::global_record_by(
-                        core_id,
-                        e,
-                        is_os,
-                        maximum_hop_count as u64 + reply_hop,
-                    );
-                    Statistics::global_record_by(
-                        core_id,
-                        EventType::WriteHopCountToOtherCore,
-                        is_os,
-                        maximum_hop_count as u64 + reply_hop,
-                    );
-                    Statistics::global_record_by(
-                        core_id,
-                        EventType::WriteHopCountToOtherCoreDueToGetXInvalidation,
-                        is_os,
-                        maximum_hop_count as u64 + reply_hop,
-                    );
+                    hop_count += maximum_hop_count as u64 + reply_hop;
                 }
 
                 evicted
@@ -1090,21 +992,10 @@ impl<
                 );
 
                 if parameter::RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
-                    // record the hop count of this access to the private cache.
-                    let reply_hop = calculate_hop_count(directory_slice_id, core_id) as u64;
-
-                    let e = if is_instruction {
-                        EventType::InstructionFetchHopCount
-                    } else if is_store {
-                        EventType::WriteHopCount
-                    } else {
-                        EventType::ReadHopCount
-                    };
-
                     let coherence_hop = if find_writable_replica {
                         writable_hop_count
                     } else {
-                        // check LLC.
+                        // Check LLC.
                         let request_to_llc = SharedCacheAccessRequest {
                             source: SharedCacheAccessSource::Core(core_id),
                             block_id,
@@ -1119,50 +1010,7 @@ impl<
                         }
                     };
 
-                    let e_breakdown = if coherence_hop == 0 {
-                        if is_instruction {
-                            EventType::InstructionFetchHopCountToDirectory
-                        } else if is_store {
-                            EventType::WriteHopCountToDirectory
-                        } else {
-                            EventType::ReadHopCountToDirectory
-                        }
-                    } else {
-                        if is_instruction {
-                            EventType::InstructionFetchHopCountToOtherCore
-                        } else if is_store {
-                            EventType::WriteHopCountToOtherCore
-                        } else {
-                            EventType::ReadHopCountToOtherCore
-                        }
-                    };
-                    let e_breakdown_sub = if coherence_hop == 0 {
-                        None
-                    } else {
-                        Some(if is_instruction {
-                            EventType::InstructionFetchHopCountToOtherCoreDueToGetS
-                        } else if is_store {
-                            EventType::WriteHopCountToOtherCoreDueToGetS
-                        } else {
-                            EventType::ReadHopCountToOtherCoreDueToGetS
-                        })
-                    };
-
-                    Statistics::global_record_by(core_id, e, is_os, reply_hop + coherence_hop);
-                    Statistics::global_record_by(
-                        core_id,
-                        e_breakdown,
-                        is_os,
-                        reply_hop + coherence_hop,
-                    );
-                    if let Some(e_sub) = e_breakdown_sub {
-                        Statistics::global_record_by(
-                            core_id,
-                            e_sub,
-                            is_os,
-                            reply_hop + coherence_hop,
-                        );
-                    }
+                    hop_count += reply_hop + coherence_hop;
 
                     if !find_writable_replica {
                         if coherence_hop == 0 {
@@ -1228,6 +1076,11 @@ impl<
                     is_os,
                 );
             }
+        }
+
+        // Single recording for PATH B (has sharers).
+        if RECORD_ON_CHIP_NETWORK_HOP && !is_prefetch {
+            Statistics::global_record_by(core_id, hop_event, is_os, hop_count);
         }
 
         (res, self.pf_stats[r.core_id as usize].lock().clone())

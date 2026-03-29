@@ -39,7 +39,10 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
+#[cfg(not(test))]
 pub const CORE_COUNT: usize = 4;
+#[cfg(test)]
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +55,10 @@ pub const CORE_COUNT: usize = 4;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
+#[cfg(not(test))]
 pub const MEASURE_HALF_OF_CORES: bool = true;
+#[cfg(test)]
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -371,6 +377,15 @@ pub const USE_RKYV_SERIALIZATION: bool = true;
  */
 pub const RECORD_ON_CHIP_NETWORK_HOP: bool = true;
 static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_ON_CHIP_NETWORK_HOP);
+
+/**
+ * Whether to record the on-chip network traffic (NocTraffic) for each memory access.
+ *
+ * Disabled by default because NocTraffic recording adds per-access overhead.
+ * Enable only when the traffic matrix CSV output is needed.
+ */
+pub const RECORD_NOC_TRAFFIC: bool = false;
+static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_NOC_TRAFFIC);
 
 /**
  * The position of DRAM controller.

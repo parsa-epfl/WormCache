@@ -190,28 +190,8 @@ pub enum EventType {
 
     // Some metrics for IPC modeling.
     InstructionFetchHopCount,
-    InstructionFetchHopCountToDirectory,
-    InstructionFetchHopCountToMemory,
-    InstructionFetchHopCountToOtherCore,
-    InstructionFetchHopCountToOtherCoreDueToGetS,
-    InstructionFetchHopCountToOtherCoreDueToGetX,
-    InstructionFetchHopCountToOtherCoreDueToGetXInvalidation,
-
     ReadHopCount,
-    ReadHopCountToDirectory,
-    ReadHopCountToMemory,
-    ReadHopCountToOtherCore,
-    ReadHopCountToOtherCoreDueToGetS,
-    ReadHopCountToOtherCoreDueToGetX,
-    ReadHopCountToOtherCoreDueToGetXInvalidation,
-
     WriteHopCount,
-    WriteHopCountToDirectory,
-    WriteHopCountToMemory,
-    WriteHopCountToOtherCore,
-    WriteHopCountToOtherCoreDueToGetS,
-    WriteHopCountToOtherCoreDueToGetX,
-    WriteHopCountToOtherCoreDueToGetXInvalidation,
 
     // Some events that wait for the empty of store buffer.
     // mainly including the fence instructions, memory access with side effect, and the memory access with acquire semantics.
@@ -498,7 +478,6 @@ pub fn create_thread_for_periodic_log() {
         }
     });
 }
-
 
 pub unsafe extern "C" fn qemu_record_certain_statistics(
     cpu_idx: u64,
