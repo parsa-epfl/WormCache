@@ -59,12 +59,12 @@ pub fn init_qemu_stat_ptr(core_id: u32) {
 /// Inline function to record a statistic to QEMU's exposed statistics structure.
 /// This has minimal overhead (~3-5 cycles) due to direct pointer access.
 #[inline(always)]
-pub fn record_qemu_stat(core_id: u32, event: EventType, increments: u64) {
+pub fn record_qemu_stat(core_id: u32, event: EventType, increments: u32) {
     if let Some(offset) = event.to_qemu_offset() {
         unsafe {
             let stat_ptr = QEMU_STAT_PTRS[core_id as usize];
             if !stat_ptr.is_null() {
-                let field_ptr = (stat_ptr as *mut u8).add(offset) as *mut u64;
+                let field_ptr = (stat_ptr as *mut u8).add(offset) as *mut u32;
                 // *field_ptr += 1;
                 let value = field_ptr.read_volatile();
                 field_ptr.write_volatile(value + increments);
@@ -393,7 +393,7 @@ impl Statistics {
         GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
         // For increment > 1, we record once to QEMU stats (it's an approximation)
         if increment > 0 {
-            record_qemu_stat(core_id, event, increment);
+            record_qemu_stat(core_id, event, increment as u32);
         }
     }
 
@@ -511,7 +511,7 @@ unsafe extern "C" fn user_vcpu_insn_exec(
     size: *mut ffi::c_void, // the size of the basic block
 ) {
     Statistics::global_record_by(vcpu_idx, EventType::Instruction, false, size as u64);
-    record_qemu_stat(vcpu_idx, EventType::InstructionUser, size as u64);
+    record_qemu_stat(vcpu_idx, EventType::InstructionUser, size as u32);
 }
 
 unsafe extern "C" fn kernel_vcpu_insn_exec(
@@ -519,7 +519,7 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     size: *mut ffi::c_void, // the size of the basic block
 ) {
     Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
-    record_qemu_stat(vcpu_idx, EventType::InstructionKernel, size as u64);
+    record_qemu_stat(vcpu_idx, EventType::InstructionKernel, size as u32);
 }
 
 unsafe extern "C" fn acquire_memory_insn_exec(vcpu_idx: u32, userdata: *mut ffi::c_void) {
@@ -547,6 +547,7 @@ pub unsafe extern "C" fn on_translation_instructions(tb: *mut qemu_api::qemu_plu
     unsafe {
         let first_instruction = qemu_api::qemu_plugin_tb_get_insn(tb, 0);
         let size = qemu_api::qemu_plugin_tb_n_insns(tb);
+        assert!(size <= u32::MAX as usize);
         // I need to get the first instruction's PC to see if it is a user or kernel space.
         let pc = qemu_api::qemu_plugin_insn_vaddr(first_instruction);
         if pc & 0x8000_0000_0000_0000 == 0 {
