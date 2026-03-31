@@ -46,7 +46,7 @@ pub trait CacheModelParser<const UNIFIED_CACHE_MODEL: bool> {
     type Output: MemoryHierarchy;
 }
 
-pub trait MMUParser<const USE_FULLY_ASSOCIATIVE_L1_TLB: bool> {
+pub trait MMUParser<const ENABLE_MMU: bool, const USE_FULLY_ASSOCIATIVE_L1_TLB: bool> {
     type Output: AbstractMMU;
 }
 
@@ -86,7 +86,7 @@ pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT
 };
 
-impl MMUParser<true> for DummyParser {
+impl MMUParser<true, true> for DummyParser {
     type Output = mmu::FullyAssociativeL1MMU<
         AArch64,
         { parameter::ITLB_ASSO },
@@ -109,7 +109,7 @@ impl MMUParser<true> for DummyParser {
     >;
 }
 
-impl MMUParser<false> for DummyParser {
+impl MMUParser<true, false> for DummyParser {
     type Output = mmu::OrdinaryMMU<
         AArch64,
         { parameter::ITLB_ASSO },
@@ -123,7 +123,14 @@ impl MMUParser<false> for DummyParser {
     >;
 }
 
-type AArch64MMU = <DummyParser as MMUParser<{ parameter::USE_HIGHLY_ASSOCIATIVE_L1TLB }>>::Output;
+impl MMUParser<false, { parameter::USE_HIGHLY_ASSOCIATIVE_L1TLB }> for DummyParser {
+    type Output = mmu::NoMMU;
+}
+
+type AArch64MMU = <DummyParser as MMUParser<
+    { parameter::ENABLE_MMU },
+    { parameter::USE_HIGHLY_ASSOCIATIVE_L1TLB },
+>>::Output;
 
 impl DirectoryParser<true> for DummyParser {
     type Output = InfiniteDirectory<{ parameter::INFINITE_DIRECTORY_SHARED_COUNT }>;

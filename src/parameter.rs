@@ -39,10 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-#[cfg(not(test))]
-pub const CORE_COUNT: usize = 4;
-#[cfg(test)]
-pub const CORE_COUNT: usize = 64;
+pub const CORE_COUNT: usize = 128;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -55,10 +52,7 @@ pub const CORE_COUNT: usize = 64;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-#[cfg(not(test))]
 pub const MEASURE_HALF_OF_CORES: bool = true;
-#[cfg(test)]
-pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -77,6 +71,13 @@ pub const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
 
 pub const CACHE_LINE_SIZE: usize = 64;
 static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
+
+/**
+ * ENABLE_MMU
+ *
+ * Whether to enable the MMU and the virtual memory translation. If false, all the memory accesses are treated as physical memory accesses, and no page walk will be modeled.
+ */
+pub const ENABLE_MMU: bool = true;
 
 // Use FullyAssociativeTLB
 pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
@@ -195,7 +196,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 2048;
+pub const SHARED_CACHE_SET: usize = 65536;
 static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -257,7 +258,7 @@ pub const USE_INFINITE_DIRECTORY: bool = false;
 pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
 static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
 
-pub const FINITE_DIRECTORY_SET: usize = 1024;
+pub const FINITE_DIRECTORY_SET: usize = 32768;
 static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -392,5 +393,5 @@ static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_NOC_TRAFFIC);
  *
  * This is used to calculate the on-chip network hop count for each memory access. The DRAM controller is considered as the root of the on-chip network, and the hop count is calculated based on the distance from the core to the DRAM controller.
  */
-pub const DRAM_CONTROLLER_COUNT: usize = 1;
-pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [0];
+pub const DRAM_CONTROLLER_COUNT: usize = 8;
+pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [8, 15, 24, 31, 32, 39, 48, 55];
