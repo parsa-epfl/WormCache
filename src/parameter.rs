@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 128;
+pub const CORE_COUNT: usize = 4;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -71,6 +71,14 @@ pub const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
 
 pub const CACHE_LINE_SIZE: usize = 64;
 static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
+
+/**
+ * BYPASSING_OS_SIMULATION
+ *
+ * Whether to bypass the OS simulation and only process the userspace trace.
+ *
+ */
+pub const BYPASSING_OS_SIMULATION: bool = false;
 
 /**
  * ENABLE_MMU
@@ -196,7 +204,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 65536;
+pub const SHARED_CACHE_SET: usize = 2048;
 static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -258,7 +266,7 @@ pub const USE_INFINITE_DIRECTORY: bool = false;
 pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
 static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
 
-pub const FINITE_DIRECTORY_SET: usize = 32768;
+pub const FINITE_DIRECTORY_SET: usize = 1024;
 static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -393,5 +401,5 @@ static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_NOC_TRAFFIC);
  *
  * This is used to calculate the on-chip network hop count for each memory access. The DRAM controller is considered as the root of the on-chip network, and the hop count is calculated based on the distance from the core to the DRAM controller.
  */
-pub const DRAM_CONTROLLER_COUNT: usize = 8;
-pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [8, 15, 24, 31, 32, 39, 48, 55];
+pub const DRAM_CONTROLLER_COUNT: usize = 1;
+pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [0];

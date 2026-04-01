@@ -131,6 +131,11 @@ static mut BBV_RECORDER: *mut bbv::BBVRecorder<{ ALLOCATED_CORE }> = std::ptr::n
 
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
     unsafe {
+        if parameter::BYPASSING_OS_SIMULATION && (pc >> 48) != 0 {
+            // Fine, this is an OS simulation code. We can bypass it.
+            return;
+        }
+
         if parameter::MEASURE_HALF_OF_CORES && vcpu_index >= parameter::CORE_COUNT as u32 / 2 {
             return;
         }

@@ -77,6 +77,10 @@ unsafe extern "C" fn vcpu_mem_access(
             let pc = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
             let is_os = (pc >> 48) & 1 == 1;
 
+            if parameter::BYPASSING_OS_SIMULATION && is_os {
+                return;
+            }
+
             let ts = get_ts();
 
             if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
@@ -114,6 +118,11 @@ unsafe extern "C" fn vcpu_insn_exec(
     unsafe {
         let vpn = qemu_api::qemu_plugin_read_pc_vpn();
         let vaddr = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
+        let is_os = (vaddr >> 48) & 1 == 1;
+
+        if parameter::BYPASSING_OS_SIMULATION && is_os {
+            return;
+        }
 
         if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
             return;
