@@ -203,6 +203,9 @@ pub enum EventType {
     // User-mode and kernel-mode instruction counts for IPC modeling.
     InstructionUser,
     InstructionKernel,
+
+    // Number of target memory pages loaded on demabd
+    OnDemandPageLoading,
 }
 
 impl EventType {
@@ -484,7 +487,7 @@ pub unsafe extern "C" fn qemu_record_certain_statistics(
     event_id: u64,
     increments: u64,
 ) {
-    assert!(event_id < 5);
+    assert!(event_id < 6);
     if event_id == 0 {
         Statistics::global_record_by(cpu_idx as u32, EventType::VirtIOBlkRead, false, increments);
     } else if event_id == 1 {
@@ -503,6 +506,13 @@ pub unsafe extern "C" fn qemu_record_certain_statistics(
         Statistics::global_record_by(cpu_idx as u32, EventType::DrainPipeline, false, increments);
     } else if event_id == 4 {
         Statistics::global_record_by(cpu_idx as u32, EventType::IdleNanoSecond, true, increments);
+    } else if event_id == 5 {
+        Statistics::global_record_by(
+            cpu_idx as u32,
+            EventType::OnDemandPageLoading,
+            false,
+            increments,
+        );
     }
 }
 
