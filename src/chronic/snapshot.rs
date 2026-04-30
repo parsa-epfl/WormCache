@@ -285,12 +285,7 @@ pub fn on_load_snapshot(snapshot_name: &str) {
     use std::fs;
 
     // check if the snapshot file exists
-    let base_file_is_ok = [
-        format!("{}.mem/base", snapshot_name),
-        format!("{}.mem/base.index", snapshot_name),
-    ]
-    .iter()
-    .any(|pattern| fs::metadata(pattern).is_ok());
+    let base_file_is_ok = fs::metadata(format!("{}.bxdb", snapshot_name)).is_ok();
     let state_file_is_ok = fs::metadata(format!("{}.state.zstd", snapshot_name)).is_ok();
 
     if base_file_is_ok && state_file_is_ok {
@@ -299,10 +294,12 @@ pub fn on_load_snapshot(snapshot_name: &str) {
             "Detected incremental base snapshot: {}. Following snaphots are generaed with delta",
             snapshot_name
         );
+
+        return;
     }
 
     // check whether this snapshot is already a delta snapshot
-    let delta_file = format!("{}.loc", snapshot_name);
+    let delta_file = format!("{}.bxdb-meta", snapshot_name);
     if fs::metadata(&delta_file).is_ok() {
         update_snapshot_type("incremental");
         println!(
