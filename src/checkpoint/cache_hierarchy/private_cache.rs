@@ -392,7 +392,7 @@ fn serialize_a_set(set: &PrivateCacheSet, number_of_set: usize) -> Vec<FlexusCac
         .filter(|line| line.block_id_with_v & 0x1 == 1)
         .map(|line| FlexusCacheLine {
             tag: (line.block_id_with_v >> 1) >> set_bits,
-            writable: line.modified,
+            writable: line.writeable,
             dirty: line.modified,
             ts: line.ts,
         })
