@@ -966,8 +966,20 @@ unsafe extern "C" {
 #[doc = " struct qemu_plugin_exposed_statistics - Performance statistics structure\n\n This structure contains counters for various performance events that\n can be directly updated by plugins for performance modeling.\n The structure is aligned to 64 bytes to prevent false sharing between cores."]
 #[repr(C)]
 #[repr(align(64))]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct qemu_plugin_exposed_statistics {
+    pub __bindgen_anon_1: qemu_plugin_exposed_statistics__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union qemu_plugin_exposed_statistics__bindgen_ty_1 {
+    pub __bindgen_anon_1: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+    #[doc = "< Array view for vectorised accumulation loop"]
+    pub arr: [u32; 12usize],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1 {
     #[doc = "< Private instruction cache misses"]
     pub private_icache_miss: u32,
     #[doc = "< Private dcache misses: load + PTW combined"]
@@ -995,43 +1007,138 @@ pub struct qemu_plugin_exposed_statistics {
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
+    ["Size of qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1"][::std::mem::size_of::<
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+    >() - 48usize];
+    ["Alignment of qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1"][::std::mem::align_of::<
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+    [
+        "Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::private_icache_miss",
+    ][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+        private_icache_miss
+    ) - 0usize];
+    [
+        "Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::private_dcache_miss_load_ptw",
+    ][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+        private_dcache_miss_load_ptw
+    ) - 4usize];
+    [
+        "Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::private_dcache_miss_store",
+    ][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+        private_dcache_miss_store
+    ) - 8usize];
+    [
+        "Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::shared_cache_miss",
+    ][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+        shared_cache_miss
+    ) - 12usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::bp_miss"][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+        bp_miss
+    )
+        - 16usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::drain_pipeline"]
+        [::std::mem::offset_of!(
+            qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+            drain_pipeline
+        ) - 20usize];
+    [
+        "Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::drain_store_buffer",
+    ][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+        drain_store_buffer
+    ) - 24usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::read_noc_hop"][::std::mem::offset_of!(
+        qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+        read_noc_hop
+    )
+        - 28usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::write_noc_hop"]
+        [::std::mem::offset_of!(
+            qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+            write_noc_hop
+        ) - 32usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::ifetch_noc_hop"]
+        [::std::mem::offset_of!(
+            qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+            ifetch_noc_hop
+        ) - 36usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::instruction_u"]
+        [::std::mem::offset_of!(
+            qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+            instruction_u
+        ) - 40usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1::instruction_k"]
+        [::std::mem::offset_of!(
+            qemu_plugin_exposed_statistics__bindgen_ty_1__bindgen_ty_1,
+            instruction_k
+        ) - 44usize];
+};
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of qemu_plugin_exposed_statistics__bindgen_ty_1"]
+        [::std::mem::size_of::<qemu_plugin_exposed_statistics__bindgen_ty_1>() - 48usize];
+    ["Alignment of qemu_plugin_exposed_statistics__bindgen_ty_1"]
+        [::std::mem::align_of::<qemu_plugin_exposed_statistics__bindgen_ty_1>() - 4usize];
+    ["Offset of field: qemu_plugin_exposed_statistics__bindgen_ty_1::arr"]
+        [::std::mem::offset_of!(qemu_plugin_exposed_statistics__bindgen_ty_1, arr) - 0usize];
+};
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
     ["Size of qemu_plugin_exposed_statistics"]
         [::std::mem::size_of::<qemu_plugin_exposed_statistics>() - 64usize];
     ["Alignment of qemu_plugin_exposed_statistics"]
         [::std::mem::align_of::<qemu_plugin_exposed_statistics>() - 64usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::private_icache_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, private_icache_miss) - 0usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::private_dcache_miss_load_ptw"][::std::mem::offset_of!(
-        qemu_plugin_exposed_statistics,
-        private_dcache_miss_load_ptw
-    ) - 4usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::private_dcache_miss_store"][::std::mem::offset_of!(
-        qemu_plugin_exposed_statistics,
-        private_dcache_miss_store
-    ) - 8usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::shared_cache_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, shared_cache_miss) - 12usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::bp_miss"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, bp_miss) - 16usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::drain_pipeline"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, drain_pipeline) - 20usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::drain_store_buffer"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, drain_store_buffer) - 24usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::read_noc_hop"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, read_noc_hop) - 28usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::write_noc_hop"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, write_noc_hop) - 32usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::ifetch_noc_hop"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, ifetch_noc_hop) - 36usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::instruction_u"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, instruction_u) - 40usize];
-    ["Offset of field: qemu_plugin_exposed_statistics::instruction_k"]
-        [::std::mem::offset_of!(qemu_plugin_exposed_statistics, instruction_k) - 44usize];
 };
 unsafe extern "C" {
     #[doc = " qemu_plugin_get_exposed_statistics() - Get pointer to statistics for a core\n @core_idx: The CPU core index (0 to QEMU_PLUGIN_MAX_CORES-1)\n\n Returns a pointer to the statistics structure for the specified core,\n or NULL if the core index is out of range.\n\n The plugin can directly increment the counters in this structure.\n Each core's structure is aligned to prevent false sharing.\n\n Note: Statistics are zeroed when plugins are loaded."]
     pub fn qemu_plugin_get_exposed_statistics(core_idx: u32)
     -> *mut qemu_plugin_exposed_statistics;
+}
+#[doc = " struct qemu_plugin_timing_info - Host-side timing breakdown for checkpoint operations\n\n This structure accumulates wall-clock time (CLOCK_MONOTONIC_RAW)\n spent on checkpoint save/load operations and their sub-components,\n broken down into RAM (bxdb), uArch state (plugin callback), and total.\n All values are in nanoseconds. The structure is aligned to 64 bytes\n to prevent false sharing.\n\n Plugins read this structure via qemu_plugin_get_timing_info()\n and may print it as a final timing report at simulation exit."]
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug, Copy, Clone)]
+pub struct qemu_plugin_timing_info {
+    pub total_save_time_ns: u64,
+    pub total_load_time_ns: u64,
+    pub save_memory_state_time_ns: u64,
+    pub load_memory_state_time_ns: u64,
+    pub save_uarch_state_time_ns: u64,
+    pub load_uarch_state_time_ns: u64,
+    pub uffd_pages_loaded: u64,
+    pub _padding: [u64; 1usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of qemu_plugin_timing_info"][::std::mem::size_of::<qemu_plugin_timing_info>() - 64usize];
+    ["Alignment of qemu_plugin_timing_info"]
+        [::std::mem::align_of::<qemu_plugin_timing_info>() - 64usize];
+    ["Offset of field: qemu_plugin_timing_info::total_save_time_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, total_save_time_ns) - 0usize];
+    ["Offset of field: qemu_plugin_timing_info::total_load_time_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, total_load_time_ns) - 8usize];
+    ["Offset of field: qemu_plugin_timing_info::save_memory_state_time_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, save_memory_state_time_ns) - 16usize];
+    ["Offset of field: qemu_plugin_timing_info::load_memory_state_time_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, load_memory_state_time_ns) - 24usize];
+    ["Offset of field: qemu_plugin_timing_info::save_uarch_state_time_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, save_uarch_state_time_ns) - 32usize];
+    ["Offset of field: qemu_plugin_timing_info::load_uarch_state_time_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, load_uarch_state_time_ns) - 40usize];
+    ["Offset of field: qemu_plugin_timing_info::uffd_pages_loaded"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, uffd_pages_loaded) - 48usize];
+    ["Offset of field: qemu_plugin_timing_info::_padding"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, _padding) - 56usize];
+};
+unsafe extern "C" {
+    #[doc = " qemu_plugin_get_timing_info() - Get pointer to the global timing info\n\n Returns a pointer to the shared timing information structure.\n The structure is zero-initialised when QEMU starts and accumulates\n time across all checkpoint operations during the simulation."]
+    pub fn qemu_plugin_get_timing_info() -> *mut qemu_plugin_timing_info;
 }
 pub type qemu_plugin_record_statistics_cb_t = ::std::option::Option<
     unsafe extern "C" fn(core_idx: u64, what_statistics: u64, increment: u64),

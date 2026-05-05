@@ -142,6 +142,9 @@ unsafe extern "C" fn event_loop_callback() {
             }
             miss_file.flush().unwrap();
             drop(miss_file);
+
+            let timing_json = format!("{}_ckpt_time.json", SNAPSHOT_PREFIX.get().unwrap());
+            crate::debug::timing::print_time_breakdown(&timing_json);
             std::process::exit(0);
         }
     }
@@ -207,6 +210,9 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
                         miss_file.write_all(stat.as_bytes()).unwrap();
                         miss_file.write_all(b"\n").unwrap();
                     }
+
+                    let timing_json = format!("{}_ckpt_time.json", SNAPSHOT_PREFIX.get().unwrap());
+                    crate::debug::timing::print_time_breakdown(&timing_json);
                     std::process::exit(0);
                 }
             }

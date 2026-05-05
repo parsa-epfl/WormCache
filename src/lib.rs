@@ -47,6 +47,7 @@ use crate::chronic::on_finish_loading_snapshot;
 use crate::debug::noc_traffic::NocTraffic;
 use crate::debug::statistics;
 use crate::debug::statistics::{Statistics, init_qemu_stat_ptr};
+use crate::debug::timing;
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
 #[allow(unused_imports)]
@@ -232,6 +233,8 @@ unsafe extern "C" fn qemu_plugin_install(
         let mut log_file = std::fs::File::create("parameter.rs").unwrap();
         log_file.write_all(PARAMETER_RS.as_bytes()).unwrap();
         drop(log_file);
+
+        timing::init_simulation_start();
 
         0
     }

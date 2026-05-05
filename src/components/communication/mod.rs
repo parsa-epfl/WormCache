@@ -834,6 +834,9 @@ unsafe extern "C" fn periodic_checking_callback(_diff: u64) -> bool {
 
             println!("Communication plugin: Serialization complete. Exiting...");
 
+            // Print host timing breakdown.
+            crate::debug::timing::print_time_breakdown("simulation_ckpt_time.json");
+
             // Save the statistics.
             Statistics::save_to_csv("statistics.final.csv", current_time);
             NocTraffic::save_to_csv("noc_traffic.final.csv");

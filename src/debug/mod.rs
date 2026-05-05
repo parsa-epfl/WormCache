@@ -32,6 +32,7 @@
 pub mod cache_line_history;
 pub mod noc_traffic;
 pub mod statistics;
+pub mod timing;
 
 pub unsafe extern "C" fn save_statistics_to_certain_file(file_path: *const std::ffi::c_char) {
     unsafe {
@@ -46,5 +47,8 @@ pub unsafe extern "C" fn save_statistics_to_certain_file(file_path: *const std::
 
         let hopcount_path = file_path.replace(".csv", ".noc_traffic.csv");
         noc_traffic::NocTraffic::save_to_csv(&hopcount_path);
+
+        let timing_path = file_path.replace(".csv", ".ckpt_time.json");
+        timing::save_timing_json(&timing_path);
     }
 }
