@@ -33,7 +33,7 @@ pub mod arch;
 pub mod parameter;
 
 pub mod checkpoint;
-pub mod chronic;
+pub mod mode;
 pub mod components;
 pub mod debug;
 mod qemu_api;
@@ -42,8 +42,8 @@ mod util;
 pub mod timestamp;
 
 // Plugin
-use crate::chronic::chronic_behavior_init;
-use crate::chronic::on_finish_loading_snapshot;
+use crate::mode::chronic_behavior_init;
+use crate::mode::on_finish_loading_snapshot;
 use crate::debug::noc_traffic::NocTraffic;
 use crate::debug::statistics;
 use crate::debug::statistics::{Statistics, init_qemu_stat_ptr};
@@ -148,7 +148,7 @@ unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
 
         // Handling the timestamp.
         timestamp::initialize();
-        crate::chronic::on_loading_snapshot(&name);
+        crate::mode::on_loading_snapshot(&name);
         timestamp::deserialize(&folder_name);
     }
 
