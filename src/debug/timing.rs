@@ -3,6 +3,34 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::util::get_monotonic_ts;
 
+fn read_proc_peak_memory() -> (u64, u64) {
+    let mut peak_virtual = 0u64;
+    let mut peak_rss = 0u64;
+
+    let content = match std::fs::read_to_string("/proc/self/status") {
+        Ok(s) => s,
+        Err(_) => return (0, 0),
+    };
+
+    for line in content.lines() {
+        if line.starts_with("VmPeak:") {
+            peak_virtual = line
+                .split_ascii_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0);
+        } else if line.starts_with("VmHWM:") {
+            peak_rss = line
+                .split_ascii_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0);
+        }
+    }
+
+    (peak_virtual, peak_rss)
+}
+
 static SIMULATION_START_TS: AtomicU64 = AtomicU64::new(0);
 
 pub fn init_simulation_start() {
@@ -23,6 +51,8 @@ struct TimingReport {
     simulation_ns: u64,
     total_wall_ns: u64,
     uffd_pages_loaded: u64,
+    peak_virtual_kb: u64,
+    peak_rss_kb: u64,
 }
 
 fn build_report() -> Option<TimingReport> {
@@ -51,6 +81,8 @@ fn build_report() -> Option<TimingReport> {
         .saturating_sub(total_save_ns)
         .saturating_sub(total_load_ns);
 
+    let (peak_virtual_kb, peak_rss_kb) = read_proc_peak_memory();
+
     Some(TimingReport {
         load_checkpoint: TimelineEntry {
             total_ns: total_load_ns,
@@ -65,6 +97,8 @@ fn build_report() -> Option<TimingReport> {
         simulation_ns,
         total_wall_ns,
         uffd_pages_loaded: uffd_pages,
+        peak_virtual_kb,
+        peak_rss_kb,
     })
 }
 
@@ -112,6 +146,8 @@ pub fn print_time_breakdown(json_filename: &str) {
     println!("  -------------------------------------------");
     println!("  Total wall time      | {:>12} ns", report.total_wall_ns);
     println!("  UFFD pages loaded    | {:>12}", report.uffd_pages_loaded);
+    println!("  Peak virtual memory  | {:>12} kB", report.peak_virtual_kb);
+    println!("  Peak RSS memory      | {:>12} kB", report.peak_rss_kb);
     println!("===========================================");
 
     write_json(&report, json_filename);
