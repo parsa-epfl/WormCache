@@ -202,11 +202,15 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
                     .unwrap_or(&"1.0".to_string())
                     .clone();
                 let warm_ratio: f64 = warm_ratio.parse().unwrap();
+                let raw_ckpt_fmt = options
+                    .get("raw_ckpt_fmt")
+                    .map(|x| x.parse::<bool>().unwrap())
+                    .unwrap_or(false);
                 println!(
-                    "Pure fill mode is enabled. The cache will be warmed up with the prefix: {}, warm ratio: {}",
-                    prefix, warm_ratio
+                    "Pure fill mode is enabled. The cache will be warmed up with the prefix: {}, warm ratio: {}, raw_ckpt_fmt: {}",
+                    prefix, warm_ratio, raw_ckpt_fmt
                 );
-                pure_fill::init(&prefix, warm_ratio);
+                pure_fill::init(&prefix, warm_ratio, raw_ckpt_fmt);
             }
         }
 

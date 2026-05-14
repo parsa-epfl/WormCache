@@ -53,6 +53,7 @@ static mut PERIODIC_SNAPSHOT_THRESHOLD: u64 = 0xffff_ffff_ffff_ffff;
 static mut PERIODIC_SNAPSHOT_INTERVAL: u64 = 0xffff_ffff_ffff_ffff;
 static mut PERIODIC_SNAPSHOT_CURRENT_CYCLES: u64 = 0;
 static mut PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT: bool = false;
+static mut PERIODIC_SNAPSHOT_RAW_CKPT_FMT: bool = false;
 
 static SNAPSHOT_PREFIX: OnceLock<String> = OnceLock::new();
 static QEMU_SNAPSHOT_FORMAT: OnceLock<SpinMutex<String>> = OnceLock::new();
@@ -90,6 +91,11 @@ unsafe extern "C" fn event_loop_callback() {
         } else if snapshot_format == "incremental_first_base" {
             update_snapshot_type("incremental");
             qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_BASE
+        } else if snapshot_format == "raw_delta" {
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_DELTA_NO_BXDB
+        } else if snapshot_format == "raw_first_base" {
+            update_snapshot_type("raw_delta");
+            qemu_api::qemu_plugin_snapshot_format_t_QEMU_PLUGIN_SNAPSHOT_FORMAT_EXTERNAL_INCREMENTAL_BASE_NO_BXDB
         } else {
             panic!("Unsupported snapshot format: {}", snapshot_format);
         };
@@ -233,6 +239,7 @@ pub unsafe fn init(
     prefix: String,
     init_index: u64,
     no_qemu_snapshot: bool,
+    raw_ckpt_fmt: bool,
 ) {
     unsafe {
         PERIODIC_SNAPSHOT_THRESHOLD = init_threshold;
@@ -241,10 +248,16 @@ pub unsafe fn init(
         SNAPSHOT_PREFIX.set(prefix).unwrap();
         PERIODIC_SNAPSHOT_INIT_INDEX = init_index;
         PERIODIC_SNAPSHOT_NO_QEMU_SNAPSHOT = no_qemu_snapshot;
+        PERIODIC_SNAPSHOT_RAW_CKPT_FMT = raw_ckpt_fmt;
 
         // make the default snapshot format to be incremental_first_base.
+        let initial_format = if raw_ckpt_fmt {
+            "raw_first_base"
+        } else {
+            "incremental_first_base"
+        };
         QEMU_SNAPSHOT_FORMAT
-            .set(SpinMutex::new("incremental_first_base".to_string()))
+            .set(SpinMutex::new(initial_format.to_string()))
             .expect("Failed to set the snapshot format.");
 
         assert!(qemu_api::qemu_plugin_register_periodic_check_cb(Some(
@@ -290,26 +303,67 @@ pub fn on_load_snapshot(snapshot_name: &str) {
     // If the snapshot is an incremental base, which means {name}.basemem.zstd and {name}.state.zstd exist, we change the snapshot type to incremental.
     use std::fs;
 
-    // check if the snapshot file exists
-    let base_file_is_ok = fs::metadata(format!("{}.bxdb", snapshot_name)).is_ok();
-    let state_file_is_ok = fs::metadata(format!("{}.state.zstd", snapshot_name)).is_ok();
+    // check if the bxdb snapshot file exists
+    let bxdb_base_file_is_ok = fs::metadata(format!("{}.bxdb", snapshot_name)).is_ok();
+    let bxdb_state_file_is_ok = fs::metadata(format!("{}.state.zstd", snapshot_name)).is_ok();
 
-    if base_file_is_ok && state_file_is_ok {
+    if bxdb_base_file_is_ok && bxdb_state_file_is_ok {
         update_snapshot_type("incremental");
         println!(
-            "Detected incremental base snapshot: {}. Following snaphots are generaed with delta",
+            "Detected bxdb incremental base snapshot: {}. Following snaphots are generaed with delta",
             snapshot_name
         );
 
         return;
     }
 
-    // check whether this snapshot is already a delta snapshot
+    // check whether the bxdb snapshot is already a delta snapshot
     let delta_file = format!("{}.bxdb-meta", snapshot_name);
     if fs::metadata(&delta_file).is_ok() {
         update_snapshot_type("incremental");
         println!(
-            "Detected incremental delta snapshot: {}. Following snaphots are generaed with delta",
+            "Detected bxdb incremental delta snapshot: {}. Following snaphots are generaed with delta",
+            snapshot_name
+        );
+
+        // the index of the next snapshot can be inferred from the snapshot name.
+        let next_index = snapshot_name
+            .rsplit('_')
+            .next()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap()
+            + 1;
+
+        // set the init index
+        unsafe {
+            PERIODIC_SNAPSHOT_INIT_INDEX = next_index;
+        }
+
+        println!("Next snapshot index is set to {}", next_index);
+        return;
+    }
+
+    // check if the raw snapshot file exists
+    let raw_base_file_is_ok = fs::metadata(format!("{}.rawmem", snapshot_name)).is_ok();
+    let raw_state_file_is_ok = fs::metadata(format!("{}.state.zstd", snapshot_name)).is_ok();
+
+    if raw_base_file_is_ok && raw_state_file_is_ok {
+        update_snapshot_type("raw_delta");
+        println!(
+            "Detected raw incremental base snapshot: {}. Following snaphots are generaed with raw delta",
+            snapshot_name
+        );
+
+        return;
+    }
+
+    // check whether the raw snapshot is already a delta snapshot
+    let raw_delta_file = format!("{}.raw-meta", snapshot_name);
+    if fs::metadata(&raw_delta_file).is_ok() {
+        update_snapshot_type("raw_delta");
+        println!(
+            "Detected raw incremental delta snapshot: {}. Following snaphots are generaed with raw delta",
             snapshot_name
         );
 

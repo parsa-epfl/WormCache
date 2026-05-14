@@ -48,6 +48,11 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
             .map(|x| x.parse::<bool>().unwrap())
             .unwrap_or(false);
 
+        let raw_ckpt_fmt = options
+            .get("raw_ckpt_fmt")
+            .map(|x| x.parse::<bool>().unwrap())
+            .unwrap_or(false);
+
         unsafe {
             warm::init(
                 init_threshold,
@@ -56,6 +61,7 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
                 prefix,
                 init_index,
                 no_qemu_snapshot,
+                raw_ckpt_fmt,
             );
         }
     } else if let Some(threshold_str) = options.get("quit_threshold_ns") {
