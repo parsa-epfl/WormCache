@@ -67,7 +67,7 @@ impl AddressSpaceID {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TLBEntry {
     pub valid: bool,
     pub ts: u64,
@@ -381,7 +381,7 @@ mod tests {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FullyAssociativeTLBEntry {
     pub ts: u64,
     pub ppn: u64,

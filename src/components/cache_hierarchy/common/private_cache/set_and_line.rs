@@ -33,7 +33,7 @@ use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 #[derive(
-    Serialize, Deserialize, Debug, Clone, PartialEq, Archive, RkyvDeserialize, RkyvSerialize,
+    Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize,
 )]
 pub struct PrivateCacheLine {
     pub block_id_with_v: u64, // the last bit is the valid bit.
@@ -78,7 +78,7 @@ impl PrivateCacheLine {
 }
 
 // Migrate some functions to this struct, with lock permission.
-#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 #[repr(align(64))]
 pub struct PrivateCacheSet {
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.

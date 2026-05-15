@@ -40,13 +40,16 @@ use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
+use rayon::prelude::*;
+
 use zstd::{Decoder, Encoder};
+
 
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo
 
 #[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Archive, RkyvDeserialize, RkyvSerialize,
+    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize,
 )]
 pub enum BranchType {
     NonBranch = 0,
@@ -248,6 +251,33 @@ impl Plugin for BranchPredictorPlugin {
             unsafe {
                 *FETCH_UNIT = fetch::FetchUnit::from_checkpoint_helper(helper);
             }
+        }
+    }
+
+    fn serialize_par(name: &str) {
+        use crate::CHECKPOINT_POOL;
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        CHECKPOINT_POOL.get().unwrap().install(|| {
+            (0..CHECKPOINT_POOL_SIZE).into_par_iter().for_each(|worker_id| {
+                unsafe { (*FETCH_UNIT).serialize_worker(worker_id, name) };
+            });
+        });
+
+        if RECORDING_BBV {
+            unsafe {
+                (*BBV_RECORDER).save_and_clear(name);
+            }
+        }
+
+        println!("Parallel BP checkpoint serialization complete.");
+    }
+
+    fn deserialize_par(name: &str) {
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        for worker_id in 0..CHECKPOINT_POOL_SIZE {
+            unsafe { (*FETCH_UNIT).deserialize_worker(worker_id, name) };
         }
     }
 }

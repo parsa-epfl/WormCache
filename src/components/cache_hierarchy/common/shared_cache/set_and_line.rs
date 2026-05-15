@@ -43,7 +43,7 @@ use super::{
 };
 
 #[derive(
-    Debug, Clone, PartialEq, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize,
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize,
 )]
 pub struct SharedCacheBlock {
     pub block_id_with_v: u64, // the last bit is the valid bit.

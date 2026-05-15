@@ -2,7 +2,6 @@ use super::FlexusParameter;
 pub use crate::checkpoint::helpers::PHTPerCoreHelper;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use zstd::stream::read::Decoder;
 
 #[derive(Serialize, Deserialize)]
 struct FlexusPHTEntry {
@@ -24,53 +23,6 @@ struct PHTProxy {
     sets: Vec<FlexusPHTSet>,
 }
 
-/// Detect whether to use rkyv or JSON format based on file existence.
-fn detect_pht_format(checkpoint_folder: &str) -> (bool, String) {
-    // First check for rkyv files
-    let rkyv_files: Vec<String> = std::fs::read_dir(checkpoint_folder)
-        .unwrap()
-        .filter_map(|entry| {
-            let entry = entry.unwrap();
-            let file_name = entry.file_name().into_string().unwrap();
-            if file_name.contains("pht") && file_name.ends_with(".rkyv.zstd") {
-                Some(file_name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if !rkyv_files.is_empty() {
-        assert_eq!(
-            rkyv_files.len(),
-            1,
-            "Expected exactly one pht.rkyv.zstd file"
-        );
-        return (true, rkyv_files.into_iter().next().unwrap());
-    }
-
-    // Fall back to JSON files
-    let json_files: Vec<String> = std::fs::read_dir(checkpoint_folder)
-        .unwrap()
-        .filter_map(|entry| {
-            let entry = entry.unwrap();
-            let file_name = entry.file_name().into_string().unwrap();
-            if file_name.contains("pht") && file_name.ends_with(".json.zstd") {
-                Some(file_name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    assert_eq!(
-        json_files.len(),
-        1,
-        "Expected exactly one pht.json.zstd file"
-    );
-    (false, json_files.into_iter().next().unwrap())
-}
-
 fn serialize_a_pht(pht_proxy: PHTProxy, flexus_configuration: &FlexusParameter) -> PHTProxy {
     assert!(pht_proxy.sets.len() % flexus_configuration.pht_sets == 0);
 
@@ -86,7 +38,7 @@ fn serialize_a_pht(pht_proxy: PHTProxy, flexus_configuration: &FlexusParameter) 
 
     for (old_set_idx, mut old_set) in pht_proxy.sets.into_iter().enumerate() {
         let new_set_idx = old_set_idx % flexus_configuration.pht_sets;
-        old_set.entries.retain(|entry| entry.valid); // Filter out invalid entries.
+        old_set.entries.retain(|entry| entry.valid);
         serialized_pht[new_set_idx].append(&mut old_set.entries);
     }
 
@@ -126,32 +78,40 @@ fn serialize_a_pht(pht_proxy: PHTProxy, flexus_configuration: &FlexusParameter) 
 }
 
 pub fn process_sms(checkpoint_folder: &String, flexus: &FlexusParameter, output_folder: &String) {
-    let (is_rkyv, pht_checkpoint) = detect_pht_format(checkpoint_folder);
+    let (is_rkyv, pht_checkpoints) =
+        crate::checkpoint::detect_checkpoint_files(checkpoint_folder, "pht");
+    assert!(!pht_checkpoints.is_empty(), "No PHT checkpoint files found");
 
-    println!(
-        "PHT checkpoint detected ({}). Filename: {}",
-        if is_rkyv { "rkyv" } else { "JSON" },
-        pht_checkpoint
-    );
-
-    let file = std::fs::File::open(format!("{}/{}", checkpoint_folder, pht_checkpoint)).unwrap();
-
-    let pht: Vec<PHTPerCoreHelper> = if is_rkyv {
-        let mut decoder = Decoder::new(file).unwrap();
-        let mut bytes = Vec::new();
-        std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
-
-        rkyv::from_bytes::<Vec<PHTPerCoreHelper>, rkyv::rancor::Error>(&bytes).unwrap()
+    if pht_checkpoints.len() > 1 {
+        println!(
+            "PHT checkpoint detected (parallel, {} workers, {}).",
+            pht_checkpoints.len(),
+            if is_rkyv { "rkyv" } else { "JSON" }
+        );
     } else {
-        let decoder = Decoder::new(file).unwrap();
-        serde_json::from_reader(decoder).unwrap()
-    };
+        println!(
+            "PHT checkpoint detected ({}). Filename: {}",
+            if is_rkyv { "rkyv" } else { "JSON" },
+            pht_checkpoints[0]
+        );
+    }
+
+    let mut pht: Vec<PHTPerCoreHelper> = Vec::new();
+    for file_name in &pht_checkpoints {
+        let path = format!("{}/{}", checkpoint_folder, file_name);
+        let bytes = crate::util::read_compressed(&path);
+        let worker: Vec<PHTPerCoreHelper> = if is_rkyv {
+            rkyv::from_bytes::<Vec<PHTPerCoreHelper>, rkyv::rancor::Error>(&bytes).unwrap()
+        } else {
+            serde_json::from_slice(&bytes).unwrap()
+        };
+        pht.extend(worker);
+    }
 
     for (core_id, unit) in pht.into_iter().enumerate() {
         let file_name = format!("{}/{:03}-pht.json", output_folder, core_id);
         let file = std::fs::File::create(&file_name).unwrap();
 
-        // Convert PHTPerCoreHelper to PHTProxy for serialization
         let pht_proxy = PHTProxy {
             sets: unit
                 .sets

@@ -282,6 +282,7 @@ impl FlexusMMU {
     }
 }
 
+#[allow(dead_code)]
 fn load_tlb_json(value: serde_json::Value, is_instruction: bool) -> TLBHelper {
     if let Ok(result) = serde_json::from_value(value.clone()) {
         result
@@ -348,53 +349,6 @@ fn fully_associative_tlb_helper_to_serialized(
     }
 }
 
-/// Detect whether to use rkyv or JSON format based on file existence.
-fn detect_mmu_format(checkpoint_folder: &str) -> (bool, String) {
-    // First check for rkyv files
-    let rkyv_files: Vec<String> = std::fs::read_dir(checkpoint_folder)
-        .unwrap()
-        .filter_map(|entry| {
-            let entry = entry.unwrap();
-            let file_name = entry.file_name().into_string().unwrap();
-            if file_name.ends_with(".rkyv.zstd") && file_name.contains("mmu") {
-                Some(file_name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if !rkyv_files.is_empty() {
-        assert_eq!(
-            rkyv_files.len(),
-            1,
-            "Expected exactly one mmu.rkyv.zstd file"
-        );
-        return (true, rkyv_files.into_iter().next().unwrap());
-    }
-
-    // Fall back to JSON files
-    let json_files: Vec<String> = std::fs::read_dir(checkpoint_folder)
-        .unwrap()
-        .filter_map(|entry| {
-            let entry = entry.unwrap();
-            let file_name = entry.file_name().into_string().unwrap();
-            if file_name.ends_with(".json.zstd") && file_name.contains("mmu") {
-                Some(file_name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    assert_eq!(
-        json_files.len(),
-        1,
-        "Expected exactly one mmu.json.zstd file"
-    );
-    (false, json_files.into_iter().next().unwrap())
-}
-
 pub fn process_mmus(
     checkpoint_folder: &String,
     flexus_configuration: &FlexusParameter,
@@ -402,29 +356,31 @@ pub fn process_mmus(
 ) {
     use crate::checkpoint::helpers::{MMUHelper, MMUsHelper};
 
-    let (is_rkyv, mmu_checkpoint) = detect_mmu_format(checkpoint_folder);
+    let (is_rkyv, mmu_checkpoints) =
+        crate::checkpoint::detect_checkpoint_files(checkpoint_folder, "mmu");
+    assert!(!mmu_checkpoints.is_empty(), "No MMU checkpoint files found");
 
-    println!(
-        "MMU checkpoint is detected ({}). Filename: {}",
-        if is_rkyv { "rkyv" } else { "JSON" },
-        mmu_checkpoint
-    );
+    let mut i_tlbs = Vec::new();
+    let mut d_tlbs = Vec::new();
+    let mut s_tlbs = Vec::new();
 
-    let file = std::fs::File::open(format!("{}/{}", checkpoint_folder, mmu_checkpoint)).unwrap();
-    let mut decoder = zstd::Decoder::new(file).unwrap();
-
-    let (i_tlbs, d_tlbs, s_tlbs): (Vec<TLBHelper>, Vec<TLBHelper>, Vec<TLBHelper>) = if is_rkyv {
-        // Load rkyv format
-        let mut bytes = Vec::new();
-        std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
-
-        let mmus_helper: MMUsHelper =
-            rkyv::from_bytes::<MMUsHelper, rkyv::rancor::Error>(&bytes).unwrap();
-
-        let mut i_tlbs = Vec::new();
-        let mut d_tlbs = Vec::new();
-        let mut s_tlbs = Vec::new();
-
+    for file_name in &mmu_checkpoints {
+        let path = format!("{}/{}", checkpoint_folder, file_name);
+        let bytes = crate::util::read_compressed(&path);
+        let mmus_helper: MMUsHelper = if is_rkyv {
+            rkyv::from_bytes::<MMUsHelper, rkyv::rancor::Error>(&bytes).unwrap()
+        } else {
+            let mmus: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            if let serde_json::Value::Array(vec) = mmus.clone() {
+                let mmus: Vec<MMUHelper> = vec
+                    .iter()
+                    .map(|v| serde_json::from_value(v.clone()).unwrap())
+                    .collect();
+                MMUsHelper { mmus }
+            } else {
+                serde_json::from_value(mmus).unwrap()
+            }
+        };
         for mmu_helper in mmus_helper.mmus {
             match mmu_helper {
                 MMUHelper::OrdinaryMMU(helper) => {
@@ -434,57 +390,36 @@ pub fn process_mmus(
                 }
                 MMUHelper::FullyAssociativeL1MMU(helper) => {
                     i_tlbs.push(fully_associative_tlb_helper_to_serialized(
-                        helper.itlb,
-                        true,
+                        helper.itlb, true,
                     ));
                     d_tlbs.push(fully_associative_tlb_helper_to_serialized(
-                        helper.dtlb,
-                        false,
+                        helper.dtlb, false,
                     ));
                     s_tlbs.push(helper.stlb);
                 }
                 MMUHelper::NoMMU(_) => {
-                    // NoMMU has no TLB entries
                     i_tlbs.push(TLBHelper { entries: vec![] });
                     d_tlbs.push(TLBHelper { entries: vec![] });
                     s_tlbs.push(TLBHelper { entries: vec![] });
                 }
             }
         }
+    }
 
-        (i_tlbs, d_tlbs, s_tlbs)
+    if mmu_checkpoints.len() > 1 {
+        println!(
+            "MMU checkpoint is detected (parallel, {} workers, {}).",
+            mmu_checkpoints.len(),
+            if is_rkyv { "rkyv" } else { "JSON" }
+        );
     } else {
-        // Load JSON format (legacy)
-        let mmus: serde_json::Value = serde_json::from_reader(decoder).unwrap();
-
-        let i_tlbs: Vec<TLBHelper> = match mmus.clone() {
-            serde_json::Value::Array(vec) => vec
-                .iter()
-                .map(|mmu| load_tlb_json(mmu["itlb"].clone(), true))
-                .collect::<Vec<_>>(),
-            _ => panic!("The MMU checkpoint is not an array."),
-        };
-
-        let d_tlbs: Vec<TLBHelper> = match mmus.clone() {
-            serde_json::Value::Array(vec) => vec
-                .iter()
-                .map(|mmu| load_tlb_json(mmu["dtlb"].clone(), false))
-                .collect::<Vec<_>>(),
-            _ => panic!("The MMU checkpoint is not an array."),
-        };
-
-        let s_tlbs: Vec<TLBHelper> = match mmus {
-            serde_json::Value::Array(vec) => vec
-                .iter()
-                .map(|mmu| serde_json::from_value(mmu["stlb"].clone()).unwrap())
-                .collect::<Vec<_>>(),
-            _ => panic!("The MMU checkpoint is not an array."),
-        };
-
-        (i_tlbs, d_tlbs, s_tlbs)
-    };
+        println!(
+            "MMU checkpoint is detected ({}). Filename: {}",
+            if is_rkyv { "rkyv" } else { "JSON" },
+            mmu_checkpoints[0]
+        );
+    }
 
     let mmu = FlexusMMU::from_harvard_tlb(i_tlbs, d_tlbs, s_tlbs, flexus_configuration.clone());
-
     mmu.export(output_folder);
 }

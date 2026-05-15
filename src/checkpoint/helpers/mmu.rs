@@ -23,7 +23,7 @@ pub use crate::components::cache_hierarchy::mmu::tlb::{
 
 /// Helper for serializing a TLB set.
 /// Uses a Vec instead of a fixed-size array to support different associativities.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TLBSetHelper {
     pub entries: Vec<TLBEntry>,
     #[serde(default)]
@@ -32,14 +32,14 @@ pub struct TLBSetHelper {
 
 /// Helper for serializing a full TLB.
 /// Uses Vecs instead of fixed-size arrays to support different configurations.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TLBHelper {
     pub entries: Vec<TLBSetHelper>,
 }
 
 /// Helper for serializing a FullyAssociativeTLB.
 /// Uses a Vec of tuples instead of FxHashMap for rkyv compatibility.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FullyAssociativeTLBHelper {
     /// Entries stored as (hash, entry) pairs.
     pub elements: Vec<(u64, FullyAssociativeTLBEntry)>,
@@ -73,7 +73,7 @@ impl FullyAssociativeTLBHelper {
 
 /// Helper for serializing huge page TLB entries (2MB/1GB pages).
 /// Uses Vec of tuples instead of HashMap for rkyv compatibility.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct HugeTLBHelper {
     /// Entries stored as (vpn_shifted, (asid, ppn_shifted)) pairs.
     pub entries: Vec<(u64, (AddressSpaceID, u64))>,
@@ -96,7 +96,7 @@ impl HugeTLBHelper {
 
 /// Helper for serializing the OrdinaryMMU.
 /// This struct captures all TLB state without the generic const parameters.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct OrdinaryMMUHelper {
     pub itlb: TLBHelper,
     pub dtlb: TLBHelper,
@@ -106,7 +106,7 @@ pub struct OrdinaryMMUHelper {
 }
 
 /// Helper for serializing the FullyAssociativeL1MMU.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FullyAssociativeL1MMUHelper {
     /// L0 ITLB: (vpn, asid, ppn)
     pub l0_itlb: (u64, AddressSpaceID, u64),
@@ -118,12 +118,12 @@ pub struct FullyAssociativeL1MMUHelper {
 }
 
 /// Helper for serializing NoMMU (empty state).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct NoMMUHelper {}
 
 /// Unified MMU helper that can represent any MMU type.
 /// This enum allows serializing different MMU implementations uniformly.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub enum MMUHelper {
     NoMMU(NoMMUHelper),
     OrdinaryMMU(OrdinaryMMUHelper),
@@ -131,7 +131,7 @@ pub enum MMUHelper {
 }
 
 /// Helper for serializing multiple MMUs (one per core).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct MMUsHelper {
     pub mmus: Vec<MMUHelper>,
 }

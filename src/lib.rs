@@ -74,6 +74,11 @@ use util::get_monotonic_ts;
 
 use std::ffi;
 use std::io::Write;
+use std::sync::OnceLock;
+
+use rayon::ThreadPool;
+
+static CHECKPOINT_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
 #[unsafe(link_section = ".rodata")]
 #[unsafe(no_mangle)]
@@ -121,21 +126,31 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 
         let name = converted_name.unwrap();
 
-        let name = format!("{}.uarch", name);
-        // create a folder for the name.
-        std::fs::create_dir_all(&name).unwrap();
+        let seq_name = format!("{}.uarch", name);
+        let par_name = format!("{}.uarch_par", name);
+        std::fs::create_dir_all(&seq_name).unwrap();
+        std::fs::create_dir_all(&par_name).unwrap();
         let current_time = std::time::SystemTime::now();
-        PluginList::serialize(&name);
-        Statistics::save_to_csv(&format!("{}/statistics.csv", name), get_monotonic_ts());
-        NocTraffic::save_to_csv(&format!("{}/noc_traffic.csv", name));
-        timestamp::serialize(&name);
+        PluginList::serialize(&seq_name);
+        Statistics::save_to_csv(&format!("{}/statistics.csv", seq_name), get_monotonic_ts());
+        NocTraffic::save_to_csv(&format!("{}/noc_traffic.csv", seq_name));
+        timestamp::serialize(&seq_name);
 
         let elapsed_time = std::time::SystemTime::now()
             .duration_since(current_time)
             .unwrap()
             .as_millis();
 
-        println!("Serialized the plugin data in {} ms.", elapsed_time);
+        println!("Serialized the plugin data (sequential) in {} ms.", elapsed_time);
+
+        let par_start = std::time::SystemTime::now();
+        PluginList::serialize_par(&par_name);
+        let par_elapsed = std::time::SystemTime::now()
+            .duration_since(par_start)
+            .unwrap()
+            .as_millis();
+
+        println!("Serialized the plugin data (parallel) in {} ms.", par_elapsed);
     }
 }
 
@@ -207,6 +222,15 @@ unsafe extern "C" fn qemu_plugin_install(
         qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
         qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
         PluginList::init(id, &options);
+
+        CHECKPOINT_POOL
+            .set(
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(parameter::CHECKPOINT_POOL_SIZE)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
 
         // Initialize QEMU statistics pointers for all cores
         for core_id in 0..parameter::CORE_COUNT {

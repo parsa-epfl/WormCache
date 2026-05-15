@@ -11,13 +11,13 @@ use serde::{Deserialize, Serialize};
 use crate::components::cache_hierarchy::common::PrivateCacheSet;
 
 /// Helper for serializing a unified private cache (per-core).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct UnifiedPrivateCacheHelper {
     pub cache: Vec<PrivateCacheSet>,
 }
 
 /// Helper for serializing a Harvard private cache (per-core).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct HarvardPrivateCacheHelper {
     pub i_cache: Vec<PrivateCacheSet>,
     pub d_cache: Vec<PrivateCacheSet>,

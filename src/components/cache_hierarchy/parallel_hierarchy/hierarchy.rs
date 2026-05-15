@@ -94,6 +94,49 @@ pub struct ParallelMemoryHierarchy<
     shared_cache: SCache,
 }
 
+unsafe impl<
+        MMU: AbstractMMU,
+        PCache: PrivateCache + Sync,
+        SCache: SharedCache + Sync,
+        Dir: Directory + Sync,
+        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+        const FILL_SCACHE_ON_PCACHE_CLEAN_EVICTION: bool,
+        const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
+        const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
+        const CORE_COUNT: usize,
+        const N_ACC: usize,
+        const N_FILTER: usize,
+        const PHT_SETS: usize,
+        const PHT_WAYS: usize,
+        const N_BLK: usize,
+        const ROT: bool,
+        const SEP_RDWR: bool,
+        const SAT_CNT: bool,
+        const PERFECT_PHT: bool,
+    > Sync
+    for ParallelMemoryHierarchy<
+        MMU,
+        PCache,
+        SCache,
+        Dir,
+        FILL_SCACHE_ON_FILLING_PCACHE,
+        FILL_SCACHE_ON_PCACHE_CLEAN_EVICTION,
+        FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION,
+        FILL_SCACHE_ON_PCACHE_REPLICA_CREATION,
+        CORE_COUNT,
+        N_ACC,
+        N_FILTER,
+        PHT_SETS,
+        PHT_WAYS,
+        N_BLK,
+        ROT,
+        SEP_RDWR,
+        SAT_CNT,
+        PERFECT_PHT,
+    >
+{
+}
+
 impl<
     MMU: AbstractMMU,
     PCache: PrivateCache,
@@ -343,6 +386,83 @@ impl<
             }
         } else {
             println!("Cannot load the MMU state. No checkpoint file found.");
+        }
+    }
+
+    fn serialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
+        use crate::checkpoint::helpers::MMUsHelper;
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
+
+        let mmus_helper = MMUsHelper {
+            mmus: self.mmus[begin..end]
+                .iter()
+                .map(|x| unsafe { (*x.get()).serialize() })
+                .collect(),
+        };
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmus_helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/mmus-{}-worker-{}.rkyv.zstd", name, numa_node_id, worker_id),
+                &bytes,
+            );
+        } else {
+            let bytes = serde_json::to_vec(&mmus_helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/mmus-{}-worker-{}.json.zstd", name, numa_node_id, worker_id),
+                &bytes,
+            );
+        }
+    }
+
+    #[allow(dead_code)]
+    fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let _end = begin + cores_per_worker;
+
+        let rkyv_path = format!(
+            "{}/mmus-{}-worker-{}.rkyv.zstd",
+            name, numa_node_id, worker_id
+        );
+        let json_path = format!(
+            "{}/mmus-{}-worker-{}.json.zstd",
+            name, numa_node_id, worker_id
+        );
+
+        if let Ok(file) = std::fs::File::open(&rkyv_path) {
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = rkyv::from_bytes::<
+                crate::checkpoint::helpers::MMUsHelper,
+                rkyv::rancor::Error,
+            >(&bytes)
+            .unwrap();
+
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[begin + i].get()).deserialize(mmu_helper) };
+            }
+        } else if let Ok(file) = std::fs::File::open(&json_path) {
+            let decoder = Decoder::new(file).unwrap();
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper =
+                serde_json::from_reader(decoder).unwrap();
+
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[begin + i].get()).deserialize(mmu_helper) };
+            }
+        } else {
+            println!(
+                "Cannot load the MMU worker {} state. No checkpoint file found.",
+                worker_id
+            );
         }
     }
 }

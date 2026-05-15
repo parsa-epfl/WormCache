@@ -5,7 +5,6 @@ use crate::{
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use zstd::stream::read::Decoder;
 
 use super::FlexusParameter;
 
@@ -145,92 +144,74 @@ fn serialize_a_tage(tage: TAGEHelper) -> FlexusTAGEPredictorState {
     }
 }
 
-/// Detect whether to use rkyv or JSON format based on file existence.
-fn detect_fetch_format(checkpoint_folder: &str) -> (bool, String) {
-    // First check for rkyv files
-    let rkyv_files: Vec<String> = std::fs::read_dir(checkpoint_folder)
-        .unwrap()
-        .filter_map(|entry| {
-            let entry = entry.unwrap();
-            let file_name = entry.file_name().into_string().unwrap();
-            if file_name.ends_with("fetch.rkyv.zstd") {
-                Some(file_name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if !rkyv_files.is_empty() {
-        assert_eq!(
-            rkyv_files.len(),
-            1,
-            "Expected exactly one fetch.rkyv.zstd file"
-        );
-        return (true, rkyv_files.into_iter().next().unwrap());
-    }
-
-    // Fall back to JSON files
-    let json_files: Vec<String> = std::fs::read_dir(checkpoint_folder)
-        .unwrap()
-        .filter_map(|entry| {
-            let entry = entry.unwrap();
-            let file_name = entry.file_name().into_string().unwrap();
-            if file_name.ends_with("fetch.json.zstd") {
-                Some(file_name)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    assert_eq!(
-        json_files.len(),
-        1,
-        "Expected exactly one fetch.json.zstd file"
-    );
-    (false, json_files.into_iter().next().unwrap())
-}
-
 pub fn process_frontend(
     checkpoint_folder: &String,
     flexus_configuration: &FlexusParameter,
     output_folder: &String,
 ) {
-    let (is_rkyv, frontend_checkpoint) = detect_fetch_format(checkpoint_folder);
+    let (is_rkyv, frontend_checkpoints) =
+        crate::checkpoint::detect_checkpoint_files(checkpoint_folder, "fetch");
+    assert!(!frontend_checkpoints.is_empty(), "No fetch checkpoint file found");
 
-    println!(
-        "Frontend checkpoint is detected ({}). Filename: {}",
-        if is_rkyv { "rkyv" } else { "JSON" },
-        frontend_checkpoint
-    );
-
-    let file =
-        std::fs::File::open(format!("{}/{}", checkpoint_folder, frontend_checkpoint)).unwrap();
-
-    let helper: FetchUnitHelper = if is_rkyv {
-        let mut decoder = Decoder::new(file).unwrap();
-        let mut bytes = Vec::new();
-        std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
-
-        rkyv::from_bytes::<FetchUnitHelper, rkyv::rancor::Error>(&bytes).unwrap()
+    if frontend_checkpoints.len() > 1 {
+        println!(
+            "Frontend checkpoint is detected (parallel, {} workers, {}).",
+            frontend_checkpoints.len(),
+            if is_rkyv { "rkyv" } else { "JSON" }
+        );
+        let mut private_units = Vec::new();
+        for file_name in &frontend_checkpoints {
+            let path = format!("{}/{}", checkpoint_folder, file_name);
+            let bytes = crate::util::read_compressed(&path);
+            let worker: FetchUnitHelper = if is_rkyv {
+                rkyv::from_bytes::<FetchUnitHelper, rkyv::rancor::Error>(&bytes).unwrap()
+            } else {
+                serde_json::from_slice(&bytes).unwrap()
+            };
+            private_units.extend(worker.private_units);
+        }
+        let combined = FetchUnitHelper { private_units };
+        // Export each core's fetch unit
+        for (core_id, unit) in combined.private_units.into_iter().enumerate() {
+            let file_name = format!("{}/{:03}-bpred.json", output_folder, core_id);
+            let file = std::fs::File::create(&file_name).unwrap();
+            serde_json::to_writer(
+                file,
+                &json!({
+                    "btb": serialize_a_btb(unit.btb, flexus_configuration),
+                    "tage": serialize_a_tage(unit.tage),
+                }),
+            )
+            .unwrap();
+            println!("Core {}'s fetch unit is exported to {}", core_id, file_name);
+        }
     } else {
-        let decoder = Decoder::new(file).unwrap();
-        serde_json::from_reader(decoder).unwrap()
-    };
-
-    // Export each core's fetch unit
-    for (core_id, unit) in helper.private_units.into_iter().enumerate() {
-        let file_name = format!("{}/{:03}-bpred.json", output_folder, core_id);
-        let file = std::fs::File::create(&file_name).unwrap();
-        serde_json::to_writer(
-            file,
-            &json!({
-                "btb": serialize_a_btb(unit.btb, flexus_configuration),
-                "tage": serialize_a_tage(unit.tage),
-            }),
-        )
-        .unwrap();
-        println!("Core {}'s fetch unit is exported to {}", core_id, file_name);
+        let frontend_checkpoint = &frontend_checkpoints[0];
+        println!(
+            "Frontend checkpoint is detected ({}). Filename: {}",
+            if is_rkyv { "rkyv" } else { "JSON" },
+            frontend_checkpoint
+        );
+        let path = format!("{}/{}", checkpoint_folder, frontend_checkpoint);
+        let bytes = crate::util::read_compressed(&path);
+        let helper: FetchUnitHelper = if is_rkyv {
+            rkyv::from_bytes::<FetchUnitHelper, rkyv::rancor::Error>(&bytes).unwrap()
+        } else {
+            serde_json::from_slice(&bytes).unwrap()
+        };
+        // Export each core's fetch unit
+        for (core_id, unit) in helper.private_units.into_iter().enumerate() {
+            let file_name = format!("{}/{:03}-bpred.json", output_folder, core_id);
+            let file = std::fs::File::create(&file_name).unwrap();
+            serde_json::to_writer(
+                file,
+                &json!({
+                    "btb": serialize_a_btb(unit.btb, flexus_configuration),
+                    "tage": serialize_a_tage(unit.tage),
+                }),
+            )
+            .unwrap();
+            println!("Core {}'s fetch unit is exported to {}", core_id, file_name);
+        }
     }
 }

@@ -267,6 +267,101 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             *self = LRUSharedCache::from_checkpoint_helper(helper);
         }
     }
+
+    fn serialize_shard(&self, shard_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let total_shards = CHECKPOINT_POOL_SIZE;
+        let sets_per_shard = SET / total_shards;
+        let begin = shard_id * sets_per_shard;
+        let end = if shard_id + 1 == total_shards { SET } else { begin + sets_per_shard };
+
+        let helper = SharedCacheHelper {
+            blocks: self.blocks[begin..end]
+                .iter()
+                .map(|entry| SharedCacheSetHelper::from(&*entry.lock()))
+                .collect(),
+            warmed_sets: self.warmed_sets.load(Ordering::Relaxed),
+        };
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/llc-{}-shard-{}.rkyv.zstd", name, numa_node_id, shard_id),
+                &bytes,
+            );
+        } else {
+            let bytes = serde_json::to_vec(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/llc-{}-shard-{}.json.zstd", name, numa_node_id, shard_id),
+                &bytes,
+            );
+        }
+    }
+
+    fn deserialize_shard(&mut self, shard_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let total_shards = CHECKPOINT_POOL_SIZE;
+        let sets_per_shard = SET / total_shards;
+        let begin = shard_id * sets_per_shard;
+        let end = if shard_id + 1 == total_shards { SET } else { begin + sets_per_shard };
+
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!(
+                "{}/llc-{}-shard-{}.rkyv.zstd",
+                name, numa_node_id, shard_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load LLC shard {} state (rkyv). Error: {:?}",
+                    shard_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: SharedCacheHelper =
+                rkyv::from_bytes::<SharedCacheHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+            for (slot, set_helper) in self.blocks[begin..end].iter_mut().zip(helper.blocks.into_iter()) {
+                *slot = SpinMutex::new(set_helper.into_set::<WAY, SET, EXCLUSIVE, S>());
+            }
+            self.warmed_sets
+                .store(helper.warmed_sets, Ordering::Relaxed);
+        } else {
+            let file = std::fs::File::open(format!(
+                "{}/llc-{}-shard-{}.json.zstd",
+                name, numa_node_id, shard_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load LLC shard {} state. Error: {:?}",
+                    shard_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let decoder = Decoder::new(file).unwrap();
+
+            let helper: SharedCacheHelper = serde_json::from_reader(decoder).unwrap();
+
+            for (slot, set_helper) in self.blocks[begin..end].iter_mut().zip(helper.blocks.into_iter()) {
+                *slot = SpinMutex::new(set_helper.into_set::<WAY, SET, EXCLUSIVE, S>());
+            }
+            self.warmed_sets
+                .store(helper.warmed_sets, Ordering::Relaxed);
+        }
+    }
 }
 
 pub type ParallelLRUSharedCache<S, const SET: usize, const WAY: usize, const EXCLUSIVE: bool> =

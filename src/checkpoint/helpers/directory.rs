@@ -13,7 +13,7 @@ use crate::components::cache_hierarchy::common::DirectoryEntry;
 
 /// Unified helper for serializing a directory set.
 /// Uses Vec of tuples for rkyv compatibility, and HashMap for internal conversion.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct DirectorySetHelper {
     pub entries: Vec<(u64, DirectoryEntry)>,
 }
@@ -32,7 +32,7 @@ impl DirectorySetHelper {
 
 /// Unified helper for serializing the entire directory.
 /// Works with both serde (JSON) and rkyv formats.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct DirectoryHelper {
     pub sets: Vec<DirectorySetHelper>,
 }

@@ -29,6 +29,7 @@ nix = { version="0.29.0", features = ["signal"] }
 csv = "1.3.1"
 rmp-serde = "1.3.0"
 heapless = "0.8"
+rayon = "1.12"
 
 [lib]
 crate-type=["rlib", "cdylib"]

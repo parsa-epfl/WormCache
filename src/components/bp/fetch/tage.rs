@@ -82,7 +82,7 @@ type History = [bool; MAXHIST];
 
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FoldedHistory {
     comp: u32,
     c_length: u32,
@@ -119,7 +119,7 @@ impl FoldedHistory {
 }
 
 // bimodal table entry
-#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TAGEBiModalEntry {
     hyst: i8,
     pred: i8,
@@ -132,7 +132,7 @@ impl TAGEBiModalEntry {
 }
 
 // global table entry
-#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TAGEGlobalTableEntry {
     ctr: i8,
     tag: u16,

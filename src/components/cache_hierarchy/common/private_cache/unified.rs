@@ -301,6 +301,93 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
             }
         }
     }
+
+    fn serialize_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
+
+        let helpers: Vec<_> = self.caches[begin..end]
+            .iter()
+            .map(|cache| cache.to_checkpoint_helper())
+            .collect();
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helpers).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/unified-{}-worker-{}.rkyv.zstd", name, numa_node_id, worker_id),
+                &bytes,
+            );
+        } else {
+            let bytes = serde_json::to_vec(&helpers).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/unified-{}-worker-{}.json.zstd", name, numa_node_id, worker_id),
+                &bytes,
+            );
+        }
+    }
+
+    fn deserialize_worker(&mut self, worker_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
+
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!(
+                "{}/unified-{}-worker-{}.rkyv.zstd",
+                name, numa_node_id, worker_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load unified worker {} state (rkyv). Error: {:?}",
+                    worker_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: Vec<UnifiedPrivateCacheHelper> =
+                rkyv::from_bytes::<Vec<UnifiedPrivateCacheHelper>, rkyv::rancor::Error>(&bytes)
+                    .unwrap();
+
+            for (cache, helper) in self.caches[begin..end].iter_mut().zip(helper.into_iter()) {
+                *cache = UnifiedPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file = std::fs::File::open(format!(
+                "{}/unified-{}-worker-{}.json.zstd",
+                name, numa_node_id, worker_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load unified worker {} state. Error: {:?}",
+                    worker_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let decoder = Decoder::new(file).unwrap();
+
+            let helper: Vec<UnifiedPrivateCacheHelper> = serde_json::from_reader(decoder).unwrap();
+
+            for (cache, helper) in self.caches[begin..end].iter_mut().zip(helper.into_iter()) {
+                *cache = UnifiedPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
+        }
+    }
 }
 
 pub type ParallelUnifiedPrivateCache<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> =

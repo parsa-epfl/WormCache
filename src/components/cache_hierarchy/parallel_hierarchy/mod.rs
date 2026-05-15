@@ -340,4 +340,16 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             // }
         }
     }
+
+    fn serialize_par(name: &str) {
+        unsafe {
+            (*PLUGIN).serialize_par(name, 0);
+        }
+    }
+
+    fn deserialize_par(name: &str) {
+        unsafe {
+            (*PLUGIN).deserialize_par(name, 0);
+        }
+    }
 }

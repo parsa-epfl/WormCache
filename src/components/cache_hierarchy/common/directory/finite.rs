@@ -275,6 +275,108 @@ impl<const SET: usize, const WAY: usize> Directory for FiniteDirectory<SET, WAY>
         }
     }
 
+    fn serialize_shard(&self, shard_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let total_shards = CHECKPOINT_POOL_SIZE;
+        let sets_per_shard = SET / total_shards;
+        let begin = shard_id * sets_per_shard;
+        let end = if shard_id + 1 == total_shards { SET } else { begin + sets_per_shard };
+
+        for i in begin..end {
+            self.entries[i].lock().run_gc();
+        }
+
+        let entries_in_shard: Vec<HashMap<u64, DirectoryEntry>> = self.entries[begin..end]
+            .iter()
+            .map(|set| set.lock().clone().raw())
+            .collect();
+
+        let helper = DirectoryHelper::from_sets(&entries_in_shard);
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/directory-{}-shard-{}.rkyv.zstd", name, numa_node_id, shard_id),
+                &bytes,
+            );
+        } else {
+            let bytes = serde_json::to_vec(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/directory-{}-shard-{}.json.zstd", name, numa_node_id, shard_id),
+                &bytes,
+            );
+        }
+    }
+
+    fn deserialize_shard(&mut self, shard_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let total_shards = CHECKPOINT_POOL_SIZE;
+        let sets_per_shard = SET / total_shards;
+        let begin = shard_id * sets_per_shard;
+        let _end = if shard_id + 1 == total_shards { SET } else { begin + sets_per_shard };
+
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!(
+                "{}/directory-{}-shard-{}.rkyv.zstd",
+                name, numa_node_id, shard_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load directory shard {} state (rkyv). Error: {:?}",
+                    shard_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: DirectoryHelper =
+                rkyv::from_bytes::<DirectoryHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+            let sets = helper.into_sets();
+            for (i, set) in sets.into_iter().enumerate() {
+                self.entries[begin + i] =
+                    SpinMutex::new(<FiniteDirectorySet<SET, WAY> as DirectorySet>::from(
+                        set, begin + i,
+                    ));
+            }
+        } else {
+            let file = std::fs::File::open(format!(
+                "{}/directory-{}-shard-{}.json.zstd",
+                name, numa_node_id, shard_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load directory shard {} state. Error: {:?}",
+                    shard_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let decoder = Decoder::new(file).unwrap();
+
+            let helper: DirectoryHelper = serde_json::from_reader(decoder).unwrap();
+
+            let sets = helper.into_sets();
+            for (i, set) in sets.into_iter().enumerate() {
+                self.entries[begin + i] =
+                    SpinMutex::new(<FiniteDirectorySet<SET, WAY> as DirectorySet>::from(
+                        set, begin + i,
+                    ));
+            }
+        }
+    }
+
     fn information() -> String {
         format!("Finite Directory ({} sets, {} ways)", SET, WAY)
     }

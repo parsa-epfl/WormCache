@@ -281,4 +281,7 @@ pub trait MemoryHierarchy {
 
     fn serialize(&self, name: &str, numa_node_id: usize);
     fn deserialize(&mut self, name: &str, numa_node_id: usize);
+
+    fn serialize_par(&self, _name: &str, _numa_node_id: usize) {}
+    fn deserialize_par(&mut self, _name: &str, _numa_node_id: usize) {}
 }

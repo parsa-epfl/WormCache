@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use super::BranchPredictorResult;
 use crate::checkpoint::helpers::BTBHelper;
 
-#[derive(Deserialize, Serialize, Clone, Debug, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct BTBEntry {
     pub tag: u64,
     pub target: u64,

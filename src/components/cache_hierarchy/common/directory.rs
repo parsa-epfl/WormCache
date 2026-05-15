@@ -49,7 +49,7 @@ const SHARED_LIST_LENGTH: usize = if parameter::USE_UNIFIED_CACHE {
 
 pub type SharerList = BitArr!(for SHARED_LIST_LENGTH, in u64, Lsb0);
 
-#[derive(Debug, Serialize, Deserialize, Clone, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct DirectoryEntry {
     pub lru_ts: u64,
     #[rkyv(with = crate::util::RkyvBitArray)]
@@ -107,6 +107,10 @@ pub trait Directory: Send + Sync {
     fn serialize(&self, name: &str, numa_node_id: usize);
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize);
+
+    fn serialize_shard(&self, _shard_id: usize, _name: &str, _numa_node_id: usize) {}
+    fn deserialize_shard(&mut self, _shard_id: usize, _name: &str, _numa_node_id: usize) {}
+
 
     fn information() -> String;
 }

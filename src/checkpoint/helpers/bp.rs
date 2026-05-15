@@ -13,7 +13,7 @@ use crate::components::bp::fetch::tage::{FoldedHistory, TAGEBiModalEntry, TAGEGl
 
 /// Unified helper for BTB serialization.
 /// Works with both serde (JSON) and rkyv formats.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct BTBHelper {
     pub array: Vec<Vec<BTBEntry>>,
     pub local_ts: u64,
@@ -21,14 +21,14 @@ pub struct BTBHelper {
 
 /// Unified helper for Return Address Stack serialization.
 /// Works with both serde (JSON) and rkyv formats.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct RASHelper {
     pub stack: Vec<u64>,
 }
 
 /// Unified helper for TAGE predictor serialization.
 /// Works with both serde (JSON) and rkyv formats.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TAGEHelper {
     pub tick: i32,
     pub phist: i32,
@@ -42,7 +42,7 @@ pub struct TAGEHelper {
 
 /// Unified helper for per-core fetch unit serialization.
 /// Works with both serde (JSON) and rkyv formats.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct PerCoreFetchUnitHelper {
     pub btb: BTBHelper,
     pub ras: RASHelper,
@@ -51,7 +51,7 @@ pub struct PerCoreFetchUnitHelper {
 
 /// Unified helper for the entire fetch unit serialization.
 /// Works with both serde (JSON) and rkyv formats.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FetchUnitHelper {
     pub private_units: Vec<PerCoreFetchUnitHelper>,
 }

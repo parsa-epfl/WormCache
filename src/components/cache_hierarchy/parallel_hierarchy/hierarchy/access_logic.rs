@@ -21,12 +21,14 @@ use crate::{
     },
 };
 
+use rayon::prelude::*;
+
 use super::ParallelMemoryHierarchy;
 
 impl<
     MMU: AbstractMMU,
-    PCache: PrivateCache,
-    SCache: SharedCache,
+    PCache: PrivateCache + Sync,
+    SCache: SharedCache + Sync,
     Dir: Directory,
     const FILL_SCACHE_ON_FILLING_PCACHE: bool,
     const FILL_SCACHE_ON_PCACHE_EVICTION: bool,
@@ -1130,6 +1132,35 @@ impl<
         self.deserialize_mmus(name, numa_node_id);
         println!("Deserialize PHTs");
         self.pht.deserialize(name, numa_node_id);
+    }
+
+    fn serialize_par(&self, name: &str, numa_node_id: usize) {
+        use crate::CHECKPOINT_POOL;
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        CHECKPOINT_POOL.get().unwrap().install(|| {
+            (0..CHECKPOINT_POOL_SIZE).into_par_iter().for_each(|worker_id| {
+                self.private_caches.serialize_worker(worker_id, name, numa_node_id);
+                self.serialize_mmus_worker(worker_id, name, numa_node_id);
+                self.pht.serialize_worker(worker_id, name, numa_node_id);
+                self.directory.serialize_shard(worker_id, name, numa_node_id);
+                self.shared_cache.serialize_shard(worker_id, name, numa_node_id);
+            });
+        });
+
+        println!("Parallel checkpoint serialization complete.");
+    }
+
+    fn deserialize_par(&mut self, name: &str, numa_node_id: usize) {
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        for worker_id in 0..CHECKPOINT_POOL_SIZE {
+            self.private_caches.deserialize_worker(worker_id, name, numa_node_id);
+            self.deserialize_mmus_worker(worker_id, name, numa_node_id);
+            self.pht.deserialize_worker(worker_id, name, numa_node_id);
+            self.directory.deserialize_shard(worker_id, name, numa_node_id);
+            self.shared_cache.deserialize_shard(worker_id, name, numa_node_id);
+        }
     }
 
     fn access_from_device_with_pa(

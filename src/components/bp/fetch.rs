@@ -185,6 +185,93 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
             private_units: private_units.try_into().expect("FetchUnit size mismatch"),
         }
     }
+
+    pub fn serialize_worker(&self, worker_id: usize, name: &str) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
+
+        let helper = FetchUnitHelper {
+            private_units: self.private_units[begin..end]
+                .iter()
+                .map(|u| u.to_checkpoint_helper())
+                .collect(),
+        };
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/fetch-worker-{}.rkyv.zstd", name, worker_id),
+                &bytes,
+            );
+        } else {
+            let bytes = serde_json::to_vec(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/fetch-worker-{}.json.zstd", name, worker_id),
+                &bytes,
+            );
+        }
+    }
+
+    pub fn deserialize_worker(&mut self, worker_id: usize, name: &str) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!(
+                "{}/fetch-worker-{}.rkyv.zstd",
+                name, worker_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load fetch worker {} state (rkyv). Error: {:?}",
+                    worker_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = zstd::Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: FetchUnitHelper =
+                rkyv::from_bytes::<FetchUnitHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+            for (i, unit) in helper.private_units.into_iter().enumerate() {
+                self.private_units[begin + i] = PerCoreFetchUnit::from_checkpoint_helper(unit);
+            }
+        } else {
+            let file = std::fs::File::open(format!(
+                "{}/fetch-worker-{}.json.zstd",
+                name, worker_id
+            ));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load fetch worker {} state. Error: {:?}",
+                    worker_id,
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let decoder = zstd::Decoder::new(file).unwrap();
+
+            let helper: FetchUnitHelper = serde_json::from_reader(decoder).unwrap();
+
+            for (i, unit) in helper.private_units.into_iter().enumerate() {
+                self.private_units[begin + i] = PerCoreFetchUnit::from_checkpoint_helper(unit);
+            }
+        }
+    }
 }
 
 impl<const CORE_COUNT: usize> Default for FetchUnit<CORE_COUNT> {

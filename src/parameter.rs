@@ -39,7 +39,16 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 4;
+pub const CORE_COUNT: usize = 64;
+
+/**
+ * CHECKPOINT_POOL_SIZE
+ *
+ * Number of worker threads in the rayon thread pool used for parallel checkpoint serialization/deserialization.
+ * CORE_COUNT must be a multiple of this value.
+ */
+pub const CHECKPOINT_POOL_SIZE: usize = 16;
+static_assertions::const_assert!(CORE_COUNT % CHECKPOINT_POOL_SIZE == 0);
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -52,7 +61,7 @@ pub const CORE_COUNT: usize = 4;
  *
  * This option impact both the cache hierarchy component and the branch predictor component.
  */
-pub const MEASURE_HALF_OF_CORES: bool = true;
+pub const MEASURE_HALF_OF_CORES: bool = false;
 
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
@@ -204,7 +213,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 2048;
+pub const SHARED_CACHE_SET: usize = 65536;
 static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -266,7 +275,7 @@ pub const USE_INFINITE_DIRECTORY: bool = false;
 pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
 static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
 
-pub const FINITE_DIRECTORY_SET: usize = 1024;
+pub const FINITE_DIRECTORY_SET: usize = 32768;
 static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -334,8 +343,8 @@ use crate::components::Plugin;
 #[derive(PluginHelper)]
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
-    _pb: crate::BranchPredictorPlugin,
-    _lm: crate::ParallelCacheHierarchyPlugin,
+     _pb: crate::BranchPredictorPlugin,
+     _lm: crate::ParallelCacheHierarchyPlugin,
     // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }
@@ -401,5 +410,5 @@ static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_NOC_TRAFFIC);
  *
  * This is used to calculate the on-chip network hop count for each memory access. The DRAM controller is considered as the root of the on-chip network, and the hop count is calculated based on the distance from the core to the DRAM controller.
  */
-pub const DRAM_CONTROLLER_COUNT: usize = 1;
-pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [0];
+pub const DRAM_CONTROLLER_COUNT: usize = 8;
+pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [8,15,24,31,32,39,48,55];

@@ -29,10 +29,34 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use bitvec::array::BitArray;
 use bitvec::order::Lsb0;
+
+thread_local! {
+    static COMPRESSOR: RefCell<zstd::bulk::Compressor<'static>> =
+        RefCell::new(zstd::bulk::Compressor::new(0).unwrap());
+}
+
+pub fn write_compressed(path: &str, bytes: &[u8]) {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path).unwrap();
+    COMPRESSOR.with(|c| {
+        let compressed = c.borrow_mut().compress(bytes).unwrap();
+        file.write_all(&compressed).unwrap();
+    });
+}
+
+pub fn read_compressed(path: &str) -> Vec<u8> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).unwrap();
+    let mut decoder = zstd::stream::read::Decoder::new(file).unwrap();
+    let mut bytes = Vec::new();
+    decoder.read_to_end(&mut bytes).unwrap();
+    bytes
+}
 
 /// Rkyv wrapper for BitArray that serializes/deserializes the underlying storage as Vec<u64>.
 pub struct RkyvBitArray;

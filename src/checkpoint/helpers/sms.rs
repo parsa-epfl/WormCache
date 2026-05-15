@@ -12,7 +12,7 @@ use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 /// Helper for serializing a single PHT entry.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct PHTEntryHelper {
     pub tag: u64,
     pub access_pattern: Vec<u8>,
@@ -23,19 +23,19 @@ pub struct PHTEntryHelper {
 }
 
 /// Helper for serializing a PHT set (collection of entries).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct PHTSetHelper {
     pub entries: Vec<PHTEntryHelper>,
 }
 
 /// Helper for serializing a per-core PHT (collection of sets).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct PHTPerCoreHelper {
     pub sets: Vec<PHTSetHelper>,
 }
 
 /// Helper for serializing the entire PHT structure (all cores).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct PHTHelper {
     pub tables: Vec<PHTPerCoreHelper>,
 }

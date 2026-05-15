@@ -14,7 +14,7 @@ use crate::components::cache_hierarchy::common::{
 
 /// Helper for serializing a single shared cache set.
 /// Contains only the data needed for checkpointing (no statistics).
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct SharedCacheSetHelper {
     pub blocks: Vec<SharedCacheBlock>,
     pub touched_count: usize,
@@ -61,7 +61,7 @@ impl SharedCacheSetHelper {
 }
 
 /// Helper for serializing the entire shared cache.
-#[derive(Debug, Clone, Serialize, Deserialize, Archive, RkyvDeserialize, RkyvSerialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct SharedCacheHelper {
     pub blocks: Vec<SharedCacheSetHelper>,
     pub warmed_sets: usize,

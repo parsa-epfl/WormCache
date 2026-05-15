@@ -39,6 +39,9 @@ pub trait Plugin: Send + Sync {
 
     fn serialize(name: &str);
     fn deserialize(name: &str);
+
+    fn serialize_par(_name: &str) {}
+    fn deserialize_par(_name: &str) {}
 }
 
 pub mod bp;
