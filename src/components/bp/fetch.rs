@@ -222,10 +222,8 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
         let begin = worker_id * cores_per_worker;
 
         if USE_RKYV_SERIALIZATION {
-            let file = std::fs::File::open(format!(
-                "{}/fetch-worker-{}.rkyv.zstd",
-                name, worker_id
-            ));
+            let file =
+                std::fs::File::open(format!("{}/fetch-worker-{}.rkyv.zstd", name, worker_id));
 
             if file.is_err() {
                 return false;
@@ -243,10 +241,8 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
                 self.private_units[begin + i] = PerCoreFetchUnit::from_checkpoint_helper(unit);
             }
         } else {
-            let file = std::fs::File::open(format!(
-                "{}/fetch-worker-{}.json.zstd",
-                name, worker_id
-            ));
+            let file =
+                std::fs::File::open(format!("{}/fetch-worker-{}.json.zstd", name, worker_id));
 
             if file.is_err() {
                 return false;

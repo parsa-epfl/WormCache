@@ -95,25 +95,25 @@ pub struct ParallelMemoryHierarchy<
 }
 
 unsafe impl<
-        MMU: AbstractMMU,
-        PCache: PrivateCache + Sync,
-        SCache: SharedCache + Sync,
-        Dir: Directory + Sync,
-        const FILL_SCACHE_ON_FILLING_PCACHE: bool,
-        const FILL_SCACHE_ON_PCACHE_CLEAN_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
-        const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
-        const CORE_COUNT: usize,
-        const N_ACC: usize,
-        const N_FILTER: usize,
-        const PHT_SETS: usize,
-        const PHT_WAYS: usize,
-        const N_BLK: usize,
-        const ROT: bool,
-        const SEP_RDWR: bool,
-        const SAT_CNT: bool,
-        const PERFECT_PHT: bool,
-    > Sync
+    MMU: AbstractMMU,
+    PCache: PrivateCache + Sync,
+    SCache: SharedCache + Sync,
+    Dir: Directory + Sync,
+    const FILL_SCACHE_ON_FILLING_PCACHE: bool,
+    const FILL_SCACHE_ON_PCACHE_CLEAN_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_DIRTY_EVICTION: bool,
+    const FILL_SCACHE_ON_PCACHE_REPLICA_CREATION: bool,
+    const CORE_COUNT: usize,
+    const N_ACC: usize,
+    const N_FILTER: usize,
+    const PHT_SETS: usize,
+    const PHT_WAYS: usize,
+    const N_BLK: usize,
+    const ROT: bool,
+    const SEP_RDWR: bool,
+    const SAT_CNT: bool,
+    const PERFECT_PHT: bool,
+> Sync
     for ParallelMemoryHierarchy<
         MMU,
         PCache,
@@ -390,7 +390,7 @@ impl<
 
     fn serialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
         use crate::checkpoint::helpers::MMUsHelper;
-        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
         let begin = worker_id * cores_per_worker;
@@ -406,20 +406,26 @@ impl<
         if USE_RKYV_SERIALIZATION {
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmus_helper).unwrap();
             crate::util::write_compressed(
-                &format!("{}/mmus-{}-worker-{}.rkyv.zstd", name, numa_node_id, worker_id),
+                &format!(
+                    "{}/mmus-{}-worker-{}.rkyv.zstd",
+                    name, numa_node_id, worker_id
+                ),
                 &bytes,
             );
         } else {
             let bytes = serde_json::to_vec(&mmus_helper).unwrap();
             crate::util::write_compressed(
-                &format!("{}/mmus-{}-worker-{}.json.zstd", name, numa_node_id, worker_id),
+                &format!(
+                    "{}/mmus-{}-worker-{}.json.zstd",
+                    name, numa_node_id, worker_id
+                ),
                 &bytes,
             );
         }
     }
 
     fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
-        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT};
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
         let begin = worker_id * cores_per_worker;

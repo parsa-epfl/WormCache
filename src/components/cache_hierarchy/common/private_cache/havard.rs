@@ -356,7 +356,7 @@ impl<
     }
 
     fn serialize_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
-        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
         let begin = worker_id * cores_per_worker;
@@ -370,20 +370,26 @@ impl<
         if USE_RKYV_SERIALIZATION {
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helpers).unwrap();
             crate::util::write_compressed(
-                &format!("{}/harvard-{}-worker-{}.rkyv.zstd", name, numa_node_id, worker_id),
+                &format!(
+                    "{}/harvard-{}-worker-{}.rkyv.zstd",
+                    name, numa_node_id, worker_id
+                ),
                 &bytes,
             );
         } else {
             let bytes = serde_json::to_vec(&helpers).unwrap();
             crate::util::write_compressed(
-                &format!("{}/harvard-{}-worker-{}.json.zstd", name, numa_node_id, worker_id),
+                &format!(
+                    "{}/harvard-{}-worker-{}.json.zstd",
+                    name, numa_node_id, worker_id
+                ),
                 &bytes,
             );
         }
     }
 
     fn deserialize_worker(&mut self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
-        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
         let begin = worker_id * cores_per_worker;

@@ -35,7 +35,6 @@ use zstd::{Decoder, Encoder};
 
 use rayon::prelude::*;
 
-
 use crate::{
     arch::AArch64,
     components::cache_hierarchy::{
@@ -60,7 +59,7 @@ pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 
-    mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
+    mmus: [UnsafeCell<MMU>; parameter::SIMULATED_CORE_COUNT],
 }
 
 unsafe impl<MMU: AbstractMMU> Sync for SingleCacheHierarchy<MMU> {}
@@ -138,9 +137,9 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
 
     fn serialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
         use crate::checkpoint::helpers::MMUsHelper;
-        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
-        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let cores_per_worker = self.mmus.len() / CHECKPOINT_POOL_SIZE;
         let begin = worker_id * cores_per_worker;
         let end = begin + cores_per_worker;
 
@@ -154,22 +153,28 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
         if USE_RKYV_SERIALIZATION {
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmus_helper).unwrap();
             crate::util::write_compressed(
-                &format!("{}/mmus-{}-worker-{}.rkyv.zstd", name, numa_node_id, worker_id),
+                &format!(
+                    "{}/mmus-{}-worker-{}.rkyv.zstd",
+                    name, numa_node_id, worker_id
+                ),
                 &bytes,
             );
         } else {
             let bytes = serde_json::to_vec(&mmus_helper).unwrap();
             crate::util::write_compressed(
-                &format!("{}/mmus-{}-worker-{}.json.zstd", name, numa_node_id, worker_id),
+                &format!(
+                    "{}/mmus-{}-worker-{}.json.zstd",
+                    name, numa_node_id, worker_id
+                ),
                 &bytes,
             );
         }
     }
 
     fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
-        use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT};
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
 
-        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let cores_per_worker = self.mmus.len() / CHECKPOINT_POOL_SIZE;
         let begin = worker_id * cores_per_worker;
 
         let rkyv_path = format!(
@@ -344,10 +349,13 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         use crate::parameter::CHECKPOINT_POOL_SIZE;
 
         CHECKPOINT_POOL.get().unwrap().install(|| {
-            (0..CHECKPOINT_POOL_SIZE).into_par_iter().for_each(|worker_id| {
-                self.shared_cache.serialize_shard(worker_id, name, numa_node_id);
-                self.serialize_mmus_worker(worker_id, name, numa_node_id);
-            });
+            (0..CHECKPOINT_POOL_SIZE)
+                .into_par_iter()
+                .for_each(|worker_id| {
+                    self.shared_cache
+                        .serialize_shard(worker_id, name, numa_node_id);
+                    self.serialize_mmus_worker(worker_id, name, numa_node_id);
+                });
         });
 
         println!("Parallel checkpoint serialization complete.");
@@ -360,7 +368,9 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
         let mut mmus_loaded = true;
 
         for worker_id in 0..CHECKPOINT_POOL_SIZE {
-            shared_cache_loaded &= self.shared_cache.deserialize_shard(worker_id, name, numa_node_id);
+            shared_cache_loaded &=
+                self.shared_cache
+                    .deserialize_shard(worker_id, name, numa_node_id);
             mmus_loaded &= self.deserialize_mmus_worker(worker_id, name, numa_node_id);
         }
 
