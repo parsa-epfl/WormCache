@@ -127,9 +127,8 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
         let par_name = format!("{}.uarch", name);
         std::fs::create_dir_all(&par_name).unwrap();
         let current_time = std::time::SystemTime::now();
-        // Statistics::save_to_csv(&format!("{}/statistics.csv", par_name), get_monotonic_ts());
-        // NocTraffic::save_to_csv(&format!("{}/noc_traffic.csv", par_name));
         timestamp::serialize(&par_name);
+        PluginList::serialize_par(&par_name);
         let par_elapsed = std::time::SystemTime::now()
             .duration_since(current_time)
             .unwrap()
@@ -143,7 +142,7 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
     unsafe {
         let name = ffi::CStr::from_ptr(name).to_str().unwrap();
-        let folder_name = format!("{}.uarch_par", name);
+        let folder_name = format!("{}.uarch", name);
         PluginList::deserialize_par(&folder_name);
 
         // Handling the timestamp.
