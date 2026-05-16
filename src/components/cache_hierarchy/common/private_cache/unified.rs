@@ -329,7 +329,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
         }
     }
 
-    fn deserialize_worker(&mut self, worker_id: usize, name: &str, numa_node_id: usize) {
+    fn deserialize_worker(&mut self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
         use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
@@ -343,7 +343,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
             ));
 
             if file.is_err() {
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -365,7 +365,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
             ));
 
             if file.is_err() {
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -377,6 +377,7 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
                 *cache = UnifiedPerCorePrivateCache::from_checkpoint_helper(helper);
             }
         }
+        true
     }
 }
 

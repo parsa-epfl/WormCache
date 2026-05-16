@@ -133,7 +133,6 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
                 unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
             }
         } else {
-            println!("Cannot load the MMU state. No checkpoint file found.");
         }
     }
 
@@ -167,8 +166,7 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
         }
     }
 
-    #[allow(dead_code)]
-    fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
+    fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
         use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
@@ -206,11 +204,9 @@ impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
                 unsafe { (*self.mmus[begin + i].get()).deserialize(mmu_helper) };
             }
         } else {
-            println!(
-                "Cannot load the MMU worker {} state. No checkpoint file found.",
-                worker_id
-            );
+            return false;
         }
+        true
     }
 
     pub fn get_scache_warmed_set_count(&self) -> usize {
@@ -360,9 +356,19 @@ impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
     fn deserialize_par(&mut self, name: &str, numa_node_id: usize) {
         use crate::parameter::CHECKPOINT_POOL_SIZE;
 
+        let mut shared_cache_loaded = true;
+        let mut mmus_loaded = true;
+
         for worker_id in 0..CHECKPOINT_POOL_SIZE {
-            self.shared_cache.deserialize_shard(worker_id, name, numa_node_id);
-            self.deserialize_mmus_worker(worker_id, name, numa_node_id);
+            shared_cache_loaded &= self.shared_cache.deserialize_shard(worker_id, name, numa_node_id);
+            mmus_loaded &= self.deserialize_mmus_worker(worker_id, name, numa_node_id);
+        }
+
+        if shared_cache_loaded {
+            println!("Loaded shared cache from checkpoint");
+        }
+        if mmus_loaded {
+            println!("Loaded MMUs from checkpoint");
         }
     }
 

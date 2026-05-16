@@ -256,7 +256,6 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             let file = std::fs::File::open(format!("{}/llc-{}.json.zstd", name, numa_node_id));
 
             if file.is_err() {
-                println!("Cannot load the shared cache. Error: {:?}", file.err());
                 return;
             }
 
@@ -299,7 +298,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
         }
     }
 
-    fn deserialize_shard(&mut self, shard_id: usize, name: &str, numa_node_id: usize) {
+    fn deserialize_shard(&mut self, shard_id: usize, name: &str, numa_node_id: usize) -> bool {
         use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
         let total_shards = CHECKPOINT_POOL_SIZE;
@@ -314,12 +313,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load LLC shard {} state (rkyv). Error: {:?}",
-                    shard_id,
-                    file.err()
-                );
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -342,12 +336,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load LLC shard {} state. Error: {:?}",
-                    shard_id,
-                    file.err()
-                );
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -361,6 +350,7 @@ impl<S: SharedCacheSetStatistics, const SET: usize, const WAY: usize, const EXCL
             self.warmed_sets
                 .store(helper.warmed_sets, Ordering::Relaxed);
         }
+        true
     }
 }
 

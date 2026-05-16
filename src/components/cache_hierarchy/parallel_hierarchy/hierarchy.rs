@@ -385,7 +385,6 @@ impl<
                 unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
             }
         } else {
-            println!("Cannot load the MMU state. No checkpoint file found.");
         }
     }
 
@@ -419,8 +418,7 @@ impl<
         }
     }
 
-    #[allow(dead_code)]
-    fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
+    fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
         use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
@@ -459,10 +457,8 @@ impl<
                 unsafe { (*self.mmus[begin + i].get()).deserialize(mmu_helper) };
             }
         } else {
-            println!(
-                "Cannot load the MMU worker {} state. No checkpoint file found.",
-                worker_id
-            );
+            return false;
         }
+        true
     }
 }

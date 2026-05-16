@@ -1154,12 +1154,34 @@ impl<
     fn deserialize_par(&mut self, name: &str, numa_node_id: usize) {
         use crate::parameter::CHECKPOINT_POOL_SIZE;
 
+        let mut private_caches_loaded = true;
+        let mut mmus_loaded = true;
+        let mut pht_loaded = true;
+        let mut directory_loaded = true;
+        let mut shared_cache_loaded = true;
+
         for worker_id in 0..CHECKPOINT_POOL_SIZE {
-            self.private_caches.deserialize_worker(worker_id, name, numa_node_id);
-            self.deserialize_mmus_worker(worker_id, name, numa_node_id);
-            self.pht.deserialize_worker(worker_id, name, numa_node_id);
-            self.directory.deserialize_shard(worker_id, name, numa_node_id);
-            self.shared_cache.deserialize_shard(worker_id, name, numa_node_id);
+            private_caches_loaded &= self.private_caches.deserialize_worker(worker_id, name, numa_node_id);
+            mmus_loaded &= self.deserialize_mmus_worker(worker_id, name, numa_node_id);
+            pht_loaded &= self.pht.deserialize_worker(worker_id, name, numa_node_id);
+            directory_loaded &= self.directory.deserialize_shard(worker_id, name, numa_node_id);
+            shared_cache_loaded &= self.shared_cache.deserialize_shard(worker_id, name, numa_node_id);
+        }
+
+        if private_caches_loaded {
+            println!("Loaded private caches from checkpoint");
+        }
+        if mmus_loaded {
+            println!("Loaded MMUs from checkpoint");
+        }
+        if pht_loaded {
+            println!("Loaded PHT from checkpoint");
+        }
+        if directory_loaded {
+            println!("Loaded directory from checkpoint");
+        }
+        if shared_cache_loaded {
+            println!("Loaded shared cache from checkpoint");
         }
     }
 

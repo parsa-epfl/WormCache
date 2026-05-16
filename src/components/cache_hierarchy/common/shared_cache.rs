@@ -149,7 +149,7 @@ pub trait SharedCache {
     fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
 
     fn serialize_shard(&self, _shard_id: usize, _name: &str, _numa_node_id: usize) {}
-    fn deserialize_shard(&mut self, _shard_id: usize, _name: &str, _numa_node_id: usize) {}
+    fn deserialize_shard(&mut self, _shard_id: usize, _name: &str, _numa_node_id: usize) -> bool { false }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

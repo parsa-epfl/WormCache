@@ -219,10 +219,6 @@ impl Plugin for BranchPredictorPlugin {
             let file = std::fs::File::open(format!("{}/fetch.rkyv.zstd", name));
 
             if file.is_err() {
-                println!(
-                    "Cannot load the fetch unit state (rkyv). Error: {:?}",
-                    file.err()
-                );
                 return;
             }
 
@@ -240,7 +236,6 @@ impl Plugin for BranchPredictorPlugin {
             let file = std::fs::File::open(format!("{}/fetch.json.zstd", name));
 
             if file.is_err() {
-                println!("Cannot load the fetch unit state. Error: {:?}", file.err());
                 return;
             }
 
@@ -276,8 +271,12 @@ impl Plugin for BranchPredictorPlugin {
     fn deserialize_par(name: &str) {
         use crate::parameter::CHECKPOINT_POOL_SIZE;
 
+        let mut loaded = true;
         for worker_id in 0..CHECKPOINT_POOL_SIZE {
-            unsafe { (*FETCH_UNIT).deserialize_worker(worker_id, name) };
+            unsafe { loaded &= (*FETCH_UNIT).deserialize_worker(worker_id, name) };
+        }
+        if loaded {
+            println!("Loaded fetch from checkpoint");
         }
     }
 }

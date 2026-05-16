@@ -519,7 +519,7 @@ impl<
         }
     }
 
-    pub fn deserialize_worker(&mut self, worker_id: usize, name: &str, numa_node_id: usize) {
+    pub fn deserialize_worker(&mut self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
         use crate::parameter::{CHECKPOINT_POOL_SIZE, CORE_COUNT, USE_RKYV_SERIALIZATION};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
@@ -533,7 +533,7 @@ impl<
             ));
 
             if file.is_err() {
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -554,7 +554,7 @@ impl<
             ));
 
             if file.is_err() {
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -566,6 +566,7 @@ impl<
                 *table = PHTPerCore::from_checkpoint_helper(helper);
             }
         }
+        true
     }
 }
 

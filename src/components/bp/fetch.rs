@@ -215,7 +215,7 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
         }
     }
 
-    pub fn deserialize_worker(&mut self, worker_id: usize, name: &str) {
+    pub fn deserialize_worker(&mut self, worker_id: usize, name: &str) -> bool {
         use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
         let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
@@ -228,7 +228,7 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
             ));
 
             if file.is_err() {
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -249,7 +249,7 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
             ));
 
             if file.is_err() {
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -261,6 +261,7 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
                 self.private_units[begin + i] = PerCoreFetchUnit::from_checkpoint_helper(unit);
             }
         }
+        true
     }
 }
 

@@ -109,7 +109,7 @@ pub trait Directory: Send + Sync {
     fn deserialize(&mut self, name: &str, numa_node_id: usize);
 
     fn serialize_shard(&self, _shard_id: usize, _name: &str, _numa_node_id: usize) {}
-    fn deserialize_shard(&mut self, _shard_id: usize, _name: &str, _numa_node_id: usize) {}
+    fn deserialize_shard(&mut self, _shard_id: usize, _name: &str, _numa_node_id: usize) -> bool { false }
 
 
     fn information() -> String;

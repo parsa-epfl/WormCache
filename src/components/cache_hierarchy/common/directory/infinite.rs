@@ -236,7 +236,6 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
                 std::fs::File::open(format!("{}/directory-{}.json.zstd", name, numa_node_id));
 
             if file.is_err() {
-                println!("Cannot load the directory state. Error: {:?}", file.err());
                 return;
             }
 
@@ -283,7 +282,7 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
         }
     }
 
-    fn deserialize_shard(&mut self, shard_id: usize, name: &str, numa_node_id: usize) {
+    fn deserialize_shard(&mut self, shard_id: usize, name: &str, numa_node_id: usize) -> bool {
         use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
         let total_shards = CHECKPOINT_POOL_SIZE;
@@ -298,12 +297,7 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load directory shard {} state (rkyv). Error: {:?}",
-                    shard_id,
-                    file.err()
-                );
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -329,12 +323,7 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load directory shard {} state. Error: {:?}",
-                    shard_id,
-                    file.err()
-                );
-                return;
+                return false;
             }
 
             let file = file.unwrap();
@@ -351,6 +340,7 @@ impl<'a, const SET: usize> Directory for InfiniteDirectory<SET> {
                     ));
             }
         }
+        true
     }
 
     fn information() -> String {

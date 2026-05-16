@@ -88,7 +88,7 @@ pub trait PrivateCache {
     fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
 
     fn serialize_worker(&self, _worker_id: usize, _name: &str, _numa_node_id: usize) {}
-    fn deserialize_worker(&mut self, _worker_id: usize, _name: &str, _numa_node_id: usize) {}
+    fn deserialize_worker(&mut self, _worker_id: usize, _name: &str, _numa_node_id: usize) -> bool { false }
 }
 
 pub use havard::ParallelHarvardPrivateCache;
