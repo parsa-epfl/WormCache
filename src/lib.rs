@@ -42,9 +42,8 @@ mod util;
 pub mod timestamp;
 
 // Plugin
-use crate::debug::noc_traffic::NocTraffic;
 use crate::debug::statistics;
-use crate::debug::statistics::{Statistics, init_qemu_stat_ptr};
+use crate::debug::statistics::init_qemu_stat_ptr;
 use crate::debug::timing;
 use crate::mode::chronic_behavior_init;
 use crate::mode::on_finish_loading_snapshot;
@@ -70,7 +69,6 @@ use components::wfi::WaitForInterruptCounterPlugin;
 use components::Plugin;
 use parameter::PluginList;
 use rustc_hash::FxHashMap;
-use util::get_monotonic_ts;
 
 use std::ffi;
 use std::io::Write;
