@@ -42,15 +42,6 @@ use rustc_hash::FxHashMap;
 pub const CORE_COUNT: usize = 64;
 
 /**
- * CHECKPOINT_POOL_SIZE
- *
- * Number of worker threads in the rayon thread pool used for parallel checkpoint serialization/deserialization.
- * CORE_COUNT must be a multiple of this value.
- */
-pub const CHECKPOINT_POOL_SIZE: usize = 16;
-static_assertions::const_assert!(CORE_COUNT % CHECKPOINT_POOL_SIZE == 0);
-
-/**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
  *
  * Whether to use the cache hierarchy and the vtime calculation for half of the cores [0, CORE_COUNT/2)
@@ -71,6 +62,15 @@ pub const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
 } else {
     CORE_COUNT
 };
+
+/**
+ * CHECKPOINT_POOL_SIZE
+ *
+ * Number of worker threads in the rayon thread pool used for parallel checkpoint serialization/deserialization.
+ * SIMULATED_CORE_COUNT must be a multiple of this value.
+ */
+pub const CHECKPOINT_POOL_SIZE: usize = 16;
+static_assertions::const_assert!(SIMULATED_CORE_COUNT % CHECKPOINT_POOL_SIZE == 0);
 
 /**
  * CACHE_LINE_SIZE
@@ -343,8 +343,8 @@ use crate::components::Plugin;
 #[derive(PluginHelper)]
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
-     _pb: crate::BranchPredictorPlugin,
-     _lm: crate::ParallelCacheHierarchyPlugin,
+    _pb: crate::BranchPredictorPlugin,
+    _lm: crate::ParallelCacheHierarchyPlugin,
     // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }
@@ -411,4 +411,4 @@ static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_NOC_TRAFFIC);
  * This is used to calculate the on-chip network hop count for each memory access. The DRAM controller is considered as the root of the on-chip network, and the hop count is calculated based on the distance from the core to the DRAM controller.
  */
 pub const DRAM_CONTROLLER_COUNT: usize = 8;
-pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [8,15,24,31,32,39,48,55];
+pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [8, 15, 24, 31, 32, 39, 48, 55];
