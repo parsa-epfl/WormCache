@@ -33,21 +33,21 @@ pub mod arch;
 pub mod parameter;
 
 pub mod checkpoint;
-pub mod mode;
 pub mod components;
 pub mod debug;
+pub mod mode;
 mod qemu_api;
 mod util;
 
 pub mod timestamp;
 
 // Plugin
-use crate::mode::chronic_behavior_init;
-use crate::mode::on_finish_loading_snapshot;
 use crate::debug::noc_traffic::NocTraffic;
 use crate::debug::statistics;
 use crate::debug::statistics::{Statistics, init_qemu_stat_ptr};
 use crate::debug::timing;
+use crate::mode::chronic_behavior_init;
+use crate::mode::on_finish_loading_snapshot;
 #[allow(unused_imports)]
 use components::bp::BranchPredictorPlugin;
 #[allow(unused_imports)]
@@ -126,31 +126,18 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 
         let name = converted_name.unwrap();
 
-        let seq_name = format!("{}.uarch", name);
-        let par_name = format!("{}.uarch_par", name);
-        std::fs::create_dir_all(&seq_name).unwrap();
+        let par_name = format!("{}.uarch", name);
         std::fs::create_dir_all(&par_name).unwrap();
         let current_time = std::time::SystemTime::now();
-        PluginList::serialize(&seq_name);
-        Statistics::save_to_csv(&format!("{}/statistics.csv", seq_name), get_monotonic_ts());
-        NocTraffic::save_to_csv(&format!("{}/noc_traffic.csv", seq_name));
-        timestamp::serialize(&seq_name);
-
-        let elapsed_time = std::time::SystemTime::now()
+        // Statistics::save_to_csv(&format!("{}/statistics.csv", par_name), get_monotonic_ts());
+        // NocTraffic::save_to_csv(&format!("{}/noc_traffic.csv", par_name));
+        timestamp::serialize(&par_name);
+        let par_elapsed = std::time::SystemTime::now()
             .duration_since(current_time)
             .unwrap()
             .as_millis();
 
-        println!("Serialized the plugin data (sequential) in {} ms.", elapsed_time);
-
-        let par_start = std::time::SystemTime::now();
-        PluginList::serialize_par(&par_name);
-        let par_elapsed = std::time::SystemTime::now()
-            .duration_since(par_start)
-            .unwrap()
-            .as_millis();
-
-        println!("Serialized the plugin data (parallel) in {} ms.", par_elapsed);
+        println!("Serialized the plugin data in {} ms.", par_elapsed);
     }
 }
 
@@ -158,8 +145,8 @@ unsafe extern "C" fn savevm_cb(name: *const ffi::c_char) {
 unsafe extern "C" fn loadvm_cb(name: *const ffi::c_char) {
     unsafe {
         let name = ffi::CStr::from_ptr(name).to_str().unwrap();
-        let folder_name = format!("{}.uarch", name);
-        PluginList::deserialize(&folder_name);
+        let folder_name = format!("{}.uarch_par", name);
+        PluginList::deserialize_par(&folder_name);
 
         // Handling the timestamp.
         timestamp::initialize();
