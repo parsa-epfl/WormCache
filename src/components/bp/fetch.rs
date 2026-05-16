@@ -228,11 +228,6 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load fetch worker {} state (rkyv). Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 
@@ -254,11 +249,6 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load fetch worker {} state. Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 

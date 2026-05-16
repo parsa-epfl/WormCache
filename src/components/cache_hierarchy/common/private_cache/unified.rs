@@ -343,11 +343,6 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load unified worker {} state (rkyv). Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 
@@ -370,11 +365,6 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load unified worker {} state. Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 

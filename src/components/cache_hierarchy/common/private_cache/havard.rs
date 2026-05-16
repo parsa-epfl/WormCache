@@ -396,11 +396,6 @@ impl<
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load harvard worker {} state (rkyv). Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 
@@ -423,11 +418,6 @@ impl<
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load harvard worker {} state. Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 

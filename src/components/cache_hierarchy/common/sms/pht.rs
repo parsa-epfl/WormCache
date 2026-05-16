@@ -533,11 +533,6 @@ impl<
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load PHT worker {} state (rkyv). Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 
@@ -559,11 +554,6 @@ impl<
             ));
 
             if file.is_err() {
-                println!(
-                    "Cannot load PHT worker {} state. Error: {:?}",
-                    worker_id,
-                    file.err()
-                );
                 return;
             }
 
