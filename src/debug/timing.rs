@@ -56,6 +56,15 @@ struct SaveCheckpoint {
 }
 
 #[derive(serde::Serialize)]
+struct RawCheckpointLoad {
+    total_ns: u64,
+    index_ns: u64,
+    copy_ns: u64,
+    pages_found: u64,
+    pages_zero: u64,
+}
+
+#[derive(serde::Serialize)]
 struct TimingReport {
     load_checkpoint: LoadCheckpoint,
     save_checkpoint: SaveCheckpoint,
@@ -64,6 +73,7 @@ struct TimingReport {
     uffd_pages_loaded: u64,
     peak_virtual_kb: u64,
     peak_rss_kb: u64,
+    raw_checkpoint_load: RawCheckpointLoad,
 }
 
 fn build_report() -> Option<TimingReport> {
@@ -90,6 +100,12 @@ fn build_report() -> Option<TimingReport> {
     let save_savevm_ns = qemu_timing.save_qemu_savevm_state_time_ns;
     let save_pre_work_ns = qemu_timing.save_pre_work_time_ns;
     let save_bdrv_snap_ns = qemu_timing.save_bdrv_snapshot_time_ns;
+
+    let raw_total_ns = qemu_timing.raw_ckpt_total_ns;
+    let raw_index_ns = qemu_timing.raw_ckpt_index_ns;
+    let raw_copy_ns = qemu_timing.raw_ckpt_copy_ns;
+    let raw_pages_found = qemu_timing.raw_ckpt_pages_found;
+    let raw_pages_zero = qemu_timing.raw_ckpt_pages_zero;
 
     let total_wall_ns = now.saturating_sub(sim_start);
     let simulation_ns = total_wall_ns
@@ -118,6 +134,13 @@ fn build_report() -> Option<TimingReport> {
         uffd_pages_loaded: uffd_pages,
         peak_virtual_kb,
         peak_rss_kb,
+        raw_checkpoint_load: RawCheckpointLoad {
+            total_ns: raw_total_ns,
+            index_ns: raw_index_ns,
+            copy_ns: raw_copy_ns,
+            pages_found: raw_pages_found,
+            pages_zero: raw_pages_zero,
+        },
     })
 }
 
@@ -171,6 +194,16 @@ pub fn print_time_breakdown(json_filename: &str) {
     println!("  UFFD pages loaded    | {:>12}", report.uffd_pages_loaded);
     println!("  Peak virtual memory  | {:>12} kB", report.peak_virtual_kb);
     println!("  Peak RSS memory      | {:>12} kB", report.peak_rss_kb);
+    println!("  -------------------------------------------");
+    println!("  Raw checkpoint load:");
+    println!(
+        "    total {:>12} ns  index {:>12} ns  copy {:>12} ns  found {:>6}  zero {:>6}",
+        report.raw_checkpoint_load.total_ns,
+        report.raw_checkpoint_load.index_ns,
+        report.raw_checkpoint_load.copy_ns,
+        report.raw_checkpoint_load.pages_found,
+        report.raw_checkpoint_load.pages_zero,
+    );
     println!("===========================================");
 
     write_json(&report, json_filename);

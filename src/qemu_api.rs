@@ -1073,6 +1073,11 @@ pub struct qemu_plugin_timing_info {
     pub save_qemu_savevm_state_time_ns: u64,
     pub save_pre_work_time_ns: u64,
     pub save_bdrv_snapshot_time_ns: u64,
+    pub raw_ckpt_total_ns: u64,
+    pub raw_ckpt_index_ns: u64,
+    pub raw_ckpt_copy_ns: u64,
+    pub raw_ckpt_pages_found: u64,
+    pub raw_ckpt_pages_zero: u64,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -1105,6 +1110,18 @@ const _: () = {
     ["Offset of field: qemu_plugin_timing_info::save_bdrv_snapshot_time_ns"]
         [::std::mem::offset_of!(qemu_plugin_timing_info, save_bdrv_snapshot_time_ns)
             - 80usize];
+    ["Offset of field: qemu_plugin_timing_info::raw_ckpt_total_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, raw_ckpt_total_ns) - 88usize];
+    ["Offset of field: qemu_plugin_timing_info::raw_ckpt_index_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, raw_ckpt_index_ns) - 96usize];
+    ["Offset of field: qemu_plugin_timing_info::raw_ckpt_copy_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, raw_ckpt_copy_ns) - 104usize];
+    ["Offset of field: qemu_plugin_timing_info::raw_ckpt_pages_found"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, raw_ckpt_pages_found)
+            - 112usize];
+    ["Offset of field: qemu_plugin_timing_info::raw_ckpt_pages_zero"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, raw_ckpt_pages_zero)
+            - 120usize];
 };
 unsafe extern "C" {
     #[doc = " qemu_plugin_get_timing_info() - Get pointer to the global timing info\n\n Returns a pointer to the shared timing information structure.\n The structure is zero-initialised when QEMU starts and accumulates\n time across all checkpoint operations during the simulation."]
