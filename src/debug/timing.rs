@@ -62,6 +62,8 @@ struct RawCheckpointLoad {
     copy_ns: u64,
     pages_found: u64,
     pages_zero: u64,
+    files_searched: u64,
+    bsearch_steps: u64,
 }
 
 #[derive(serde::Serialize)]
@@ -106,6 +108,8 @@ fn build_report() -> Option<TimingReport> {
     let raw_copy_ns = qemu_timing.raw_ckpt_copy_ns;
     let raw_pages_found = qemu_timing.raw_ckpt_pages_found;
     let raw_pages_zero = qemu_timing.raw_ckpt_pages_zero;
+    let raw_files_searched = qemu_timing.raw_ckpt_files_searched;
+    let raw_bsearch_steps = qemu_timing.raw_ckpt_bsearch_steps;
 
     let total_wall_ns = now.saturating_sub(sim_start);
     let simulation_ns = total_wall_ns
@@ -140,6 +144,8 @@ fn build_report() -> Option<TimingReport> {
             copy_ns: raw_copy_ns,
             pages_found: raw_pages_found,
             pages_zero: raw_pages_zero,
+            files_searched: raw_files_searched,
+            bsearch_steps: raw_bsearch_steps,
         },
     })
 }
@@ -203,6 +209,11 @@ pub fn print_time_breakdown(json_filename: &str) {
         report.raw_checkpoint_load.copy_ns,
         report.raw_checkpoint_load.pages_found,
         report.raw_checkpoint_load.pages_zero,
+    );
+    println!(
+        "    files_searched {:>6}  bsearch_steps {:>6}",
+        report.raw_checkpoint_load.files_searched,
+        report.raw_checkpoint_load.bsearch_steps,
     );
     println!("===========================================");
 
