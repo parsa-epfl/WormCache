@@ -43,6 +43,7 @@ unsafe extern "C" fn quit_checking_callback(diff: u64) -> bool {
 
             crate::debug::timing::print_time_breakdown("simulation_ckpt_time.json");
             crate::debug::noc_traffic::NocTraffic::save_to_csv("noc_traffic.final.csv");
+            crate::plugin_on_exit();
             std::process::exit(0);
         }
     }

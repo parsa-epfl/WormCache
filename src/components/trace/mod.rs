@@ -64,6 +64,7 @@ unsafe extern "C" fn vcpu_insn_exec(vcpu_idx: u32, host_va: *mut ffi::c_void) {
 
         // increment the counter.
         if C0_COUNTER.fetch_add(1, Ordering::Relaxed) == 20000000 {
+            crate::plugin_on_exit();
             let owned_trace_file = Box::from_raw(TRACE_FILE);
             owned_trace_file.finish().unwrap();
             exit(0);

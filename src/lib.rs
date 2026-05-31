@@ -73,10 +73,19 @@ use rustc_hash::FxHashMap;
 use std::ffi;
 use std::io::Write;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicU64;
 
 use rayon::ThreadPool;
 
 static CHECKPOINT_POOL: OnceLock<ThreadPool> = OnceLock::new();
+static PLUGIN_ID: AtomicU64 = AtomicU64::new(0);
+
+pub fn plugin_on_exit() {
+    let id = PLUGIN_ID.load(std::sync::atomic::Ordering::Relaxed);
+    if id != 0 {
+        unsafe { qemu_api::qemu_plugin_on_exit(id); }
+    }
+}
 
 #[unsafe(link_section = ".rodata")]
 #[unsafe(no_mangle)]
@@ -205,6 +214,7 @@ unsafe extern "C" fn qemu_plugin_install(
         qemu_api::qemu_plugin_register_atexit_cb(id, Some(qemu_plugin_exit), std::ptr::null_mut());
         qemu_api::qemu_plugin_register_savevm_cb(Some(savevm_cb));
         qemu_api::qemu_plugin_register_loadvm_cb(Some(loadvm_cb));
+        PLUGIN_ID.store(id, std::sync::atomic::Ordering::Relaxed);
         PluginList::init(id, &options);
 
         CHECKPOINT_POOL

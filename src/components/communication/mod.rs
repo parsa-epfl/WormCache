@@ -840,6 +840,7 @@ unsafe extern "C" fn periodic_checking_callback(_diff: u64) -> bool {
             // Save the statistics.
             Statistics::save_to_csv("statistics.final.csv", current_time);
             NocTraffic::save_to_csv("noc_traffic.final.csv");
+            crate::plugin_on_exit();
             std::process::exit(0);
         }
     }

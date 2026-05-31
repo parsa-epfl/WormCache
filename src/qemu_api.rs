@@ -795,6 +795,10 @@ unsafe extern "C" {
     );
 }
 unsafe extern "C" {
+    #[doc = " qemu_plugin_on_exit() - plugin requests QEMU to prepare for exit\n @id: plugin ID\n\n A plugin that is about to call exit() should call this function first,\n giving QEMU a chance to flush and close any persistent resources\n (such as the bxdb database) before the process terminates.\n\n This must be called before the plugin calls exit() or equivalent;\n once called the plugin should not make further use of QEMU services."]
+    pub fn qemu_plugin_on_exit(id: qemu_plugin_id_t);
+}
+unsafe extern "C" {
     pub fn qemu_plugin_n_vcpus() -> ::std::os::raw::c_int;
 }
 unsafe extern "C" {
@@ -1125,6 +1129,10 @@ pub struct qemu_plugin_timing_info {
     pub raw_ckpt_pages_zero: u64,
     pub raw_ckpt_files_searched: u64,
     pub raw_ckpt_bsearch_steps: u64,
+    pub dual_bxdb_fetch_total_ns: u64,
+    pub dual_raw_fetch_total_ns: u64,
+    pub dual_pages_fetched: u64,
+    pub dual_mismatches: u64,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -1168,6 +1176,14 @@ const _: () = {
         [::std::mem::offset_of!(qemu_plugin_timing_info, raw_ckpt_files_searched) - 128usize];
     ["Offset of field: qemu_plugin_timing_info::raw_ckpt_bsearch_steps"]
         [::std::mem::offset_of!(qemu_plugin_timing_info, raw_ckpt_bsearch_steps) - 136usize];
+    ["Offset of field: qemu_plugin_timing_info::dual_bxdb_fetch_total_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, dual_bxdb_fetch_total_ns) - 144usize];
+    ["Offset of field: qemu_plugin_timing_info::dual_raw_fetch_total_ns"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, dual_raw_fetch_total_ns) - 152usize];
+    ["Offset of field: qemu_plugin_timing_info::dual_pages_fetched"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, dual_pages_fetched) - 160usize];
+    ["Offset of field: qemu_plugin_timing_info::dual_mismatches"]
+        [::std::mem::offset_of!(qemu_plugin_timing_info, dual_mismatches) - 168usize];
 };
 unsafe extern "C" {
     #[doc = " qemu_plugin_get_timing_info() - Get pointer to the global timing info\n\n Returns a pointer to the shared timing information structure.\n The structure is zero-initialised when QEMU starts and accumulates\n time across all checkpoint operations during the simulation."]

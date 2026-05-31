@@ -151,6 +151,7 @@ unsafe extern "C" fn event_loop_callback() {
 
             let timing_json = format!("{}_ckpt_time.json", SNAPSHOT_PREFIX.get().unwrap());
             crate::debug::timing::print_time_breakdown(&timing_json);
+            crate::plugin_on_exit();
             std::process::exit(0);
         }
     }
@@ -219,6 +220,7 @@ unsafe extern "C" fn quantum_checking_callback(diff: u64) -> bool {
 
                     let timing_json = format!("{}_ckpt_time.json", SNAPSHOT_PREFIX.get().unwrap());
                     crate::debug::timing::print_time_breakdown(&timing_json);
+                    crate::plugin_on_exit();
                     std::process::exit(0);
                 }
             }
