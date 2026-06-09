@@ -54,6 +54,8 @@ use components::cache_hierarchy::ParallelCacheHierarchyPlugin;
 #[allow(unused_imports)]
 use components::cache_hierarchy::SingleCacheHierarchyPlugin;
 #[allow(unused_imports)]
+use components::causality::CausalityDetectorPlugin;
+#[allow(unused_imports)]
 use components::communication::CommunicationRecordingPlugin;
 #[allow(unused_imports)]
 use components::instruction_frequency::InstructionFrequencyPlugin;

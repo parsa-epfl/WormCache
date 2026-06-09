@@ -206,6 +206,11 @@ pub enum EventType {
 
     // Number of target memory pages loaded on demabd
     OnDemandPageLoading,
+
+    // Causality violation counters
+    SharedMemoryCausalityViolation,
+    InterruptCausalityViolation,
+    InterruptDelayedWithCausality,
 }
 
 impl EventType {

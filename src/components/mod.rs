@@ -46,7 +46,7 @@ pub trait Plugin: Send + Sync {
 
 pub mod bp;
 pub mod cache_hierarchy;
-
+pub mod causality;
 pub mod communication;
 pub mod instruction_frequency;
 pub mod pw_log;

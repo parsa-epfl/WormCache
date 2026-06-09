@@ -343,8 +343,9 @@ use crate::components::Plugin;
 #[derive(PluginHelper)]
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
-    _pb: crate::BranchPredictorPlugin,
-    _lm: crate::ParallelCacheHierarchyPlugin,
+     _pb: crate::BranchPredictorPlugin,
+     _lm: crate::ParallelCacheHierarchyPlugin,
+     _cv: crate::CausalityDetectorPlugin,
     // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }

@@ -958,6 +958,22 @@ unsafe extern "C" {
         cb: qemu_plugin_on_deliver_interrupt_cb_t,
     ) -> bool;
 }
+pub type qemu_plugin_on_deliver_interrupt_with_time_cb_t =
+    ::std::option::Option<unsafe extern "C" fn(vcpu_idx: u32, src_time: u64, is_from_core: bool)>;
+unsafe extern "C" {
+    pub fn qemu_plugin_register_on_deliver_interrupt_with_time_cb(
+        cb: qemu_plugin_on_deliver_interrupt_with_time_cb_t,
+    ) -> bool;
+}
+unsafe extern "C" {
+    pub fn qemu_plugin_get_vcpu_target_time_ptr(cpu_idx: u32) -> *mut u64;
+}
+unsafe extern "C" {
+    pub fn qemu_plugin_get_vcpu_waiting_for_quantum_ptr(cpu_idx: u32) -> *mut u32;
+}
+unsafe extern "C" {
+    pub fn qemu_plugin_get_quantum_barrier_size() -> u64;
+}
 unsafe extern "C" {
     pub fn qemu_plugin_register_plugin_quantum_generation_increment_variable(var: *mut u64)
     -> bool;
