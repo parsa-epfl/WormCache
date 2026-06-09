@@ -67,6 +67,14 @@ struct RawCheckpointLoad {
 }
 
 #[derive(serde::Serialize)]
+struct DualTestLoad {
+    bxdb_fetch_total_ns: u64,
+    raw_fetch_total_ns: u64,
+    pages_fetched: u64,
+    mismatches: u64,
+}
+
+#[derive(serde::Serialize)]
 struct TimingReport {
     load_checkpoint: LoadCheckpoint,
     save_checkpoint: SaveCheckpoint,
@@ -76,6 +84,7 @@ struct TimingReport {
     peak_virtual_kb: u64,
     peak_rss_kb: u64,
     raw_checkpoint_load: RawCheckpointLoad,
+    dual_test_load: DualTestLoad,
 }
 
 fn build_report() -> Option<TimingReport> {
@@ -110,6 +119,11 @@ fn build_report() -> Option<TimingReport> {
     let raw_pages_zero = qemu_timing.raw_ckpt_pages_zero;
     let raw_files_searched = qemu_timing.raw_ckpt_files_searched;
     let raw_bsearch_steps = qemu_timing.raw_ckpt_bsearch_steps;
+
+    let dual_bxdb_ns = qemu_timing.dual_bxdb_fetch_total_ns;
+    let dual_raw_ns  = qemu_timing.dual_raw_fetch_total_ns;
+    let dual_pages   = qemu_timing.dual_pages_fetched;
+    let dual_mismatches = qemu_timing.dual_mismatches;
 
     let total_wall_ns = now.saturating_sub(sim_start);
     let simulation_ns = total_wall_ns
@@ -146,6 +160,12 @@ fn build_report() -> Option<TimingReport> {
             pages_zero: raw_pages_zero,
             files_searched: raw_files_searched,
             bsearch_steps: raw_bsearch_steps,
+        },
+        dual_test_load: DualTestLoad {
+            bxdb_fetch_total_ns: dual_bxdb_ns,
+            raw_fetch_total_ns: dual_raw_ns,
+            pages_fetched: dual_pages,
+            mismatches: dual_mismatches,
         },
     })
 }
@@ -215,6 +235,28 @@ pub fn print_time_breakdown(json_filename: &str) {
         report.raw_checkpoint_load.files_searched,
         report.raw_checkpoint_load.bsearch_steps,
     );
+    println!("  Dual-test load (BXDB vs RAW):");
+    if report.dual_test_load.pages_fetched > 0 {
+        let bxdb_per_page = report.dual_test_load.bxdb_fetch_total_ns
+            / report.dual_test_load.pages_fetched;
+        let raw_per_page = report.dual_test_load.raw_fetch_total_ns
+            / report.dual_test_load.pages_fetched;
+        println!(
+            "    BXDB fetch {:>12} ns  ({:>8} ns/page)",
+            report.dual_test_load.bxdb_fetch_total_ns, bxdb_per_page,
+        );
+        println!(
+            "    RAW  fetch {:>12} ns  ({:>8} ns/page)",
+            report.dual_test_load.raw_fetch_total_ns, raw_per_page,
+        );
+        println!(
+            "    pages_fetched {:>6}  mismatches {:>6}",
+            report.dual_test_load.pages_fetched,
+            report.dual_test_load.mismatches,
+        );
+    } else {
+        println!("    (not active — set BXDB_DUAL_TEST=1)");
+    }
     println!("===========================================");
 
     write_json(&report, json_filename);
