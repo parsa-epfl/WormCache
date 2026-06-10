@@ -966,13 +966,13 @@ unsafe extern "C" {
     ) -> bool;
 }
 unsafe extern "C" {
+    pub fn qemu_plugin_get_global_quantum_generation_ptr() -> *mut u32;
+}
+unsafe extern "C" {
     pub fn qemu_plugin_get_vcpu_target_time_ptr(cpu_idx: u32) -> *mut u64;
 }
 unsafe extern "C" {
     pub fn qemu_plugin_get_vcpu_waiting_for_quantum_ptr(cpu_idx: u32) -> *mut u32;
-}
-unsafe extern "C" {
-    pub fn qemu_plugin_get_quantum_barrier_size() -> u64;
 }
 unsafe extern "C" {
     pub fn qemu_plugin_register_plugin_quantum_generation_increment_variable(var: *mut u64)

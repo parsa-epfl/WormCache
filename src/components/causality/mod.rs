@@ -34,6 +34,12 @@ impl ShardedCausalityRecords {
         (cache_line_id & SHARD_MASK) as usize
     }
 
+    fn clear_all(&self) {
+        for shard in &self.shards {
+            shard.lock().clear();
+        }
+    }
+
     fn process_read(&self, cache_line_id: u64, core_id: u32, target_time: u64) {
         let idx = Self::shard_index(cache_line_id);
         let violation_count = {
@@ -157,6 +163,7 @@ impl ShardedCausalityRecords {
 struct CausalityDetector {
     target_time_ptrs: [*mut u64; parameter::CORE_COUNT],
     waiting_for_quantum_ptrs: [*mut u32; parameter::CORE_COUNT],
+    quantum_generation_ptr: *mut u32,
     quantum_barrier_size: u64,
     records: ShardedCausalityRecords,
 }
@@ -166,6 +173,7 @@ impl CausalityDetector {
         CausalityDetector {
             target_time_ptrs: [std::ptr::null_mut(); parameter::CORE_COUNT],
             waiting_for_quantum_ptrs: [std::ptr::null_mut(); parameter::CORE_COUNT],
+            quantum_generation_ptr: std::ptr::null_mut(),
             quantum_barrier_size: 0,
             records: ShardedCausalityRecords::new(),
         }
@@ -191,19 +199,20 @@ impl CausalityDetector {
         let mut interrupt_violation = 0u64;
         let mut delayed_violation = 0u64;
 
-        if (source_time + 100) > receiver_time && is_ipi {
-            // only apply to IPI for this type of interrpt.
+        // note that, 100ns is the latency of delivering interrupts.
+
+        if (source_time + 100) < receiver_time && is_ipi {
+            // only apply to IPI for this type of interrupt.
             interrupt_violation += 1;
         }
 
         let waiting =
             unsafe { self.waiting_for_quantum_ptrs[receiver_core as usize].read_volatile() } != 0;
 
-        let next_quantum_time = if (receiver_time % self.quantum_barrier_size) == 0 {
-            receiver_time + self.quantum_barrier_size
-        } else {
-            (receiver_time.div_ceil(self.quantum_barrier_size)) * self.quantum_barrier_size
-        };
+        let current_quantum_generation =
+            unsafe { self.quantum_generation_ptr.read_volatile() } as u64;
+
+        let next_quantum_time = (current_quantum_generation + 1) * self.quantum_barrier_size;
 
         let deliver_time = if is_ipi {
             source_time + 100
@@ -241,6 +250,9 @@ unsafe extern "C" fn vcpu_mem_access_causality(
     vaddr: u64,
     _userdata: *mut ffi::c_void,
 ) {
+    if (vcpu_idx as usize) >= parameter::SIMULATED_CORE_COUNT {
+        return;
+    }
     unsafe {
         let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
         let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
@@ -272,17 +284,9 @@ impl super::super::Plugin for CausalityDetectorPlugin {
 
             let detector = &mut *(DETECTOR as *mut CausalityDetector);
 
-            detector.quantum_barrier_size = qemu_api::qemu_plugin_get_quantum_barrier_size();
-
-            for core_id in 0..parameter::CORE_COUNT {
-                let core_id_u32 = core_id as u32;
-
-                detector.target_time_ptrs[core_id] =
-                    qemu_api::qemu_plugin_get_vcpu_target_time_ptr(core_id_u32);
-
-                detector.waiting_for_quantum_ptrs[core_id] =
-                    qemu_api::qemu_plugin_get_vcpu_waiting_for_quantum_ptr(core_id_u32);
-            }
+            detector.quantum_barrier_size = qemu_api::qemu_plugin_get_quantum_size();
+            detector.quantum_generation_ptr =
+                qemu_api::qemu_plugin_get_global_quantum_generation_ptr();
 
             DETECTOR = detector as *const CausalityDetector;
 
@@ -294,6 +298,12 @@ impl super::super::Plugin for CausalityDetectorPlugin {
 
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
         unsafe {
+            let detector = &mut *(DETECTOR as *mut CausalityDetector);
+
+            if detector.quantum_barrier_size == 0 {
+                return;
+            }
+
             let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
 
             if n_instruction == 0 {
@@ -316,4 +326,84 @@ impl super::super::Plugin for CausalityDetectorPlugin {
 
     fn serialize(_name: &str) {}
     fn deserialize(_name: &str) {}
+
+    fn serialize_par(name: &str) {
+        unsafe {
+            if (*DETECTOR).quantum_barrier_size == 0 {
+                return;
+            }
+        }
+
+        use std::io::Write;
+
+        unsafe {
+            (*DETECTOR).records.clear_all();
+        }
+
+        let mut total_shared_mem: u64 = 0;
+        let mut total_interrupt: u64 = 0;
+        let mut total_delayed: u64 = 0;
+
+        for core_id in 0..parameter::SIMULATED_CORE_COUNT {
+            let (sm, _, _) = Statistics::global_query_record(
+                core_id as u32,
+                EventType::SharedMemoryCausalityViolation,
+            );
+            let (iv, _, _) = Statistics::global_query_record(
+                core_id as u32,
+                EventType::InterruptCausalityViolation,
+            );
+            let (dv, _, _) = Statistics::global_query_record(
+                core_id as u32,
+                EventType::InterruptDelayedWithCausality,
+            );
+            total_shared_mem += sm;
+            total_interrupt += iv;
+            total_delayed += dv;
+        }
+
+        let path = format!("{}/causality.txt", name);
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_fmt(format_args!(
+            "SharedMemoryCausalityViolation: {}\n",
+            total_shared_mem
+        ))
+        .unwrap();
+        file.write_fmt(format_args!(
+            "InterruptCausalityViolation: {}\n",
+            total_interrupt
+        ))
+        .unwrap();
+        file.write_fmt(format_args!(
+            "InterruptDelayedWithCausality: {}\n",
+            total_delayed
+        ))
+        .unwrap();
+    }
+
+    fn deserialize_par(_name: &str) {
+        unsafe {
+            if (*DETECTOR).quantum_barrier_size == 0 {
+                return;
+            }
+        }
+
+        unsafe {
+            // This part is the moment when all CPUState have been created, so we can actually update the timer ptr
+            for core_id in 0..parameter::CORE_COUNT {
+                let core_id_u32 = core_id as u32;
+
+                let detector = &mut *(DETECTOR as *mut CausalityDetector);
+                detector.target_time_ptrs[core_id] =
+                    qemu_api::qemu_plugin_get_vcpu_target_time_ptr(core_id_u32);
+                detector.waiting_for_quantum_ptrs[core_id] =
+                    qemu_api::qemu_plugin_get_vcpu_waiting_for_quantum_ptr(core_id_u32);
+                detector.quantum_generation_ptr =
+                    qemu_api::qemu_plugin_get_global_quantum_generation_ptr();
+
+                assert!(!detector.target_time_ptrs[core_id].is_null());
+                assert!(!detector.waiting_for_quantum_ptrs[core_id].is_null());
+            }
+        }
+    }
 }
