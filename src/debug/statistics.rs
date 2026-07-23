@@ -223,18 +223,11 @@ impl EventType {
     pub fn to_qemu_offset(self) -> Option<usize> {
         match self {
             EventType::PrivateICacheMiss => Some(0),
-            EventType::PrivateDCacheMissDueToLoad => Some(4), // combined with PTW into load_ptw
-            EventType::PrivateDCacheMissDueToPTW => Some(4),  // combined with Load into load_ptw
-            EventType::PrivateDCacheMissDueToStore => Some(8),
-            EventType::SharedCacheMiss => Some(12),
-            EventType::BPMiss => Some(16),
-            EventType::DrainPipeline => Some(20),
-            EventType::DrainStoreBuffer => Some(24),
-            EventType::ReadHopCount => Some(28),
-            EventType::WriteHopCount => Some(32),
-            EventType::InstructionFetchHopCount => Some(36),
-            EventType::InstructionUser => Some(40),
-            EventType::InstructionKernel => Some(44),
+            EventType::PrivateDCacheMiss => Some(4),
+            EventType::SharedCacheMiss => Some(8),
+            EventType::BPMiss => Some(12),
+            EventType::DrainStoreBuffer => Some(16),
+            EventType::Instruction => Some(20),
             _ => None,
         }
     }
