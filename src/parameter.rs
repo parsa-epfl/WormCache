@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 64;
+pub const CORE_COUNT: usize = 4;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -69,7 +69,7 @@ pub const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
  * Number of worker threads in the rayon thread pool used for parallel checkpoint serialization/deserialization.
  * SIMULATED_CORE_COUNT must be a multiple of this value.
  */
-pub const CHECKPOINT_POOL_SIZE: usize = 16;
+pub const CHECKPOINT_POOL_SIZE: usize = 4;
 static_assertions::const_assert!(SIMULATED_CORE_COUNT % CHECKPOINT_POOL_SIZE == 0);
 
 /**
@@ -126,7 +126,7 @@ static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIV
  *
  * The associativity of the private & last-level TLB.
  */
-pub const STLB_ASSO: usize = 5;
+pub const STLB_ASSO: usize = 4;
 
 /**
  * STLB_SET
@@ -213,7 +213,7 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 65536;
+pub const SHARED_CACHE_SET: usize = 16384 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -275,7 +275,7 @@ pub const USE_INFINITE_DIRECTORY: bool = false;
 pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
 static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
 
-pub const FINITE_DIRECTORY_SET: usize = 32768;
+pub const FINITE_DIRECTORY_SET: usize = 2048;
 static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
 static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
@@ -294,14 +294,14 @@ pub const ADJACENT_LINE_PREFETCHING: bool = false;
 pub const SMS_PREFETCHING: bool = true;
 pub const N_ACC: usize = 64; // Number of entries in the access table.
 pub const N_FILTER: usize = 32; // Number of entries in the filter table.
-pub const PHT_SETS: usize = 1024; // Number of sets in the PHT.
+pub const PHT_SETS: usize = 256;    // Number of sets in the PHT.
 pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
-pub const IDX_WIDTH: usize = 21; // Number of bits used to index the PHT.
+pub const IDX_WIDTH: usize = 21;    // Number of bits used to index the PHT.
 pub const N_BLK: usize = 32; // Number of blocks in the region.
 pub const PC_WIDTH: usize = IDX_WIDTH - N_BLK.trailing_zeros() as usize; // The number of PC bits used to index
-pub const SAT_CNT: bool = false; // Whether to use saturating counters or store bit patterns
-pub const SEP_RDWR: bool = false; // Whether to seperate read and write patterns
-pub const ROT: bool = false; // Whether to rotate the patterns when stored
+pub const SAT_CNT: bool = false;     // Whether to use saturating counters or store bit patterns
+pub const SEP_RDWR: bool = false;    // Whether to seperate read and write patterns
+pub const ROT: bool = false;     // Whether to rotate the patterns when stored
 pub const PERFECT_PHT: bool = false; // Whether to use perfect PHT
 
 pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
@@ -320,7 +320,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 2048;
+pub const BTB_SET: usize = 512;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
@@ -328,7 +328,7 @@ static_assertions::const_assert!(BTB_SET.is_power_of_two());
  *
  * The associativity of the BTB.
  */
-pub const BTB_ASSO: usize = 3;
+pub const BTB_ASSO: usize = 4;
 
 /**
  * BP_RAS_COUNT
@@ -345,7 +345,7 @@ pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
      _pb: crate::BranchPredictorPlugin,
      _lm: crate::ParallelCacheHierarchyPlugin,
-     _cv: crate::CausalityDetectorPlugin,
+    //  _cv: crate::CausalityDetectorPlugin,
     // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }
@@ -394,7 +394,7 @@ pub const USE_RKYV_SERIALIZATION: bool = true;
  *
  * This is used for a finer-grained IPC model that considers the on-chip network latency. It can be useful for debugging and testing the cache hierarchy and the coherence protocol.
  */
-pub const RECORD_ON_CHIP_NETWORK_HOP: bool = true;
+pub const RECORD_ON_CHIP_NETWORK_HOP: bool = false;
 static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_ON_CHIP_NETWORK_HOP);
 
 /**

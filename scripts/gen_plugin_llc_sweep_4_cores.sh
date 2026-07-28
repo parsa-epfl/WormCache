@@ -6,7 +6,7 @@ ncores=4
 for tuple in "8192 16384" "2048 4096"; do
     read -r btb sms <<< "$tuple"
     for type in os an; do
-        for llc in 256 512 1024 2048 4096 8192 16384; do
+        for llc in 64 128 256 512 1024 2048 4096 8192 16384; do
             prefix="BTB_${btb}_SMS_${sms}_STLB_1024_L1_64_LLC_${llc}"
 
             src_file="$(pwd)/src/cfgs/${ncores}_core/parameter_${type}_${prefix}.rs"
