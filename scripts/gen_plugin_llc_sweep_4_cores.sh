@@ -21,11 +21,13 @@ for tuple in "8192 16384" "2048 4096"; do
             src_file="$(pwd)/target/release/libworm_cache.so"
             dst_file="$(pwd)/../bins/${ncores}_core/libworm_cache_${type}_${prefix}.so"
             echo "Copying ${src_file} to ${dst_file}"
+            mkdir -p "$(dirname "$dst_file")"
             cp $src_file $dst_file
 
             src_file="$(pwd)/target/release/checkpoint_conversion"
             dst_file="$(pwd)/../bins/${ncores}_core/checkpoint_conversion_${type}_${prefix}"
             echo "Copying ${src_file} to ${dst_file}"
+            mkdir -p "$(dirname "$dst_file")"
             cp $src_file $dst_file
         done
     done
