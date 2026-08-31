@@ -42,13 +42,28 @@ function gen() {
 
 stlb=1024                   # Fixed STLB size for 1-core DSE
 llc=32768                   # Fixed LLC size for 1-core DSE
+btb=16384                   # Fixed BTB size for 1-core DSE
 
-for btb in 256 512 1024 2048 4096 8192 16384; do
-    for sms in 0 1024 2048 4096 8192 16384; do
-        for l1 in 8 16 32 64; do
-            for type in os an; do
-                gen $type $btb $sms $stlb $l1 $llc
-            done
+sms=0
+l1=64
+for type in os an; do
+    gen $type $btb $sms $stlb $l1 $llc
+done
+
+for sms in 1024 2048 4096 8192 16384; do
+    for l1 in 8 16 32 64; do
+        for type in os an; do
+            gen $type $btb $sms $stlb $l1 $llc
         done
     done
+done
+
+# Tiny
+btb=64
+sms=0
+stlb=64
+l1=8
+llc=1
+for type in os an; do
+    gen $type $btb $sms $stlb $l1 $llc
 done
