@@ -2,12 +2,12 @@ use crate::{
     arch::AArch64,
     components::cache_hierarchy::{
         common::L0InstructionCache,
-        mmu::{self, tlb::AddressSpaceID, AbstractMMU, MMUFlushMode, MMUTranslationResult},
+        mmu::{self, AbstractMMU, MMUFlushMode, MMUTranslationResult, tlb::AddressSpaceID},
     },
     debug::{noc_traffic::NocTraffic, statistics::Statistics},
     parameter, qemu_api,
 };
-use bitvec::{array::BitArray, order::Lsb0, BitArr};
+use bitvec::{BitArr, array::BitArray, order::Lsb0};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use spin::Mutex as SpinMutex;
@@ -15,7 +15,7 @@ use std::ffi;
 
 pub mod aarch64_decoder;
 
-const MODEL_SHARED_MEMORY: bool = false;
+const MODEL_SHARED_MEMORY: bool = true;
 
 // Global timestamp updated by QEMU's quantum incremental handler
 #[unsafe(no_mangle)]

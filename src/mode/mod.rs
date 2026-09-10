@@ -7,7 +7,7 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
     let normal = "normal".to_string();
     let mode = options.get("mode").unwrap_or(&normal);
 
-    // - mode=normal|warm
+    // - mode=normal|communication|warm
     // - quit_threshold_ns=N
     // - init_threshold=N
     // - interval=N
