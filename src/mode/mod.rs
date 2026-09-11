@@ -64,6 +64,8 @@ pub fn chronic_behavior_init(options: &FxHashMap<String, String>) {
                 raw_ckpt_fmt,
             );
         }
+    } else if mode == "communication" {
+        // handled in the component/communication/mod.rs
     } else if let Some(threshold_str) = options.get("quit_threshold_ns") {
         let threshold = threshold_str.parse::<u64>().unwrap();
         println!("Quit threshold enabled: {} cycles.", threshold);
