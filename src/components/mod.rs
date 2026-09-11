@@ -37,26 +37,19 @@ pub trait Plugin: Send + Sync {
 
     unsafe fn on_translation(tb: *mut qemu_api::qemu_plugin_tb);
 
-    fn dump_snapshot(name: &str);
-
     fn serialize(name: &str);
     fn deserialize(name: &str);
+
+    fn serialize_par(_name: &str) {}
+    fn deserialize_par(_name: &str) {}
 }
 
-pub trait FlexusCompatibleSerializer {
-    type HelperType: Serialize; // the helper type must be directly serializable.
-
-    fn get_serialize_helper(&self) -> Self::HelperType;
-}
-
-mod mmu; // this is only used by other components, not exposed to the crate.
-pub use mmu::NoMMU;
-use serde::Serialize;
 pub mod bp;
 pub mod cache_hierarchy;
-pub mod debug;
-pub mod marker;
+pub mod causality;
+pub mod communication;
+pub mod instruction_frequency;
 pub mod pw_log;
 pub mod touch_once;
 pub mod trace;
-pub mod virtual_time;
+pub mod wfi;

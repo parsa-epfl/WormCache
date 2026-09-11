@@ -29,18 +29,20 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize,
+)]
 pub struct PrivateCacheLine {
-    block_id_with_v: u64, // the last bit is the valid bit.
-    ts: u64,
-    write_ts: u64,
-    is_instruction: bool,
-    writeable: bool,
-    modified: bool,   // TODO: modified can be combined with write_ts.
-    access_v_ts: u64, // The timestamp is generated assuming all instructions take exactly 1ns.
-    write_v_ts: u64,
+    pub block_id_with_v: u64, // the last bit is the valid bit.
+
+    pub ts: u64, // the latest timestamp of the cache line.
+
+    pub is_instruction: bool,
+    pub writeable: bool,
+    pub modified: bool, // TODO: modified can be combined with write_ts.
 }
 
 impl PrivateCacheLine {
@@ -60,11 +62,6 @@ impl PrivateCacheLine {
     }
 
     #[inline]
-    pub fn write_ts(&self) -> u64 {
-        self.write_ts
-    }
-
-    #[inline]
     pub fn access_ts(&self) -> u64 {
         self.ts
     }
@@ -75,18 +72,13 @@ impl PrivateCacheLine {
     }
 
     #[inline]
-    pub fn access_virtual_timestamp(&self) -> u64 {
-        self.access_v_ts
-    }
-
-    #[inline]
-    pub fn write_virtual_timestamp(&self) -> u64 {
-        self.write_v_ts
+    pub fn is_valid(&self) -> bool {
+        self.block_id_with_v & 0x1 == 1
     }
 }
 
 // Migrate some functions to this struct, with lock permission.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 #[repr(align(64))]
 pub struct PrivateCacheSet {
     pub lines: Vec<PrivateCacheLine>, // I am still wondering if I should turn its length into constant. After all, it is constant.
@@ -134,12 +126,9 @@ impl PrivateCacheSet {
                 std::iter::repeat(PrivateCacheLine {
                     block_id_with_v: 0,
                     ts: 0,
-                    write_ts: 0,
                     is_instruction: false,
                     writeable: false,
                     modified: false,
-                    access_v_ts: 0,
-                    write_v_ts: 0,
                 })
                 .take(asso),
             ),
@@ -209,7 +198,6 @@ impl PrivateCacheSet {
         &mut self,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         is_store: bool,
         is_instruction_fetch: bool,
     ) -> PrivateCachePokeResult {
@@ -223,10 +211,7 @@ impl PrivateCacheSet {
             if is_store {
                 if line.writeable {
                     line.ts = ts;
-                    line.write_ts = ts;
                     line.modified = true;
-                    line.access_v_ts = v_ts;
-                    line.write_v_ts = v_ts;
                     return PrivateCachePokeResult::Hit;
                 } else {
                     return PrivateCachePokeResult::PermissionViolation(
@@ -236,7 +221,6 @@ impl PrivateCacheSet {
             }
             assert!(line.ts <= ts); // This is a strong assumption. (The cache line should be updated with the latest timestamp.
             line.ts = ts;
-            line.access_v_ts = v_ts;
             line.is_instruction = is_instruction_fetch;
 
             self.hit_index_acc += idx;
@@ -257,12 +241,11 @@ impl PrivateCacheSet {
         potential_slot: PrivateCacheEvictedSlot,
         block_id: u64,
         ts: u64,
-        v_ts: u64,
         is_instruction: bool,
         writable: bool,
         modified: bool,
-    ) -> Option<(bool, u64)> {
-        // (modified, write_ts)
+    ) -> Option<bool> {
+        // modified
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
 
         assert!(self.index_of(block_id).is_none());
@@ -278,10 +261,7 @@ impl PrivateCacheSet {
             PrivateCacheEvictedSlot::Invalid(idx) => (None, idx),
             PrivateCacheEvictedSlot::Valid(idx, _) => match self.recent_invalid_slot_index {
                 Some(idx) => (None, idx),
-                None => (
-                    Some((self.lines[idx].modified, self.lines[idx].write_ts)),
-                    idx,
-                ),
+                None => (Some(self.lines[idx].modified), idx),
             },
             PrivateCacheEvictedSlot::Same(idx) => {
                 // This is actually an upgrade, not a cache fill.
@@ -328,14 +308,6 @@ impl PrivateCacheSet {
         self.lines[idx_of_slot_to_fill].is_instruction = is_instruction;
         self.lines[idx_of_slot_to_fill].writeable = writable;
         self.lines[idx_of_slot_to_fill].modified = modified;
-        self.lines[idx_of_slot_to_fill].access_v_ts = v_ts;
-        if modified {
-            self.lines[idx_of_slot_to_fill].write_ts = ts;
-            self.lines[idx_of_slot_to_fill].write_v_ts = v_ts;
-        } else {
-            self.lines[idx_of_slot_to_fill].write_ts = 0; // no one has written this cache line, so its timestamp should be zero.
-            self.lines[idx_of_slot_to_fill].write_v_ts = 0;
-        }
 
         res
     }
@@ -344,7 +316,6 @@ impl PrivateCacheSet {
     pub fn invalidate(&mut self, index: usize) {
         self.lines[index].block_id_with_v = 0;
         self.lines[index].ts = 0; // set ts to 0 so that this place will be find by the minimal ts. Good for replacement.
-        self.lines[index].access_v_ts = 0;
         self.recent_invalid_slot_index = Some(index);
     }
 
@@ -364,38 +335,6 @@ impl PrivateCacheSet {
     }
 }
 
-// Serialization function of the cache line.
-
-#[derive(Serialize)]
-pub struct SerializedCacheLine {
-    tag: u64,
-    writable: bool,
-    dirty: bool,
-}
-
-impl PrivateCacheSet {
-    pub fn serialize(&self, number_of_set: usize) -> Vec<SerializedCacheLine> {
-        // 1. sort the line by its timestamp. smaller timestamp goes first
-        // 2. filter out the invalid lines.
-        // 3. tag should be removed with the valid bit and the index bit.
-
-        let mut sorted_lines = self.lines.clone();
-        sorted_lines.sort_by(|a, b| a.ts.cmp(&b.ts));
-
-        let set_bits = (number_of_set as u64).trailing_zeros();
-
-        return sorted_lines
-            .iter()
-            .filter(|line| line.block_id_with_v & 0x1 == 1)
-            .map(|line| SerializedCacheLine {
-                tag: (line.block_id_with_v >> 1) >> set_bits,
-                writable: line.modified,
-                dirty: line.modified,
-            })
-            .collect();
-    }
-}
-
 #[test]
 fn minimum_can_find_invalid() {
     let mut set = PrivateCacheSet::new(8);
@@ -406,7 +345,6 @@ fn minimum_can_find_invalid() {
         set.fill_with_potential_eviction_slot(
             PrivateCacheEvictedSlot::Invalid(i),
             i as u64,
-            ts,
             ts,
             false,
             false,
@@ -424,9 +362,6 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 1,
             ts: 1,
-            access_v_ts: 1,
-            write_ts: 0,
-            write_v_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -438,7 +373,7 @@ fn minimum_can_find_invalid() {
     // Now if we refill, we will hit the first place.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, PrivateCacheEvictedSlot::Invalid(0));
-    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, ts, false, false, false);
+    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, false, false, false);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -446,9 +381,6 @@ fn minimum_can_find_invalid() {
         PrivateCacheLine {
             block_id_with_v: 9 << 1 | 1,
             ts: ts,
-            access_v_ts: ts,
-            write_ts: 0,
-            write_v_ts: 0,
             is_instruction: false,
             writeable: false,
             modified: false,
@@ -460,5 +392,5 @@ fn minimum_can_find_invalid() {
     // If we now insert another one, line[1] will be replaced.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, PrivateCacheEvictedSlot::Valid(1, 1));
-    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, ts, false, false, false);
+    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, false, false, false);
 }

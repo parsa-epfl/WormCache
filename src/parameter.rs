@@ -39,7 +39,7 @@ use rustc_hash::FxHashMap;
  *
  * Number of vCPUs of QEMU.
  */
-pub const CORE_COUNT: usize = 2;
+pub const CORE_COUNT: usize = 64;
 
 /**
  * CACHE_HIERARCHY_FOR_HALF_OF_CORES
@@ -57,14 +57,20 @@ pub const MEASURE_HALF_OF_CORES: bool = false;
 // An assertion checker to make sure the CORE_COUNT is even if we use the CACHE_HIERARCHY_FOR_HALF_OF_CORES.
 static_assertions::const_assert!(!MEASURE_HALF_OF_CORES || CORE_COUNT % 2 == 0);
 
+pub const SIMULATED_CORE_COUNT: usize = if MEASURE_HALF_OF_CORES {
+    CORE_COUNT / 2
+} else {
+    CORE_COUNT
+};
+
 /**
- * USE_SERIAL_CACHE_MODEL
+ * CHECKPOINT_POOL_SIZE
  *
- * Whether to use the serial cache model.
- *
- * Please only make this model to true when you enables the round-robin TCG mode in QEMU. Otherwise, there will be contention.
+ * Number of worker threads in the rayon thread pool used for parallel checkpoint serialization/deserialization.
+ * SIMULATED_CORE_COUNT must be a multiple of this value.
  */
-pub const USE_SERIAL_CACHE_MODEL: bool = false;
+pub const CHECKPOINT_POOL_SIZE: usize = 16;
+static_assertions::const_assert!(SIMULATED_CORE_COUNT % CHECKPOINT_POOL_SIZE == 0);
 
 /**
  * CACHE_LINE_SIZE
@@ -76,20 +82,65 @@ pub const CACHE_LINE_SIZE: usize = 64;
 static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
 
 /**
- * TLB_ASSO
+ * BYPASSING_OS_SIMULATION
+ *
+ * Whether to bypass the OS simulation and only process the userspace trace.
+ *
+ */
+pub const BYPASSING_OS_SIMULATION: bool = false;
+
+/**
+ * ENABLE_MMU
+ *
+ * Whether to enable the MMU and the virtual memory translation. If false, all the memory accesses are treated as physical memory accesses, and no page walk will be modeled.
+ */
+pub const ENABLE_MMU: bool = true;
+
+// Use FullyAssociativeTLB
+pub const USE_HIGHLY_ASSOCIATIVE_L1TLB: bool = false;
+
+// ITLB
+
+pub const ITLB_ASSO: usize = 64;
+
+pub const ITLB_SET: usize = 1;
+static_assertions::const_assert!(!(ITLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
+static_assertions::const_assert!(ITLB_SET.is_power_of_two());
+
+// DTLB
+
+pub const DTLB_ASSO: usize = 64;
+
+pub const DTLB_SET: usize = 1;
+static_assertions::const_assert!(!(DTLB_SET != 1 && USE_HIGHLY_ASSOCIATIVE_L1TLB));
+static_assertions::const_assert!(DTLB_SET.is_power_of_two());
+
+// A debugging flag to see whether we should warm the L1 TLB.
+pub const L1TLB_ENABLED: bool = false;
+
+pub const STLB_ENABLED: bool = true;
+static_assertions::const_assert!(!(STLB_ENABLED != true && USE_HIGHLY_ASSOCIATIVE_L1TLB));
+
+/**
+ * STLB_ASSO
  *
  * The associativity of the private & last-level TLB.
  */
-pub const TLB_ASSO: usize = 4;
+pub const STLB_ASSO: usize = 5;
 
 /**
- * TLB_SET
+ * STLB_SET
  *
  * The number of sets of the private & last-level TLB.
  */
 
-pub const TLB_SET: usize = 1024;
-static_assertions::const_assert!(TLB_SET.is_power_of_two());
+pub const STLB_SET: usize = 256;
+static_assertions::const_assert!(STLB_SET.is_power_of_two());
+
+// No huge pages?
+pub const NO_HUGE_PAGE: bool = true;
+
+pub const COMPARE_TRANSLATION_RESULT_WITH_WALKER: bool = false;
 
 /**
  * USE_UNIFIED_CACHE
@@ -106,14 +157,14 @@ pub const USE_UNIFIED_CACHE: bool = false;
  * The associativity of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_ASSO: usize = 8;
+pub const UNIFIED_PRI_CACHE_ASSO: usize = 4;
 /**
  * PRI_CACHE_SET
  *
  * The number of sets of the private cache.
  * This parameter is only used when the unified private cache is enabled.
  */
-pub const UNIFIED_PRI_CACHE_SET: usize = 2048 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
+pub const UNIFIED_PRI_CACHE_SET: usize = 64 * 1024 / UNIFIED_PRI_CACHE_ASSO / CACHE_LINE_SIZE;
 static_assertions::const_assert!(UNIFIED_PRI_CACHE_SET.is_power_of_two());
 
 /**
@@ -130,7 +181,7 @@ pub const HARVARD_PRI_I_CACHE_ASSO: usize = 4;
  * The number of sets of the private instruction cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_I_CACHE_SET: usize = 64;
+pub const HARVARD_PRI_I_CACHE_SET: usize = 256;
 static_assertions::const_assert!(HARVARD_PRI_I_CACHE_SET.is_power_of_two());
 
 /**
@@ -147,7 +198,7 @@ pub const HARVARD_PRI_D_CACHE_ASSO: usize = 4;
  * The number of sets of the private data cache.
  * This parameter is only used when the unified private cache is disabled.
  */
-pub const HARVARD_PRI_D_CACHE_SET: usize = 64;
+pub const HARVARD_PRI_D_CACHE_SET: usize = 256;
 static_assertions::const_assert!(HARVARD_PRI_D_CACHE_SET.is_power_of_two());
 
 /**
@@ -162,8 +213,9 @@ pub const SHARED_CACHE_ASSO: usize = 16; // with 16 and 64, each cache set is 1K
  *
  * The number of sets of the shared cache for traffic recording.
  */
-pub const SHARED_CACHE_SET: usize = 64 * 1024 * 1024 / SHARED_CACHE_ASSO / CACHE_LINE_SIZE;
-static_assertions::const_assert!(SHARED_CACHE_SET.is_power_of_two());
+pub const SHARED_CACHE_SET: usize = 65536;
+static_assertions::const_assert!(SHARED_CACHE_SET % SIMULATED_CORE_COUNT == 0);
+static_assertions::const_assert!((SHARED_CACHE_SET / SIMULATED_CORE_COUNT).is_power_of_two());
 
 /**
  * SHARED_CACHE_EXCLUSIVE
@@ -177,11 +229,13 @@ pub const SHARED_CACHE_EXCLUSIVE: bool = false;
 /**
  * SHARED_CACHE_FILL_WITH_PRIVATE_CACHE
  *
- * Whether the shared cache is filled on a filling to the private cache.
+ * Whether the shared cache is filled on a read-permission filling to the private cache.
+ *
+ * For private cache with exclusive state (MESI), this parameter does bring data-read caches to the shared cache
  *
  * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
  */
-pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = false;
+pub const SHARED_CACHE_FILL_WITH_PRIVATE_CACHE: bool = true;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_WITH_PRIVATE_CACHE));
 
 /**
@@ -205,15 +259,27 @@ pub const SHARED_CACHE_FILL_ON_DIRTY_EVICTION: bool = true;
 static_assertions::const_assert!(!(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_CLEAN_EVICTION));
 
 /**
- * DIRECTORY_SHARD_COUNT
+ * SHARED_CACHE_FILL_ON_REPLICA_CREATION
  *
- * The number of sets of the directory. It should be much larger than the number of sets of all private caches to prevent directory contention.
+ * Whether the shared cache is filled on a replica creation in private cache.
  *
- * It should be a power of 2.
- *
-*/
-pub const DIRECTORY_SHARD_COUNT: usize = 32768;
-static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
+ * This parameter cannot be true together with SHARED_CACHE_EXCLUSIVE.
+ */
+pub const SHARED_CACHE_FILL_ON_REPLICA_CREATION: bool = true;
+static_assertions::const_assert!(
+    !(SHARED_CACHE_EXCLUSIVE && SHARED_CACHE_FILL_ON_REPLICA_CREATION)
+);
+
+pub const USE_INFINITE_DIRECTORY: bool = false;
+
+pub const INFINITE_DIRECTORY_SHARED_COUNT: usize = 32768;
+static_assertions::const_assert!(INFINITE_DIRECTORY_SHARED_COUNT.is_power_of_two());
+
+pub const FINITE_DIRECTORY_SET: usize = 32768;
+static_assertions::const_assert!(FINITE_DIRECTORY_SET % SIMULATED_CORE_COUNT == 0);
+static_assertions::const_assert!((FINITE_DIRECTORY_SET / SIMULATED_CORE_COUNT).is_power_of_two());
+
+pub const FINITE_DIRECTORY_ASSO: usize = 16;
 
 /**
 * ADJACENT_LINE_PREFETCHING
@@ -221,6 +287,25 @@ static_assertions::const_assert!(DIRECTORY_SHARD_COUNT.is_power_of_two());
 * Whether to enable the adjacent (in PA) line prefetching for functional warming.
 */
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
+
+/**
+* Parameters for SMS Prefetching
+*/
+pub const SMS_PREFETCHING: bool = true;
+pub const N_ACC: usize = 64; // Number of entries in the access table.
+pub const N_FILTER: usize = 32; // Number of entries in the filter table.
+pub const PHT_SETS: usize = 1024; // Number of sets in the PHT.
+pub const PHT_WAYS: usize = 16; // Number of ways in the PHT.
+pub const IDX_WIDTH: usize = 21; // Number of bits used to index the PHT.
+pub const N_BLK: usize = 32; // Number of blocks in the region.
+pub const PC_WIDTH: usize = IDX_WIDTH - N_BLK.trailing_zeros() as usize; // The number of PC bits used to index
+pub const SAT_CNT: bool = false; // Whether to use saturating counters or store bit patterns
+pub const SEP_RDWR: bool = false; // Whether to seperate read and write patterns
+pub const ROT: bool = false; // Whether to rotate the patterns when stored
+pub const PERFECT_PHT: bool = false; // Whether to use perfect PHT
+
+pub const N_PRINT_LOW: u64 = 0; // The lower bound of the access counter to print the access.
+pub const N_PRINT_UP: u64 = 100_000_000; // The upper bound of the access counter to print the access.
 
 /**
  * BP_GSHARE_SET
@@ -235,7 +320,7 @@ static_assertions::const_assert!(BP_GSHARE_SET.is_power_of_two());
  *
  * The number of sets of the BTB.
  */
-pub const BTB_SET: usize = 4096;
+pub const BTB_SET: usize = 2048;
 static_assertions::const_assert!(BTB_SET.is_power_of_two());
 
 /**
@@ -251,26 +336,6 @@ pub const BTB_ASSO: usize = 3;
 pub const BP_RAS_COUNT: usize = 32;
 
 /**
- * INIT_HOST_TIME_SCALE
- *
- * The initial denominator of taking host time to advance target CPU clock.
- *
- * By default, the VirtualTime plugin calculate the denominator by periodically picking the fast core, and uses its speed
- * to calculate this denominator. This parameter is used to set the initial value of this denominator.
- *
- */
-pub const INIT_HOST_TIME_SCALE: usize = 1000;
-
-/**
- * HOST_TIME_SCALING_PROFILING_PERIOD
- *
- * The period of profiling the host time scaling, in milliseconds.
- *
- * The VirtualTime plugin will profile the icount and determine host time scaling every this number of instructions.
- */
-pub const HOST_TIME_SCALING_PROFILING_PERIOD: usize = 100;
-
-/**
  * The list of plugins.
  */
 use crate::components::Plugin;
@@ -279,10 +344,9 @@ use crate::components::Plugin;
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
     _pb: crate::BranchPredictorPlugin,
-    _vt: crate::VirtualTimePlugin,
-    // _mk: crate::MarkerPlugin,
-    // _lm: crate::ParallelCacheHierarchyPlugin,
-    _lm: crate::SingleCacheHierarchyPlugin,
+    _lm: crate::ParallelCacheHierarchyPlugin,
+    // _cv: crate::CausalityDetectorPlugin,
+    // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }
 
@@ -316,17 +380,36 @@ pub const ENABLE_EXCLUSIVE_CACHE_STATE: bool = true;
 pub const ENABLE_CACHE_LINE_HISTORY: bool = false;
 
 /**
- * Whether to disable precise coherence message reconstruction.
+ * Checkpoint serialization format.
  *
- * This option is for testing the accuracy of the functional warming model.
+ * When true, use rkyv for checkpoint serialization (faster and more compact).
+ * When false, use JSON for checkpoint serialization (human-readable, backward compatible).
  *
- * This option is only effective when the parallel cache model is used.
+ * Note: MMU serialization always uses JSON due to checkpoint conversion requirements.
  */
-pub const DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION: bool = false;
+pub const USE_RKYV_SERIALIZATION: bool = true;
 
 /**
- * Whether to dump the flexus-compatible checkpoint.
+ * Whether to record the on-chip network hop count for each memory access.
  *
- * By turning on this option, we dump a flexus-compatible checkpoint at the end of the simulation.
+ * This is used for a finer-grained IPC model that considers the on-chip network latency. It can be useful for debugging and testing the cache hierarchy and the coherence protocol.
  */
-pub const DUMP_FLEXUS_CHECKPOINT: bool = true;
+pub const RECORD_ON_CHIP_NETWORK_HOP: bool = false;
+static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_ON_CHIP_NETWORK_HOP);
+
+/**
+ * Whether to record the on-chip network traffic (NocTraffic) for each memory access.
+ *
+ * Disabled by default because NocTraffic recording adds per-access overhead.
+ * Enable only when the traffic matrix CSV output is needed.
+ */
+pub const RECORD_NOC_TRAFFIC: bool = false;
+static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_NOC_TRAFFIC);
+
+/**
+ * The position of DRAM controller.
+ *
+ * This is used to calculate the on-chip network hop count for each memory access. The DRAM controller is considered as the root of the on-chip network, and the hop count is calculated based on the distance from the core to the DRAM controller.
+ */
+pub const DRAM_CONTROLLER_COUNT: usize = 8;
+pub const DRAM_POSITION: [u64; DRAM_CONTROLLER_COUNT] = [8, 15, 24, 31, 32, 39, 48, 55];

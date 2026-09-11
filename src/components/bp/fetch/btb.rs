@@ -31,25 +31,44 @@
 
 use crate::components::bp::{BranchResolutionResult, BranchType};
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 use super::BranchPredictorResult;
+use crate::checkpoint::helpers::BTBHelper;
 
-#[derive(Deserialize, Serialize)]
-struct BTBEntry {
-    tag: u64,
-    target: u64,
-    ts: u64, // zero means invalid.
-    branch_type: BranchType,
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
+pub struct BTBEntry {
+    pub tag: u64,
+    pub target: u64,
+    pub ts: u64, // zero means invalid.
+    pub branch_type: BranchType,
 }
 
-#[serde_as]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct BTB<const SET: usize, const ASSO: usize> {
-    #[serde_as(as = "Vec<[_; ASSO]>")]
     array: Vec<[BTBEntry; ASSO]>,
     local_ts: u64,
+}
+
+impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
+    pub fn to_checkpoint_helper(&self) -> BTBHelper {
+        BTBHelper {
+            array: self.array.iter().map(|set| set.to_vec()).collect(),
+            local_ts: self.local_ts,
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: BTBHelper) -> Self {
+        Self {
+            array: helper
+                .array
+                .into_iter()
+                .map(|set| set.try_into().expect("BTB set size mismatch"))
+                .collect(),
+            local_ts: helper.local_ts,
+        }
+    }
 }
 
 impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
@@ -73,100 +92,67 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
         pc: u64,
         result: BranchResolutionResult,
         target: u64,
-    ) -> BranchPredictorResult {
+    ) -> (BranchPredictorResult, BranchType) {
         self.local_ts += 1;
 
-        let index = (pc % SET as u64) as usize;
+        // This is the word-aligned PC, so the index is shifted by 2 to avoid wasting space.
+        let index = ((pc >> 2) % SET as u64) as usize;
 
         // We need to check if the entry is already in the BTB. If yes, we update the timestamp and return.
         // This should be the common case.
         for entry in self.array[index].iter_mut() {
             if entry.tag == pc {
                 entry.ts = self.local_ts;
+                // BTB is not trained or accessed when the branch is predicted to be not taken.
+                if !result.is_taken {
+                    // This is useful to guide the TAGE training.
+                    return (BranchPredictorResult::NotActive, entry.branch_type);
+                }
 
                 let miss = entry.target != target;
 
-                entry.target = target; // also update the target.
-                return if miss {
-                    BranchPredictorResult::Mispredict
+                let prediction = if miss {
+                    (BranchPredictorResult::Mispredict, entry.branch_type)
                 } else {
-                    BranchPredictorResult::Match
+                    (BranchPredictorResult::Match, entry.branch_type)
                 };
+
+                entry.target = target; // also update the target and the branch type.
+                entry.branch_type = result.branch_type;
+
+                return prediction;
             }
         }
 
-        // Find the entry with the minimum timestamp. Ts is zero means it is not valid.
-        let mut min_index = 0;
-        let mut min_ts = u64::MAX;
+        // Only insert the entry if the branch is taken.
+        if result.is_taken {
+            // Find the entry with the minimum timestamp. Ts is zero means it is not valid.
+            let mut min_index = 0;
+            let mut min_ts = u64::MAX;
 
-        for (i, entry) in self.array[index].iter().enumerate() {
-            if entry.ts < min_ts {
-                min_ts = entry.ts;
-                min_index = i;
-            }
-        }
-
-        // always replace the entry with the minimum timestamp
-        self.array[index][min_index].tag = pc;
-        self.array[index][min_index].target = target;
-        self.array[index][min_index].ts = self.local_ts;
-        self.array[index][min_index].branch_type = result.branch_type;
-
-        BranchPredictorResult::Mispredict
-    }
-}
-
-///// Serialization and Deserialization for QFlex.
-
-#[derive(Serialize, Deserialize)]
-pub struct BTBEntrySerializeHelper {
-    #[serde(rename = "PC")]
-    pc: u64,
-    target: u64,
-    #[serde(rename = "type")]
-    type_: u64,
-}
-
-use crate::components::FlexusCompatibleSerializer;
-
-impl FlexusCompatibleSerializer for BTBEntry {
-    type HelperType = BTBEntrySerializeHelper;
-
-    fn get_serialize_helper(&self) -> Self::HelperType {
-        BTBEntrySerializeHelper {
-            pc: self.tag,
-            target: self.target,
-            type_: self.branch_type as u64,
-        }
-    }
-}
-
-impl<const SET: usize, const ASSO: usize> FlexusCompatibleSerializer for BTB<SET, ASSO> {
-    type HelperType = Vec<Vec<BTBEntrySerializeHelper>>;
-
-    fn get_serialize_helper(&self) -> Self::HelperType {
-        self.array
-            .iter()
-            .map(|set| {
-                // set.iter()
-                //     .map(|entry| entry.get_serialize_helper())
-                //     .collect()
-                let mut res = vec![];
-
-                // filter and only keep the valid bit.
-                for entry in set.iter() {
-                    if entry.ts != 0 {
-                        res.push(entry);
-                    }
+            for (i, entry) in self.array[index].iter().enumerate() {
+                if entry.ts < min_ts {
+                    min_ts = entry.ts;
+                    min_index = i;
                 }
+            }
 
-                // sort by the timestamp. Small ts first.
-                res.sort_by_key(|entry| entry.ts);
+            // always replace the entry with the minimum timestamp
+            self.array[index][min_index].tag = pc;
+            self.array[index][min_index].target = target;
+            self.array[index][min_index].ts = self.local_ts;
+            self.array[index][min_index].branch_type = result.branch_type;
 
-                res.into_iter()
-                    .map(|entry| entry.get_serialize_helper())
-                    .collect()
-            })
-            .collect()
+            return (BranchPredictorResult::Mispredict, result.branch_type);
+        }
+
+        // For a non-taken branch, it is not a misprediction. It is just that no prediction is made.
+        (BranchPredictorResult::NotActive, BranchType::NonBranch)
+    }
+}
+
+impl<const SET: usize, const ASSO: usize> Default for BTB<SET, ASSO> {
+    fn default() -> Self {
+        Self::new()
     }
 }

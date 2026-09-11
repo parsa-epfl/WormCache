@@ -33,359 +33,234 @@ use std::cell::UnsafeCell;
 
 use zstd::{Decoder, Encoder};
 
+use rayon::prelude::*;
+
 use crate::{
-    components::{
-        cache_hierarchy::common::{
-            CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheLookupResult,
+    arch::AArch64,
+    components::cache_hierarchy::{
+        CacheBlockRequest, MemoryHierarchy,
+        common::{
+            CacheAccessType, CacheHierarchyAccessResult, SharedCache, SharedCacheAccessRequest,
+            SharedCacheAccessSource, SharedCacheLookupResult,
         },
-        debug::statistics::{EventType, Statistics},
+        mmu::{self, AbstractMMU, MMUTranslationResult},
     },
-    parameter::{self, ADJACENT_LINE_PREFETCHING},
+    debug::statistics::{EventType, Statistics},
+    parameter,
 };
 
-use super::super::common::{statistics::ZeroSharedCacheSetStatistics, SerialSingleSharedCache};
+use super::super::common::{ParallelLRUSharedCache, statistics::ZeroSharedCacheSetStatistics};
 
-pub struct SingleCacheHierarchy<MMU: crate::components::mmu::AbstractMMU> {
-    pub shared_cache: SerialSingleSharedCache<
+pub struct SingleCacheHierarchy<MMU: AbstractMMU> {
+    pub shared_cache: ParallelLRUSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
 
-    mmus: [UnsafeCell<MMU>; parameter::CORE_COUNT],
+    mmus: [UnsafeCell<MMU>; parameter::SIMULATED_CORE_COUNT],
 }
 
-impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
+unsafe impl<MMU: AbstractMMU> Sync for SingleCacheHierarchy<MMU> {}
+
+impl<MMU: AbstractMMU> SingleCacheHierarchy<MMU> {
     pub fn new() -> Self {
         SingleCacheHierarchy {
-            shared_cache: SerialSingleSharedCache::new(),
+            shared_cache: ParallelLRUSharedCache::new(),
             mmus: std::array::from_fn(|_| UnsafeCell::new(MMU::new())),
         }
     }
 
-    pub fn access_memory_with_va(
-        &self,
-        core_id: u32,
-        va: u64,
-        ts: u64,
-        is_store: bool,
-        is_instruction: bool,
-        v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
-        instruction_va_pc: u64,
-    ) -> CacheHierarchyAccessResult {
-        assert!(
-            !(is_instruction && is_store),
-            "Instruction and store permission cannot be used at the same time."
-        );
+    fn serialize_mmus(&self, name: &str, numa_node_id: usize) {
+        use crate::checkpoint::helpers::MMUsHelper;
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let access_type = if is_instruction {
-            CacheAccessType::InstructionFetch
-        } else if is_store {
-            CacheAccessType::DataWrite
+        let mmus_helper = MMUsHelper {
+            mmus: self
+                .mmus
+                .iter()
+                .map(|x| unsafe { (*x.get()).serialize() })
+                .collect(),
+        };
+
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::create(format!("{}/mmus-{}.rkyv.zstd", name, numa_node_id)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmus_helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
         } else {
-            CacheAccessType::DataRead
-        };
+            let file =
+                std::fs::File::create(format!("{}/mmus-{}.json.zstd", name, numa_node_id)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
 
-        let prefetch_access_type = if is_instruction {
-            CacheAccessType::PrefetchRead
-        } else if is_store {
-            CacheAccessType::PrefetchWrite
-        } else {
-            CacheAccessType::PrefetchRead
-        };
-
-        let is_os = (va >> 63) == 1;
-
-        let translation = unsafe {
-            self.mmus[core_id as usize]
-                .get()
-                .as_mut()
-                .unwrap()
-                .translate_and_refill(va, ts, is_instruction)
-        };
-
-        match translation {
-            crate::components::mmu::MMUTranslationResult::Hit(pa) => {
-                let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                let res = self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    v_ts,
-                    access_type,
-                    is_os,
-                    instruction_va_pc,
-                );
-                if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        v_ts,
-                        prefetch_access_type,
-                        is_os,
-                        instruction_va_pc,
-                    );
-                };
-                res
-            }
-            crate::components::mmu::MMUTranslationResult::Miss(paddr, walk_trace) => {
-                // replay the trace.
-                for pa in walk_trace {
-                    if pa == u64::MAX {
-                        break;
-                    }
-                    let pte_block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(
-                        core_id,
-                        pte_block_id,
-                        ts,
-                        v_ts,
-                        CacheAccessType::PageWalkRead,
-                        false, // Page walk is not OS.
-                        instruction_va_pc,
-                    );
-                }
-                let block_id = paddr >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                let res = self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    v_ts,
-                    access_type,
-                    is_os,
-                    instruction_va_pc,
-                );
-                if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        v_ts,
-                        prefetch_access_type,
-                        is_os,
-                        instruction_va_pc,
-                    );
-                }
-
-                Statistics::global_record(core_id, EventType::TLBMiss, is_os);
-                if is_instruction {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction, is_os);
-                } else {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
-                }
-
-                res
-            }
-
-            crate::components::mmu::MMUTranslationResult::MissNotCacheable(pa) => {
-                let block_id = pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                let res = self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    v_ts,
-                    access_type,
-                    is_os,
-                    instruction_va_pc,
-                );
-                if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        v_ts,
-                        prefetch_access_type,
-                        is_os,
-                        instruction_va_pc,
-                    );
-                }
-
-                res
-            }
+            serde_json::to_writer(&mut encoder, &mmus_helper).unwrap();
+            encoder.finish().unwrap();
         }
     }
 
-    pub fn access_memory_with_va_and_pa(
-        &mut self,
-        core_id: u32,
-        va: u64,
-        reference_pa: u64,
-        ts: u64,
-        is_store: bool,
-        is_instruction: bool,
-        v_ts: u64, // the timestamp of this instruction as if each instruction takes 1 ns.
-        instruction_va_pc: u64,
-    ) -> CacheHierarchyAccessResult {
-        assert!(
-            !(is_instruction && is_store),
-            "Instruction and store permission cannot be used at the same time."
-        );
+    fn deserialize_mmus(&self, name: &str, numa_node_id: usize) {
+        // Try rkyv format first, fall back to JSON for backward compatibility
+        let rkyv_path = format!("{}/mmus-{}.rkyv.zstd", name, numa_node_id);
+        let json_path = format!("{}/mmus-{}.json.zstd", name, numa_node_id);
 
-        let access_type = if is_instruction {
-            CacheAccessType::InstructionFetch
-        } else if is_store {
-            CacheAccessType::DataWrite
+        if let Ok(file) = std::fs::File::open(&rkyv_path) {
+            // Load rkyv format
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = rkyv::from_bytes::<
+                crate::checkpoint::helpers::MMUsHelper,
+                rkyv::rancor::Error,
+            >(&bytes)
+            .unwrap();
+
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
+            }
+        } else if let Ok(file) = std::fs::File::open(&json_path) {
+            // Fall back to JSON format for backward compatibility
+            let decoder = Decoder::new(file).unwrap();
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper =
+                serde_json::from_reader(decoder).unwrap();
+
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[i].get()).deserialize(mmu_helper) };
+            }
         } else {
-            CacheAccessType::DataRead
-        };
-
-        let prefetch_access_type = if is_instruction {
-            CacheAccessType::PrefetchRead
-        } else if is_store {
-            CacheAccessType::PrefetchWrite
-        } else {
-            CacheAccessType::PrefetchRead
-        };
-
-        let is_os = (va >> 63) == 1;
-
-        let translation = unsafe {
-            self.mmus[core_id as usize]
-                .get()
-                .as_mut()
-                .unwrap()
-                .translate_and_refill(va, ts, is_instruction)
-        };
-
-        match translation {
-            crate::components::mmu::MMUTranslationResult::Hit(_pa) => {
-                // assert!(pa == reference_pa);
-                let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                let res = self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    v_ts,
-                    access_type,
-                    is_os,
-                    instruction_va_pc,
-                );
-                if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        v_ts,
-                        prefetch_access_type,
-                        is_os,
-                        instruction_va_pc,
-                    );
-                }
-
-                res
-            }
-            crate::components::mmu::MMUTranslationResult::Miss(_pa, walk_trace) => {
-                // replay the trace.
-                for trace_pa in walk_trace {
-                    if trace_pa == u64::MAX {
-                        break;
-                    }
-                    let pte_block_id = trace_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                    self.access_memory_pblock_id(
-                        core_id,
-                        pte_block_id,
-                        ts,
-                        v_ts,
-                        CacheAccessType::PageWalkRead,
-                        false,
-                        instruction_va_pc,
-                    );
-                }
-                // assert!(pa == reference_pa as u64);
-                let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                let res = self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    v_ts,
-                    access_type,
-                    is_os,
-                    instruction_va_pc,
-                );
-                if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        v_ts,
-                        prefetch_access_type,
-                        is_os,
-                        instruction_va_pc,
-                    );
-                }
-
-                Statistics::global_record(core_id, EventType::TLBMiss, is_os);
-
-                if is_instruction {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToInstruction, is_os);
-                } else {
-                    Statistics::global_record(core_id, EventType::TLBMissDueToData, is_os);
-                }
-
-                res
-            }
-            crate::components::mmu::MMUTranslationResult::MissNotCacheable(_pa) => {
-                // assert!(pa == reference_pa as u64);
-                let block_id = reference_pa >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-                let res = self.access_memory_pblock_id(
-                    core_id,
-                    block_id,
-                    ts,
-                    v_ts,
-                    access_type,
-                    is_os,
-                    instruction_va_pc,
-                );
-                if ADJACENT_LINE_PREFETCHING {
-                    self.access_memory_pblock_id(
-                        core_id,
-                        block_id + 1,
-                        ts,
-                        v_ts,
-                        prefetch_access_type,
-                        is_os,
-                        instruction_va_pc,
-                    );
-                }
-
-                res
-            }
         }
     }
 
-    pub fn access_memory_pblock_id(
+    fn serialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
+        use crate::checkpoint::helpers::MMUsHelper;
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = self.mmus.len() / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
+
+        let mmus_helper = MMUsHelper {
+            mmus: self.mmus[begin..end]
+                .iter()
+                .map(|x| unsafe { (*x.get()).serialize() })
+                .collect(),
+        };
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&mmus_helper).unwrap();
+            crate::util::write_compressed(
+                &format!(
+                    "{}/mmus-{}-worker-{}.rkyv.zstd",
+                    name, numa_node_id, worker_id
+                ),
+                &bytes,
+            );
+        } else {
+            let bytes = serde_json::to_vec(&mmus_helper).unwrap();
+            crate::util::write_compressed(
+                &format!(
+                    "{}/mmus-{}-worker-{}.json.zstd",
+                    name, numa_node_id, worker_id
+                ),
+                &bytes,
+            );
+        }
+    }
+
+    fn deserialize_mmus_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        let cores_per_worker = self.mmus.len() / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+
+        let rkyv_path = format!(
+            "{}/mmus-{}-worker-{}.rkyv.zstd",
+            name, numa_node_id, worker_id
+        );
+        let json_path = format!(
+            "{}/mmus-{}-worker-{}.json.zstd",
+            name, numa_node_id, worker_id
+        );
+
+        if let Ok(file) = std::fs::File::open(&rkyv_path) {
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper = rkyv::from_bytes::<
+                crate::checkpoint::helpers::MMUsHelper,
+                rkyv::rancor::Error,
+            >(&bytes)
+            .unwrap();
+
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[begin + i].get()).deserialize(mmu_helper) };
+            }
+        } else if let Ok(file) = std::fs::File::open(&json_path) {
+            let decoder = Decoder::new(file).unwrap();
+            let mmus_helper: crate::checkpoint::helpers::MMUsHelper =
+                serde_json::from_reader(decoder).unwrap();
+
+            for (i, mmu_helper) in mmus_helper.mmus.into_iter().enumerate() {
+                unsafe { (*self.mmus[begin + i].get()).deserialize(mmu_helper) };
+            }
+        } else {
+            return false;
+        }
+        true
+    }
+
+    pub fn get_scache_warmed_set_count(&self) -> usize {
+        self.shared_cache.warmed_sets_count()
+    }
+
+    pub fn get_scache_warmed_slots_count(&self) -> usize {
+        self.shared_cache.warmed_slots_count()
+    }
+}
+
+impl<MMU: AbstractMMU> MemoryHierarchy for SingleCacheHierarchy<MMU> {
+    fn prefetch_blocks(&self, _request: &CacheBlockRequest, _ts: u64) {
+        unimplemented!();
+    }
+
+    fn record_access(&self, _request: &CacheBlockRequest, _ts: u64) {
+        unimplemented!();
+    }
+
+    fn evict_sms(&self, _core_id: u32, _block_id: u64) {
+        unimplemented!();
+    }
+
+    fn access_memory_pblock_id(
         &self,
-        core_id: u32,
-        block_id: u64,
+        request: &CacheBlockRequest,
         ts: u64,
-        v_ts: u64,
-        access_type: CacheAccessType,
-        is_os: bool,
-        _instruction_va_pc: u64,
-    ) -> CacheHierarchyAccessResult {
-        let is_store = access_type == CacheAccessType::DataWrite;
-        let is_ptw = access_type == CacheAccessType::PageWalkRead;
-        let is_fetch = access_type == CacheAccessType::InstructionFetch;
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize)) {
+        let is_store = request.is_store();
+        let is_ptw = request.is_page_walk();
+        let is_fetch = request.is_instruction();
+        let is_os = request.is_os();
+        let core_id = request.core_id;
+        let block_id = request.block_id;
 
         Statistics::global_record(core_id, EventType::DataAccess, is_os);
         Statistics::global_record(core_id, EventType::SharedCacheAccess, is_os);
 
-        let res = self
-            .shared_cache
-            .lookup_and_insert_on_miss(
-                core_id,
+        let res = self.shared_cache.lookup_and_insert_on_miss(
+            &SharedCacheAccessRequest {
+                source: SharedCacheAccessSource::Core(core_id),
                 block_id,
-                ts,
-                v_ts,
-                true,
-                is_store,
-                true,
-                access_type,
+                access_type: CacheAccessType::DataRead, // Read does not have impact on the tag array.
                 is_os,
-            )
-            .0;
+            },
+            ts,
+            true,
+        );
 
         Statistics::global_record(
             core_id,
@@ -393,7 +268,12 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
                 SharedCacheLookupResult::Hit(_) => EventType::SharedCacheAccess,
                 SharedCacheLookupResult::Miss => EventType::SharedCacheMiss,
                 SharedCacheLookupResult::ColdMiss => EventType::SharedCacheColdMiss,
-                SharedCacheLookupResult::Unknown(_) => EventType::UnknownSharedCacheMisses,
+                SharedCacheLookupResult::LookupLate(_, _) => {
+                    EventType::SharedCacheAccessCausalityViolation
+                }
+                SharedCacheLookupResult::EvictedLate(_) => {
+                    EventType::SharedCacheEvictionCausalityViolation
+                }
             },
             is_os,
         );
@@ -414,83 +294,114 @@ impl<MMU: crate::components::mmu::AbstractMMU> SingleCacheHierarchy<MMU> {
             }
         }
 
-        let cache_hierarchy_access_result = match res {
-            SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
-            SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
-            SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
-            SharedCacheLookupResult::Unknown(_) => CacheHierarchyAccessResult::Unknown,
-        };
-
-        cache_hierarchy_access_result
+        (
+            match res {
+                SharedCacheLookupResult::Hit(_) => CacheHierarchyAccessResult::HitInSharedCache,
+                SharedCacheLookupResult::Miss => CacheHierarchyAccessResult::Miss,
+                SharedCacheLookupResult::ColdMiss => CacheHierarchyAccessResult::Miss,
+                SharedCacheLookupResult::LookupLate(_, _) => CacheHierarchyAccessResult::Unknown,
+                SharedCacheLookupResult::EvictedLate(_) => CacheHierarchyAccessResult::Miss,
+            },
+            (0, 0, 0),
+        )
     }
 
-    fn serialize_mmus(&self, name: &str, numa_node_id: usize) {
-        let file =
-            std::fs::File::create(format!("{}/mmus-{}.json.zstd", name, numa_node_id)).unwrap();
-        let mut file = Encoder::new(file, 0).unwrap();
-
-        let multiple_mmus = self
-            .mmus
-            .iter()
-            .map(|x| unsafe { (*x.get()).serialize() })
-            .collect::<Vec<_>>();
-
-        serde_json::to_writer(&mut file, &serde_json::Value::Array(multiple_mmus)).unwrap();
-
-        file.finish().unwrap();
-    }
-
-    fn deserialize_mmus(&self, name: &str, numa_node_id: usize) {
-        let file = std::fs::File::open(format!("{}/mmus-{}.json.zstd", name, numa_node_id));
-
-        if file.is_err() {
-            println!("Cannot load the MMU state. Error: {:?}", file.err());
-            return;
+    fn translate(
+        &self,
+        r: &crate::components::cache_hierarchy::MemoryAccessRequest,
+        ts: u64,
+    ) -> MMUTranslationResult {
+        unsafe {
+            self.mmus[r.core_id as usize]
+                .get()
+                .as_mut()
+                .unwrap()
+                .translate_and_refill(r.core_id, r.va, ts, r.is_instruction())
         }
-
-        let file = file.unwrap();
-
-        let mut file = Decoder::new(file).unwrap();
-
-        let multiple_mmus: serde_json::Value = serde_json::from_reader(&mut file).unwrap();
-
-        match multiple_mmus {
-            serde_json::Value::Array(mmus) => {
-                for (i, mmu) in mmus.into_iter().enumerate() {
-                    unsafe { (*self.mmus[i].get()).deserialize(mmu) };
-                }
-            }
-            _ => panic!("Invalid format."),
-        };
     }
 
-    pub fn serialize(&self, name: &str, numa_node_id: usize) {
+    fn flush_mmu(&self, core_id: u32, info: crate::components::cache_hierarchy::mmu::MMUFlushMode) {
+        unsafe {
+            self.mmus[core_id as usize]
+                .get()
+                .as_mut()
+                .unwrap()
+                .flush(info);
+        }
+    }
+
+    fn serialize(&self, name: &str, numa_node_id: usize) {
         println!("Serializing private caches.");
         self.shared_cache.serialize(name, numa_node_id);
         println!("Serialize MMUs");
         self.serialize_mmus(name, numa_node_id);
     }
 
-    pub fn deserialize(&mut self, name: &str, numa_node_id: usize) {
+    fn deserialize(&mut self, name: &str, numa_node_id: usize) {
         println!("Deserializing private caches.");
         self.shared_cache.deserialize(name, numa_node_id);
         println!("Deserialize MMUs");
         self.deserialize_mmus(name, numa_node_id);
     }
 
-    pub fn get_scache_warmed_set_count(&self) -> usize {
-        self.shared_cache.warmed_sets_count()
+    fn serialize_par(&self, name: &str, numa_node_id: usize) {
+        use crate::CHECKPOINT_POOL;
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        CHECKPOINT_POOL.get().unwrap().install(|| {
+            (0..CHECKPOINT_POOL_SIZE)
+                .into_par_iter()
+                .for_each(|worker_id| {
+                    self.shared_cache
+                        .serialize_shard(worker_id, name, numa_node_id);
+                    self.serialize_mmus_worker(worker_id, name, numa_node_id);
+                });
+        });
+
+        println!("Parallel checkpoint serialization complete.");
     }
 
-    pub fn get_scache_warmed_slots_count(&self) -> usize {
-        self.shared_cache.warmed_slots_count()
+    fn deserialize_par(&mut self, name: &str, numa_node_id: usize) {
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        let mut shared_cache_loaded = true;
+        let mut mmus_loaded = true;
+
+        for worker_id in 0..CHECKPOINT_POOL_SIZE {
+            shared_cache_loaded &=
+                self.shared_cache
+                    .deserialize_shard(worker_id, name, numa_node_id);
+            mmus_loaded &= self.deserialize_mmus_worker(worker_id, name, numa_node_id);
+        }
+
+        if shared_cache_loaded {
+            println!("Loaded shared cache from checkpoint");
+        }
+        if mmus_loaded {
+            println!("Loaded MMUs from checkpoint");
+        }
+    }
+
+    fn access_from_device_with_pa(
+        &self,
+        _paddr: u64,
+        _access_type: CacheAccessType,
+        _ts: u64,
+    ) -> CacheHierarchyAccessResult {
+        todo!()
     }
 }
 
-pub type PluginSingleCacheHierarchy = SingleCacheHierarchy<
-    crate::components::mmu::MemoryManagementUnit<
-        crate::arch::AArch64,
-        { parameter::TLB_ASSO },
-        { parameter::TLB_SET },
-    >,
+type AArch64MMU = mmu::OrdinaryMMU<
+    AArch64,
+    { parameter::ITLB_ASSO },
+    { parameter::ITLB_SET },
+    { parameter::DTLB_ASSO },
+    { parameter::DTLB_SET },
+    { parameter::STLB_ENABLED },
+    { parameter::STLB_ASSO },
+    { parameter::STLB_SET },
+    { parameter::NO_HUGE_PAGE },
 >;
+
+pub type PluginSingleCacheHierarchy = SingleCacheHierarchy<AArch64MMU>;

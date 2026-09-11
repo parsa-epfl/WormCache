@@ -40,27 +40,17 @@ pub use set_and_line::{
     PrivateCacheEvictedSlot, PrivateCacheLine, PrivateCachePokeResult, PrivateCacheSet,
 };
 
-pub trait PrivateCaches {
+pub trait PrivateCache {
     // This function is for creating all new private caches.
     fn new() -> Self;
 
     // This function is for checking the whether the private cache hits or miss.
-    fn poke_and_update(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        v_ts: u64,
-        is_instruction: bool,
-        is_store: bool,
-    ) -> PrivateCachePokeResult;
+    fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> PrivateCachePokeResult;
 
     // This function is for filling the cache line from the shared LLC.
     fn get_set_for_fill(
         &self,
-        core_id: u32,
-        block_id: u64,
-        is_instruction: bool,
+        request: &CacheBlockRequest,
     ) -> impl DerefMut<Target = PrivateCacheSet>;
 
     // This function is for coherence messages and refill.
@@ -87,9 +77,6 @@ pub trait PrivateCaches {
     fn find_cache_info_by_cache_id(id: usize) -> (u32, bool); // (core_id, is_instruction_cache)
     fn get_cache_id_by_cache_info(core_id: u32, is_instruction_cache: bool) -> usize;
 
-    // This function is for saving the snapshot of the private cache.
-    fn dump_flexus_checkpoint(&self, snapshot_folder: &str);
-
     fn information() -> String;
 
     // This function is for printing diagnose information. It is used for debugging.
@@ -99,12 +86,15 @@ pub trait PrivateCaches {
 
     fn serialize(&self, name: &str, numa_node_id: usize);
     fn deserialize(&mut self, name: &str, numa_node_id: usize); // this is in-place deserialization.
+
+    fn serialize_worker(&self, _worker_id: usize, _name: &str, _numa_node_id: usize) {}
+    fn deserialize_worker(&mut self, _worker_id: usize, _name: &str, _numa_node_id: usize) -> bool { false }
 }
 
 pub use havard::ParallelHarvardPrivateCache;
-pub use havard::SerialHarvardPrivateCache;
 
 pub use unified::ParallelUnifiedPrivateCache;
-pub use unified::SerialUnifiedPrivateCache;
+
+use crate::components::cache_hierarchy::CacheBlockRequest;
 
 use super::directory::SharerList;

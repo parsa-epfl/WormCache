@@ -30,10 +30,11 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod directory;
+mod hop_calculator;
 mod l0i;
 mod private_cache;
 mod shared_cache;
-mod util;
+mod sms;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum CacheAccessType {
@@ -53,14 +54,16 @@ pub enum CacheHierarchyAccessResult {
     HitInSelfPrivateCache,
     MissDueToPermission,
     HitInOtherPrivateCache,
-    MissInPrivateCache, // This entry is emitted when we see order violation, because we don't know its state in the shared cache.
     HitInSharedCache,
     Miss,
     Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
 }
 
+pub use directory::finite::*;
+pub use directory::infinite::*;
 pub use directory::*;
+pub use hop_calculator::*;
 pub use l0i::*;
 pub use private_cache::*;
 pub use shared_cache::*;
-pub use util::*;
+pub use sms::*;

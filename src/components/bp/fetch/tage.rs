@@ -30,7 +30,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 // This file contains the basic TAGE branch predictor.
 // It is basically an one-to-one translation of the C++ implementation in QFlex.
 
@@ -41,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 // bits per counter in the global history tables
-const CBITS: usize = 3;
+pub const CBITS: usize = 3;
 
 // the default predictor
 // by default a 63.5  Kbits predictor, featuring 7 tagged components and a base bimodal component:
@@ -52,13 +51,13 @@ const CBITS: usize = 3;
 // 7.5 Kbits for T3 and T4
 // 7 Kbits for T5 and T6
 
-const LOGB: usize = 13;
-const NHIST: usize = 7;
+pub const LOGB: usize = 13;
+pub const NHIST: usize = 7;
 // base 2 logarithm of number of entries  on each tagged component
-const LOGG: usize = LOGB - 4;
+pub const LOGG: usize = LOGB - 4;
 
 // Total width of an entry in the tagged table with the longest history length
-const TBITS: usize = 12;
+pub const TBITS: usize = 12;
 
 // AS: we use Geometric history length
 // AS: maximum global history length used and minimum history length
@@ -68,20 +67,22 @@ const TBITS: usize = 12;
 // MAXHIST = 131 - 1
 // MINHIST = 5
 // NHIST = 7
-// HISTORIES = [int(math.ceil(MINHIST * math.pow(MAXHIST / MINHIST, i / (NHIST - 1)))) for i in range(NHIST)]
+// HISTORIES = [int(math.round(MINHIST * math.pow(MAXHIST / MINHIST, i / (NHIST - 1)))) for i in range(NHIST)]
 // HISTORIES = reversed(HISTORIES)
 // print(HISTORIES)
 // ```
 // This logic should be able to purely implemented in Rust after constant floating point arithmetic is stabilized.
-const MAXHIST: usize = 131;
-const MINHIST: usize = 5;
-const HISTORIES: [usize; NHIST] = [130, 76, 44, 26, 15, 9, 5];
+pub const MAXHIST: usize = 131;
+pub const MINHIST: usize = 5;
+pub const HISTORIES: [usize; NHIST] = [130, 76, 44, 25, 15, 9, 5];
 
 type Address = u64;
 
 type History = [bool; MAXHIST];
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct FoldedHistory {
     comp: u32,
     c_length: u32,
@@ -118,7 +119,7 @@ impl FoldedHistory {
 }
 
 // bimodal table entry
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TAGEBiModalEntry {
     hyst: i8,
     pred: i8,
@@ -131,7 +132,7 @@ impl TAGEBiModalEntry {
 }
 
 // global table entry
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
 pub struct TAGEGlobalTableEntry {
     ctr: i8,
     tag: u16,
@@ -159,34 +160,108 @@ struct TAGEPredictionResultWithBank {
     pub result: bool,
     pub bank: usize,
     pub alternate_prediction: bool,
+    pub alternate_bank: usize,
     pub gi: [usize; NHIST],
     pub bi: usize,
 }
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
+pub struct TAGETrainingTrace {
+    pc: Address,
+    target: Address,
+    direction: bool,
+
+    prediction_result: bool,
+    bank: usize,
+    alternate_prediction: bool,
+    alternate_bank: usize,
+
+    gi: [usize; NHIST],
+    bi: usize,
+
+    phist: i32,
+    #[serde_as(as = "[_; MAXHIST]")]
+    ghist: History,
+    #[serde_as(as = "[_; NHIST]")]
+    ch_i: [u32; NHIST],
+    #[serde_as(as = "[[_; NHIST]; 2]")]
+    ch_t: [[u32; NHIST]; 2],
+}
+
+#[derive(Debug)]
 pub struct TAGEPredictor {
     // pwin: i32,
 
     // 4 bits to determine whether newly allocated entries should be considered as
     // valid or not for delivering  the prediction
-    tick: i32,
-    phist: i32,
+    pub tick: i32,
+    pub phist: i32,
 
     // use a path history as for the OGEHL predictor
-    #[serde_as(as = "[_; MAXHIST]")]
-    ghist: History,
-    #[serde_as(as = "[_; NHIST]")]
-    ch_i: [FoldedHistory; NHIST],
-    #[serde_as(as = "[[_; NHIST]; 2]")]
-    ch_t: [[FoldedHistory; NHIST]; 2],
-    #[serde_as(as = "Box<[_; 1 << LOGB]>")]
-    btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
-    #[serde_as(as = "[Box<[_; 1 << LOGG]>; NHIST]")]
-    gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
+    pub ghist: History,
+    pub ch_i: [FoldedHistory; NHIST],
+    pub ch_t: [[FoldedHistory; NHIST]; 2],
+    pub btable: Box<[TAGEBiModalEntry; 1 << LOGB]>,
+    pub gtable: [Box<[TAGEGlobalTableEntry; 1 << LOGG]>; NHIST],
 
     // the seed for pseudo-random number generator
-    seed: i32,
+    pub seed: i32,
+
+    pub training_trace: Vec<TAGETrainingTrace>,
+    // Debugging training trace.
+}
+
+use crate::checkpoint::helpers::TAGEHelper;
+
+impl TAGEPredictor {
+    pub fn to_checkpoint_helper(&self) -> TAGEHelper {
+        TAGEHelper {
+            tick: self.tick,
+            phist: self.phist,
+            ghist: self.ghist.to_vec(),
+            ch_i: self.ch_i.to_vec(),
+            ch_t: self.ch_t.iter().map(|row| row.to_vec()).collect(),
+            btable: self.btable.to_vec(),
+            gtable: self.gtable.iter().map(|table| table.to_vec()).collect(),
+            seed: self.seed,
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: TAGEHelper) -> Self {
+        Self {
+            tick: helper.tick,
+            phist: helper.phist,
+            ghist: helper.ghist.try_into().expect("ghist size mismatch"),
+            ch_i: helper.ch_i.try_into().expect("ch_i size mismatch"),
+            ch_t: helper
+                .ch_t
+                .into_iter()
+                .map(|row| row.try_into().expect("ch_t row size mismatch"))
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("ch_t size mismatch"),
+            btable: helper
+                .btable
+                .into_boxed_slice()
+                .try_into()
+                .expect("btable size mismatch"),
+            gtable: helper
+                .gtable
+                .into_iter()
+                .map(|table| {
+                    table
+                        .into_boxed_slice()
+                        .try_into()
+                        .expect("gtable size mismatch")
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("gtable size mismatch"),
+            seed: helper.seed,
+            training_trace: Vec::new(),
+        }
+    }
 }
 
 impl TAGEPredictor {
@@ -198,7 +273,7 @@ impl TAGEPredictor {
         for i in 1..(NHIST - 1) {
             let base = (MAXHIST - 1) as f64 / MINHIST as f64;
             let exp = i as f64 / (NHIST - 1) as f64;
-            m[NHIST - 1 - i] = (MINHIST as f64 * f64::powf(base, exp)).ceil() as usize;
+            m[NHIST - 1 - i] = (MINHIST as f64 * f64::powf(base, exp)).round() as usize;
         }
 
         // m and HISTORIES should be the same.
@@ -260,29 +335,31 @@ impl TAGEPredictor {
             gtable: std::array::from_fn(|_| {
                 Box::new(std::array::from_fn(|_| TAGEGlobalTableEntry::new()))
             }),
+
+            training_trace: vec![],
         }
     }
 
-    fn bindex(&self, pc: Address) -> usize {
+    fn bindex(&self, shifted_pc: Address) -> usize {
         let b_mask = (1 << LOGB) - 1;
-        (pc & b_mask) as usize
+        (shifted_pc & b_mask) as usize
     }
 
     // I am really confused by this function.
     #[inline(always)]
-    fn gindex(&self, pc: Address, bank: usize) -> usize {
+    fn gindex(&self, shifted_pc: Address, bank: usize) -> usize {
         let path_history_mixer_hash_function = |path_history: u32, size: usize, bank: usize| {
             let a = (path_history as usize) & ((1 << size) - 1);
             let a1 = a & ((1 << LOGG) - 1);
             let a2 = a >> LOGG;
-            let a2 = (a2 << bank) & (((1 << LOGG) - 1) + (a2 >> (LOGG - bank)));
+            let a2 = ((a2 << bank) & ((1 << LOGG) - 1)) + (a2 >> (LOGG - bank));
             let a = a1 ^ a2;
 
-            (a << bank) & (((1 << LOGG) - 1) + (a >> (LOGG - bank)))
+            ((a << bank) & ((1 << LOGG) - 1)) + (a >> (LOGG - bank))
         };
 
         let index_without_path =
-            pc ^ (pc >> (LOGG - NHIST + bank + 1)) ^ self.ch_i[bank].comp as u64;
+            shifted_pc ^ (shifted_pc >> (LOGG - NHIST + bank + 1)) ^ self.ch_i[bank].comp as u64;
 
         let index = if HISTORIES[bank] >= 16 {
             index_without_path
@@ -297,8 +374,9 @@ impl TAGEPredictor {
         (index & g_mask) as usize
     }
 
-    fn gtag(&self, pc: Address, bank: usize) -> u16 {
-        let tag = pc ^ self.ch_t[0][bank].comp as u64 ^ (self.ch_t[1][bank].comp << 1) as u64;
+    fn gtag(&self, shifted_pc: Address, bank: usize) -> u16 {
+        let tag =
+            shifted_pc ^ self.ch_t[0][bank].comp as u64 ^ (self.ch_t[1][bank].comp << 1) as u64;
         let mask = (1 << (TBITS - (bank + (NHIST & 1)) / 2)) - 1;
         (tag & mask) as u16
     }
@@ -307,11 +385,7 @@ impl TAGEPredictor {
         let max: i8 = (1 << (nbits - 1)) - 1;
         let min: i8 = -max - 1;
         if taken {
-            if cnt < max {
-                cnt + 1
-            } else {
-                cnt
-            }
+            if cnt < max { cnt + 1 } else { cnt }
         } else if cnt > min {
             cnt - 1
         } else {
@@ -357,6 +431,7 @@ impl TAGEPredictor {
                 result: cnt >= 0,
                 bank: which_bank,
                 alternate_prediction,
+                alternate_bank: alter_which_bank,
                 gi,
                 bi,
             }
@@ -366,6 +441,7 @@ impl TAGEPredictor {
                 result: alternate_prediction,
                 bank: which_bank,
                 alternate_prediction,
+                alternate_bank: alter_which_bank,
                 gi,
                 bi,
             }
@@ -377,7 +453,7 @@ impl TAGEPredictor {
         self.ghist[0] = taken;
     }
 
-    fn update_history(&mut self, pc: Address, taken: bool) {
+    pub fn update_history(&mut self, pc: Address, taken: bool) {
         // update ghist.
         self.shift_global_history(taken);
         // update phist.
@@ -404,196 +480,180 @@ impl TAGEPredictor {
         result: BranchResolutionResult,
         _target: u64,
     ) -> BranchPredictorResult {
-        // we only update the predictor when the branch is conditional, but we update the history all the time.
-        let is_conditional = result.branch_type == BranchType::Conditional;
+        // we only update the predictor when the branch is predicted as conditional.
         let taken = result.is_taken;
-        if is_conditional {
-            let prediction_result = self.is_cond_taken(pc);
-            let allocation = prediction_result.result != taken;
+        let prediction_result = self.is_cond_taken(pc);
+        let mut allocation = prediction_result.result != taken && prediction_result.bank > 0;
 
-            if allocation {
-                let mut min: i8 = 3; // the the minimum useful counter value
+        if prediction_result.bank < NHIST {
+            let ctr = self.gtable[prediction_result.bank]
+                [prediction_result.gi[prediction_result.bank]]
+                .ctr;
+            let ubit = self.gtable[prediction_result.bank]
+                [prediction_result.gi[prediction_result.bank]]
+                .ubit;
+            let local_taken = ctr >= 0;
+            let pesudo_new_alloc = ((ctr * 2 + 1).abs() == 1) && (ubit == 0);
+
+            if pesudo_new_alloc {
+                if local_taken == taken {
+                    allocation = false;
+                }
+            }
+        }
+
+        if allocation {
+            assert!(prediction_result.result != taken);
+            let mut min: i8 = 3; // the the minimum useful counter value
+            for idx in 0..(prediction_result.bank) {
+                if self.gtable[idx][prediction_result.gi[idx]].ubit < min {
+                    min = self.gtable[idx][prediction_result.gi[idx]].ubit;
+                }
+            }
+
+            if min > 0 {
+                // NO UNUSEFUL ENTRY TO ALLOCATE: age all possible targets, but do not allocate
                 for idx in 0..(prediction_result.bank) {
-                    if self.gtable[idx][prediction_result.gi[idx]].ubit < min {
-                        min = self.gtable[idx][prediction_result.gi[idx]].ubit;
-                    }
+                    self.gtable[idx][prediction_result.gi[idx]].ubit -= 1;
+                }
+            } else {
+                // YES: allocate one entry, but apply some randomness
+                // bank I is twice more probable than bank I-1
+                let n_rand = self.get_random();
+                let mut y = n_rand & ((1 << (prediction_result.bank - 1)) - 1);
+                let mut x = prediction_result.bank - 1;
+                while (y & 1) != 0 {
+                    x -= 1;
+                    y >>= 1;
                 }
 
-                if min > 0 {
-                    // NO UNUSEFUL ENTRY TO ALLOCATE: age all possible targets, but do not allocate
-                    for idx in 0..(prediction_result.bank) {
-                        self.gtable[idx][prediction_result.gi[idx]].ubit -= 1;
-                    }
-                } else {
-                    // YES: allocate one entry, but apply some randomness
-                    // bank I is twice more probable than bank I-1
-                    let n_rand = self.get_random();
-                    let mut y = n_rand & ((1 << (prediction_result.bank - 1)) - 1);
-                    let mut x = prediction_result.bank - 1;
-                    while (y & 1) != 0 {
-                        x -= 1;
-                        y >>= 1;
-                    }
-
-                    for idx in 0..(x + 1) {
-                        let t = x - idx;
-                        if self.gtable[t][prediction_result.gi[t]].ubit == min {
-                            self.gtable[t][prediction_result.gi[t]].tag = self.gtag(pc, t);
-                            self.gtable[t][prediction_result.gi[t]].ctr =
-                                if taken { 0 } else { -1 };
-                            self.gtable[t][prediction_result.gi[t]].ubit = 0;
-                            break;
-                        }
+                for idx in 0..(x + 1) {
+                    let t = x - idx;
+                    if self.gtable[t][prediction_result.gi[t]].ubit == min {
+                        self.gtable[t][prediction_result.gi[t]].tag = self.gtag(pc >> 2, t);
+                        self.gtable[t][prediction_result.gi[t]].ctr = if taken { 0 } else { -1 };
+                        self.gtable[t][prediction_result.gi[t]].ubit = 0;
+                        break;
                     }
                 }
             }
+        }
 
-            // periodic reset of ubit: reset is not complete but bit by bit
-            self.tick += 1;
+        // periodic reset of ubit: reset is not complete but bit by bit
+        self.tick += 1;
 
-            if (self.tick & ((1 << 18) - 1)) == 0 {
-                let mut mask = (self.tick >> 18) & 1;
-                if mask == 0 {
-                    mask = 2;
-                }
-                for idx in 0..NHIST {
-                    for idx2 in 0..(1 << LOGG) {
-                        self.gtable[idx][idx2].ubit &= mask as i8;
-                    }
+        if (self.tick & ((1 << 18) - 1)) == 0 {
+            let mut mask = (self.tick >> 18) & 1;
+            if mask == 0 {
+                mask = 2;
+            }
+            for idx in 0..NHIST {
+                for idx2 in 0..(1 << LOGG) {
+                    self.gtable[idx][idx2].ubit &= mask as i8;
                 }
             }
+        }
 
-            // update the counter that provided the prediction, and only this counter
+        // update the counter that provided the prediction, and only this counter
 
-            if prediction_result.bank < NHIST {
-                self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]]
-                    .ctr = TAGEPredictor::ctrupdate(
+        if prediction_result.bank < NHIST {
+            self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]].ctr =
+                TAGEPredictor::ctrupdate(
                     self.gtable[prediction_result.bank]
                         [prediction_result.gi[prediction_result.bank]]
                         .ctr,
                     taken,
                     CBITS,
                 );
-            } else {
-                // the prediction is from the btable.
-                assert!(prediction_result.alternate_prediction == prediction_result.result);
+        } else {
+            // the prediction is from the btable.
+            assert!(prediction_result.alternate_prediction == prediction_result.result);
+            assert!((self.btable[prediction_result.bi].pred > 0) == prediction_result.result);
 
-                if prediction_result.result == taken {
-                    if taken {
-                        if self.btable[prediction_result.bi].pred != 0 {
-                            self.btable[prediction_result.bi].hyst = 1;
-                        }
-                    } else if self.btable[prediction_result.bi].pred == 0 {
-                        self.btable[prediction_result.bi].hyst = 0;
+            if prediction_result.result == taken {
+                if taken {
+                    if self.btable[prediction_result.bi].pred != 0 {
+                        self.btable[prediction_result.bi].hyst = 1;
                     }
-                } else {
-                    let mut inter = self.btable[prediction_result.bi].pred * 2
-                        + self.btable[prediction_result.bi].hyst;
-                    if taken {
-                        if inter < 3 {
-                            inter += 1;
-                        }
-                    } else if inter > 0 {
-                        inter -= 1;
-                    }
-                    self.btable[prediction_result.bi].pred = inter >> 1;
-                    self.btable[prediction_result.bi].hyst = inter & 1;
+                } else if self.btable[prediction_result.bi].pred == 0 {
+                    self.btable[prediction_result.bi].hyst = 0;
                 }
-            }
-
-            if allocation {
-                return BranchPredictorResult::Mispredict;
             } else {
-                return BranchPredictorResult::Match;
+                let mut inter = self.btable[prediction_result.bi].pred * 2
+                    + self.btable[prediction_result.bi].hyst;
+                if taken {
+                    if inter < 3 {
+                        inter += 1;
+                    }
+                } else if inter > 0 {
+                    inter -= 1;
+                }
+                self.btable[prediction_result.bi].pred = inter >> 1;
+                self.btable[prediction_result.bi].hyst = inter & 1;
             }
         }
 
-        // In any case, the history must be updated.
-        self.update_history(pc, taken);
+        // update the ubit counter
+        if prediction_result.result != prediction_result.alternate_prediction {
+            assert!(prediction_result.bank < NHIST);
+            if prediction_result.result == taken {
+                if self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]]
+                    .ubit
+                    < 3
+                {
+                    self.gtable[prediction_result.bank]
+                        [prediction_result.gi[prediction_result.bank]]
+                        .ubit += 1;
+                }
+            } else {
+                if self.gtable[prediction_result.bank][prediction_result.gi[prediction_result.bank]]
+                    .ubit
+                    > 0
+                {
+                    self.gtable[prediction_result.bank]
+                        [prediction_result.gi[prediction_result.bank]]
+                        .ubit -= 1;
+                }
+            }
+        }
 
-        BranchPredictorResult::NotActive
+        // // record the training trace.
+        // self.training_trace.push(TAGETrainingTrace {
+        //     pc,
+        //     target: _target,
+        //     direction: taken,
+        //     prediction_result: prediction_result.result,
+        //     bank: prediction_result.bank,
+        //     alternate_prediction: prediction_result.alternate_prediction,
+        //     alternate_bank: prediction_result.alternate_bank,
+        //     gi: prediction_result.gi,
+        //     bi: prediction_result.bi,
+        //     phist: self.phist,
+        //     ghist: self.ghist,
+        //     ch_i: std::array::from_fn(|idx| self.ch_i[idx].comp),
+        //     ch_t: [
+        //         std::array::from_fn(|idx| self.ch_t[0][idx].comp),
+        //         std::array::from_fn(|idx| self.ch_t[1][idx].comp),
+        //     ],
+        // });
+
+        // before returning, update the history.
+
+        if result.branch_type == BranchType::Conditional {
+            // Only update the history for conditional branches.
+            self.update_history(pc, taken);
+        }
+
+        if prediction_result.result != taken {
+            return BranchPredictorResult::Mispredict;
+        } else {
+            return BranchPredictorResult::Match;
+        }
     }
 }
 
-////// Serialization for QFlex
-#[derive(Serialize, Deserialize)]
-pub struct TAGEPredictorSerHelper {
-    #[serde(rename = "PWIN")]
-    pub pwin: i32,
-    #[serde(rename = "TICK")]
-    pub tick: i32,
-    #[serde(rename = "SEED")]
-    pub seed: i32,
-    #[serde(rename = "PHIST")]
-    pub phist: i32,
-    #[serde(rename = "GHIST")]
-    pub ghist: String,
-
-    #[serde(rename = "LOGB")]
-    pub logb: usize,
-    #[serde(rename = "NHIST")]
-    pub nhist: usize,
-    #[serde(rename = "LOGG")]
-    pub logg: usize,
-    #[serde(rename = "TBITS")]
-    pub tbits: usize,
-    #[serde(rename = "MAXHIST")]
-    pub maxhist: usize,
-    #[serde(rename = "MINHIST")]
-    pub minhist: usize,
-    #[serde(rename = "CBITS")]
-    pub cbits: usize,
-
-    pub btable: Vec<TAGEBiModalEntry>,
-    pub gtable: Vec<Vec<TAGEGlobalTableEntry>>,
-
-    pub ch_i: Vec<FoldedHistory>,
-    pub ch_t: Vec<Vec<FoldedHistory>>,
-
-    pub m: Vec<usize>,
-}
-
-use crate::components::FlexusCompatibleSerializer;
-
-impl FlexusCompatibleSerializer for TAGEPredictor {
-    type HelperType = TAGEPredictorSerHelper;
-
-    fn get_serialize_helper(&self) -> Self::HelperType {
-        TAGEPredictorSerHelper {
-            pwin: 0,
-            tick: self.tick,
-            seed: self.seed,
-            phist: self.phist,
-            ghist: self
-                .ghist
-                .iter()
-                .rev()
-                .map(|x| if *x { '1' } else { '0' })
-                .collect(),
-
-            logb: LOGB,
-            nhist: NHIST,
-            logg: LOGG,
-            tbits: TBITS,
-            maxhist: MAXHIST,
-            minhist: MINHIST,
-            cbits: CBITS,
-
-            btable: self.btable.iter().map(|x| x.clone()).collect(),
-            gtable: self
-                .gtable
-                .iter()
-                .map(|x| x.iter().map(|y| y.clone()).collect())
-                .collect(),
-
-            ch_i: self.ch_i.iter().map(|x| x.clone()).collect(),
-            ch_t: self
-                .ch_t
-                .iter()
-                .map(|x| x.iter().map(|y| y.clone()).collect())
-                .collect(),
-
-            m: HISTORIES.iter().map(|x| *x).collect(),
-        }
+impl Default for TAGEPredictor {
+    fn default() -> Self {
+        Self::new()
     }
 }

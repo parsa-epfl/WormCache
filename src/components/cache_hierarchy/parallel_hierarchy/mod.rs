@@ -35,65 +35,77 @@ use std::io::Write;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    components::debug::statistics::Statistics,
+    debug::statistics::{EventType, Statistics},
     parameter::{self, ENABLE_STATISTICS},
     qemu_api,
+    timestamp::get_ts,
     util::get_monotonic_ts,
 };
 
-use super::common::L0InstructionCache;
+use super::{MemoryAccessRequest, MemoryHierarchy, common::CacheAccessType};
+use super::{
+    common::L0InstructionCache,
+    mmu::{MMUFlushMode, tlb::AddressSpaceID},
+};
 
 pub mod hierarchy;
 pub mod parser;
+mod pure_fill;
 
 type HierarchyForPlugin = parser::HierarchyForPlugin;
 
 static mut PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
-static mut DUMMY_PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
+// static mut DUMMY_PLUGIN: *mut HierarchyForPlugin = std::ptr::null_mut();
 
 // TODO: The QEMU side has to make load-link to get exclusive permission so that the plugin can handle it properly.
 unsafe extern "C" fn vcpu_mem_access(
     vcpu_idx: u32,
     info: qemu_api::qemu_plugin_meminfo_t,
     vaddr: u64,
-    _inst_host_addr: *mut ffi::c_void,
+    inst_virtual_addr: *mut ffi::c_void,
 ) {
-    // let offset: u64 = offset as u64;
-    // let current_icount = (*ICOUNT_PLUGIN).get_icount(vcpu_idx as u8);
+    unsafe {
+        let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
+        let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
 
-    let hw_handler = qemu_api::qemu_plugin_get_hwaddr(info, vaddr);
-    let is_device = qemu_api::qemu_plugin_hwaddr_is_io(hw_handler);
+        if !is_device {
+            let is_store = qemu_api::qemu_plugin_mem_is_store(info);
 
-    if !is_device {
-        let is_store = qemu_api::qemu_plugin_mem_is_store(info);
+            let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
 
-        let pa = qemu_api::qemu_plugin_hwaddr_phys_addr(hw_handler);
+            let vpn = qemu_api::qemu_plugin_read_pc_vpn();
+            let pc = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
+            let is_os = (pc >> 48) & 1 == 1;
 
-        if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
-            (*DUMMY_PLUGIN).access_memory_with_va_and_pa(
-                vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-                vaddr,
-                pa,
-                get_monotonic_ts(),
-                is_store,
-                false,
-                1,
-                0,
-            );
+            if parameter::BYPASSING_OS_SIMULATION && is_os {
+                return;
+            }
+
+            let ts = get_ts();
+
+            if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
+                return;
+            } else {
+                (*PLUGIN).access_memory_with_va_and_pa(
+                    &MemoryAccessRequest {
+                        core_id: vcpu_idx,
+                        va: vaddr,
+                        access_type: if is_store {
+                            CacheAccessType::DataWrite
+                        } else {
+                            CacheAccessType::DataRead
+                        },
+                        is_os: is_os,
+                        pc: pc,
+                    },
+                    Some(pa),
+                    ts,
+                );
+            };
         } else {
-            (*PLUGIN).access_memory_with_va_and_pa(
-                vcpu_idx,
-                vaddr,
-                pa,
-                get_monotonic_ts(),
-                is_store,
-                false,
-                1,
-                0,
-            );
-        };
-    } else {
-        // TODO: check the I/O event
+            Statistics::global_record(vcpu_idx, EventType::MemoryAccessToIO, true);
+            Statistics::global_record(vcpu_idx, EventType::DrainStoreBuffer, true);
+        }
     }
 }
 
@@ -101,27 +113,37 @@ static mut L0_CACHE: *mut L0InstructionCache<{ parameter::CORE_COUNT }> = std::p
 
 unsafe extern "C" fn vcpu_insn_exec(
     vcpu_idx: u32,
-    inst_host_addr: *mut ffi::c_void, // it is basically its physical address.
+    inst_virtual_addr: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    let vpn = unsafe { qemu_api::qemu_plugin_read_pc_vpn() };
-    let vaddr = vpn << 12 | (inst_host_addr as u64 & 0xfff);
+    unsafe {
+        let vpn = qemu_api::qemu_plugin_read_pc_vpn();
+        let vaddr = vpn << 12 | (inst_virtual_addr as u64 & 0xfff);
+        let is_os = (vaddr >> 48) & 1 == 1;
 
-    if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
-        return;
-    }
+        if parameter::BYPASSING_OS_SIMULATION && is_os {
+            return;
+        }
 
-    if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
-        (*DUMMY_PLUGIN).access_memory_with_va(
-            vcpu_idx - parameter::CORE_COUNT as u32 / 2,
-            vaddr,
-            get_monotonic_ts(),
-            false,
-            true,
-            1,
-            vaddr,
-        );
-    } else {
-        (*PLUGIN).access_memory_with_va(vcpu_idx, vaddr, get_monotonic_ts(), false, true, 1, vaddr);
+        if (*L0_CACHE).check_and_update(vcpu_idx, vaddr) {
+            return;
+        }
+
+        let ts = get_ts();
+
+        if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
+            return;
+        } else {
+            (*PLUGIN).access_memory_with_va(
+                &MemoryAccessRequest {
+                    core_id: vcpu_idx,
+                    va: vaddr,
+                    access_type: CacheAccessType::InstructionFetch,
+                    is_os: vaddr >> 63 == 1,
+                    pc: vaddr,
+                },
+                ts,
+            );
+        }
     }
 }
 
@@ -130,35 +152,72 @@ unsafe extern "C" fn _vcpu_invalidate_cache(
     _vcpu_idx: u32,
     _paddr: *mut ffi::c_void, // it is basically its physical address.
 ) {
-    // PLUGIN
-    //     .hierarchies(vcpu_idx as u8)
-    //     .invalidate(paddr as usize, get_memory_ts() as usize);
 }
 
-unsafe extern "C" fn dump_statistics() {}
+unsafe extern "C" fn vcpu_invalid_tlb(
+    vcpu_idx: u32,
+    mode: u32,
+    asid: u64,
+    vpn: u64,
+    page_count: u64,
+) {
+    unsafe {
+        let info = if mode == 0 {
+            MMUFlushMode::All
+        } else if mode == 1 {
+            MMUFlushMode::ByASID(AddressSpaceID::NonGlobal(asid as u16))
+        } else if mode == 2 {
+            MMUFlushMode::ByVPN(vpn, page_count)
+        } else if mode == 3 {
+            MMUFlushMode::ByVPNAndASID(vpn, page_count, AddressSpaceID::NonGlobal(asid as u16))
+        } else {
+            unreachable!()
+        };
+
+        if parameter::MEASURE_HALF_OF_CORES && vcpu_idx >= parameter::CORE_COUNT as u32 / 2 {
+            // (*DUMMY_PLUGIN).flush_mmu(vcpu_idx - parameter::CORE_COUNT as u32 / 2, info);
+        } else {
+            (*PLUGIN).flush_mmu(vcpu_idx, info);
+        }
+    }
+}
 
 pub struct ParallelCacheHierarchyPlugin {}
 
 impl super::super::Plugin for ParallelCacheHierarchyPlugin {
     #[inline]
-    fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
-        unsafe {
-            let quantum_size = qemu_api::qemu_plugin_get_quantum_size();
-            let is_icount_mode = qemu_api::qemu_plugin_is_icount_mode();
+    fn init(_plugin_id: u64, options: &FxHashMap<String, String>) {
+        let mode = String::new();
+        let mode = options.get("mode").unwrap_or(&mode);
+        assert_ne!(
+            mode, "vtime",
+            "Pure vtime is enabled. Memory Hierarchy should be disabled."
+        );
 
-            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new(
-                true,
-                quantum_size,
-                is_icount_mode,
-            )));
-            L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
-
-            if parameter::MEASURE_HALF_OF_CORES {
-                DUMMY_PLUGIN =
-                    Box::into_raw(Box::new(HierarchyForPlugin::new(false, 0, is_icount_mode)));
+        if mode == "pure_fill" {
+            unsafe {
+                let prefix = options.get("prefix").unwrap_or(&"init".to_string()).clone();
+                let warm_ratio = options
+                    .get("warm_ratio")
+                    .unwrap_or(&"1.0".to_string())
+                    .clone();
+                let warm_ratio: f64 = warm_ratio.parse().unwrap();
+                let raw_ckpt_fmt = options
+                    .get("raw_ckpt_fmt")
+                    .map(|x| x.parse::<bool>().unwrap())
+                    .unwrap_or(false);
+                println!(
+                    "Pure fill mode is enabled. The cache will be warmed up with the prefix: {}, warm ratio: {}, raw_ckpt_fmt: {}",
+                    prefix, warm_ratio, raw_ckpt_fmt
+                );
+                pure_fill::init(&prefix, warm_ratio, raw_ckpt_fmt);
             }
+        }
 
-            qemu_api::qemu_plugin_register_quantum_deplete_cb(Some(dump_statistics));
+        unsafe {
+            PLUGIN = Box::into_raw(Box::new(HierarchyForPlugin::new()));
+            L0_CACHE = Box::into_raw(Box::new(L0InstructionCache::new()));
+            qemu_api::qemu_plugin_register_flushing_local_tlb_cb(Some(vcpu_invalid_tlb));
         }
 
         if parameter::USE_UNIFIED_CACHE {
@@ -167,48 +226,39 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
             assert!(HierarchyForPlugin::information().contains("HarvardPrivateCache"))
         }
 
+        if parameter::USE_INFINITE_DIRECTORY {
+            assert!(HierarchyForPlugin::information().contains("Infinite Directory"))
+        } else {
+            assert!(HierarchyForPlugin::information().contains("Finite Directory"))
+        }
+
         println!("Memory plugin initialized.");
         println!("{}", HierarchyForPlugin::information());
 
         // this thread peridocally dumps the statistics.
-        std::thread::spawn(|| {
+        std::thread::spawn(move || {
             if !ENABLE_STATISTICS {
                 return;
             }
 
             // open a csv file.
-            let mut miss_file = std::fs::File::create("cache-misses.csv").unwrap();
             let mut warmed_rate = std::fs::File::create("shared_cache_warm_count.csv").unwrap();
-
-            miss_file
-                .write_fmt(format_args!("{}\n", Statistics::get_header()))
-                .unwrap();
 
             warmed_rate
                 .write_all(b"ts,warm_set_count,warm_slot_count\n")
                 .unwrap();
 
             loop {
-                for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
-                    miss_file.write_all(stat.as_bytes()).unwrap();
-                    miss_file.write_all(b"\n").unwrap();
-                }
-
-                // get the duration of the following function.
+                let warmed_set = unsafe { (*PLUGIN).get_scache_warmed_set_count() };
 
                 warmed_rate
                     .write_all(
-                        format!(
-                            "{},{},{}\n",
-                            get_monotonic_ts(),
-                            unsafe { (*PLUGIN).get_scache_warmed_set_count() },
-                            unsafe { (*PLUGIN).get_scache_warmed_slots_count() }
-                        )
+                        format!("{},{},{}\n", get_monotonic_ts(), warmed_set, unsafe {
+                            (*PLUGIN).get_scache_warmed_slots_count()
+                        })
                         .as_bytes(),
                     )
                     .unwrap();
-
-                // let elapsed = now.elapsed();
 
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
@@ -216,86 +266,90 @@ impl super::super::Plugin for ParallelCacheHierarchyPlugin {
     }
 
     #[inline]
-    fn dump_snapshot(name: &str) {
-        unsafe {
-            (*PLUGIN).dump_flexus_checkpoint(name);
-        }
-    }
-
-    #[inline]
     unsafe fn on_translation(tb: *mut crate::qemu_api::qemu_plugin_tb) {
-        let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
+        unsafe {
+            let n_instruction = qemu_api::qemu_plugin_tb_n_insns(tb);
 
-        if n_instruction == 0 {
-            return;
-        }
+            if n_instruction == 0 {
+                return;
+            }
 
-        let mut block_id = vec![];
-        for i in 0..n_instruction {
-            let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
-            block_id.push(
-                qemu_api::qemu_plugin_insn_haddr(inst) as usize
-                    >> crate::parameter::CACHE_LINE_SIZE.trailing_zeros(),
-            );
-        }
+            assert!(n_instruction < 32768);
 
-        let fb_info = crate::util::find_fetch_block_from_block_id_sequence(block_id);
+            let mut block_id = vec![];
+            for i in 0..n_instruction {
+                let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+                block_id.push(
+                    qemu_api::qemu_plugin_insn_haddr(inst) as usize
+                        >> crate::parameter::CACHE_LINE_SIZE.trailing_zeros(),
+                );
+            }
 
-        // bind the instruction call back.
-        for (idx, _) in fb_info.into_iter() {
-            let i = qemu_api::qemu_plugin_tb_get_insn(tb, idx);
+            let fb_info = crate::util::find_fetch_block_from_block_id_sequence(block_id);
 
-            // The target virtual address should have the same page offset as the host virtual address.
-            assert_eq!(
-                (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0xfff,
-                (qemu_api::qemu_plugin_insn_haddr(i) as u64) & 0xfff
-            );
+            // bind the instruction call back.
+            for (idx, _) in fb_info.into_iter() {
+                let i = qemu_api::qemu_plugin_tb_get_insn(tb, idx);
 
-            let insn_addr = (qemu_api::qemu_plugin_insn_haddr(i) as u64) & 0xffff_ffff_ffff;
-            let offset = idx as u64;
-            let combined = insn_addr | (offset << 48);
+                let insn_addr = (qemu_api::qemu_plugin_insn_vaddr(i) as u64) & 0x1_ffff_ffff_ffff;
+                let offset = idx as u64;
+                let combined = insn_addr | (offset << 49);
 
-            qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
-                i,
-                Some(vcpu_insn_exec),
-                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                combined as *mut ffi::c_void,
-            );
-        }
+                qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                    i,
+                    Some(vcpu_insn_exec),
+                    qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                    combined as *mut ffi::c_void,
+                );
+            }
 
-        // bind the memory callback.
-        for i in 0..n_instruction {
-            let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
+            // bind the memory callback.
+            for i in 0..n_instruction {
+                let inst = qemu_api::qemu_plugin_tb_get_insn(tb, i);
 
-            let insn_addr = (qemu_api::qemu_plugin_insn_haddr(inst) as u64) & 0xffff_ffff_ffff;
-            let offset = i as u64;
-            let combined = insn_addr | (offset << 48);
+                let insn_addr =
+                    (qemu_api::qemu_plugin_insn_vaddr(inst) as u64) & 0x1_ffff_ffff_ffff;
+                let offset = i as u64;
+                let combined = insn_addr | (offset << 49);
 
-            qemu_api::qemu_plugin_register_vcpu_mem_cb(
-                inst,
-                Some(vcpu_mem_access),
-                qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
-                qemu_api::qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
-                combined as *mut ffi::c_void,
-            );
+                qemu_api::qemu_plugin_register_vcpu_mem_cb(
+                    inst,
+                    Some(vcpu_mem_access),
+                    qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                    qemu_api::qemu_plugin_mem_rw_QEMU_PLUGIN_MEM_RW,
+                    combined as *mut ffi::c_void,
+                );
+            }
         }
     }
 
     fn serialize(name: &str) {
         unsafe {
             (*PLUGIN).serialize(name, 0);
-            if parameter::MEASURE_HALF_OF_CORES {
-                (*DUMMY_PLUGIN).serialize(name, 1);
-            }
+            // if parameter::MEASURE_HALF_OF_CORES {
+            // (*DUMMY_PLUGIN).serialize(name, 1);
+            // }
         }
     }
 
     fn deserialize(name: &str) {
         unsafe {
             (*PLUGIN).deserialize(name, 0);
-            if parameter::MEASURE_HALF_OF_CORES {
-                (*DUMMY_PLUGIN).deserialize(name, 1);
-            }
+            // if parameter::MEASURE_HALF_OF_CORES {
+            // (*DUMMY_PLUGIN).deserialize(name, 1);
+            // }
+        }
+    }
+
+    fn serialize_par(name: &str) {
+        unsafe {
+            (*PLUGIN).serialize_par(name, 0);
+        }
+    }
+
+    fn deserialize_par(name: &str) {
+        unsafe {
+            (*PLUGIN).deserialize_par(name, 0);
         }
     }
 }

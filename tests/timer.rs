@@ -29,8 +29,8 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use spin::mutex::SpinMutex;
 use spin::Spin;
+use spin::mutex::SpinMutex;
 use std::arch::asm;
 use std::sync::Arc;
 use std::time::Instant;

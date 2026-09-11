@@ -29,30 +29,29 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::components::cache_hierarchy::common::{Directory, FiniteDirectory, InfiniteDirectory};
+use crate::components::cache_hierarchy::mmu::{self, AbstractMMU};
 /*
  * The purpose of this file is to provide a parser over the parameter.rs to generate the cache hierarchy at the compile time.
- *
- *
- * Basically, I want to implement the following logic:
- *
- * ```rust
- * type HierarchyForPlugin = match (SERIAL_CACHE_MODEL, UNIFIED_CACHE_MODEL) {
- *    (true, true) => ParallelMemoryHierarchyUnified,
- *    (true, false) => ParallelMemoryHierarchyHarvard,
- *    (false, true) => SerialMemoryHierarchyUnified,
- *    (false, false) => SerialMemoryHierarchyHarvard,
- * };
- *
+ * Basically, I want to select which ParallelMemoryHierarchy based on the paramter.rs at the compile time.
  * Well, this is not available in the Rust. So, I have to use the trait and its polymorphism to implement the logic, which is extremely dirty.
  *
  * Reference: https://willcrichton.net/notes/type-level-programming/
  *
  */
-use crate::arch::AArch64;
-use crate::parameter;
+use crate::parameter::{self};
+use crate::{arch::AArch64, components::cache_hierarchy::MemoryHierarchy};
 
-pub trait CacheModelParser<const SERIAL_CACHE_MODEL: bool, const UNIFIED_CACHE_MODEL: bool> {
-    type Output;
+pub trait CacheModelParser<const UNIFIED_CACHE_MODEL: bool> {
+    type Output: MemoryHierarchy;
+}
+
+pub trait MMUParser<const ENABLE_MMU: bool, const USE_FULLY_ASSOCIATIVE_L1_TLB: bool> {
+    type Output: AbstractMMU;
+}
+
+pub trait DirectoryParser<const USE_INFINITE_DIRECTORY: bool> {
+    type Output: Directory;
 }
 
 pub struct DummyParser;
@@ -69,14 +68,14 @@ impl SharedCacheStatisticsParser<false> for DummyParser {
     type Output = ZeroSharedCacheSetStatistics;
 }
 
-pub type SharedCacheStatisticsWithPlugin =
-    <DummyParser as SharedCacheStatisticsParser<{ parameter::ENABLE_STATISTICS }>>::Output;
+pub type SharedCacheStatisticsWithPlugin = <DummyParser as SharedCacheStatisticsParser<
+    { parameter::ENABLE_SHARED_CACHE_STATISTICS },
+>>::Output;
 
 use super::{
     super::common::{
+        ParallelHarvardPrivateCache, ParallelLRUSharedCache, ParallelUnifiedPrivateCache,
         statistics::{SharedCacheSetMissStatistics, ZeroSharedCacheSetStatistics},
-        ParallelHarvardPrivateCache, ParallelSingleSharedCache, ParallelUnifiedPrivateCache,
-        SerialHarvardPrivateCache, SerialSingleSharedCache, SerialUnifiedPrivateCache,
     },
     hierarchy,
 };
@@ -87,35 +86,97 @@ pub const ALLOCATED_CORE_COUNT: usize = if parameter::MEASURE_HALF_OF_CORES {
     parameter::CORE_COUNT
 };
 
-type AArch64MMU = crate::components::mmu::MemoryManagementUnit<
-    AArch64,
-    { parameter::TLB_ASSO },
-    { parameter::TLB_SET },
->;
+impl MMUParser<true, true> for DummyParser {
+    type Output = mmu::FullyAssociativeL1MMU<
+        AArch64,
+        { parameter::ITLB_ASSO },
+        { parameter::DTLB_ASSO },
+        {
+            if parameter::STLB_ENABLED {
+                parameter::STLB_ASSO
+            } else {
+                0
+            }
+        },
+        {
+            if parameter::STLB_ENABLED {
+                parameter::STLB_SET
+            } else {
+                0
+            }
+        },
+        { parameter::NO_HUGE_PAGE },
+    >;
+}
+
+impl MMUParser<true, false> for DummyParser {
+    type Output = mmu::OrdinaryMMU<
+        AArch64,
+        { parameter::ITLB_ASSO },
+        { parameter::ITLB_SET },
+        { parameter::DTLB_ASSO },
+        { parameter::DTLB_SET },
+        { parameter::STLB_ENABLED },
+        { parameter::STLB_ASSO },
+        { parameter::STLB_SET },
+        { parameter::NO_HUGE_PAGE },
+    >;
+}
+
+impl MMUParser<false, { parameter::USE_HIGHLY_ASSOCIATIVE_L1TLB }> for DummyParser {
+    type Output = mmu::NoMMU;
+}
+
+type AArch64MMU = <DummyParser as MMUParser<
+    { parameter::ENABLE_MMU },
+    { parameter::USE_HIGHLY_ASSOCIATIVE_L1TLB },
+>>::Output;
+
+impl DirectoryParser<true> for DummyParser {
+    type Output = InfiniteDirectory<{ parameter::INFINITE_DIRECTORY_SHARED_COUNT }>;
+}
+
+impl DirectoryParser<false> for DummyParser {
+    type Output =
+        FiniteDirectory<{ parameter::FINITE_DIRECTORY_SET }, { parameter::FINITE_DIRECTORY_ASSO }>;
+}
+
+type DirectoryForPlugin =
+    <DummyParser as DirectoryParser<{ parameter::USE_INFINITE_DIRECTORY }>>::Output;
 
 #[allow(dead_code)]
-type ParalleMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
+type ParalleMemoryHierarchyUnified = hierarchy::ParallelMemoryHierarchy<
     AArch64MMU,
     ParallelUnifiedPrivateCache<
         { ALLOCATED_CORE_COUNT },
         { parameter::UNIFIED_PRI_CACHE_SET },
         { parameter::UNIFIED_PRI_CACHE_ASSO },
     >,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
-    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
+    DirectoryForPlugin,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
-    { parameter::DIRECTORY_SHARD_COUNT },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
+    { ALLOCATED_CORE_COUNT },
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    { parameter::PERFECT_PHT },
 >;
 
 #[allow(dead_code)]
-type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
+type ParallelMemoryHierarchyHarvard = hierarchy::ParallelMemoryHierarchy<
     AArch64MMU,
     ParallelHarvardPrivateCache<
         { ALLOCATED_CORE_COUNT },
@@ -124,80 +185,36 @@ type ParallelMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
         { parameter::HARVARD_PRI_D_CACHE_SET },
         { parameter::HARVARD_PRI_D_CACHE_ASSO },
     >,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         SharedCacheStatisticsWithPlugin,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
-    { !parameter::DISABLE_PRECISE_COHERENCE_STATE_RECONSTRUCTION },
+    DirectoryForPlugin,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
-    { parameter::DIRECTORY_SHARD_COUNT },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
+    { ALLOCATED_CORE_COUNT },
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    { parameter::PERFECT_PHT },
 >;
 
-#[allow(dead_code)]
-type SerialMemoryHierarchyUnified = hierarchy::MemoryHierarchy<
-    AArch64MMU,
-    SerialUnifiedPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::UNIFIED_PRI_CACHE_SET },
-        { parameter::UNIFIED_PRI_CACHE_ASSO },
-    >,
-    SerialSingleSharedCache<
-        SharedCacheStatisticsWithPlugin,
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    false,
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
-    { parameter::DIRECTORY_SHARD_COUNT },
->;
-
-#[allow(dead_code)]
-type SerialMemoryHierarchyHarvard = hierarchy::MemoryHierarchy<
-    AArch64MMU,
-    SerialHarvardPrivateCache<
-        { ALLOCATED_CORE_COUNT },
-        { parameter::HARVARD_PRI_I_CACHE_SET },
-        { parameter::HARVARD_PRI_I_CACHE_ASSO },
-        { parameter::HARVARD_PRI_D_CACHE_SET },
-        { parameter::HARVARD_PRI_D_CACHE_ASSO },
-    >,
-    SerialSingleSharedCache<
-        SharedCacheStatisticsWithPlugin,
-        { parameter::SHARED_CACHE_SET },
-        { parameter::SHARED_CACHE_ASSO },
-        { parameter::SHARED_CACHE_EXCLUSIVE },
-    >,
-    false,
-    { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
-    { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
-    { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
-    { parameter::DIRECTORY_SHARD_COUNT },
->;
-
-impl CacheModelParser<true, true> for DummyParser {
+impl CacheModelParser<true> for DummyParser {
     type Output = ParalleMemoryHierarchyUnified;
 }
 
-impl CacheModelParser<true, false> for DummyParser {
+impl CacheModelParser<false> for DummyParser {
     type Output = ParallelMemoryHierarchyHarvard;
 }
 
-impl CacheModelParser<false, true> for DummyParser {
-    type Output = SerialMemoryHierarchyUnified;
-}
-
-impl CacheModelParser<false, false> for DummyParser {
-    type Output = SerialMemoryHierarchyHarvard;
-}
-
-pub type HierarchyForPlugin = <DummyParser as CacheModelParser<
-    { !parameter::USE_SERIAL_CACHE_MODEL },
-    { parameter::USE_UNIFIED_CACHE },
->>::Output;
+pub type HierarchyForPlugin =
+    <DummyParser as CacheModelParser<{ parameter::USE_UNIFIED_CACHE }>>::Output;

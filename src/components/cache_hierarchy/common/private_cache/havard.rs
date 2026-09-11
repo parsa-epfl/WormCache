@@ -29,12 +29,10 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use crate::checkpoint::helpers::HarvardPrivateCacheHelper;
+use crate::components::cache_hierarchy::CacheBlockRequest;
 
-use super::super::CCell;
-
-use super::PrivateCaches;
+use super::PrivateCache;
 use super::{PrivateCachePokeResult, PrivateCacheSet};
 use spin::mutex::SpinMutex;
 
@@ -45,46 +43,51 @@ use zstd::{Decoder, Encoder};
 #[repr(align(64))]
 #[derive(Debug)]
 pub struct HarvardPerCorePrivateCache<
-    G: CCell<PrivateCacheSet> + std::fmt::Debug,
     const I_SET: usize,
     const I_ASSO: usize,
     const D_SET: usize,
     const D_ASSO: usize,
 > {
-    i_cache: Box<[G; I_SET]>,
-    d_cache: Box<[G; D_SET]>,
+    i_cache: Box<[SpinMutex<PrivateCacheSet>; I_SET]>,
+    d_cache: Box<[SpinMutex<PrivateCacheSet>; D_SET]>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct HarvardPerCorePrivateCacheSerdeHelper {
-    i_cache: Vec<PrivateCacheSet>,
-    d_cache: Vec<PrivateCacheSet>,
-}
-
-impl<
-        G: CCell<PrivateCacheSet> + std::fmt::Debug,
-        const I_SET: usize,
-        const I_ASSO: usize,
-        const D_SET: usize,
-        const D_ASSO: usize,
-    > HarvardPerCorePrivateCache<G, I_SET, I_ASSO, D_SET, D_ASSO>
+impl<const I_SET: usize, const I_ASSO: usize, const D_SET: usize, const D_ASSO: usize>
+    HarvardPerCorePrivateCache<I_SET, I_ASSO, D_SET, D_ASSO>
 {
     pub fn new() -> Self {
         Self {
-            i_cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(I_ASSO))),
-            d_cache: crate::util::init_heap_array(|_| G::new(PrivateCacheSet::new(D_ASSO))),
+            i_cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(I_ASSO))),
+            d_cache: crate::util::init_heap_array(|_| SpinMutex::new(PrivateCacheSet::new(D_ASSO))),
         }
     }
 
-    fn from_serialize_helper(helper: HarvardPerCorePrivateCacheSerdeHelper) -> Self {
+    /// Convert to unified checkpoint helper (used for both JSON and rkyv).
+    pub fn to_checkpoint_helper(&self) -> HarvardPrivateCacheHelper {
+        HarvardPrivateCacheHelper {
+            i_cache: self
+                .i_cache
+                .iter()
+                .map(|entry| entry.lock().clone())
+                .collect(),
+            d_cache: self
+                .d_cache
+                .iter()
+                .map(|entry| entry.lock().clone())
+                .collect(),
+        }
+    }
+
+    /// Create from unified checkpoint helper.
+    pub fn from_checkpoint_helper(helper: HarvardPrivateCacheHelper) -> Self {
         let mut i_cache = Vec::with_capacity(I_SET);
         for set in helper.i_cache {
-            i_cache.push(G::new(set));
+            i_cache.push(SpinMutex::new(set));
         }
 
         let mut d_cache = Vec::with_capacity(D_SET);
         for set in helper.d_cache {
-            d_cache.push(G::new(set));
+            d_cache.push(SpinMutex::new(set));
         }
 
         Self {
@@ -92,42 +95,25 @@ impl<
             d_cache: d_cache.into_boxed_slice().try_into().unwrap(),
         }
     }
-
-    fn to_serialize_helper(&self) -> HarvardPerCorePrivateCacheSerdeHelper {
-        HarvardPerCorePrivateCacheSerdeHelper {
-            i_cache: self
-                .i_cache
-                .iter()
-                .map(|entry| entry.inner().clone())
-                .collect(),
-            d_cache: self
-                .d_cache
-                .iter()
-                .map(|entry| entry.inner().clone())
-                .collect(),
-        }
-    }
 }
 
 pub struct HarvardPrivateCaches<
-    G: CCell<PrivateCacheSet> + std::fmt::Debug,
     const CORE_COUNT: usize,
     const I_SET: usize,
     const I_ASSO: usize,
     const D_SET: usize,
     const D_ASSO: usize,
 > {
-    caches: Box<[HarvardPerCorePrivateCache<G, I_SET, I_ASSO, D_SET, D_ASSO>; CORE_COUNT]>,
+    caches: Box<[HarvardPerCorePrivateCache<I_SET, I_ASSO, D_SET, D_ASSO>; CORE_COUNT]>,
 }
 
 impl<
-        G: CCell<PrivateCacheSet> + std::fmt::Debug,
-        const CORE_COUNT: usize,
-        const I_SET: usize,
-        const I_ASSO: usize,
-        const D_SET: usize,
-        const D_ASSO: usize,
-    > PrivateCaches for HarvardPrivateCaches<G, CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
+    const CORE_COUNT: usize,
+    const I_SET: usize,
+    const I_ASSO: usize,
+    const D_SET: usize,
+    const D_ASSO: usize,
+> PrivateCache for HarvardPrivateCaches<CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>
 {
     const DIRECTORY_SET: usize = gcd::binary_usize(I_SET, D_SET);
 
@@ -138,23 +124,19 @@ impl<
     }
 
     #[inline]
-    fn poke_and_update(
-        &self,
-        core_id: u32,
-        block_id: u64,
-        ts: u64,
-        v_ts: u64,
-        is_instruction: bool,
-        is_store: bool,
-    ) -> PrivateCachePokeResult {
+    fn poke_and_update(&self, request: &CacheBlockRequest, ts: u64) -> PrivateCachePokeResult {
+        let is_instruction = request.is_instruction();
+        let core_id = request.core_id;
+        let block_id = request.block_id;
+        let is_store = request.is_store();
         if is_instruction {
             self.caches[core_id as usize].i_cache[block_id as usize % I_SET]
-                .inner()
-                .poke_and_update(block_id, ts, v_ts, is_store, is_instruction)
+                .lock()
+                .poke_and_update(block_id, ts, is_store, is_instruction)
         } else {
             self.caches[core_id as usize].d_cache[block_id as usize % D_SET]
-                .inner()
-                .poke_and_update(block_id, ts, v_ts, is_store, is_instruction)
+                .lock()
+                .poke_and_update(block_id, ts, is_store, is_instruction)
         }
     }
 
@@ -176,12 +158,12 @@ impl<
 
             if is_instruction {
                 let set = &self.caches[core_id].i_cache[block_id as usize % I_SET];
-                let guard = set.inner();
+                let guard = set.lock();
                 let index = guard.index_of(block_id);
                 res.push((sharer_index, guard, index));
             } else {
                 let set = &self.caches[core_id].d_cache[block_id as usize % D_SET];
-                let guard = set.inner();
+                let guard = set.lock();
                 let index = guard.index_of(block_id);
                 res.push((sharer_index, guard, index));
             }
@@ -196,11 +178,11 @@ impl<
 
         for core_id in 0..CORE_COUNT {
             if self.caches[core_id].i_cache[block_id as usize % I_SET]
-                .inner()
+                .lock()
                 .poke(block_id)
                 .is_some()
                 || self.caches[core_id].d_cache[block_id as usize % D_SET]
-                    .inner()
+                    .lock()
                     .poke(block_id)
                     .is_some()
             {
@@ -219,11 +201,11 @@ impl<
 
         for core_id in 0..CORE_COUNT {
             let is_i = self.caches[core_id].i_cache[block_id as usize % I_SET]
-                .inner()
+                .lock()
                 .poke(block_id);
 
             let is_d = self.caches[core_id].d_cache[block_id as usize % D_SET]
-                .inner()
+                .lock()
                 .poke(block_id);
 
             if let Some(i_line) = is_i {
@@ -261,78 +243,25 @@ impl<
         core_id as usize * 2 + if is_instruction_cache { 0 } else { 1 }
     }
 
-    #[inline]
-    fn dump_flexus_checkpoint(&self, snapshot_folder: &str) {
-        for core_id in 0..CORE_COUNT {
-            // instruction cache is stored in <core_id>_l1i.json
-            // data cache is stored in <core_id>_l1d.json
-
-            // serialize the instruction cache
-            let serialized_icache = self.caches[core_id]
-                .i_cache
-                .iter()
-                .map(|set| set.inner().serialize(I_SET))
-                .collect::<Vec<_>>();
-
-            // dump the instruction cache
-            let icache_path = format!("{}/{:03}-L1i.json", snapshot_folder, core_id);
-            std::fs::write(
-                icache_path,
-                serde_json::to_string(&json!({
-                    "associativity": I_ASSO,
-                    "tags": serialized_icache
-                }))
-                .unwrap(),
-            )
-            .unwrap();
-
-            // serialize the data cache
-
-            let serialized_dcache = self.caches[core_id]
-                .d_cache
-                .iter()
-                .map(|set| set.inner().serialize(D_SET))
-                .collect::<Vec<_>>();
-
-            // dump the data cache
-            let dcache_path = format!("{}/{:03}-L1d.json", snapshot_folder, core_id);
-            std::fs::write(
-                dcache_path,
-                serde_json::to_string(&json!({
-                    "associativity": D_ASSO,
-                    "tags": serialized_dcache
-                }))
-                .unwrap(),
-            )
-            .unwrap();
-        }
-    }
-
     fn information() -> String {
         format!(
-            "Type: HarvardPrivateCache, Core Count: {}, ICache Set: {}, ICache Associativity: {}, DCache Set: {}, DCache Associativity: {}, Is Parallel: {}", 
-            CORE_COUNT,
-
-            I_SET,
-            I_ASSO,
-
-            D_SET,
-            D_ASSO,
-
-            G::support_parallel_access()
+            "Type: HarvardPrivateCache, Core Count: {}, ICache Set: {}, ICache Associativity: {}, DCache Set: {}, DCache Associativity: {}",
+            CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO,
         )
     }
 
     fn get_set_for_fill(
         &self,
-        core_id: u32,
-        block_id: u64,
-        is_instruction: bool,
+        request: &CacheBlockRequest,
     ) -> impl DerefMut<Target = PrivateCacheSet> {
+        let core_id = request.core_id;
+        let block_id = request.block_id;
+        let is_instruction = request.is_instruction();
+
         if is_instruction {
-            self.caches[core_id as usize].i_cache[block_id as usize % I_SET].inner()
+            self.caches[core_id as usize].i_cache[block_id as usize % I_SET].lock()
         } else {
-            self.caches[core_id as usize].d_cache[block_id as usize % D_SET].inner()
+            self.caches[core_id as usize].d_cache[block_id as usize % D_SET].lock()
         }
     }
 
@@ -340,43 +269,174 @@ impl<
     fn print_debug_info(&self) {}
 
     fn serialize(&self, name: &str, numa_node_id: usize) {
-        let helper = self
-            .caches
-            .iter()
-            .map(|cache| cache.to_serialize_helper())
-            .collect::<Vec<_>>();
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let file =
-            std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id))
-                .unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let helper: Vec<_> = self
+                .caches
+                .iter()
+                .map(|cache| cache.to_checkpoint_helper())
+                .collect();
 
-        let mut file = Encoder::new(file, 0).unwrap();
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.rkyv.zstd", name, "harvard", numa_node_id))
+                    .unwrap();
 
-        serde_json::to_writer(&mut file, &helper).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            std::io::Write::write_all(&mut encoder, &bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let helper = self
+                .caches
+                .iter()
+                .map(|cache| cache.to_checkpoint_helper())
+                .collect::<Vec<_>>();
 
-        file.finish().unwrap();
+            let file =
+                std::fs::File::create(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id))
+                    .unwrap();
+
+            let mut file = Encoder::new(file, 0).unwrap();
+
+            serde_json::to_writer(&mut file, &helper).unwrap();
+
+            file.finish().unwrap();
+        }
     }
+
     fn deserialize(&mut self, name: &str, numa_node_id: usize) {
-        let file =
-            std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id));
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        if file.is_err() {
-            println!(
-                "Cannot load the harvard private cache state. Error: {:?}",
-                file.err()
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.rkyv.zstd", name, "harvard", numa_node_id));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load the harvard private cache state (rkyv). Error: {:?}",
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: Vec<HarvardPrivateCacheHelper> =
+                rkyv::from_bytes::<Vec<HarvardPrivateCacheHelper>, rkyv::rancor::Error>(&bytes)
+                    .unwrap();
+
+            for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
+                *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file =
+                std::fs::File::open(format!("{}/{}-{}.json.zstd", name, "harvard", numa_node_id));
+
+            if file.is_err() {
+                println!(
+                    "Cannot load the harvard private cache state. Error: {:?}",
+                    file.err()
+                );
+                return;
+            }
+
+            let file = file.unwrap();
+            let file = Decoder::new(file).unwrap();
+
+            let helper: Vec<HarvardPrivateCacheHelper> = serde_json::from_reader(file).unwrap();
+
+            for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
+                *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
+        }
+    }
+
+    fn serialize_worker(&self, worker_id: usize, name: &str, numa_node_id: usize) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
+
+        let helpers: Vec<_> = self.caches[begin..end]
+            .iter()
+            .map(|cache| cache.to_checkpoint_helper())
+            .collect();
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helpers).unwrap();
+            crate::util::write_compressed(
+                &format!(
+                    "{}/harvard-{}-worker-{}.rkyv.zstd",
+                    name, numa_node_id, worker_id
+                ),
+                &bytes,
             );
-            return;
+        } else {
+            let bytes = serde_json::to_vec(&helpers).unwrap();
+            crate::util::write_compressed(
+                &format!(
+                    "{}/harvard-{}-worker-{}.json.zstd",
+                    name, numa_node_id, worker_id
+                ),
+                &bytes,
+            );
         }
+    }
 
-        let file = file.unwrap();
-        let file = Decoder::new(file).unwrap();
+    fn deserialize_worker(&mut self, worker_id: usize, name: &str, numa_node_id: usize) -> bool {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
 
-        let helper: Vec<HarvardPerCorePrivateCacheSerdeHelper> =
-            serde_json::from_reader(file).unwrap();
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
 
-        for (cache, helper) in self.caches.iter_mut().zip(helper.into_iter()) {
-            *cache = HarvardPerCorePrivateCache::from_serialize_helper(helper);
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!(
+                "{}/harvard-{}-worker-{}.rkyv.zstd",
+                name, numa_node_id, worker_id
+            ));
+
+            if file.is_err() {
+                return false;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: Vec<HarvardPrivateCacheHelper> =
+                rkyv::from_bytes::<Vec<HarvardPrivateCacheHelper>, rkyv::rancor::Error>(&bytes)
+                    .unwrap();
+
+            for (cache, helper) in self.caches[begin..end].iter_mut().zip(helper.into_iter()) {
+                *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file = std::fs::File::open(format!(
+                "{}/harvard-{}-worker-{}.json.zstd",
+                name, numa_node_id, worker_id
+            ));
+
+            if file.is_err() {
+                return false;
+            }
+
+            let file = file.unwrap();
+            let decoder = Decoder::new(file).unwrap();
+
+            let helper: Vec<HarvardPrivateCacheHelper> = serde_json::from_reader(decoder).unwrap();
+
+            for (cache, helper) in self.caches[begin..end].iter_mut().zip(helper.into_iter()) {
+                *cache = HarvardPerCorePrivateCache::from_checkpoint_helper(helper);
+            }
         }
+        true
     }
 }
 
@@ -386,19 +446,4 @@ pub type ParallelHarvardPrivateCache<
     const I_ASSO: usize,
     const D_SET: usize,
     const D_ASSO: usize,
-> = HarvardPrivateCaches<SpinMutex<PrivateCacheSet>, CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>;
-
-pub type SerialHarvardPrivateCache<
-    const CORE_COUNT: usize,
-    const I_SET: usize,
-    const I_ASSO: usize,
-    const D_SET: usize,
-    const D_ASSO: usize,
-> = HarvardPrivateCaches<
-    std::cell::UnsafeCell<PrivateCacheSet>,
-    CORE_COUNT,
-    I_SET,
-    I_ASSO,
-    D_SET,
-    D_ASSO,
->;
+> = HarvardPrivateCaches<CORE_COUNT, I_SET, I_ASSO, D_SET, D_ASSO>;

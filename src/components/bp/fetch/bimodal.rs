@@ -30,7 +30,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 use crate::components::bp::{BranchResolutionResult, BranchType};
 
 use serde::{Deserialize, Serialize};
@@ -46,9 +45,7 @@ struct BimodalPredictor<const S: usize> {
 
 impl<const S: usize> BimodalPredictor<S> {
     pub fn new() -> BimodalPredictor<S> {
-        BimodalPredictor {
-            array: Vec::from_iter(std::iter::repeat(0).take(S)),
-        }
+        BimodalPredictor { array: vec![0; S] }
     }
 
     fn saturaing_add(&mut self, index: usize) {

@@ -32,48 +32,66 @@
 // This file defines the tests for the memory_delayed module.
 // All these tests are taken from the input that triggers a bug.
 
-use crate::components::NoMMU;
+use crate::components::cache_hierarchy::common::{
+    CacheAccessType, CacheHierarchyAccessResult, InfiniteDirectory, SharedCacheAccessRequest,
+    SharedCacheAccessSource,
+};
+use crate::components::cache_hierarchy::mmu::NoMMU;
+use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
 use crate::parameter;
 use crate::util::get_monotonic_ts;
 
 use super::super::super::common::{
-    statistics::ZeroSharedCacheSetStatistics, ParallelSingleSharedCache,
-    ParallelUnifiedPrivateCache,
+    ParallelLRUSharedCache, ParallelUnifiedPrivateCache, statistics::ZeroSharedCacheSetStatistics,
 };
-use super::MemoryHierarchy;
-use super::{CacheAccessType, CacheHierarchyAccessResult};
+use super::ParallelMemoryHierarchy;
 
 const PCACHE_SET: usize = 1024;
 
-type MH = MemoryHierarchy<
+type MH = ParallelMemoryHierarchy<
     NoMMU,
     ParallelUnifiedPrivateCache<32, { PCACHE_SET }, { parameter::UNIFIED_PRI_CACHE_ASSO }>,
-    ParallelSingleSharedCache<
+    ParallelLRUSharedCache<
         ZeroSharedCacheSetStatistics,
         { parameter::SHARED_CACHE_SET },
         { parameter::SHARED_CACHE_ASSO },
         { parameter::SHARED_CACHE_EXCLUSIVE },
     >,
-    true,
+    InfiniteDirectory<32768>,
     { parameter::SHARED_CACHE_FILL_WITH_PRIVATE_CACHE },
     { parameter::SHARED_CACHE_FILL_ON_CLEAN_EVICTION },
     { parameter::SHARED_CACHE_FILL_ON_DIRTY_EVICTION },
-    { parameter::DIRECTORY_SHARD_COUNT },
+    { parameter::SHARED_CACHE_FILL_ON_REPLICA_CREATION },
+    32,
+    { parameter::N_ACC },
+    { parameter::N_FILTER },
+    { parameter::PHT_SETS },
+    { parameter::PHT_WAYS },
+    { parameter::N_BLK },
+    { parameter::ROT },
+    { parameter::SEP_RDWR },
+    { parameter::SAT_CNT },
+    { parameter::PERFECT_PHT },
 >;
 
 #[test]
 fn read_evict_and_other_core_read_back() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
 
     // core 0 reads a data at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
             get_monotonic_ts(),
-            CacheAccessType::DataRead
-        ),
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -81,52 +99,72 @@ fn read_evict_and_other_core_read_back() {
     for l in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id: u64 = ((l + 1) * PCACHE_SET) as u64 + block_id;
         assert_eq!(
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                0,
-                block_id,
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    is_os: false,
+                    pc: 0,
+                },
                 get_monotonic_ts(),
-                CacheAccessType::DataRead
-            ),
+            )
+            .0,
             CacheHierarchyAccessResult::Miss
         );
     }
 
     // Then core 1 reads the cache line. It should hit in the shared cache.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
             get_monotonic_ts(),
-            CacheAccessType::DataRead
-        ),
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 }
 
 #[test]
 fn one_core_write_first_then_read() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
 
     // core 0 reads a data at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            10
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
     // Then, core 0 writes the data at timestamp 20.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            get_monotonic_ts(),
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            20
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 }
@@ -134,117 +172,163 @@ fn one_core_write_first_then_read() {
 #[test]
 fn write_write_read_then_old_write() {
     // This bug is related to the coherence state reconstruction.
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            100,
-            CacheAccessType::DataWrite
-        ),
+        // mh.access_memory_pblock_id(0, block_id, 100, CacheAccessType::DataWrite, false, 0),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            100
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, core 0 writes the same data at timestamp 150. This won't update the write timestamp in the directory.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            150,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            150
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // Second, core 1 reads the data at timestamp 200.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
-            200,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            200
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
     // Third, core 2 writes the data at timestamp 125.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            2,
-            block_id,
-            125,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            125
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 }
 
 #[test]
 fn write_read_then_early_read() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            100,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            100
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, core 1 reads the cache line. This can update the access timestamp but does not touch the write timestamp.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
-            150,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            150
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
     // Third, core 2 reads the cache line at timestamp 50.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            2,
-            block_id,
-            50,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            50
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 }
 
 #[test]
 fn read_then_write() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
 
-    // First, there should be a write permission, by core 0, at timestamp 100.
+    // First, there should be a read permission, by core 0, at timestamp 100.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            100,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            100
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, core 0 writes the same data at timestamp 150. This won't update the write timestamp in the directory.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            150,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            150
+        )
+        .0,
         if parameter::ENABLE_EXCLUSIVE_CACHE_STATE {
             CacheHierarchyAccessResult::HitInSelfPrivateCache
         } else {
@@ -255,111 +339,156 @@ fn read_then_write() {
 
 #[test]
 fn write_read_after_write() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
 
     // First, there should be a write permission, by core 0, at timestamp 100.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            100,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            100
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
     // Second, core 0 read the cache line. This can update the access timestamp but does not touch the write timestamp.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            150,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            150
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // Third, core 1 writes the data at timestamp 200.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
-            150,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            200
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 }
 
 #[test]
 fn later_read_after_write_cancel_sharers() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
 
     // Core 0 write, at 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            10,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            10
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
     // Core 0 write, at 20.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            20,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            20
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // Core 1 read. at 30.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
-            30,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            30
+        )
+        .0,
         CacheHierarchyAccessResult::HitInOtherPrivateCache
     );
 
     // Core 2 read, at 15. We don't know the result.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            2,
-            block_id,
-            15,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            15
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
 
     // But, Core 1's replica should not be invalidated.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
-            35,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            35
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
     // Core 0 and Core 1 have the cache line.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            40,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            40
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSelfPrivateCache
     );
 
@@ -367,12 +496,17 @@ fn later_read_after_write_cancel_sharers() {
     // This means when there is an eviction of this cache line in core'1, it should not trigger any panic.
     for i in 0..(parameter::UNIFIED_PRI_CACHE_ASSO + 1) {
         assert_eq!(
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                1,
-                block_id + ((i + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64,
-                (50 + i) as u64,
-                CacheAccessType::DataRead
-            ),
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 1,
+                    block_id: block_id + ((i + 1) * parameter::UNIFIED_PRI_CACHE_SET) as u64,
+                    access_type: CacheAccessType::DataRead,
+                    is_os: false,
+                    pc: 0,
+                },
+                (50 + i) as u64
+            )
+            .0,
             CacheHierarchyAccessResult::Miss
         );
     }
@@ -380,16 +514,21 @@ fn later_read_after_write_cancel_sharers() {
 
 #[test]
 fn write_evict_read_write() {
-    let mh = MH::new(true, 0, false);
+    let mh = MH::new();
     let block_id = 1043;
     // First, there is a write access from core 0, at timestamp 10.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            0,
-            block_id,
-            10,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            10
+        )
+        .0,
         CacheHierarchyAccessResult::Miss
     );
 
@@ -397,12 +536,17 @@ fn write_evict_read_write() {
     for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
         let block_id = block_id + (i + 1) as u64 * PCACHE_SET as u64;
         assert_eq!(
-            mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-                0,
-                block_id,
-                20 + i as u64 * 10,
-                CacheAccessType::DataWrite
-            ),
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataWrite,
+                    is_os: false,
+                    pc: 0,
+                },
+                20 + i as u64 * 10
+            )
+            .0,
             CacheHierarchyAccessResult::Miss
         );
     }
@@ -411,24 +555,176 @@ fn write_evict_read_write() {
     // This should not trigger any assertion failure.
     // But it creates an replica on chip. Now it should create a replica.
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            1,
-            block_id,
-            1024,
-            CacheAccessType::DataRead
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            1024
+        )
+        .0,
         CacheHierarchyAccessResult::HitInSharedCache
     );
 
     // what if we have a write access before the first one, from core 1?
     // Will this trigger an assertion failure?
     assert_eq!(
-        mh.access_memory_pblock_id_with_the_same_ts_and_vts(
-            2,
-            block_id,
-            5,
-            CacheAccessType::DataWrite
-        ),
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            5
+        )
+        .0,
         CacheHierarchyAccessResult::Unknown
     );
+}
+
+#[test]
+fn share_directory_entry_inseter_ts_update() {
+    let mh = MH::new();
+    let block_id = 1043;
+
+    // Core 0 reads, at 30.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            30
+        )
+        .0,
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 1 reads, at 40.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            40
+        )
+        .0,
+        CacheHierarchyAccessResult::HitInOtherPrivateCache
+    );
+
+    // Core 2 reads, at 20.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            20
+        )
+        .0,
+        CacheHierarchyAccessResult::Unknown
+    );
+
+    // The insert timestamp right now is 30, because reads to share block are not updating the timestamp.
+
+    // Now, core 2 writes at 25. It will trigger the assertion failure.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 2,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            25
+        )
+        .0,
+        CacheHierarchyAccessResult::MissDueToPermission
+    );
+}
+
+#[test]
+fn write_to_llc_cannot_invalidate_larger_ts() {
+    use crate::components::cache_hierarchy::common::SharedCache;
+
+    let mh = MH::new();
+    let block_id = 1043;
+
+    // Core 0 reads, at 30.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 0,
+                block_id,
+                access_type: CacheAccessType::DataRead,
+                is_os: false,
+                pc: 0,
+            },
+            30
+        )
+        .0,
+        CacheHierarchyAccessResult::Miss
+    );
+
+    // Core 0 evicts the cache line in the following requests.
+    // Note that after this operation, the cache line is in the shared cache with a timestamp larger than 30.
+    for i in 0..parameter::UNIFIED_PRI_CACHE_ASSO {
+        let block_id = block_id + (i + 1) as u64 * PCACHE_SET as u64;
+        assert_eq!(
+            mh.access_memory_pblock_id(
+                &CacheBlockRequest {
+                    core_id: 0,
+                    block_id,
+                    access_type: CacheAccessType::DataRead,
+                    is_os: false,
+                    pc: 0,
+                },
+                40 + i as u64 * 10
+            )
+            .0,
+            CacheHierarchyAccessResult::Miss
+        );
+    }
+
+    // Then core 1 writes the cache line at the timestamp 10.
+    // It should not be a hit in the shared cache, because the result is unknown.
+    // But still, the cache line is taken away into the private cache of core 1, because of the get exclusive.
+    assert_eq!(
+        mh.access_memory_pblock_id(
+            &CacheBlockRequest {
+                core_id: 1,
+                block_id,
+                access_type: CacheAccessType::DataWrite,
+                is_os: false,
+                pc: 0,
+            },
+            10
+        )
+        .0,
+        CacheHierarchyAccessResult::Unknown
+    );
+
+    // And the cache line is not in the LLC.
+    assert!(!mh.shared_cache.peek(&SharedCacheAccessRequest {
+        source: SharedCacheAccessSource::Core(0),
+        block_id,
+        access_type: CacheAccessType::DataRead,
+        is_os: false,
+    }));
 }

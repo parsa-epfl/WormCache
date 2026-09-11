@@ -30,21 +30,17 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod bimodal;
-mod btb;
+pub mod btb;
 mod gshare;
 mod ras;
-mod tage;
+pub mod tage;
 
-use crate::components::debug::statistics::{EventType, Statistics};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use serde_with::serde_as;
+use crate::debug::statistics::{EventType, Statistics};
 
+use crate::checkpoint::helpers::{FetchUnitHelper, PerCoreFetchUnitHelper};
 use crate::parameter::{self, BP_RAS_COUNT};
 
 use super::{BranchResolutionResult, BranchType};
-
-use crate::components::FlexusCompatibleSerializer;
 
 #[derive(PartialEq)]
 pub enum BranchPredictorResult {
@@ -54,26 +50,54 @@ pub enum BranchPredictorResult {
 }
 
 #[repr(align(64))]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct PerCoreFetchUnit {
     btb: btb::BTB<{ parameter::BTB_SET }, { parameter::BTB_ASSO }>,
-    ras: ras::ReturnAddressStacle<BP_RAS_COUNT>,
+    ras: ras::ReturnAddressStack<BP_RAS_COUNT>,
     tage: tage::TAGEPredictor,
+}
+
+impl PerCoreFetchUnit {
+    pub fn to_checkpoint_helper(&self) -> PerCoreFetchUnitHelper {
+        PerCoreFetchUnitHelper {
+            btb: self.btb.to_checkpoint_helper(),
+            ras: self.ras.to_checkpoint_helper(),
+            tage: self.tage.to_checkpoint_helper(),
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: PerCoreFetchUnitHelper) -> Self {
+        Self {
+            btb: btb::BTB::from_checkpoint_helper(helper.btb),
+            ras: ras::ReturnAddressStack::from_checkpoint_helper(helper.ras),
+            tage: tage::TAGEPredictor::from_checkpoint_helper(helper.tage),
+        }
+    }
 }
 
 impl PerCoreFetchUnit {
     pub fn new() -> PerCoreFetchUnit {
         PerCoreFetchUnit {
             btb: btb::BTB::new(),
-            ras: ras::ReturnAddressStacle::new(),
+            ras: ras::ReturnAddressStack::new(),
             tage: tage::TAGEPredictor::new(),
         }
     }
 
     pub fn train(&mut self, pc: u64, result: BranchResolutionResult, target: u64, core_id: usize) {
         let is_os = pc >> 63 == 1;
-        let btb_miss = self.btb.train(pc, result, target) == BranchPredictorResult::Mispredict;
-        let tage_miss = self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict;
+        let btb_result = self.btb.train(pc, result, target);
+        let btb_miss = btb_result.0 == BranchPredictorResult::Mispredict;
+
+        let tage_miss = if btb_result.1 == BranchType::Conditional {
+            self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict
+        } else if result.branch_type != BranchType::NonBranch {
+            self.tage.update_history(pc, result.is_taken); // This has to be done for non-conditional branches.
+            false // No way to train the TAGE predictor for non-conditional branches.
+        } else {
+            false
+        };
+
         let ras_miss = self.ras.train(pc, result, target) == BranchPredictorResult::Mispredict;
 
         if btb_miss {
@@ -91,7 +115,7 @@ impl PerCoreFetchUnit {
         Statistics::global_record(core_id as u32, EventType::BranchCount, is_os);
 
         // Determine the branch prediction result.
-        match result.branch_type.clone() {
+        match result.branch_type {
             BranchType::NonBranch => unreachable!(),
             BranchType::Conditional => {
                 if tage_miss || btb_miss {
@@ -110,17 +134,6 @@ impl PerCoreFetchUnit {
             }
         }
     }
-
-    pub fn get_flexus_checkpoint(&self) -> serde_json::Value {
-        let serialized_btb = self.btb.get_serialize_helper();
-
-        let serialized_tage = self.tage.get_serialize_helper();
-
-        json!({
-            "btb": serialized_btb,
-            "tage": serialized_tage,
-        })
-    }
 }
 
 impl Default for PerCoreFetchUnit {
@@ -129,10 +142,7 @@ impl Default for PerCoreFetchUnit {
     }
 }
 
-#[serde_as]
-#[derive(Serialize, Deserialize)]
 pub struct FetchUnit<const CORE_COUNT: usize> {
-    #[serde_as(as = "[_; CORE_COUNT]")]
     pub private_units: [PerCoreFetchUnit; CORE_COUNT],
 }
 
@@ -145,6 +155,109 @@ impl<const CORE_COUNT: usize> FetchUnit<CORE_COUNT> {
 
     pub fn train(&mut self, core_id: usize, pc: u64, result: BranchResolutionResult, target: u64) {
         self.private_units[core_id].train(pc, result, target, core_id);
+    }
+
+    pub fn dump_training_trace(&self, folder_name: &str) {
+        for i in 0..CORE_COUNT {
+            let file_name = format!("{}/{}-bpred-training-history.json", folder_name, i);
+            let file = std::fs::File::create(file_name).unwrap();
+            serde_json::to_writer(file, &self.private_units[i].tage.training_trace).unwrap();
+        }
+    }
+
+    pub fn to_checkpoint_helper(&self) -> FetchUnitHelper {
+        FetchUnitHelper {
+            private_units: self
+                .private_units
+                .iter()
+                .map(|u| u.to_checkpoint_helper())
+                .collect(),
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: FetchUnitHelper) -> Self {
+        let private_units: Vec<_> = helper
+            .private_units
+            .into_iter()
+            .map(PerCoreFetchUnit::from_checkpoint_helper)
+            .collect();
+        Self {
+            private_units: private_units.try_into().expect("FetchUnit size mismatch"),
+        }
+    }
+
+    pub fn serialize_worker(&self, worker_id: usize, name: &str) {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+        let end = begin + cores_per_worker;
+
+        let helper = FetchUnitHelper {
+            private_units: self.private_units[begin..end]
+                .iter()
+                .map(|u| u.to_checkpoint_helper())
+                .collect(),
+        };
+
+        if USE_RKYV_SERIALIZATION {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/fetch-worker-{}.rkyv.zstd", name, worker_id),
+                &bytes,
+            );
+        } else {
+            let bytes = serde_json::to_vec(&helper).unwrap();
+            crate::util::write_compressed(
+                &format!("{}/fetch-worker-{}.json.zstd", name, worker_id),
+                &bytes,
+            );
+        }
+    }
+
+    pub fn deserialize_worker(&mut self, worker_id: usize, name: &str) -> bool {
+        use crate::parameter::{CHECKPOINT_POOL_SIZE, USE_RKYV_SERIALIZATION};
+
+        let cores_per_worker = CORE_COUNT / CHECKPOINT_POOL_SIZE;
+        let begin = worker_id * cores_per_worker;
+
+        if USE_RKYV_SERIALIZATION {
+            let file =
+                std::fs::File::open(format!("{}/fetch-worker-{}.rkyv.zstd", name, worker_id));
+
+            if file.is_err() {
+                return false;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = zstd::Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: FetchUnitHelper =
+                rkyv::from_bytes::<FetchUnitHelper, rkyv::rancor::Error>(&bytes).unwrap();
+
+            for (i, unit) in helper.private_units.into_iter().enumerate() {
+                self.private_units[begin + i] = PerCoreFetchUnit::from_checkpoint_helper(unit);
+            }
+        } else {
+            let file =
+                std::fs::File::open(format!("{}/fetch-worker-{}.json.zstd", name, worker_id));
+
+            if file.is_err() {
+                return false;
+            }
+
+            let file = file.unwrap();
+            let decoder = zstd::Decoder::new(file).unwrap();
+
+            let helper: FetchUnitHelper = serde_json::from_reader(decoder).unwrap();
+
+            for (i, unit) in helper.private_units.into_iter().enumerate() {
+                self.private_units[begin + i] = PerCoreFetchUnit::from_checkpoint_helper(unit);
+            }
+        }
+        true
     }
 }
 

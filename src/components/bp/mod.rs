@@ -31,22 +31,26 @@
 
 pub mod fetch;
 
-mod aarch64;
-mod callbacks;
 use std::io::Write;
 
 use super::Plugin;
 use crate::{parameter, qemu_api};
 
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
+use rayon::prelude::*;
+
 use zstd::{Decoder, Encoder};
+
 
 // Use Arena to allocate the BranchMetaData.
 // https://crates.io/crates/bumpalo
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize,
+)]
 pub enum BranchType {
     NonBranch = 0,
     Conditional = 1,
@@ -59,18 +63,11 @@ pub enum BranchType {
 
 impl BranchType {
     pub fn is_call(&self) -> bool {
-        match self {
-            BranchType::DirectCall => true,
-            BranchType::IndirectCall => true,
-            _ => false,
-        }
+        matches!(self, BranchType::DirectCall | BranchType::IndirectCall)
     }
 
     pub fn is_return(&self) -> bool {
-        match self {
-            BranchType::Return => true,
-            _ => false,
-        }
+        matches!(self, BranchType::Return)
     }
 }
 
@@ -85,10 +82,10 @@ impl BranchResolutionResult {
         let is_taken = value & 1 == 1;
         let result_value = value >> 1;
 
-        return BranchResolutionResult {
+        BranchResolutionResult {
             is_taken,
             branch_type: match result_value {
-                0 => BranchType::NonBranch,
+                0 => unreachable!(),
                 1 => BranchType::Conditional,
                 2 => {
                     assert!(is_taken);
@@ -112,26 +109,63 @@ impl BranchResolutionResult {
                 }
                 _ => unreachable!(),
             },
-        };
+        }
     }
 }
 
-static mut FETCH_UNIT: *mut fetch::FetchUnit<{ parameter::CORE_COUNT }> = std::ptr::null_mut();
+const ALLOCATED_CORE: usize = if parameter::MEASURE_HALF_OF_CORES {
+    parameter::CORE_COUNT / 2
+} else {
+    parameter::CORE_COUNT
+};
+
+static mut FETCH_UNIT: *mut fetch::FetchUnit<{ ALLOCATED_CORE }> = std::ptr::null_mut();
+
+/**
+ * Whether to record BBV inside the fetch unit.
+ *
+ * By default, this should be turned off for serious performance measurement.
+ */
+const RECORDING_BBV: bool = false;
+
+mod bbv;
+
+static mut BBV_RECORDER: *mut bbv::BBVRecorder<{ ALLOCATED_CORE }> = std::ptr::null_mut();
 
 unsafe extern "C" fn branch_resolved_cb(vcpu_index: u32, pc: u64, target: u64, flags: u32) {
-    if parameter::MEASURE_HALF_OF_CORES && vcpu_index >= parameter::CORE_COUNT as u32 / 2 {
-        return;
-    }
+    unsafe {
+        if parameter::BYPASSING_OS_SIMULATION && (pc >> 48) != 0 {
+            // Fine, this is an OS simulation code. We can bypass it.
+            return;
+        }
 
-    let result = BranchResolutionResult::from_u32(flags);
-    (*FETCH_UNIT).train(vcpu_index as usize, pc, result, target)
+        if parameter::MEASURE_HALF_OF_CORES && vcpu_index >= parameter::CORE_COUNT as u32 / 2 {
+            return;
+        }
+
+        let result = BranchResolutionResult::from_u32(flags);
+        (*FETCH_UNIT).train(vcpu_index as usize, pc, result, target);
+
+        if RECORDING_BBV {
+            (*BBV_RECORDER).record(vcpu_index as usize, target);
+        }
+    }
 }
 
 pub struct BranchPredictorPlugin {}
 
 impl Plugin for BranchPredictorPlugin {
-    fn init(_plugin_id: u64, _options: &FxHashMap<String, String>) {
+    fn init(_plugin_id: u64, options: &FxHashMap<String, String>) {
         println!("BranchPredictorPlugin initialized.");
+
+        // get the mode name.
+        let mode = String::new();
+        let mode = options.get("mode").unwrap_or(&mode);
+
+        assert_ne!(
+            mode, "vtime",
+            "Pure vtime is enabled. BP should be disabled."
+        );
 
         assert!(unsafe {
             qemu_api::qemu_plugin_register_vcpu_branch_resolved_cb(Some(branch_resolved_cb))
@@ -139,6 +173,10 @@ impl Plugin for BranchPredictorPlugin {
 
         unsafe {
             FETCH_UNIT = Box::into_raw(Box::new(fetch::FetchUnit::new()));
+
+            if RECORDING_BBV {
+                BBV_RECORDER = Box::into_raw(Box::new(bbv::BBVRecorder::new()));
+            }
         }
     }
 
@@ -146,48 +184,99 @@ impl Plugin for BranchPredictorPlugin {
         // The callback is already inserted into the TB during init.
     }
 
-    fn dump_snapshot(name: &str) {
-        for (core_id, f) in unsafe { &(*FETCH_UNIT).private_units }.iter().enumerate() {
-            let file =
-                std::fs::File::create(format!("{}/{:03}-bpred.json", name, core_id)).unwrap();
-            // let json = serde_json::to_string(f).unwrap();
-            // file.write_all(json.as_bytes()).unwrap();
-            serde_json::to_writer(file, &f.get_flexus_checkpoint()).unwrap();
-        }
-    }
-
     fn serialize(name: &str) {
-        // open a file
-        let mut file = std::fs::File::create(format!("{}/fetch.json.zstd", name)).unwrap();
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        let mut file = Encoder::new(&mut file, 0).unwrap();
+        let helper = unsafe { (*FETCH_UNIT).to_checkpoint_helper() };
 
-        // write the content
-        let json = serde_json::to_string(unsafe { &(*FETCH_UNIT) }).unwrap();
-        file.write_all(json.as_bytes()).unwrap();
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::create(format!("{}/fetch.rkyv.zstd", name)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
 
-        file.finish().unwrap();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&helper).unwrap();
+            encoder.write_all(&bytes).unwrap();
+            encoder.finish().unwrap();
+        } else {
+            let file = std::fs::File::create(format!("{}/fetch.json.zstd", name)).unwrap();
+            let mut encoder = Encoder::new(file, 0).unwrap();
+
+            serde_json::to_writer(&mut encoder, &helper).unwrap();
+            encoder.finish().unwrap();
+        }
+
+        if RECORDING_BBV {
+            unsafe {
+                (*BBV_RECORDER).save_and_clear(name);
+            }
+        }
     }
 
     fn deserialize(name: &str) {
-        // open a file
-        let file = std::fs::File::open(format!("{}/fetch.json.zstd", name));
+        use crate::checkpoint::helpers::FetchUnitHelper;
+        use crate::parameter::USE_RKYV_SERIALIZATION;
 
-        if file.is_err() {
-            println!("Cannot load the fetch unit state. Error: {:?}", file.err());
-            return;
+        if USE_RKYV_SERIALIZATION {
+            let file = std::fs::File::open(format!("{}/fetch.rkyv.zstd", name));
+
+            if file.is_err() {
+                return;
+            }
+
+            let file = file.unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut bytes).unwrap();
+
+            let helper: FetchUnitHelper =
+                rkyv::from_bytes::<FetchUnitHelper, rkyv::rancor::Error>(&bytes).unwrap();
+            unsafe {
+                *FETCH_UNIT = fetch::FetchUnit::from_checkpoint_helper(helper);
+            }
+        } else {
+            let file = std::fs::File::open(format!("{}/fetch.json.zstd", name));
+
+            if file.is_err() {
+                return;
+            }
+
+            let file = file.unwrap();
+            let decoder = Decoder::new(file).unwrap();
+
+            let helper: FetchUnitHelper = serde_json::from_reader(decoder).unwrap();
+            unsafe {
+                *FETCH_UNIT = fetch::FetchUnit::from_checkpoint_helper(helper);
+            }
+        }
+    }
+
+    fn serialize_par(name: &str) {
+        use crate::CHECKPOINT_POOL;
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
+
+        CHECKPOINT_POOL.get().unwrap().install(|| {
+            (0..CHECKPOINT_POOL_SIZE).into_par_iter().for_each(|worker_id| {
+                unsafe { (*FETCH_UNIT).serialize_worker(worker_id, name) };
+            });
+        });
+
+        if RECORDING_BBV {
+            unsafe {
+                (*BBV_RECORDER).save_and_clear(name);
+            }
         }
 
-        let file = file.unwrap();
+        println!("Parallel BP checkpoint serialization complete.");
+    }
 
-        let file = Decoder::new(file).unwrap();
+    fn deserialize_par(name: &str) {
+        use crate::parameter::CHECKPOINT_POOL_SIZE;
 
-        // read the content
-        let reader = std::io::BufReader::new(file);
-
-        // Deserialize the content
-        let mut reader = serde_json::Deserializer::from_reader(reader);
-
-        Deserialize::deserialize_in_place(&mut reader, unsafe { &mut (*FETCH_UNIT) }).unwrap();
+        let mut loaded = true;
+        for worker_id in 0..CHECKPOINT_POOL_SIZE {
+            unsafe { loaded &= (*FETCH_UNIT).deserialize_worker(worker_id, name) };
+        }
+        if loaded {
+            println!("Loaded fetch from checkpoint");
+        }
     }
 }
