@@ -343,9 +343,9 @@ use crate::components::Plugin;
 #[derive(PluginHelper)]
 pub struct PluginList {
     // Please comment out the plugins that you don't want to use.
-     _pb: crate::BranchPredictorPlugin,
-     _lm: crate::ParallelCacheHierarchyPlugin,
-     _cv: crate::CausalityDetectorPlugin,
+    _pb: crate::BranchPredictorPlugin,
+    _lm: crate::ParallelCacheHierarchyPlugin,
+    // _cv: crate::CausalityDetectorPlugin,
     // _lm: crate::SingleCacheHierarchyPlugin,
     // _t: crate::TracePlugin,
 }
@@ -394,7 +394,7 @@ pub const USE_RKYV_SERIALIZATION: bool = true;
  *
  * This is used for a finer-grained IPC model that considers the on-chip network latency. It can be useful for debugging and testing the cache hierarchy and the coherence protocol.
  */
-pub const RECORD_ON_CHIP_NETWORK_HOP: bool = true;
+pub const RECORD_ON_CHIP_NETWORK_HOP: bool = false;
 static_assertions::const_assert!(ENABLE_STATISTICS || !RECORD_ON_CHIP_NETWORK_HOP);
 
 /**
