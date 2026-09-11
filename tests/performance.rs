@@ -79,6 +79,7 @@ type MH = ParallelMemoryHierarchy<
 >;
 
 #[test]
+#[ignore = "requires perf_event access (see /proc/sys/kernel/perf_event_paranoid)"]
 fn testing_pcache_always_miss() {
     let mh = MH::new();
 
@@ -126,6 +127,7 @@ fn testing_pcache_always_miss() {
 }
 
 #[test]
+#[ignore = "requires perf_event access (see /proc/sys/kernel/perf_event_paranoid)"]
 fn testing_pcache_always_hit() {
     let mh = MH::new();
 
@@ -171,6 +173,7 @@ fn testing_pcache_always_hit() {
 }
 
 #[test]
+#[ignore = "requires perf_event access (see /proc/sys/kernel/perf_event_paranoid)"]
 fn read_shared_cache_line() {
     let mh = MH::new();
 
@@ -220,6 +223,7 @@ fn read_shared_cache_line() {
 }
 
 #[test]
+#[ignore = "requires perf_event access (see /proc/sys/kernel/perf_event_paranoid)"]
 fn test_64_way_tlb_access_time() {
     let mut counter = Builder::new().build().unwrap();
 
@@ -262,6 +266,7 @@ fn test_64_way_tlb_access_time() {
 }
 
 #[test]
+#[ignore = "requires perf_event access (see /proc/sys/kernel/perf_event_paranoid)"]
 fn test_64_way_tlb_defer_insertion_time() {
     let mut counter = Builder::new().build().unwrap();
 

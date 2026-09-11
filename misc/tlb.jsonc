@@ -1,9 +1,0 @@
-{
-    "capacity": 0, // usize
-    "entries": [ // [TLBEntries]
-        { // the LRU element is placed in the beginning.
-            "vpn": 0, // u64
-            "ppn": 0 // u64
-        }
-    ] 
-}
