@@ -37,8 +37,8 @@ use serde::{Deserialize, Serialize};
 use super::BranchPredictorResult;
 
 // The maximum size of the global history register is 64 bits.
-#[derive(Deserialize, Serialize)]
-struct GShare<const S: usize> {
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GShare<const S: usize> {
     pub history: u64,
     pub table: Vec<u8>,
 }
@@ -57,10 +57,6 @@ impl<const S: usize> GShare<S> {
         result: BranchResolutionResult,
         _target: u64,
     ) -> BranchPredictorResult {
-        if result.branch_type != BranchType::Conditional {
-            self.history = (self.history << 1) | 1;
-            return BranchPredictorResult::NotActive;
-        }
         let taken = result.is_taken;
         let index = ((pc ^ self.history) % S as u64) as usize;
         let prediction = self.get_prediction(index);
@@ -69,13 +65,20 @@ impl<const S: usize> GShare<S> {
         } else {
             self.saturating_sub(index)
         }
-        self.history = (self.history << 1) | (if taken { 1 } else { 0 });
+
+        if result.branch_type == BranchType::Conditional {
+            self.update_history(taken);
+        }
 
         if prediction == taken {
             BranchPredictorResult::Match
         } else {
             BranchPredictorResult::Mispredict
         }
+    }
+
+    pub fn update_history(&mut self, taken: bool) {
+        self.history = (self.history << 1) | u64::from(taken);
     }
 
     fn saturaing_add(&mut self, index: usize) {
@@ -94,5 +97,37 @@ impl<const S: usize> GShare<S> {
 
     fn get_prediction(&self, index: usize) -> bool {
         self.table[index] >= 2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conditional_training_updates_counter_and_history() {
+        let mut gshare = GShare::<8>::new();
+        let result = BranchResolutionResult {
+            branch_type: BranchType::Conditional,
+            is_taken: true,
+        };
+
+        assert!(matches!(
+            gshare.train(0, result, 0),
+            BranchPredictorResult::Mispredict
+        ));
+        assert_eq!(gshare.table[0], 1);
+        assert_eq!(gshare.history, 1);
+    }
+
+    #[test]
+    fn explicit_history_update_does_not_train_counter() {
+        let mut gshare = GShare::<8>::new();
+
+        gshare.update_history(true);
+        gshare.update_history(false);
+
+        assert_eq!(gshare.history, 2);
+        assert!(gshare.table.iter().all(|counter| *counter == 0));
     }
 }

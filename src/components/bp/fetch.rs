@@ -55,6 +55,7 @@ pub struct PerCoreFetchUnit {
     btb: btb::BTB<{ parameter::BTB_SET }, { parameter::BTB_ASSO }>,
     ras: ras::ReturnAddressStack<BP_RAS_COUNT>,
     tage: tage::TAGEPredictor,
+    gshare: gshare::GShare<{ parameter::BP_GSHARE_SET}>,
 }
 
 impl PerCoreFetchUnit {
@@ -62,7 +63,7 @@ impl PerCoreFetchUnit {
         PerCoreFetchUnitHelper {
             btb: self.btb.to_checkpoint_helper(),
             ras: self.ras.to_checkpoint_helper(),
-            tage: self.tage.to_checkpoint_helper(),
+            tage: self.tage.to_checkpoint_helper(),     // TODO: add gshare
         }
     }
 
@@ -71,6 +72,7 @@ impl PerCoreFetchUnit {
             btb: btb::BTB::from_checkpoint_helper(helper.btb),
             ras: ras::ReturnAddressStack::from_checkpoint_helper(helper.ras),
             tage: tage::TAGEPredictor::from_checkpoint_helper(helper.tage),
+            gshare: gshare::GShare::new(),             // TODO: load actual ckpt
         }
     }
 }
@@ -81,6 +83,7 @@ impl PerCoreFetchUnit {
             btb: btb::BTB::new(),
             ras: ras::ReturnAddressStack::new(),
             tage: tage::TAGEPredictor::new(),
+            gshare: gshare::GShare::new(),
         }
     }
 
@@ -98,6 +101,15 @@ impl PerCoreFetchUnit {
             false
         };
 
+        let gshare_miss = if btb_result.1 == BranchType::Conditional {
+            self.gshare.train(pc, result, target) == BranchPredictorResult::Mispredict
+        } else if result.branch_type != BranchType::NonBranch {
+            self.gshare.update_history(result.is_taken);
+            false
+        } else {
+            false
+        };
+
         let ras_miss = self.ras.train(pc, result, target) == BranchPredictorResult::Mispredict;
 
         if btb_miss {
@@ -110,6 +122,10 @@ impl PerCoreFetchUnit {
 
         if tage_miss {
             Statistics::global_record(core_id as u32, EventType::TageMiss, is_os);
+        }
+
+        if gshare_miss {
+            Statistics::global_record(core_id as u32, EventType::GshareMiss, is_os);
         }
 
         Statistics::global_record(core_id as u32, EventType::BranchCount, is_os);

@@ -128,6 +128,7 @@ pub enum EventType {
     BTBMiss,
     RASMiss,
     TageMiss,
+    GshareMiss,
     BPMiss, // this is different from summing the previous one.
     // It includes the following logic to judge:
     // - For directional branch, it is a miss if the direction prediction is wrong, or
