@@ -1153,6 +1153,8 @@ impl<
         self.serialize_mmus(name, numa_node_id);
         println!("Serialize PHTs");
         self.pht.serialize(name, numa_node_id);
+        println!("Serialize RPTs");
+        self.rpt.serialize(name, numa_node_id);
     }
 
     fn deserialize(&mut self, name: &str, numa_node_id: usize) {
@@ -1166,6 +1168,8 @@ impl<
         self.deserialize_mmus(name, numa_node_id);
         println!("Deserialize PHTs");
         self.pht.deserialize(name, numa_node_id);
+        println!("Deserialize RPTs");
+        self.rpt.deserialize(name, numa_node_id);
     }
 
     fn serialize_par(&self, name: &str, numa_node_id: usize) {
@@ -1177,6 +1181,7 @@ impl<
                 self.private_caches.serialize_worker(worker_id, name, numa_node_id);
                 self.serialize_mmus_worker(worker_id, name, numa_node_id);
                 self.pht.serialize_worker(worker_id, name, numa_node_id);
+                self.rpt.serialize_worker(worker_id, name, numa_node_id);
                 self.directory.serialize_shard(worker_id, name, numa_node_id);
                 self.shared_cache.serialize_shard(worker_id, name, numa_node_id);
             });
@@ -1191,6 +1196,7 @@ impl<
         let mut private_caches_loaded = true;
         let mut mmus_loaded = true;
         let mut pht_loaded = true;
+        let mut rpt_loaded = true;
         let mut directory_loaded = true;
         let mut shared_cache_loaded = true;
 
@@ -1198,6 +1204,7 @@ impl<
             private_caches_loaded &= self.private_caches.deserialize_worker(worker_id, name, numa_node_id);
             mmus_loaded &= self.deserialize_mmus_worker(worker_id, name, numa_node_id);
             pht_loaded &= self.pht.deserialize_worker(worker_id, name, numa_node_id);
+            rpt_loaded &= self.rpt.deserialize_worker(worker_id, name, numa_node_id);
             directory_loaded &= self.directory.deserialize_shard(worker_id, name, numa_node_id);
             shared_cache_loaded &= self.shared_cache.deserialize_shard(worker_id, name, numa_node_id);
         }
@@ -1210,6 +1217,9 @@ impl<
         }
         if pht_loaded {
             println!("Loaded PHT from checkpoint");
+        }
+        if rpt_loaded {
+            println!("Loaded RPT from checkpoint");
         }
         if directory_loaded {
             println!("Loaded directory from checkpoint");

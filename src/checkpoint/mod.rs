@@ -1,11 +1,13 @@
 pub mod cache_hierarchy;
 mod frontend;
 pub mod helpers;
+mod ibsp;
 mod mmu;
 mod sms;
 
 pub use cache_hierarchy::process_cache_hierarchy;
 pub use frontend::process_frontend;
+pub use ibsp::process_ibsp;
 pub use mmu::process_mmus;
 use serde::{Deserialize, Serialize};
 pub use sms::process_sms;

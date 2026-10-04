@@ -3,6 +3,7 @@ use serde_json;
 use worm_cache::checkpoint::FlexusParameter;
 use worm_cache::checkpoint::process_cache_hierarchy;
 use worm_cache::checkpoint::process_frontend;
+use worm_cache::checkpoint::process_ibsp;
 use worm_cache::checkpoint::process_mmus;
 use worm_cache::checkpoint::process_sms;
 
@@ -37,4 +38,5 @@ fn main() {
     process_frontend(check_point_folder, &flexus, output_folder);
     process_mmus(check_point_folder, &flexus, output_folder);
     process_sms(check_point_folder, &flexus, output_folder);
+    process_ibsp(check_point_folder, output_folder);
 }
