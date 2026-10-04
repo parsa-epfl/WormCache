@@ -39,6 +39,7 @@ use crate::debug::statistics::{EventType, Statistics};
 
 use crate::debug::cache_line_history::{CacheLineCoherenceHistory, CacheOperationType};
 
+use super::super::common::{Directory, DirectorySet, SharedCache};
 use super::super::common::agt::ParallelAGT;
 use super::super::common::pht::ParallelPHT;
 use crate::components::cache_hierarchy::common::rpt::RPT;
@@ -118,6 +119,10 @@ unsafe impl<
     const SEP_RDWR: bool,
     const SAT_CNT: bool,
     const PERFECT_PHT: bool,
+    const RPT_SETS: usize,
+    const RPT_WAYS: usize,
+    const N_PC: usize,
+    const LOOKAHEAD: usize,
 > Sync
     for ParallelMemoryHierarchy<
         MMU,
@@ -138,6 +143,10 @@ unsafe impl<
         SEP_RDWR,
         SAT_CNT,
         PERFECT_PHT,
+        RPT_SETS,
+        RPT_WAYS,
+        N_PC,
+        LOOKAHEAD,
     >
 {
 }
