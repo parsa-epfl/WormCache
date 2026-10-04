@@ -63,7 +63,8 @@ impl PerCoreFetchUnit {
         PerCoreFetchUnitHelper {
             btb: self.btb.to_checkpoint_helper(),
             ras: self.ras.to_checkpoint_helper(),
-            tage: self.tage.to_checkpoint_helper(),     // TODO: add gshare
+            tage: self.tage.to_checkpoint_helper(),
+            gshare: self.gshare.to_checkpoint_helper(),
         }
     }
 
@@ -72,7 +73,7 @@ impl PerCoreFetchUnit {
             btb: btb::BTB::from_checkpoint_helper(helper.btb),
             ras: ras::ReturnAddressStack::from_checkpoint_helper(helper.ras),
             tage: tage::TAGEPredictor::from_checkpoint_helper(helper.tage),
-            gshare: gshare::GShare::new(),             // TODO: load actual ckpt
+            gshare: gshare::GShare::from_checkpoint_helper(helper.gshare),
         }
     }
 }
@@ -155,6 +156,23 @@ impl PerCoreFetchUnit {
 impl Default for PerCoreFetchUnit {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn per_core_checkpoint_roundtrips_gshare_state() {
+        let mut unit = PerCoreFetchUnit::new();
+        unit.gshare.history = 0x1234;
+        unit.gshare.table[0] = 2;
+
+        let restored = PerCoreFetchUnit::from_checkpoint_helper(unit.to_checkpoint_helper());
+
+        assert_eq!(restored.gshare.history, 0x1234);
+        assert_eq!(restored.gshare.table[0], 2);
     }
 }
 

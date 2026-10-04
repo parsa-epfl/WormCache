@@ -572,7 +572,7 @@ mod private_cache_tests {
 
 mod fetch_unit_tests {
     use crate::checkpoint::helpers::{
-        BTBHelper, FetchUnitHelper, PerCoreFetchUnitHelper, RASHelper, TAGEHelper,
+        BTBHelper, FetchUnitHelper, GShareHelper, PerCoreFetchUnitHelper, RASHelper, TAGEHelper,
     };
 
     fn create_per_core_fetch_unit_helper() -> PerCoreFetchUnitHelper {
@@ -594,6 +594,10 @@ mod fetch_unit_tests {
                 gtable: vec![],
                 seed: 42,
             },
+            gshare: GShareHelper {
+                history: 0x1234,
+                table: vec![0, 1, 2, 3],
+            },
         }
     }
 
@@ -614,6 +618,7 @@ mod fetch_unit_tests {
         assert_eq!(helper.tage.phist, helper2.tage.phist);
         assert_eq!(helper.tage.seed, helper2.tage.seed);
         assert_eq!(helper.tage.ghist, helper2.tage.ghist);
+        assert_eq!(helper.gshare, helper2.gshare);
     }
 
     #[test]
@@ -631,6 +636,7 @@ mod fetch_unit_tests {
         assert_eq!(helper.btb.local_ts, helper2.btb.local_ts);
         assert_eq!(helper.ras.stack, helper2.ras.stack);
         assert_eq!(helper.tage.seed, helper2.tage.seed);
+        assert_eq!(helper.gshare, helper2.gshare);
     }
 
     #[test]

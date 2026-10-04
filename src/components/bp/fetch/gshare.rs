@@ -35,12 +35,30 @@ use crate::components::bp::{BranchResolutionResult, BranchType};
 use serde::{Deserialize, Serialize};
 
 use super::BranchPredictorResult;
+use crate::checkpoint::helpers::GShareHelper;
 
 // The maximum size of the global history register is 64 bits.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GShare<const S: usize> {
     pub history: u64,
     pub table: Vec<u8>,
+}
+
+impl<const S: usize> GShare<S> {
+    pub fn to_checkpoint_helper(&self) -> GShareHelper {
+        GShareHelper {
+            history: self.history,
+            table: self.table.clone(),
+        }
+    }
+
+    pub fn from_checkpoint_helper(helper: GShareHelper) -> Self {
+        assert_eq!(helper.table.len(), S, "gshare table size mismatch");
+        Self {
+            history: helper.history,
+            table: helper.table,
+        }
+    }
 }
 
 impl<const S: usize> GShare<S> {
@@ -129,5 +147,17 @@ mod tests {
 
         assert_eq!(gshare.history, 2);
         assert!(gshare.table.iter().all(|counter| *counter == 0));
+    }
+
+    #[test]
+    fn checkpoint_helper_roundtrips_predictor_state() {
+        let mut gshare = GShare::<8>::new();
+        gshare.history = 0x1234;
+        gshare.table = vec![0, 1, 2, 3, 3, 2, 1, 0];
+
+        let restored = GShare::<8>::from_checkpoint_helper(gshare.to_checkpoint_helper());
+
+        assert_eq!(restored.history, gshare.history);
+        assert_eq!(restored.table, gshare.table);
     }
 }

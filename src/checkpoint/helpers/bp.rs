@@ -26,6 +26,16 @@ pub struct RASHelper {
     pub stack: Vec<u64>,
 }
 
+/// Unified helper for GShare predictor serialization.
+/// Works with both serde (JSON) and rkyv formats.
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize,
+)]
+pub struct GShareHelper {
+    pub history: u64,
+    pub table: Vec<u8>,
+}
+
 /// Unified helper for TAGE predictor serialization.
 /// Works with both serde (JSON) and rkyv formats.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Archive, RkyvDeserialize, RkyvSerialize)]
@@ -47,6 +57,7 @@ pub struct PerCoreFetchUnitHelper {
     pub btb: BTBHelper,
     pub ras: RASHelper,
     pub tage: TAGEHelper,
+    pub gshare: GShareHelper,
 }
 
 /// Unified helper for the entire fetch unit serialization.
