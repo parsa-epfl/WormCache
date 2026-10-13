@@ -34,21 +34,32 @@
 
 use crate::parameter::SIMULATED_CORE_COUNT;
 
-// return (row, col)
-const fn figure_out_mesh_size() -> (usize, usize) {
-    match SIMULATED_CORE_COUNT {
-        1 => (1, 1),
-        2 => (1, 2),
-        4 => (2, 2),
-        16 => (4, 4),
-        32 => (4, 8),
-        48 => (6, 8),
-        64 => (8, 8),
-        128 => (8, 16),
-        256 => (16, 16),
-        1024 => (32, 32),
-        _ => panic!("Unsupported core count for mesh topology."),
+// Returns (row, col) of the mesh for `core_count` cores. This must match the mesh Flexus builds
+// (buildMesh in flexus/components/NetShim/netcontainer.cpp), so that the hop counts and DRAM_POSITION
+// refer to the same layout in both simulators. Cores are numbered row by row.
+const fn mesh_size(core_count: usize) -> (usize, usize) {
+    // A square mesh, or one twice as wide as it is tall.
+    let mut row = 1;
+    while row < 9 {
+        let mut ratio = 1;
+        while ratio < 3 {
+            if row * row * ratio == core_count {
+                return (row, row * ratio);
+            }
+            ratio += 1;
+        }
+        row += 1;
     }
+    // Otherwise, the closest to a square with at least as many columns as rows.
+    let mut col = core_count.isqrt();
+    while core_count % col != 0 {
+        col += 1;
+    }
+    (core_count / col, col)
+}
+
+const fn figure_out_mesh_size() -> (usize, usize) {
+    mesh_size(SIMULATED_CORE_COUNT)
 }
 
 const MESH_WIDTH: usize = figure_out_mesh_size().1;
@@ -86,6 +97,22 @@ pub const fn calculate_hop_count(src_core_id: u32, dst_core_id: u32) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_mesh_size() {
+        // The meshes Flexus builds for these core counts.
+        assert_eq!(mesh_size(1), (1, 1));
+        assert_eq!(mesh_size(2), (1, 2));
+        assert_eq!(mesh_size(4), (2, 2));
+        assert_eq!(mesh_size(8), (2, 4));
+        assert_eq!(mesh_size(16), (4, 4));
+        assert_eq!(mesh_size(32), (4, 8));
+        assert_eq!(mesh_size(48), (8, 6));
+        assert_eq!(mesh_size(64), (8, 8));
+        assert_eq!(mesh_size(128), (8, 16));
+        assert_eq!(mesh_size(256), (16, 16));
+        assert_eq!(mesh_size(1024), (32, 32));
+    }
 
     #[test]
     fn test_hop_count() {
