@@ -143,7 +143,7 @@ impl<const SET: usize, const ASSO: usize> BTB<SET, ASSO> {
             self.array[index][min_index].ts = self.local_ts;
             self.array[index][min_index].branch_type = result.branch_type;
 
-            return (BranchPredictorResult::Mispredict, result.branch_type);
+            return (BranchPredictorResult::Mispredict, BranchType::NonBranch);
         }
 
         // For a non-taken branch, it is not a misprediction. It is just that no prediction is made.

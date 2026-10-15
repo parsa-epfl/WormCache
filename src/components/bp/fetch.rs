@@ -140,7 +140,7 @@ impl PerCoreFetchUnit {
                 }
             }
             BranchType::Return => {
-                if ras_miss && btb_miss {
+                if ras_miss || btb_miss {
                     Statistics::global_record(core_id as u32, EventType::BPMiss, is_os);
                 }
             }
