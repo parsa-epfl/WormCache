@@ -65,7 +65,10 @@ pub struct MemoryAccessRequest {
 
 impl MemoryAccessRequest {
     pub fn is_instruction(&self) -> bool {
-        self.access_type == CacheAccessType::InstructionFetch
+        matches!(
+            self.access_type,
+            CacheAccessType::InstructionFetch | CacheAccessType::InstructionPrefetch
+        )
     }
 
     pub fn is_store(&self) -> bool {
@@ -74,8 +77,12 @@ impl MemoryAccessRequest {
     }
 
     pub fn is_prefetch(&self) -> bool {
-        self.access_type == CacheAccessType::PrefetchRead
-            || self.access_type == CacheAccessType::PrefetchWrite
+        matches!(
+            self.access_type,
+            CacheAccessType::InstructionPrefetch
+                | CacheAccessType::PrefetchRead
+                | CacheAccessType::PrefetchWrite
+        )
     }
 
     pub fn is_os(&self) -> bool {
@@ -100,7 +107,10 @@ pub struct CacheBlockRequest {
 
 impl CacheBlockRequest {
     pub fn is_instruction(&self) -> bool {
-        self.access_type == CacheAccessType::InstructionFetch
+        matches!(
+            self.access_type,
+            CacheAccessType::InstructionFetch | CacheAccessType::InstructionPrefetch
+        )
     }
 
     pub fn is_store(&self) -> bool {
@@ -109,8 +119,12 @@ impl CacheBlockRequest {
     }
 
     pub fn is_prefetch(&self) -> bool {
-        self.access_type == CacheAccessType::PrefetchRead
-            || self.access_type == CacheAccessType::PrefetchWrite
+        matches!(
+            self.access_type,
+                CacheAccessType::InstructionPrefetch
+                | CacheAccessType::PrefetchRead
+                | CacheAccessType::PrefetchWrite
+        )
     }
 
     pub fn is_os(&self) -> bool {
@@ -125,7 +139,7 @@ impl CacheBlockRequest {
         match self.access_type {
             CacheAccessType::DataRead => CacheAccessType::PrefetchRead,
             CacheAccessType::DataWrite => CacheAccessType::PrefetchWrite,
-            CacheAccessType::InstructionFetch => CacheAccessType::PrefetchRead,
+            CacheAccessType::InstructionFetch => CacheAccessType::InstructionPrefetch,
             _ => unreachable!(),
         }
     }

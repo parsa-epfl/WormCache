@@ -408,6 +408,7 @@ impl<
             let bring_into_shared_cache = if FILL_SCACHE_ON_FILLING_PCACHE {
                 match r.access_type {
                     CacheAccessType::InstructionFetch => true,
+                    CacheAccessType::InstructionPrefetch => true,
                     CacheAccessType::DataRead => !ENABLE_EXCLUSIVE_CACHE_STATE,
                     CacheAccessType::DataWrite => false,
                     CacheAccessType::PageWalkRead => true,
@@ -424,6 +425,7 @@ impl<
                 block_id,
                 access_type: match r.access_type {
                     CacheAccessType::InstructionFetch => CacheAccessType::InstructionFetch,
+                    CacheAccessType::InstructionPrefetch => CacheAccessType::InstructionPrefetch,
                     CacheAccessType::DataRead => {
                         if ENABLE_EXCLUSIVE_CACHE_STATE {
                             CacheAccessType::DataWrite
@@ -1245,7 +1247,9 @@ impl<
                     .private_caches
                     .get_set_guard_by_sharer_list(block_id, directory_entry.sharers);
                 match access_type {
-                    CacheAccessType::InstructionFetch => unreachable!(),
+                    CacheAccessType::InstructionFetch | CacheAccessType::InstructionPrefetch => {
+                        unreachable!()
+                    }
                     CacheAccessType::DataRead | CacheAccessType::PageWalkRead => {
                         for (_, set, index) in acquire_list.iter_mut() {
                             if let Some(index) = index {

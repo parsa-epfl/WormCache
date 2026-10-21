@@ -351,3 +351,41 @@ fn d_dirty_create_sharer_from_clean_i() {
     assert_eq!(replicas.len(), 1);
     assert!(replicas[&0]);
 }
+
+#[test]
+fn prefetch_preserves_instruction_or_data_cache_destination() {
+    for (demand_type, other_type) in [
+        (CacheAccessType::InstructionFetch, CacheAccessType::DataRead),
+        (CacheAccessType::DataRead, CacheAccessType::InstructionFetch),
+    ] {
+        let mh = MH::new();
+        let demand = CacheBlockRequest {
+            core_id: 0,
+            block_id: 203,
+            access_type: demand_type,
+            is_os: false,
+            pc: 0,
+        };
+        let mut prefetch = demand.clone();
+        prefetch.access_type = demand.get_prefetch_type();
+        assert!(prefetch.is_prefetch());
+        assert_eq!(prefetch.is_instruction(), demand.is_instruction());
+        assert!(!prefetch.is_store());
+
+        mh.access_memory_pblock_id(&prefetch, 1);
+        // The matching demand must hit the private cache populated by the prefetch.
+        assert_eq!(
+            mh.access_memory_pblock_id(&demand, 2).0,
+            CacheHierarchyAccessResult::HitInSelfPrivateCache,
+        );
+        // The other cache must still miss and obtain the existing private copy.
+        let other = CacheBlockRequest {
+            access_type: other_type,
+            ..demand
+        };
+        assert_eq!(
+            mh.access_memory_pblock_id(&other, 3).0,
+            CacheHierarchyAccessResult::HitInOtherPrivateCache,
+        );
+    }
+}

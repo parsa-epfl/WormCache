@@ -40,6 +40,7 @@ mod ibsp;
 #[derive(Debug, PartialEq, Clone)]
 pub enum CacheAccessType {
     InstructionFetch,
+    InstructionPrefetch,
 
     DataRead,
     DataWrite,
