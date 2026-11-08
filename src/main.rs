@@ -48,6 +48,7 @@ use worm_cache::components::cache_hierarchy::common::{
 use worm_cache::components::cache_hierarchy::hierarchy::ParallelMemoryHierarchy;
 
 use worm_cache::components::cache_hierarchy::mmu::NoMMU;
+use worm_cache::debug::statistics::{EventType, Statistics};
 use worm_cache::parameter;
 // use worm_cache::components::memory_ts::{PrivateCacheParameters, TimestampMemoryHierarchy};
 
@@ -289,4 +290,31 @@ fn main() {
 
     println!("Old L1D Miss Rate: {:.2}%, New L1D Miss Rate: {:.2}%, Old LLC Miss Rate (Data): {:.2}%, New LLC Miss Rate (Data): {:.2}%", old_l1d_mr, new_l1d_mr, old_llc_mr_data, new_llc_mr_data);
     println!("Old L1I Miss Rate: {:.2}%, New L1I Miss Rate: {:.2}%, Old LLC Miss Rate (Instr): {:.2}%, New LLC Miss Rate (Instr): {:.2}%", old_l1i_mr, new_l1i_mr, old_llc_mr_instr, new_llc_mr_instr);
+
+    let (fills, overfetches) = (0..ALLOCATED_CORE_COUNT as u32).fold(
+        (0u64, 0u64),
+        |(fills, overfetches), core_id| {
+            let core_fills =
+                Statistics::global_query_record(core_id, EventType::InstructionCacheFills).0;
+            let core_overfetches =
+                Statistics::global_query_record(core_id, EventType::InstructionCacheOverfetches).0;
+            (fills + core_fills, overfetches + core_overfetches)
+        },
+    );
+    println!(
+        "Instruction cache fills, entire replay (demand + prefetch): {}",
+        fills
+    );
+    println!(
+        "Instruction cache overfetches (unused prefetch replacement evictions): {}",
+        overfetches
+    );
+    if fills > 0 {
+        println!(
+            "Instruction cache overfetch percentage: {:.2}%",
+            100.0 * overfetches as f64 / fills as f64
+        );
+    } else {
+        println!("Instruction cache overfetch percentage: N/A (no instruction fills)");
+    }
 }

@@ -120,6 +120,40 @@ Both flags are stored in the shared private-cache line representation; they
 track instruction-prefetch origin and demand instruction use in Harvard or
 unified private caches. The LLC and directory do not store these flags.
 
+The parallel hierarchy always records the following two counters, regardless
+of `ENABLE_STATISTICS`. They appear in `statistics.csv` and explicit statistics
+exports even when general statistics are disabled:
+
+- `InstructionCacheFills`: each new instruction-cache block installation, from
+  either a demand instruction fetch or an instruction prefetch. Hits, redundant
+  prefetch requests, and permission upgrades do not increment it. Fetching the
+  same physical block again after removal counts as another fill, as does
+  installing a copy in another core's instruction cache.
+- `InstructionCacheOverfetches`: each actual replacement eviction of a valid
+  instruction-prefetched block whose `demand_accessed` flag is still `false`.
+  The victim's flags are inspected under the set lock before replacement.
+  Evicting a demand-used prefetch, a demand-filled block, or an invalid slot
+  does not increment it. An instruction prefetch in a unified cache is still
+  tracked if later data accesses change its `is_instruction` flag.
+
+The requested fraction of all instruction fills is
+`100 * InstructionCacheOverfetches / InstructionCacheFills`. Sum the counters
+across cores before dividing to obtain the overall percentage. The standalone
+trace replay also prints the totals and percentage for the entire replay,
+including its warm-up records. A zero fill count produces `N/A`.
+With no instruction prefetches installed, fills still count normally and
+overfetches remain zero. Disabling a prefetcher does not discard the recorded
+history of prefetched lines restored from a checkpoint.
+
+Overfetch accounting here measures replacement evictions: coherence/device
+invalidations and unused prefetches still resident at the end of a run are not
+added to the numerator. CSV `:u`/`:k` columns classify the triggering fill or
+replacement request, rather than the evicted block's original installer.
+Counters start at zero for each run; restoring cache contents from a checkpoint
+does not count them as new fills. For a lifetime fraction with a matching
+denominator, measure from an empty cache. These counters do not change cache
+contents, replacement, coherence, or prefetch-trigger decisions.
+
 New JSON and rkyv private-cache checkpoints preserve both flags. Older JSON
 checkpoints without either field load that field with `false` because the
 corresponding history is unavailable. Adding fields changes the binary rkyv

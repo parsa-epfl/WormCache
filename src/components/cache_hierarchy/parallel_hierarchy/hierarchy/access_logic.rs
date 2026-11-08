@@ -24,6 +24,7 @@ use crate::{
 use rayon::prelude::*;
 
 use super::ParallelMemoryHierarchy;
+use super::instruction_cache_statistics::fill_private_cache_set;
 
 impl<
     MMU: AbstractMMU,
@@ -523,11 +524,11 @@ impl<
             let mut set_to_fill = self.private_caches.get_set_for_fill(r);
 
             // handle eviction now.
-            if let Some(evicted_line_is_modified) = set_to_fill.fill_with_potential_eviction_slot(
+            if let Some(evicted_line_is_modified) = fill_private_cache_set(
+                &mut set_to_fill,
+                r,
                 evicted_slot,
-                block_id,
                 ts,
-                is_instruction,
                 writable,
                 modified,
                 prefetched,
@@ -752,11 +753,11 @@ impl<
             let mut set_for_refill_lock = self.private_caches.get_set_for_fill(r);
 
             // refill and evict.
-            let evicted = set_for_refill_lock.fill_with_potential_eviction_slot(
+            let evicted = fill_private_cache_set(
+                &mut set_for_refill_lock,
+                r,
                 evicted_slot,
-                block_id,
                 ts,
-                is_instruction,
                 false,
                 false,
                 prefetched,
@@ -890,11 +891,11 @@ impl<
                     miss_directory_guard.shared = false;
 
                     // This means there is no sharer. The core will get modified permission.
-                    set_for_refill_lock.fill_with_potential_eviction_slot(
+                    fill_private_cache_set(
+                        set_for_refill_lock,
+                        r,
                         evicted_slot,
-                        block_id,
                         ts,
-                        is_instruction,
                         true,
                         true,
                         prefetched,
@@ -1045,11 +1046,11 @@ impl<
                 // We can insert the block to the private cache now.
                 let set_for_refill_lock = set_for_refill_lock.unwrap();
 
-                let evicted = set_for_refill_lock.fill_with_potential_eviction_slot(
+                let evicted = fill_private_cache_set(
+                    set_for_refill_lock,
+                    r,
                     evicted_slot,
-                    block_id,
                     ts,
-                    is_instruction,
                     false,
                     false,
                     prefetched,

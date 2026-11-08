@@ -212,9 +212,26 @@ pub enum EventType {
     SharedMemoryCausalityViolation,
     InterruptCausalityViolation,
     InterruptDelayedWithCausality,
+
+    /// New private instruction-cache residencies installed by demand or prefetch.
+    /// Hits and permission-only refills are excluded.
+    InstructionCacheFills,
+    /// Instruction-prefetched residencies replaced before any demand instruction use.
+    InstructionCacheOverfetches,
 }
 
 impl EventType {
+    /// Instruction-cache fill and overfetch totals are always collected.
+    /// Other counters retain the general statistics setting.
+    #[inline]
+    fn is_enabled(self, general_statistics_enabled: bool) -> bool {
+        general_statistics_enabled
+            || matches!(
+                self,
+                EventType::InstructionCacheFills | EventType::InstructionCacheOverfetches
+            )
+    }
+
     /// Returns the byte offset into `qemu_plugin_exposed_statistics` for this event type.
     /// Returns `None` if the event does not map to a QEMU-exposed statistic.
     ///
@@ -235,11 +252,11 @@ impl EventType {
 }
 
 #[repr(align(64))]
-struct PerCoreStatistics {
+struct PerCoreStatistics<const GENERAL_ENABLED: bool> {
     counters: [u64; EventType::COUNT * 2],
 }
 
-impl PerCoreStatistics {
+impl<const GENERAL_ENABLED: bool> PerCoreStatistics<GENERAL_ENABLED> {
     pub fn new() -> Self {
         Self {
             counters: [0; EventType::COUNT * 2],
@@ -253,7 +270,7 @@ impl PerCoreStatistics {
 
     #[inline]
     pub fn record_by(&mut self, event: EventType, is_os: bool, increment: u64) {
-        if ENABLE_STATISTICS {
+        if event.is_enabled(GENERAL_ENABLED) {
             let index = (event as usize) * 2;
             if is_os {
                 self.counters[index + 1] += increment;
@@ -265,7 +282,7 @@ impl PerCoreStatistics {
 
     #[inline]
     pub fn decrease_by(&mut self, event: EventType, is_os: bool, decrement: u64) {
-        if ENABLE_STATISTICS {
+        if event.is_enabled(GENERAL_ENABLED) {
             let index = (event as usize) * 2;
             if is_os {
                 self.counters[index + 1] = self.counters[index + 1].saturating_sub(decrement);
@@ -277,7 +294,7 @@ impl PerCoreStatistics {
 
     #[inline]
     pub fn set(&mut self, event: EventType, is_os: bool, value: u64) {
-        if ENABLE_STATISTICS {
+        if event.is_enabled(GENERAL_ENABLED) {
             let index = (event as usize) * 2;
             if is_os {
                 self.counters[index + 1] = value;
@@ -302,7 +319,7 @@ impl PerCoreStatistics {
 }
 
 pub struct Statistics {
-    per_core: [UnsafeCell<PerCoreStatistics>; CORE_COUNT],
+    per_core: [UnsafeCell<PerCoreStatistics<{ ENABLE_STATISTICS }>>; CORE_COUNT],
 }
 
 unsafe impl Sync for Statistics {}
@@ -322,7 +339,7 @@ impl Statistics {
 
     #[inline]
     pub fn record(&self, core_id: u32, event: EventType, is_os: bool) {
-        if ENABLE_STATISTICS {
+        if event.is_enabled(ENABLE_STATISTICS) {
             unsafe {
                 (*self.per_core[core_id as usize].get()).record(event, is_os);
             }
@@ -331,7 +348,7 @@ impl Statistics {
 
     #[inline]
     pub fn record_by(&self, core_id: u32, event: EventType, is_os: bool, increment: u64) {
-        if ENABLE_STATISTICS {
+        if event.is_enabled(ENABLE_STATISTICS) {
             unsafe {
                 (*self.per_core[core_id as usize].get()).record_by(event, is_os, increment);
             }
@@ -340,7 +357,7 @@ impl Statistics {
 
     #[inline]
     pub fn decrease_by(&self, core_id: u32, event: EventType, is_os: bool, decrement: u64) {
-        if ENABLE_STATISTICS {
+        if event.is_enabled(ENABLE_STATISTICS) {
             unsafe {
                 (*self.per_core[core_id as usize].get()).decrease_by(event, is_os, decrement);
             }
@@ -349,7 +366,7 @@ impl Statistics {
 
     #[inline]
     pub fn set(&self, core_id: u32, event: EventType, is_os: bool, value: u64) {
-        if ENABLE_STATISTICS {
+        if event.is_enabled(ENABLE_STATISTICS) {
             unsafe {
                 (*self.per_core[core_id as usize].get()).set(event, is_os, value);
             }
@@ -382,9 +399,56 @@ impl Statistics {
 
 static GLOBAL_STATISTICS: LazyLock<Statistics> = LazyLock::new(Statistics::new);
 
+#[cfg(test)]
+type RecordedEvent = (u32, EventType, bool, u64);
+
+#[cfg(test)]
+std::thread_local! {
+    static CAPTURED_EVENTS: std::cell::RefCell<Option<Vec<RecordedEvent>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Capture recording calls on this test thread without writing shared global or
+/// QEMU statistics. Captures calls even when ENABLE_STATISTICS is false.
+#[cfg(test)]
+pub(crate) fn capture_records<R>(run: impl FnOnce() -> R) -> (R, Vec<RecordedEvent>) {
+    struct ResetCapture;
+    impl Drop for ResetCapture {
+        fn drop(&mut self) {
+            CAPTURED_EVENTS.with(|events| *events.borrow_mut() = None);
+        }
+    }
+
+    CAPTURED_EVENTS.with(|events| {
+        let mut events = events.borrow_mut();
+        assert!(events.is_none(), "statistics captures cannot be nested");
+        *events = Some(Vec::new());
+    });
+    let _reset = ResetCapture;
+    let result = run();
+    let events = CAPTURED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
+    (result, events)
+}
+
+#[cfg(test)]
+fn capture_record(core_id: u32, event: EventType, is_os: bool, increment: u64) -> bool {
+    CAPTURED_EVENTS.with(|events| {
+        if let Some(events) = events.borrow_mut().as_mut() {
+            events.push((core_id, event, is_os, increment));
+            true
+        } else {
+            false
+        }
+    })
+}
+
 impl Statistics {
     #[inline]
     pub fn global_record(core_id: u32, event: EventType, is_os: bool) {
+        #[cfg(test)]
+        if capture_record(core_id, event, is_os, 1) {
+            return;
+        }
         GLOBAL_STATISTICS.record(core_id, event, is_os);
         // Also record to QEMU's exposed statistics for performance modeling
         record_qemu_stat(core_id, event, 1);
@@ -392,6 +456,10 @@ impl Statistics {
 
     #[inline]
     pub fn global_record_by(core_id: u32, event: EventType, is_os: bool, increment: u64) {
+        #[cfg(test)]
+        if capture_record(core_id, event, is_os, increment) {
+            return;
+        }
         GLOBAL_STATISTICS.record_by(core_id, event, is_os, increment);
         // For increment > 1, we record once to QEMU stats (it's an approximation)
         if increment > 0 {
@@ -461,20 +529,24 @@ pub fn create_thread_for_periodic_log() {
             .unwrap();
 
         loop {
-            // update the local target time before writing the statistics
-            for core_id in 0..CORE_COUNT {
-                Statistics::global_set(
-                    core_id as u32,
-                    EventType::TargetLocalCycle,
-                    false,
-                    unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
-                );
+            // The always-collected instruction-cache counters do not require
+            // QEMU cycle statistics when general statistics are disabled.
+            if ENABLE_STATISTICS {
+                for core_id in 0..CORE_COUNT {
+                    Statistics::global_set(
+                        core_id as u32,
+                        EventType::TargetLocalCycle,
+                        false,
+                        unsafe { qemu_api::qemu_plugin_get_vcpu_vtime(core_id as u32) },
+                    );
+                }
             }
 
             for stat in Statistics::global_get_line_for_all_cores(get_monotonic_ts()) {
                 miss_file.write_all(stat.as_bytes()).unwrap();
                 miss_file.write_all(b"\n").unwrap();
             }
+            miss_file.flush().unwrap();
 
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
@@ -636,5 +708,112 @@ pub unsafe extern "C" fn on_translation_instructions(tb: *mut qemu_api::qemu_plu
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn counts<const ENABLED: bool>(
+        statistics: &PerCoreStatistics<ENABLED>,
+        event: EventType,
+    ) -> (u64, u64, u64) {
+        let index = event as usize * 2;
+        let user = statistics.counters[index];
+        let kernel = statistics.counters[index + 1];
+        (user + kernel, user, kernel)
+    }
+
+    #[test]
+    fn instruction_cache_counters_work_with_general_statistics_disabled() {
+        let mut statistics = PerCoreStatistics::<false>::new();
+        for event in [
+            EventType::InstructionCacheFills,
+            EventType::InstructionCacheOverfetches,
+        ] {
+            assert!(event.is_enabled(false));
+            statistics.record(event, false);
+            statistics.record_by(event, false, 4);
+            statistics.record_by(event, true, 7);
+            assert_eq!(counts(&statistics, event), (12, 5, 7));
+
+            statistics.decrease_by(event, false, 2);
+            assert_eq!(counts(&statistics, event), (10, 3, 7));
+            statistics.set(event, true, 11);
+            statistics.decrease_by(event, true, 1);
+            assert_eq!(counts(&statistics, event), (13, 3, 10));
+
+            statistics.decrease_by(event, false, 100);
+            assert_eq!(counts(&statistics, event), (10, 0, 10));
+        }
+    }
+
+    #[test]
+    fn other_counters_remain_disabled() {
+        let mut statistics = PerCoreStatistics::<false>::new();
+        for event in EventType::iter() {
+            if matches!(
+                event,
+                EventType::InstructionCacheFills | EventType::InstructionCacheOverfetches
+            ) {
+                continue;
+            }
+            assert!(!event.is_enabled(false), "unexpected always-on event: {event}");
+            statistics.record(event, false);
+            statistics.record_by(event, true, 4);
+            statistics.set(event, false, 9);
+            statistics.set(event, true, 9);
+            assert_eq!(counts(&statistics, event), (0, 0, 0));
+
+            // Nonzero starting values make an accidentally enabled decrease
+            // observable instead of hiding it behind saturating subtraction.
+            let index = event as usize * 2;
+            statistics.counters[index] = 10;
+            statistics.counters[index + 1] = 10;
+            statistics.decrease_by(event, false, 3);
+            statistics.decrease_by(event, true, 3);
+            assert_eq!(counts(&statistics, event), (20, 10, 10));
+        }
+    }
+
+    #[test]
+    fn general_statistics_enabled_keeps_all_counters_working() {
+        let mut statistics = PerCoreStatistics::<true>::new();
+        for event in EventType::iter() {
+            assert!(event.is_enabled(true));
+            statistics.record(event, false);
+            statistics.record_by(event, false, 2);
+            statistics.record_by(event, true, 4);
+            assert_eq!(counts(&statistics, event), (7, 3, 4));
+
+            statistics.decrease_by(event, false, 5);
+            statistics.set(event, true, 8);
+            statistics.decrease_by(event, true, 3);
+            assert_eq!(counts(&statistics, event), (5, 0, 5));
+        }
+    }
+
+    #[test]
+    fn csv_reports_instruction_cache_totals_with_general_statistics_disabled() {
+        let mut statistics = PerCoreStatistics::<false>::new();
+        statistics.record_by(EventType::InstructionCacheFills, false, 3);
+        statistics.record_by(EventType::InstructionCacheFills, true, 2);
+        statistics.record(EventType::InstructionCacheOverfetches, false);
+        statistics.record(EventType::PrivateICacheMiss, false);
+
+        let header = Statistics::get_header();
+        let line = statistics.get_line(17, 3);
+        let columns: std::collections::HashMap<_, _> =
+            header.split(',').zip(line.split(',')).collect();
+        assert_eq!(columns["ts"], "17");
+        assert_eq!(columns["core_id"], "3");
+        assert_eq!(columns["InstructionCacheFills"], "5");
+        assert_eq!(columns["InstructionCacheFills:u"], "3");
+        assert_eq!(columns["InstructionCacheFills:k"], "2");
+        assert_eq!(columns["InstructionCacheOverfetches"], "1");
+        assert_eq!(columns["InstructionCacheOverfetches:u"], "1");
+        assert_eq!(columns["InstructionCacheOverfetches:k"], "0");
+        assert_eq!(columns["PrivateICacheMiss"], "0");
     }
 }

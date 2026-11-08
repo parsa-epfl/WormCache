@@ -69,6 +69,10 @@ mod prefetch_compatibility_tests;
 mod reverse_order_tests;
 
 mod access_logic;
+mod instruction_cache_statistics;
+
+#[cfg(test)]
+mod instruction_overfetch_tests;
 
 pub struct ParallelMemoryHierarchy<
     MMU: AbstractMMU,
