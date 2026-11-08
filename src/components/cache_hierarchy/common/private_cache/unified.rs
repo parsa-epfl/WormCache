@@ -99,11 +99,15 @@ impl<const CORE_COUNT: usize, const SET: usize, const ASSO: usize> PrivateCache
         let block_id = request.block_id;
         let is_store = request.is_store();
         let is_instruction = request.is_instruction();
+        let is_demand_instruction = matches!(
+            request.access_type,
+            super::super::CacheAccessType::InstructionFetch
+        );
 
         self.caches[core_id]
             .get_set(block_id)
             .lock()
-            .poke_and_update(block_id, ts, is_store, is_instruction)
+            .poke_and_update(block_id, ts, is_store, is_instruction, is_demand_instruction)
     }
 
     #[inline]

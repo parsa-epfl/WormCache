@@ -87,10 +87,27 @@ fills set it to `true`, and demand fills set it to `false`. It records the origi
 of the local residency, so demand hits and redundant prefetches preserve it.
 Replacement assigns a new origin, and invalidation clears it.
 
-New JSON and rkyv private-cache checkpoints preserve this flag. Older JSON
-checkpoints without the field load with `false` because their origin history is
-unavailable. Adding the field changes the binary rkyv schema; regenerate older
-rkyv private-cache checkpoints with the current build.
+The `demand_accessed` flag records whether that residency has served a demand
+instruction fetch. Demand instruction fills start with `true`; instruction
+prefetch fills start with `false`. The first later demand instruction hit sets
+it to `true`, where it remains until replacement or invalidation. Redundant
+prefetches, data accesses, and coherence downgrades preserve it. A unified-cache
+permission upgrade also preserves both flags through its internal refill.
+
+| Instruction-line residency | `prefetched` | `demand_accessed` |
+|---|---|---|
+| Demand-fetched | `false` | `true` |
+| Prefetched, not yet demand-used | `true` | `false` |
+| Prefetched, then demand-used | `true` | `true` |
+
+Both flags are stored in the shared private-cache line representation; they
+track instruction-prefetch origin and demand instruction use in Harvard or
+unified private caches. The LLC and directory do not store these flags.
+
+New JSON and rkyv private-cache checkpoints preserve both flags. Older JSON
+checkpoints without either field load that field with `false` because the
+corresponding history is unavailable. Adding fields changes the binary rkyv
+schema; regenerate older rkyv private-cache checkpoints with the current build.
 
 After making your changes, compile the model:
 

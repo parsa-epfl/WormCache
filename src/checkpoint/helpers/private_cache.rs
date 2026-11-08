@@ -28,22 +28,26 @@ mod tests {
     use super::{HarvardPrivateCacheHelper, UnifiedPrivateCacheHelper};
     use crate::components::cache_hierarchy::common::PrivateCacheSet;
 
-    fn instruction_set_with_both_origins() -> PrivateCacheSet {
-        let mut set = PrivateCacheSet::new(2);
-        for (index, line) in set.lines.iter_mut().enumerate() {
+    fn instruction_set_with_demand_history() -> PrivateCacheSet {
+        let histories = [(true, false), (true, true), (false, true)];
+        let mut set = PrivateCacheSet::new(histories.len());
+        for (index, (line, (prefetched, demand_accessed))) in
+            set.lines.iter_mut().zip(histories).enumerate()
+        {
             line.block_id_with_v = (((index + 10) as u64) << 1) | 1;
             line.ts = (index + 1) as u64;
             line.is_instruction = true;
-            line.prefetched = index == 0;
+            line.prefetched = prefetched;
+            line.demand_accessed = demand_accessed;
         }
-        set.touched_count = 2;
+        set.touched_count = histories.len();
         set
     }
 
     #[test]
-    fn unified_origin_survives_json_and_rkyv_roundtrip() {
+    fn unified_origin_and_demand_history_survive_json_and_rkyv_roundtrip() {
         let helper = UnifiedPrivateCacheHelper {
-            cache: vec![instruction_set_with_both_origins()],
+            cache: vec![instruction_set_with_demand_history()],
         };
 
         let json = serde_json::to_vec(&helper).unwrap();
@@ -57,9 +61,9 @@ mod tests {
     }
 
     #[test]
-    fn harvard_origin_survives_json_and_rkyv_roundtrip() {
+    fn harvard_origin_and_demand_history_survive_json_and_rkyv_roundtrip() {
         let helper = HarvardPrivateCacheHelper {
-            i_cache: vec![instruction_set_with_both_origins()],
+            i_cache: vec![instruction_set_with_demand_history()],
             d_cache: vec![PrivateCacheSet::new(2)],
         };
 
@@ -74,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_json_defaults_prefetched_to_false() {
+    fn legacy_json_defaults_missing_instruction_history_to_false() {
         let legacy_set = serde_json::json!({
             "lines": [{
                 "block_id_with_v": 21,
@@ -97,6 +101,7 @@ mod tests {
         assert!(line.is_valid());
         assert!(line.is_instruction);
         assert!(!line.prefetched);
+        assert!(!line.demand_accessed);
 
         let harvard: HarvardPrivateCacheHelper = serde_json::from_value(serde_json::json!({
             "i_cache": [legacy_set],
@@ -107,5 +112,43 @@ mod tests {
         assert!(line.is_valid());
         assert!(line.is_instruction);
         assert!(!line.prefetched);
+        assert!(!line.demand_accessed);
+    }
+
+    #[test]
+    fn legacy_prefetched_json_defaults_missing_demand_history_to_false() {
+        let legacy_set = serde_json::json!({
+            "lines": [{
+                "block_id_with_v": 21,
+                "ts": 1,
+                "is_instruction": true,
+                "prefetched": true,
+                "writeable": false,
+                "modified": false
+            }],
+            "touched_count": 1,
+            "recent_invalid_slot_index": null,
+            "hit_time": 0,
+            "hit_index_acc": 0
+        });
+
+        let unified: UnifiedPrivateCacheHelper = serde_json::from_value(serde_json::json!({
+            "cache": [legacy_set.clone()]
+        }))
+        .unwrap();
+        let line = &unified.cache[0].lines[0];
+        assert!(line.is_valid());
+        assert!(line.prefetched);
+        assert!(!line.demand_accessed);
+
+        let harvard: HarvardPrivateCacheHelper = serde_json::from_value(serde_json::json!({
+            "i_cache": [legacy_set],
+            "d_cache": []
+        }))
+        .unwrap();
+        let line = &harvard.i_cache[0].lines[0];
+        assert!(line.is_valid());
+        assert!(line.prefetched);
+        assert!(!line.demand_accessed);
     }
 }

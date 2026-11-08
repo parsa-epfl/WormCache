@@ -129,14 +129,18 @@ impl<
         let core_id = request.core_id;
         let block_id = request.block_id;
         let is_store = request.is_store();
+        let is_demand_instruction = matches!(
+            request.access_type,
+            super::super::CacheAccessType::InstructionFetch
+        );
         if is_instruction {
             self.caches[core_id as usize].i_cache[block_id as usize % I_SET]
                 .lock()
-                .poke_and_update(block_id, ts, is_store, is_instruction)
+                .poke_and_update(block_id, ts, is_store, is_instruction, is_demand_instruction)
         } else {
             self.caches[core_id as usize].d_cache[block_id as usize % D_SET]
                 .lock()
-                .poke_and_update(block_id, ts, is_store, is_instruction)
+                .poke_and_update(block_id, ts, is_store, is_instruction, is_demand_instruction)
         }
     }
 

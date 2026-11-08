@@ -231,6 +231,9 @@ impl<
         // Origin belongs to this private-cache residency, not to the supplying
         // LLC/peer copy. Instruction prefetches that hit never relabel a line.
         let mut prefetched = matches!(r.access_type, CacheAccessType::InstructionPrefetch);
+        // A demand instruction miss installs an already-used residency. Hits
+        // are marked inside the locked private-cache set before returning.
+        let mut demand_accessed = matches!(r.access_type, CacheAccessType::InstructionFetch);
 
         if !is_prefetch {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
@@ -511,6 +514,7 @@ impl<
                 writable,
                 modified,
                 prefetched,
+                demand_accessed,
             ) {
                 let (evicted_block_id, mut evicted_block_directory_guard) =
                     evicted_directory_set_guard.unwrap();
@@ -739,6 +743,7 @@ impl<
                 false,
                 false,
                 prefetched,
+                demand_accessed,
             );
 
             CacheLineCoherenceHistory::global_record_history(
@@ -788,9 +793,10 @@ impl<
                         assert_eq!(entry.block_id(), block_id);
                         let access_ts = entry.access_ts();
                         // A permission upgrade of an existing unified-cache
-                        // copy retains its origin through invalidate/refill.
+                        // copy retains its origin and demand-use history through invalidate/refill.
                         if *replica_cache_id == p_cache_id && private_hit.permission_violation() {
                             prefetched = entry.prefetched;
+                            demand_accessed |= entry.demand_accessed;
                         }
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id, false);
@@ -875,6 +881,7 @@ impl<
                         true,
                         true,
                         prefetched,
+                        demand_accessed,
                     )
                 } else {
                     panic!();
@@ -1029,6 +1036,7 @@ impl<
                     false,
                     false,
                     prefetched,
+                    demand_accessed,
                 );
 
                 CacheLineCoherenceHistory::global_record_history(

@@ -58,6 +58,8 @@ mod finite_directory_eviction_tests;
 #[cfg(test)]
 mod harvard_tests;
 #[cfg(test)]
+mod instruction_demand_access_tests;
+#[cfg(test)]
 mod instruction_prefetch_origin_tests;
 #[cfg(test)]
 mod reverse_order_tests;

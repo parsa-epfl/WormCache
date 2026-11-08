@@ -117,6 +117,7 @@ pub fn resize_directory(
                         ts: 0,
                         is_instruction: false,
                         prefetched: false,
+                        demand_accessed: false,
                         writeable: false,
                         modified: false,
                     };
@@ -146,6 +147,8 @@ pub fn resize_directory(
                         // invalid the line
                         line.ts = 0;
                         line.block_id_with_v = 0;
+                        line.prefetched = false;
+                        line.demand_accessed = false;
                     }
 
                     match evicted_cache_line.get_mut(&line_to_evict.block_id()) {

@@ -46,6 +46,10 @@ pub struct PrivateCacheLine {
     /// Older JSON checkpoints without origin metadata default to false.
     #[serde(default)]
     pub prefetched: bool,
+    /// Whether this residency has served a demand instruction fetch.
+    /// Prefetches do not set it; once set, it stays true until the residency ends.
+    #[serde(default)]
+    pub demand_accessed: bool,
     pub writeable: bool,
     pub modified: bool, // TODO: modified can be combined with write_ts.
 }
@@ -79,6 +83,11 @@ impl PrivateCacheLine {
     #[inline]
     pub fn is_prefetched(&self) -> bool {
         self.prefetched
+    }
+
+    #[inline]
+    pub fn has_been_demand_accessed(&self) -> bool {
+        self.demand_accessed
     }
 
     #[inline]
@@ -138,6 +147,7 @@ impl PrivateCacheSet {
                     ts: 0,
                     is_instruction: false,
                     prefetched: false,
+                    demand_accessed: false,
                     writeable: false,
                     modified: false,
                 })
@@ -211,6 +221,7 @@ impl PrivateCacheSet {
         ts: u64,
         is_store: bool,
         is_instruction_fetch: bool,
+        is_demand_instruction: bool,
     ) -> PrivateCachePokeResult {
         // clean the guard of the recent slot so that it can be used for checking whether there is an invalidation from other core.
         self.recent_invalid_slot_index = None;
@@ -233,6 +244,9 @@ impl PrivateCacheSet {
             assert!(line.ts <= ts); // This is a strong assumption. (The cache line should be updated with the latest timestamp.
             line.ts = ts;
             line.is_instruction = is_instruction_fetch;
+            if is_demand_instruction {
+                line.demand_accessed = true;
+            }
 
             self.hit_index_acc += idx;
             self.hit_time += 1;
@@ -256,6 +270,7 @@ impl PrivateCacheSet {
         writable: bool,
         modified: bool,
         prefetched: bool,
+        demand_accessed: bool,
     ) -> Option<bool> {
         // modified
         assert!(ts != 0); // ts should not be 0. 0 is reserved for invalid blocks.
@@ -319,6 +334,7 @@ impl PrivateCacheSet {
         self.lines[idx_of_slot_to_fill].block_id_with_v = block_id_with_v;
         self.lines[idx_of_slot_to_fill].is_instruction = is_instruction;
         self.lines[idx_of_slot_to_fill].prefetched = prefetched;
+        self.lines[idx_of_slot_to_fill].demand_accessed = demand_accessed;
         self.lines[idx_of_slot_to_fill].writeable = writable;
         self.lines[idx_of_slot_to_fill].modified = modified;
 
@@ -330,6 +346,7 @@ impl PrivateCacheSet {
         self.lines[index].block_id_with_v = 0;
         self.lines[index].ts = 0; // set ts to 0 so that this place will be find by the minimal ts. Good for replacement.
         self.lines[index].prefetched = false;
+        self.lines[index].demand_accessed = false;
         self.recent_invalid_slot_index = Some(index);
     }
 
@@ -364,6 +381,7 @@ fn minimum_can_find_invalid() {
             false,
             false,
             false,
+            false,
         );
         ts += 1;
     }
@@ -379,6 +397,7 @@ fn minimum_can_find_invalid() {
             ts: 1,
             is_instruction: false,
             prefetched: false,
+            demand_accessed: false,
             writeable: false,
             modified: false,
         }
@@ -389,7 +408,7 @@ fn minimum_can_find_invalid() {
     // Now if we refill, we will hit the first place.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, PrivateCacheEvictedSlot::Invalid(0));
-    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, false, false, false, false);
+    set.fill_with_potential_eviction_slot(evict_slot, 9, ts, false, false, false, false, false);
 
     // And the cache line 0 should be replaced.
     assert_eq!(
@@ -399,6 +418,7 @@ fn minimum_can_find_invalid() {
             ts: ts,
             is_instruction: false,
             prefetched: false,
+            demand_accessed: false,
             writeable: false,
             modified: false,
         }
@@ -409,5 +429,5 @@ fn minimum_can_find_invalid() {
     // If we now insert another one, line[1] will be replaced.
     let evict_slot = set.find_eviction_index();
     assert_eq!(evict_slot, PrivateCacheEvictedSlot::Valid(1, 1));
-    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, false, false, false, false);
+    set.fill_with_potential_eviction_slot(evict_slot, 10, ts, false, false, false, false, false);
 }
