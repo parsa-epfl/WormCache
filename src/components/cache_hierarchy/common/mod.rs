@@ -61,6 +61,29 @@ pub enum CacheHierarchyAccessResult {
     Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
 }
 
+/// Which demand instruction-line accesses generate adjacent-line prefetches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstructionPrefetchTrigger {
+    /// Prefetch after every modeled demand instruction-line access, including hits.
+    Access,
+    /// Prefetch only after a private instruction-cache miss, even if the block
+    /// is supplied by the shared cache or another core.
+    Miss,
+}
+
+impl InstructionPrefetchTrigger {
+    pub fn should_trigger(self, result: &CacheHierarchyAccessResult) -> bool {
+        match self {
+            Self::Access => true,
+            // In the parallel hierarchy, the private-cache hit returns before
+            // any lower-level access. All other outcomes follow a failed
+            // private lookup, including Unknown: it describes ambiguous
+            // lower-level ordering, not an ambiguous private-cache lookup.
+            Self::Miss => !matches!(result, CacheHierarchyAccessResult::HitInSelfPrivateCache),
+        }
+    }
+}
+
 pub use directory::finite::*;
 pub use directory::infinite::*;
 pub use directory::*;

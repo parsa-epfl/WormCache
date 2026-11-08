@@ -51,11 +51,36 @@ git clone --branch dev https://github.com/parsa-epfl/WormCache
 
 Modify the cache model parameters in `src/parameter.rs` as needed.
 
-With `ADJACENT_LINE_PREFETCHING = true`, set `ADJACENT_LINE_PREFETCH_COUNT` to
-the number of consecutive physical cache lines to prefetch after every demand
-instruction-line access, including cache hits. The default is `1`; `4` fetches
-the next four lines, and `0` disables instruction prefetching. Recompile after
-changing these parameters.
+With `ADJACENT_LINE_PREFETCHING = true`, `ADJACENT_LINE_PREFETCH_COUNT` sets the
+number of consecutive physical cache lines to prefetch. The default is `1`;
+`4` fetches the next four lines, and `0` disables these prefetches.
+
+`ADJACENT_LINE_PREFETCH_TRIGGER` selects which demand instruction-line accesses
+generate those prefetches:
+
+- `InstructionPrefetchTrigger::Access` (default): every modeled instruction-line
+  access, including private-cache hits.
+- `InstructionPrefetchTrigger::Miss`: only private instruction-cache misses,
+  including requests supplied by the shared cache or another core. A normal
+  private-cache hit, including a hit on a previously prefetched line, does not
+  trigger. An `Unknown` lower-level outcome still triggers because the private
+  lookup already missed; only its lower-level source is ambiguous due to parallel ordering.
+
+For example, to fetch four adjacent lines only after a private instruction-cache miss:
+
+```rust
+pub const ADJACENT_LINE_PREFETCHING: bool = true;
+pub const ADJACENT_LINE_PREFETCH_COUNT: usize = 4;
+pub const ADJACENT_LINE_PREFETCH_TRIGGER: InstructionPrefetchTrigger =
+    InstructionPrefetchTrigger::Miss;
+```
+
+These settings apply to both the parallel cache-hierarchy QEMU plugin and the
+standalone trace replay. `Miss` refers to the parallel hierarchy's private
+instruction cache; the simplified single-cache model has no private cache.
+The QEMU instruction callback filters repeated accesses within the same
+instruction line before they reach the hierarchy. Prefetches do not generate
+further prefetches. Recompile after changing these parameters.
 
 After making your changes, compile the model:
 

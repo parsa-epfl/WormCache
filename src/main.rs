@@ -226,10 +226,13 @@ fn main() {
                 };
                 let (result, _) = mh.access_memory_pblock_id(&req, ts);
                 if parameter::ADJACENT_LINE_PREFETCHING && is_instr {
-                    let mut prefetch_request = req.clone();
-                    prefetch_request.block_id += 1;
-                    prefetch_request.access_type = prefetch_request.get_prefetch_type();
-                    mh.access_memory_pblock_id(&prefetch_request, ts);
+                    mh.prefetch_adjacent_instruction_lines(
+                        &req,
+                        &result,
+                        ts,
+                        parameter::ADJACENT_LINE_PREFETCH_COUNT,
+                        parameter::ADJACENT_LINE_PREFETCH_TRIGGER,
+                    );
                 }
                 if parameter::SMS_PREFETCHING && is_data {
                     mh.prefetch_blocks_sms(&req, ts);

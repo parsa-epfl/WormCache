@@ -46,6 +46,7 @@ mod adjacent_line_tests;
 
 use common::CacheAccessType;
 use common::CacheHierarchyAccessResult;
+use common::InstructionPrefetchTrigger;
 use mmu::MMUTranslationResult;
 pub use parallel_hierarchy::ParallelCacheHierarchyPlugin;
 pub use parallel_hierarchy::hierarchy;
@@ -174,9 +175,18 @@ pub trait MemoryHierarchy {
 
     fn evict_sms(&self, core_id: u32, block_id: u64);
 
-    /// Prefetch `count` physical lines after a demand instruction access.
-    fn prefetch_adjacent_instruction_lines(&self, request: &CacheBlockRequest, ts: u64, count: usize) {
-        if request.access_type != CacheAccessType::InstructionFetch {
+    /// Prefetch `count` physical lines when the completed demand instruction
+    /// access satisfies `trigger`. The demand result is captured before any
+    /// prefetch changes cache state; generated prefetches never trigger more.
+    fn prefetch_adjacent_instruction_lines(
+        &self,
+        request: &CacheBlockRequest,
+        result: &CacheHierarchyAccessResult,
+        ts: u64,
+        count: usize,
+        trigger: InstructionPrefetchTrigger,
+    ) {
+        if request.access_type != CacheAccessType::InstructionFetch || !trigger.should_trigger(result) {
             return;
         }
 
@@ -302,8 +312,10 @@ pub trait MemoryHierarchy {
         if ADJACENT_LINE_PREFETCHING {
             self.prefetch_adjacent_instruction_lines(
                 &translated_request,
+                &result,
                 ts,
                 parameter::ADJACENT_LINE_PREFETCH_COUNT,
+                parameter::ADJACENT_LINE_PREFETCH_TRIGGER,
             );
         }
         if SMS_PREFETCHING && !translated_request.is_instruction() {

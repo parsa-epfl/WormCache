@@ -31,6 +31,7 @@
 
 /// This file contains the parameters for the whole plugin.
 /// All of them are compilation constants that the the compiler can propagate them during compilation.
+use crate::components::cache_hierarchy::common::InstructionPrefetchTrigger;
 use plugin_helper::PluginHelper;
 use rustc_hash::FxHashMap;
 
@@ -289,6 +290,11 @@ pub const FINITE_DIRECTORY_ASSO: usize = 16;
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
 /// Consecutive physical instruction lines to prefetch per demand access; zero disables.
 pub const ADJACENT_LINE_PREFETCH_COUNT: usize = 1;
+
+/// Choose Access for every demand instruction-line access, or Miss for private
+/// instruction-cache misses (including shared-cache and peer-cache hits).
+pub const ADJACENT_LINE_PREFETCH_TRIGGER: InstructionPrefetchTrigger =
+    InstructionPrefetchTrigger::Access;
 
 /**
 * Parameters for SMS Prefetching

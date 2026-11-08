@@ -31,6 +31,7 @@
 
 /// This file contains the parameters for the whole plugin.
 /// All of them are compilation constants that the the compiler can propagate them during compilation.
+use crate::components::cache_hierarchy::common::InstructionPrefetchTrigger;
 use plugin_helper::PluginHelper;
 use rustc_hash::FxHashMap;
 
@@ -288,10 +289,15 @@ pub const FINITE_DIRECTORY_ASSO: usize = 16;
 */
 pub const ADJACENT_LINE_PREFETCHING: bool = true;
 
-/// Number of consecutive physical cache lines to prefetch after every demand
-/// instruction-line access (including hits). Zero disables these prefetches;
-/// ADJACENT_LINE_PREFETCHING must also be enabled. Recompile after changing.
+/// Number of consecutive physical cache lines per triggered demand instruction
+/// access. Zero disables these prefetches; ADJACENT_LINE_PREFETCHING must also
+/// be enabled. Recompile after changing this or the trigger setting.
 pub const ADJACENT_LINE_PREFETCH_COUNT: usize = 1;
+
+/// Choose Access for every demand instruction-line access, or Miss for private
+/// instruction-cache misses (including shared-cache and peer-cache hits).
+pub const ADJACENT_LINE_PREFETCH_TRIGGER: InstructionPrefetchTrigger =
+    InstructionPrefetchTrigger::Access;
 
 /**
 * Parameters for stride-based prefetching
