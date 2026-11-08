@@ -116,6 +116,7 @@ pub fn resize_directory(
                         block_id_with_v: (evicted_entry.0 << 1 | 1),
                         ts: 0,
                         is_instruction: false,
+                        prefetched: false,
                         writeable: false,
                         modified: false,
                     };

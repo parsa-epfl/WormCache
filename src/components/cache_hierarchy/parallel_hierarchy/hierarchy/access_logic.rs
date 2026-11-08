@@ -228,6 +228,9 @@ impl<
         let is_page_walk = r.is_page_walk();
         let block_id = r.block_id;
         let is_prefetch = r.is_prefetch();
+        // Origin belongs to this private-cache residency, not to the supplying
+        // LLC/peer copy. Instruction prefetches that hit never relabel a line.
+        let mut prefetched = matches!(r.access_type, CacheAccessType::InstructionPrefetch);
 
         if !is_prefetch {
             Statistics::global_record(core_id, EventType::MemoryAccess, is_os);
@@ -507,6 +510,7 @@ impl<
                 is_instruction,
                 writable,
                 modified,
+                prefetched,
             ) {
                 let (evicted_block_id, mut evicted_block_directory_guard) =
                     evicted_directory_set_guard.unwrap();
@@ -734,6 +738,7 @@ impl<
                 is_instruction,
                 false,
                 false,
+                prefetched,
             );
 
             CacheLineCoherenceHistory::global_record_history(
@@ -782,6 +787,11 @@ impl<
                         let entry = &set.lines[*index];
                         assert_eq!(entry.block_id(), block_id);
                         let access_ts = entry.access_ts();
+                        // A permission upgrade of an existing unified-cache
+                        // copy retains its origin through invalidate/refill.
+                        if *replica_cache_id == p_cache_id && private_hit.permission_violation() {
+                            prefetched = entry.prefetched;
+                        }
                         // invalid the directory entry.
                         incoming_sharer.set(*replica_cache_id, false);
 
@@ -864,6 +874,7 @@ impl<
                         is_instruction,
                         true,
                         true,
+                        prefetched,
                     )
                 } else {
                     panic!();
@@ -1017,6 +1028,7 @@ impl<
                     is_instruction,
                     false,
                     false,
+                    prefetched,
                 );
 
                 CacheLineCoherenceHistory::global_record_history(

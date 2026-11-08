@@ -82,6 +82,16 @@ The QEMU instruction callback filters repeated accesses within the same
 instruction line before they reach the hierarchy. Prefetches do not generate
 further prefetches. Recompile after changing these parameters.
 
+Resident private-cache lines expose a `prefetched` flag: instruction-prefetch
+fills set it to `true`, and demand fills set it to `false`. It records the origin
+of the local residency, so demand hits and redundant prefetches preserve it.
+Replacement assigns a new origin, and invalidation clears it.
+
+New JSON and rkyv private-cache checkpoints preserve this flag. Older JSON
+checkpoints without the field load with `false` because their origin history is
+unavailable. Adding the field changes the binary rkyv schema; regenerate older
+rkyv private-cache checkpoints with the current build.
+
 After making your changes, compile the model:
 
 ```bash
