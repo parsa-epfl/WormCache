@@ -287,6 +287,8 @@ pub const FINITE_DIRECTORY_ASSO: usize = 16;
 * Whether to enable the adjacent (in PA) line prefetching for functional warming.
 */
 pub const ADJACENT_LINE_PREFETCHING: bool = false;
+/// Consecutive physical instruction lines to prefetch per demand access; zero disables.
+pub const ADJACENT_LINE_PREFETCH_COUNT: usize = 1;
 
 /**
 * Parameters for SMS Prefetching

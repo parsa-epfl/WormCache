@@ -288,6 +288,11 @@ pub const FINITE_DIRECTORY_ASSO: usize = 16;
 */
 pub const ADJACENT_LINE_PREFETCHING: bool = true;
 
+/// Number of consecutive physical cache lines to prefetch after every demand
+/// instruction-line access (including hits). Zero disables these prefetches;
+/// ADJACENT_LINE_PREFETCHING must also be enabled. Recompile after changing.
+pub const ADJACENT_LINE_PREFETCH_COUNT: usize = 1;
+
 /**
 * Parameters for stride-based prefetching
 */

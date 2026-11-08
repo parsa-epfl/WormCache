@@ -41,6 +41,9 @@ pub mod mmu;
 mod parallel_hierarchy;
 mod single_cache_hierarchy;
 
+#[cfg(test)]
+mod adjacent_line_tests;
+
 use common::CacheAccessType;
 use common::CacheHierarchyAccessResult;
 use mmu::MMUTranslationResult;
@@ -171,6 +174,27 @@ pub trait MemoryHierarchy {
 
     fn evict_sms(&self, core_id: u32, block_id: u64);
 
+    /// Prefetch `count` physical lines after a demand instruction access.
+    fn prefetch_adjacent_instruction_lines(&self, request: &CacheBlockRequest, ts: u64, count: usize) {
+        if request.access_type != CacheAccessType::InstructionFetch {
+            return;
+        }
+
+        let max_block = u64::MAX >> parameter::CACHE_LINE_SIZE.trailing_zeros();
+        let mut prefetch_request = request.clone();
+        prefetch_request.access_type = CacheAccessType::InstructionPrefetch;
+        for _ in 0..count {
+            let Some(block_id) = prefetch_request.block_id.checked_add(1) else {
+                break;
+            };
+            if block_id > max_block {
+                break;
+            }
+            prefetch_request.block_id = block_id;
+            self.access_memory_pblock_id(&prefetch_request, ts);
+        }
+    }
+
     #[inline]
     fn access_memory_with_va_and_pa(
         &self,
@@ -275,11 +299,12 @@ pub trait MemoryHierarchy {
         //     CacheAccessType::PageWalkRead => 5,
         // };
         // println!("{},{},{},{},{},{},{}", ts, translated_request.core_id, translated_request.block_id, access_code, translated_request.is_os, translated_request.pc, code);
-        if ADJACENT_LINE_PREFETCHING && translated_request.is_instruction() {
-            let mut prefetch_request = translated_request.clone();
-            prefetch_request.block_id += 1;
-            prefetch_request.access_type = prefetch_request.get_prefetch_type();
-            self.access_memory_pblock_id(&prefetch_request, ts);
+        if ADJACENT_LINE_PREFETCHING {
+            self.prefetch_adjacent_instruction_lines(
+                &translated_request,
+                ts,
+                parameter::ADJACENT_LINE_PREFETCH_COUNT,
+            );
         }
         if SMS_PREFETCHING && !translated_request.is_instruction() {
             self.prefetch_blocks_sms(&translated_request, ts);

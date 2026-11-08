@@ -49,10 +49,18 @@ Clone this repository:
 git clone --branch dev https://github.com/parsa-epfl/WormCache
 ```
 
-Modify the cache model parameters in `src/parameter.rs` as needed. After making your changes, compile the model:
+Modify the cache model parameters in `src/parameter.rs` as needed.
+
+With `ADJACENT_LINE_PREFETCHING = true`, set `ADJACENT_LINE_PREFETCH_COUNT` to
+the number of consecutive physical cache lines to prefetch after every demand
+instruction-line access, including cache hits. The default is `1`; `4` fetches
+the next four lines, and `0` disables instruction prefetching. Recompile after
+changing these parameters.
+
+After making your changes, compile the model:
 
 ```bash
-cargo build --relesae
+cargo build --release
 ```
 
 The compiled binary should be located in target/release/libworm_cache.so. This shared library will be used as a [QEMU Plugin](https://www.qemu.org/docs/master/devel/tcg-plugins.html) in the next steps.
