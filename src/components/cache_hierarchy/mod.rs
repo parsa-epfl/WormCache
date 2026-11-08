@@ -156,6 +156,17 @@ pub trait MemoryHierarchy {
         ts: u64,
     ) -> (CacheHierarchyAccessResult, (usize, usize, usize));
 
+    /// Perform one access and retain any first-demand-use event for the
+    /// instruction prefetch policy. Implementations without that metadata use
+    /// the original access method. Normal demand APIs return ordinary hits.
+    fn access_memory_pblock_id_with_prefetch_event(
+        &self,
+        request: &CacheBlockRequest,
+        ts: u64,
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize)) {
+        self.access_memory_pblock_id(request, ts)
+    }
+
     fn access_from_device_with_pa(
         &self,
         paddr: u64,
@@ -178,6 +189,8 @@ pub trait MemoryHierarchy {
     /// Prefetch `count` physical lines when the completed demand instruction
     /// access satisfies `trigger`. The demand result is captured before any
     /// prefetch changes cache state; generated prefetches never trigger more.
+    /// Direct callers should obtain `result` with the event-aware access method
+    /// when using MissOrPrefetchHit, so the first-use transition is retained.
     fn prefetch_adjacent_instruction_lines(
         &self,
         request: &CacheBlockRequest,
@@ -290,7 +303,8 @@ pub trait MemoryHierarchy {
             }
         };
 
-        let (result, _) = self.access_memory_pblock_id(&translated_request, ts);
+        let (result, _) =
+            self.access_memory_pblock_id_with_prefetch_event(&translated_request, ts);
         // let code: u8 = match result {
         //     CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
         //     CacheHierarchyAccessResult::HitInSharedCache => 1,
@@ -325,7 +339,7 @@ pub trait MemoryHierarchy {
         if STRIDE_PREFETCHING && !translated_request.is_instruction() {
             self.prefetch_blocks_stride(&translated_request, ts);
         }
-        result
+        result.without_prefetch_event()
     }
 
     #[inline]

@@ -128,6 +128,8 @@ impl PrivateCacheEvictedSlot {
 #[derive(PartialEq, Eq)]
 pub enum PrivateCachePokeResult {
     Hit,
+    /// First demand instruction use of a prefetched residency.
+    PrefetchHit,
     Miss(PrivateCacheEvictedSlot), // the potential element for eviction
     PermissionViolation(PrivateCacheEvictedSlot),
 }
@@ -244,6 +246,10 @@ impl PrivateCacheSet {
             assert!(line.ts <= ts); // This is a strong assumption. (The cache line should be updated with the latest timestamp.
             line.ts = ts;
             line.is_instruction = is_instruction_fetch;
+            // Capture the transition while holding the set lock, before the
+            // demand marks this residency used. Later hits cannot retrigger it.
+            let first_prefetch_use =
+                is_demand_instruction && line.prefetched && !line.demand_accessed;
             if is_demand_instruction {
                 line.demand_accessed = true;
             }
@@ -251,7 +257,11 @@ impl PrivateCacheSet {
             self.hit_index_acc += idx;
             self.hit_time += 1;
 
-            PrivateCachePokeResult::Hit
+            if first_prefetch_use {
+                PrivateCachePokeResult::PrefetchHit
+            } else {
+                PrivateCachePokeResult::Hit
+            }
         } else {
             PrivateCachePokeResult::Miss(self.find_eviction_index())
         }

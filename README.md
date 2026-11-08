@@ -65,19 +65,35 @@ generate those prefetches:
   private-cache hit, including a hit on a previously prefetched line, does not
   trigger. An `Unknown` lower-level outcome still triggers because the private
   lookup already missed; only its lower-level source is ambiguous due to parallel ordering.
+- `InstructionPrefetchTrigger::MissOrPrefetchHit`: private instruction-cache
+  misses, plus the first demand instruction hit on a prefetched line whose
+  `demand_accessed` flag was still `false`. Ordinary demand-filled hits and later
+  hits on the same prefetched residency do not trigger.
 
-For example, to fetch four adjacent lines only after a private instruction-cache miss:
+For example, to fetch four adjacent lines after a miss or the first demand use
+of a prefetched line:
 
 ```rust
 pub const ADJACENT_LINE_PREFETCHING: bool = true;
 pub const ADJACENT_LINE_PREFETCH_COUNT: usize = 4;
 pub const ADJACENT_LINE_PREFETCH_TRIGGER: InstructionPrefetchTrigger =
-    InstructionPrefetchTrigger::Miss;
+    InstructionPrefetchTrigger::MissOrPrefetchHit;
 ```
 
 These settings apply to both the parallel cache-hierarchy QEMU plugin and the
 standalone trace replay. `Miss` refers to the parallel hierarchy's private
 instruction cache; the simplified single-cache model has no private cache.
+First-use detection and setting `demand_accessed` happen together under the
+private-cache set lock. `access_memory_pblock_id_with_prefetch_event` retains
+that transition as `PrefetchHitInSelfPrivateCache` for the prefetch policy.
+It is still an L1 hit, and the miss-only mode excludes it. The original physical
+and virtual demand-access APIs return `HitInSelfPrivateCache` for both ordinary
+hits and first-use hits, preserving their existing result classification.
+Direct callers of the prefetch helper should obtain the result from the
+event-aware method when using `MissOrPrefetchHit`.
+The line retains `prefetched = true` throughout its residency, and
+`demand_accessed` stays true once set. A new residency after eviction or
+invalidation can produce a new first-use event.
 The QEMU instruction callback filters repeated accesses within the same
 instruction line before they reach the hierarchy. Prefetches do not generate
 further prefetches. Recompile after changing these parameters.

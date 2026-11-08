@@ -294,8 +294,9 @@ pub const ADJACENT_LINE_PREFETCHING: bool = true;
 /// be enabled. Recompile after changing this or the trigger setting.
 pub const ADJACENT_LINE_PREFETCH_COUNT: usize = 1;
 
-/// Choose Access for every demand instruction-line access, or Miss for private
-/// instruction-cache misses (including shared-cache and peer-cache hits).
+/// Access: every demand instruction-line access. Miss: private instruction-cache
+/// misses, including LLC/peer hits. MissOrPrefetchHit: misses plus the first
+/// demand instruction hit on a prefetched line not yet demand-accessed.
 pub const ADJACENT_LINE_PREFETCH_TRIGGER: InstructionPrefetchTrigger =
     InstructionPrefetchTrigger::Access;
 

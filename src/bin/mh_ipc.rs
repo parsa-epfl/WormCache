@@ -167,7 +167,8 @@ fn main() {
                         let (result, _) = mh.access_memory_pblock_id(&req, ts);
                         mh.prefetch_blocks_sms(&req, ts);
                         match result {
-                            CacheHierarchyAccessResult::HitInSelfPrivateCache => {
+                            CacheHierarchyAccessResult::HitInSelfPrivateCache
+                            | CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache => {
                                 hit_count += 1;
                             }
                             _ => {

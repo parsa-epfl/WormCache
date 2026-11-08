@@ -62,6 +62,10 @@ mod instruction_demand_access_tests;
 #[cfg(test)]
 mod instruction_prefetch_origin_tests;
 #[cfg(test)]
+mod instruction_prefetch_trigger_tests;
+#[cfg(test)]
+mod prefetch_compatibility_tests;
+#[cfg(test)]
 mod reverse_order_tests;
 
 mod access_logic;

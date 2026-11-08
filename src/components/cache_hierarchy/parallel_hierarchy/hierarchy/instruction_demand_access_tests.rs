@@ -153,12 +153,16 @@ fn redundant_prefetch_hits_do_not_clear_a_demand_filled_lines_history() {
 }
 
 #[test]
-fn both_adjacent_line_triggers_install_unused_prefetches_and_track_their_first_use() {
-    for trigger in [InstructionPrefetchTrigger::Access, InstructionPrefetchTrigger::Miss] {
+fn all_adjacent_line_triggers_install_unused_prefetches_and_track_their_first_use() {
+    for trigger in [
+        InstructionPrefetchTrigger::Access,
+        InstructionPrefetchTrigger::Miss,
+        InstructionPrefetchTrigger::MissOrPrefetchHit,
+    ] {
         let hierarchy = TestHierarchy::<1, 4>::new();
         let demand = request(0, 100, CacheAccessType::InstructionFetch);
         let ts = get_monotonic_ts();
-        let (result, _) = hierarchy.access_memory_pblock_id(&demand, ts);
+        let (result, _) = hierarchy.access_memory_pblock_id_with_prefetch_event(&demand, ts);
         assert_eq!(result, CacheHierarchyAccessResult::Miss);
         hierarchy.prefetch_adjacent_instruction_lines(&demand, &result, ts, 2, trigger);
 
@@ -168,15 +172,16 @@ fn both_adjacent_line_triggers_install_unused_prefetches_and_track_their_first_u
 
         let next_demand = request(0, 101, CacheAccessType::InstructionFetch);
         let ts = get_monotonic_ts();
-        let (result, _) = hierarchy.access_memory_pblock_id(&next_demand, ts);
-        assert_eq!(result, CacheHierarchyAccessResult::HitInSelfPrivateCache);
+        let (result, _) = hierarchy.access_memory_pblock_id_with_prefetch_event(&next_demand, ts);
+        assert_eq!(result, CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache);
         hierarchy.prefetch_adjacent_instruction_lines(&next_demand, &result, ts, 2, trigger);
 
         assert_state(&hierarchy, 0, 101, true, true);
-        // Access mode re-prefetches 102, which must still be unused.
+        // Access and combined modes re-prefetch 102, which must still be unused.
         assert_state(&hierarchy, 0, 102, true, false);
         match trigger {
-            InstructionPrefetchTrigger::Access => assert_state(&hierarchy, 0, 103, true, false),
+            InstructionPrefetchTrigger::Access | InstructionPrefetchTrigger::MissOrPrefetchHit =>
+                assert_state(&hierarchy, 0, 103, true, false),
             InstructionPrefetchTrigger::Miss => assert!(resident(&hierarchy, 0, 103).is_none()),
         }
     }

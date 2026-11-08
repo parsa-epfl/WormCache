@@ -121,7 +121,8 @@ impl<
             };
             let (ret, _) = self.access_memory_pblock_id(&r, ts);
             match ret {
-                CacheHierarchyAccessResult::HitInSelfPrivateCache => {
+                CacheHierarchyAccessResult::HitInSelfPrivateCache
+                | CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache => {
                     Statistics::global_record(request.core_id, EventType::PfL1, request.is_os);
                 }
                 CacheHierarchyAccessResult::HitInSharedCache => {
@@ -216,7 +217,17 @@ impl<
         }
     }
 
+    #[inline]
     fn access_memory_pblock_id(
+        &self,
+        r: &CacheBlockRequest,
+        ts: u64,
+    ) -> (CacheHierarchyAccessResult, (usize, usize, usize)) {
+        let (result, stats) = self.access_memory_pblock_id_with_prefetch_event(r, ts);
+        (result.without_prefetch_event(), stats)
+    }
+
+    fn access_memory_pblock_id_with_prefetch_event(
         &self,
         r: &CacheBlockRequest,
         ts: u64,
@@ -259,16 +270,22 @@ impl<
         // first, we need to check the private cache.
         let private_hit = self.private_caches.poke_and_update(r, ts);
 
-        if private_hit == PrivateCachePokeResult::Hit {
-            // we don't have to anything. Just return.
+        if matches!(private_hit, PrivateCachePokeResult::Hit | PrivateCachePokeResult::PrefetchHit) {
+            // Preserve the first-use event detected before demand_accessed was
+            // set. Both outcomes are private-cache hits and require no fill.
+            let result = if private_hit == PrivateCachePokeResult::PrefetchHit {
+                CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache
+            } else {
+                CacheHierarchyAccessResult::HitInSelfPrivateCache
+            };
             return (
-                CacheHierarchyAccessResult::HitInSelfPrivateCache,
+                result,
                 self.pf_stats[r.core_id as usize].lock().clone(),
             );
         }
 
         let evicted_slot = match private_hit {
-            PrivateCachePokeResult::Hit => unreachable!(),
+            PrivateCachePokeResult::Hit | PrivateCachePokeResult::PrefetchHit => unreachable!(),
             PrivateCachePokeResult::Miss(ref slot) => slot.clone(),
             PrivateCachePokeResult::PermissionViolation(ref slot) => slot.clone(),
         };

@@ -73,13 +73,14 @@ fn instruction_request(block_id: u64) -> CacheBlockRequest {
     }
 }
 
-fn classified_results() -> [(CacheHierarchyAccessResult, bool); 6] {
+fn classified_results() -> [(CacheHierarchyAccessResult, bool); 7] {
     [
         (CacheHierarchyAccessResult::Miss, true),
         (CacheHierarchyAccessResult::HitInSharedCache, true),
         (CacheHierarchyAccessResult::HitInOtherPrivateCache, true),
         (CacheHierarchyAccessResult::MissDueToPermission, true),
         (CacheHierarchyAccessResult::HitInSelfPrivateCache, false),
+        (CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache, false),
         // Unknown describes ambiguous lower-level history after a known L1 miss.
         (CacheHierarchyAccessResult::Unknown, true),
     ]
@@ -90,6 +91,10 @@ fn trigger_distinguishes_private_cache_misses_from_hits() {
     for (result, is_miss) in classified_results() {
         assert!(InstructionPrefetchTrigger::Access.should_trigger(&result));
         assert_eq!(InstructionPrefetchTrigger::Miss.should_trigger(&result), is_miss);
+        assert_eq!(
+            InstructionPrefetchTrigger::MissOrPrefetchHit.should_trigger(&result),
+            is_miss || matches!(result, CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache),
+        );
     }
 }
 
@@ -141,8 +146,33 @@ fn miss_trigger_issues_requests_for_every_private_cache_miss_result() {
 }
 
 #[test]
+fn combined_trigger_issues_requests_for_misses_and_first_prefetch_hits_only() {
+    for (result, is_miss) in classified_results() {
+        let hierarchy = RecordingHierarchy::new(Vec::new());
+        hierarchy.prefetch_adjacent_instruction_lines(
+            &instruction_request(100),
+            &result,
+            42,
+            3,
+            InstructionPrefetchTrigger::MissOrPrefetchHit,
+        );
+        let should_trigger = is_miss
+            || matches!(result, CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache);
+        let accesses = hierarchy.accesses.borrow();
+        assert_eq!(accesses.len(), if should_trigger { 3 } else { 0 });
+        for (offset, (prefetch, _)) in accesses.iter().enumerate() {
+            assert_eq!(prefetch.block_id, 101 + offset as u64);
+        }
+    }
+}
+
+#[test]
 fn data_page_walk_and_prefetch_accesses_never_start_instruction_prefetches() {
-    for trigger in [InstructionPrefetchTrigger::Access, InstructionPrefetchTrigger::Miss] {
+    for trigger in [
+        InstructionPrefetchTrigger::Access,
+        InstructionPrefetchTrigger::Miss,
+        InstructionPrefetchTrigger::MissOrPrefetchHit,
+    ] {
         for access_type in [
             CacheAccessType::DataRead,
             CacheAccessType::DataWrite,
@@ -169,7 +199,11 @@ fn data_page_walk_and_prefetch_accesses_never_start_instruction_prefetches() {
 #[test]
 fn prefetching_stops_at_the_last_representable_physical_line() {
     let max_block = u64::MAX >> parameter::CACHE_LINE_SIZE.trailing_zeros();
-    for trigger in [InstructionPrefetchTrigger::Access, InstructionPrefetchTrigger::Miss] {
+    for trigger in [
+        InstructionPrefetchTrigger::Access,
+        InstructionPrefetchTrigger::Miss,
+        InstructionPrefetchTrigger::MissOrPrefetchHit,
+    ] {
         let hierarchy = RecordingHierarchy::new(Vec::new());
         hierarchy.prefetch_adjacent_instruction_lines(
             &instruction_request(max_block - 2),
@@ -219,7 +253,12 @@ fn virtual_access_uses_configured_trigger_and_count_after_the_demand_completes()
         };
         let physical_address = 100 * parameter::CACHE_LINE_SIZE as u64;
         let returned = hierarchy.access_memory_with_va_and_pa(&request, Some(physical_address), 42);
-        assert_eq!(returned, result);
+        let expected_result = if matches!(result, CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache) {
+            CacheHierarchyAccessResult::HitInSelfPrivateCache
+        } else {
+            result
+        };
+        assert_eq!(returned, expected_result);
 
         let accesses = hierarchy.accesses.borrow();
         assert_eq!(accesses.len(), 1 + expected_count);
@@ -266,14 +305,18 @@ fn demand_and_prefetch(
     trigger: InstructionPrefetchTrigger,
 ) -> CacheHierarchyAccessResult {
     let ts = get_monotonic_ts();
-    let (result, _) = hierarchy.access_memory_pblock_id(request, ts);
+    let (result, _) = hierarchy.access_memory_pblock_id_with_prefetch_event(request, ts);
     hierarchy.prefetch_adjacent_instruction_lines(request, &result, ts, 1, trigger);
     result
 }
 
 #[test]
-fn cold_instruction_miss_installs_demand_and_prefetch_but_hit_only_triggers_access_mode() {
-    for trigger in [InstructionPrefetchTrigger::Access, InstructionPrefetchTrigger::Miss] {
+fn cold_instruction_miss_installs_lines_and_first_prefetch_hit_obeys_the_trigger() {
+    for trigger in [
+        InstructionPrefetchTrigger::Access,
+        InstructionPrefetchTrigger::Miss,
+        InstructionPrefetchTrigger::MissOrPrefetchHit,
+    ] {
         let hierarchy = TinyHierarchy::new();
         assert_eq!(
             demand_and_prefetch(&hierarchy, &instruction_request(100), trigger),
@@ -287,12 +330,18 @@ fn cold_instruction_miss_installs_demand_and_prefetch_but_hit_only_triggers_acce
         // The prefetched line is also resident before the next demand executes.
         assert_eq!(
             demand_and_prefetch(&hierarchy, &instruction_request(101), trigger),
+            CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache,
+        );
+        // The signal is consumed by the first demand, never by later hits.
+        assert_eq!(
+            hierarchy.access_memory_pblock_id(&instruction_request(101), get_monotonic_ts()).0,
             CacheHierarchyAccessResult::HitInSelfPrivateCache,
         );
         assert_eq!(
             hierarchy.access_memory_pblock_id(&instruction_request(102), get_monotonic_ts()).0,
             match trigger {
-                InstructionPrefetchTrigger::Access => CacheHierarchyAccessResult::HitInSelfPrivateCache,
+                InstructionPrefetchTrigger::Access | InstructionPrefetchTrigger::MissOrPrefetchHit =>
+                    CacheHierarchyAccessResult::HitInSelfPrivateCache,
                 InstructionPrefetchTrigger::Miss => CacheHierarchyAccessResult::Miss,
             },
         );

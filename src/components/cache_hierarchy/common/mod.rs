@@ -59,6 +59,28 @@ pub enum CacheHierarchyAccessResult {
     HitInSharedCache,
     Miss,
     Unknown, // This entry is emitted when a memory access arrives late but with a smaller timestamp than a previous write operation. It is unknown because its previous state is not clear.
+    /// First demand instruction hit on a prefetched residency, exposed only by
+    /// the event-aware access method. demand_accessed is already set on return.
+    PrefetchHitInSelfPrivateCache,
+}
+
+impl CacheHierarchyAccessResult {
+    /// Preserve the original demand-access API classification while keeping
+    /// the first-use event available to the prefetch policy internally.
+    #[inline]
+    pub fn without_prefetch_event(self) -> Self {
+        match self {
+            Self::PrefetchHitInSelfPrivateCache => Self::HitInSelfPrivateCache,
+            result => result,
+        }
+    }
+
+    pub fn is_private_cache_hit(&self) -> bool {
+        matches!(
+            self,
+            Self::HitInSelfPrivateCache | Self::PrefetchHitInSelfPrivateCache
+        )
+    }
 }
 
 /// Which demand instruction-line accesses generate adjacent-line prefetches.
@@ -69,6 +91,8 @@ pub enum InstructionPrefetchTrigger {
     /// Prefetch only after a private instruction-cache miss, even if the block
     /// is supplied by the shared cache or another core.
     Miss,
+    /// Also prefetch on the first demand instruction use of a prefetched line.
+    MissOrPrefetchHit,
 }
 
 impl InstructionPrefetchTrigger {
@@ -79,7 +103,11 @@ impl InstructionPrefetchTrigger {
             // any lower-level access. All other outcomes follow a failed
             // private lookup, including Unknown: it describes ambiguous
             // lower-level ordering, not an ambiguous private-cache lookup.
-            Self::Miss => !matches!(result, CacheHierarchyAccessResult::HitInSelfPrivateCache),
+            Self::Miss => !result.is_private_cache_hit(),
+            Self::MissOrPrefetchHit => {
+                !result.is_private_cache_hit()
+                    || matches!(result, CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache)
+            }
         }
     }
 }

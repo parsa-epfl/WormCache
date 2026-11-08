@@ -224,7 +224,7 @@ fn main() {
                     is_os,
                     pc,
                 };
-                let (result, _) = mh.access_memory_pblock_id(&req, ts);
+                let (result, _) = mh.access_memory_pblock_id_with_prefetch_event(&req, ts);
                 if parameter::ADJACENT_LINE_PREFETCHING && is_instr {
                     mh.prefetch_adjacent_instruction_lines(
                         &req,
@@ -242,7 +242,8 @@ fn main() {
                     mh.prefetch_blocks_stride(&req, ts);
                 }
                 let new_code: u8 = match result {
-                    CacheHierarchyAccessResult::HitInSelfPrivateCache => 0,
+                    CacheHierarchyAccessResult::HitInSelfPrivateCache
+                    | CacheHierarchyAccessResult::PrefetchHitInSelfPrivateCache => 0,
                     CacheHierarchyAccessResult::HitInSharedCache => 1,
                     CacheHierarchyAccessResult::Miss => 2,
                     CacheHierarchyAccessResult::HitInOtherPrivateCache => 3,
