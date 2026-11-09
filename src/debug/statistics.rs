@@ -527,6 +527,9 @@ unsafe extern "C" fn kernel_vcpu_insn_exec(
     vcpu_idx: u32,
     size: *mut ffi::c_void, // the size of the basic block
 ) {
+    if crate::parameter::BYPASSING_OS_SIMULATION {
+        return;
+    }
     let size = size as usize;
     Statistics::global_record_by(vcpu_idx, EventType::Instruction, true, size as u64);
     record_qemu_stat(vcpu_idx, EventType::InstructionKernel, size as u32);
