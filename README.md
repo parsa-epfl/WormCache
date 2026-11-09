@@ -120,7 +120,7 @@ Both flags are stored in the shared private-cache line representation; they
 track instruction-prefetch origin and demand instruction use in Harvard or
 unified private caches. The LLC and directory do not store these flags.
 
-The parallel hierarchy always records the following two counters, regardless
+The parallel hierarchy always records the following three counters, regardless
 of `ENABLE_STATISTICS`. They appear in `statistics.csv` and explicit statistics
 exports even when general statistics are disabled:
 
@@ -135,15 +135,22 @@ exports even when general statistics are disabled:
   Evicting a demand-used prefetch, a demand-filled block, or an invalid slot
   does not increment it. An instruction prefetch in a unified cache is still
   tracked if later data accesses change its `is_instruction` flag.
+- `InstructionCachePrefetchesIssued`: each instruction-prefetch request that
+  misses the requesting core's L1 cache and proceeds to the lower hierarchy.
+  A prefetch already present in L1 does not count. LLC hits, supplies from another
+  private cache, and requests reaching memory each count once. Data prefetches
+  and demand instruction fetches are excluded. Prefetching the same block again
+  after eviction or invalidation counts as another issue.
 
 The requested fraction of all instruction fills is
 `100 * InstructionCacheOverfetches / InstructionCacheFills`. Sum the counters
 across cores before dividing to obtain the overall percentage. The standalone
 trace replay also prints the totals and percentage for the entire replay,
 including its warm-up records. A zero fill count produces `N/A`.
-With no instruction prefetches installed, fills still count normally and
-overfetches remain zero. Disabling a prefetcher does not discard the recorded
-history of prefetched lines restored from a checkpoint.
+With no instruction prefetches issued or installed, fills still count normally
+and both prefetch-issued and overfetch totals remain zero. Disabling a
+prefetcher does not discard the recorded history of prefetched lines restored
+from a checkpoint.
 
 Overfetch accounting here measures replacement evictions: coherence/device
 invalidations and unused prefetches still resident at the end of a run are not

@@ -285,6 +285,14 @@ impl<
             );
         }
 
+        // Count only instruction prefetches that missed L1. Reuse the lookup
+        // result so resident targets incur neither another lookup nor an issue.
+        if matches!(r.access_type, CacheAccessType::InstructionPrefetch)
+            && matches!(private_hit, PrivateCachePokeResult::Miss(_))
+        {
+            Statistics::global_record(core_id, EventType::InstructionCachePrefetchesIssued, is_os);
+        }
+
         let evicted_slot = match private_hit {
             PrivateCachePokeResult::Hit | PrivateCachePokeResult::PrefetchHit => unreachable!(),
             PrivateCachePokeResult::Miss(ref slot) => slot.clone(),

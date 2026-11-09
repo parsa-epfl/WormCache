@@ -1,7 +1,7 @@
 use crate::components::cache_hierarchy::common::{
-    CacheAccessType, CacheHierarchyAccessResult, InfiniteDirectory, ParallelHarvardPrivateCache,
-    ParallelLRUSharedCache, ParallelUnifiedPrivateCache, PrivateCache, PrivateCacheEvictedSlot,
-    PrivateCacheSet, statistics::ZeroSharedCacheSetStatistics,
+    CacheAccessType, CacheHierarchyAccessResult, InfiniteDirectory, InstructionPrefetchTrigger,
+    ParallelHarvardPrivateCache, ParallelLRUSharedCache, ParallelUnifiedPrivateCache, PrivateCache,
+    PrivateCacheEvictedSlot, PrivateCacheSet, statistics::ZeroSharedCacheSetStatistics,
 };
 use crate::components::cache_hierarchy::mmu::NoMMU;
 use crate::components::cache_hierarchy::{CacheBlockRequest, MemoryHierarchy};
@@ -11,9 +11,9 @@ use crate::util::get_monotonic_ts;
 use super::ParallelMemoryHierarchy;
 use super::instruction_cache_statistics::fill_private_cache_set;
 
-type TestHierarchy<const CORES: usize> = ParallelMemoryHierarchy<
+type TestHierarchy<const CORES: usize, const I_WAYS: usize = 1> = ParallelMemoryHierarchy<
     NoMMU,
-    ParallelHarvardPrivateCache<CORES, 1, 1, 1, 1>,
+    ParallelHarvardPrivateCache<CORES, 1, I_WAYS, 1, 1>,
     ParallelLRUSharedCache<ZeroSharedCacheSetStatistics, 4, 2, false>,
     InfiniteDirectory<4>,
     true,
@@ -133,6 +133,9 @@ fn instruction_fills_include_demand_and_prefetch_from_each_supply_path() {
     });
     assert_eq!(count(&events, EventType::InstructionCacheFills), 16);
     assert_eq!(count(&events, EventType::InstructionCacheOverfetches), 0);
+    // The prefetch iteration misses L1-I once for each supply path. Setup
+    // accesses and the demand-fetch iteration must not count as prefetches.
+    assert_eq!(count(&events, EventType::InstructionCachePrefetchesIssued), 4);
 }
 
 #[test]
@@ -145,6 +148,7 @@ fn demand_only_instruction_fills_have_zero_overfetches() {
     });
     assert_eq!(count(&events, EventType::InstructionCacheFills), 3);
     assert_eq!(count(&events, EventType::InstructionCacheOverfetches), 0);
+    assert_eq!(count(&events, EventType::InstructionCachePrefetchesIssued), 0);
 }
 
 #[test]
@@ -160,6 +164,70 @@ fn unused_prefetch_is_counted_once_on_replacement_and_hits_are_not_fills() {
     });
     assert_eq!(count(&events, EventType::InstructionCacheFills), 3);
     assert_eq!(count(&events, EventType::InstructionCacheOverfetches), 1);
+    // Both redundant prefetches hit L1-I: one on a prefetch-installed line,
+    // and the other on a demand-installed line. Only the initial miss counts.
+    assert_eq!(count(&events, EventType::InstructionCachePrefetchesIssued), 1);
+}
+
+#[test]
+fn instruction_prefetch_is_counted_again_after_its_previous_residency_is_evicted() {
+    let (_, events) = capture_records(|| {
+        let hierarchy = TestHierarchy::<1>::new();
+        assert_eq!(
+            access(&hierarchy, 0, 100, CacheAccessType::InstructionPrefetch),
+            CacheHierarchyAccessResult::Miss,
+        );
+        access(&hierarchy, 0, 100, CacheAccessType::InstructionPrefetch);
+        access(&hierarchy, 0, 101, CacheAccessType::InstructionFetch);
+        assert_eq!(
+            access(&hierarchy, 0, 100, CacheAccessType::InstructionPrefetch),
+            CacheHierarchyAccessResult::HitInSharedCache,
+        );
+        access(&hierarchy, 0, 100, CacheAccessType::InstructionPrefetch);
+    });
+    assert_eq!(count(&events, EventType::InstructionCachePrefetchesIssued), 2);
+    assert_eq!(count(&events, EventType::InstructionCacheFills), 3);
+}
+
+#[test]
+fn demand_and_data_prefetch_requests_are_not_issued_instruction_prefetches() {
+    let (_, events) = capture_records(|| {
+        let hierarchy = TestHierarchy::<1>::new();
+        access(&hierarchy, 0, 100, CacheAccessType::InstructionFetch);
+        access(&hierarchy, 0, 100, CacheAccessType::InstructionFetch);
+        access(&hierarchy, 0, 200, CacheAccessType::PrefetchRead);
+        access(&hierarchy, 0, 201, CacheAccessType::PrefetchWrite);
+    });
+    assert_eq!(count(&events, EventType::InstructionCachePrefetchesIssued), 0);
+}
+
+#[test]
+fn adjacent_line_prefetches_count_only_candidates_missing_from_l1_instruction_cache() {
+    let (_, events) = capture_records(|| {
+        let hierarchy = TestHierarchy::<1, 4>::new();
+        access(&hierarchy, 0, 101, CacheAccessType::InstructionFetch);
+        let demand = request(0, 100, CacheAccessType::InstructionFetch);
+        let (result, _) = hierarchy.access_memory_pblock_id(&demand, get_monotonic_ts());
+        // Candidate 101 is already resident. Candidates 102 and 103 are not.
+        hierarchy.prefetch_adjacent_instruction_lines(
+            &demand,
+            &result,
+            get_monotonic_ts(),
+            3,
+            InstructionPrefetchTrigger::Access,
+        );
+        for block_id in [100, 101, 102, 103] {
+            assert!(
+                hierarchy
+                    .private_caches
+                    .get_set_for_fill(&request(0, block_id, CacheAccessType::InstructionFetch))
+                    .poke(block_id)
+                    .is_some()
+            );
+        }
+    });
+    assert_eq!(count(&events, EventType::InstructionCachePrefetchesIssued), 2);
+    assert_eq!(count(&events, EventType::InstructionCacheFills), 4);
 }
 
 #[test]
@@ -267,7 +335,11 @@ fn intervening_invalidation_prevents_counting_an_unevicted_candidate() {
 fn instruction_counter_columns_are_exported_in_statistics_csv() {
     let header = Statistics::get_header();
     let columns: Vec<_> = header.split(',').collect();
-    for name in ["InstructionCacheFills", "InstructionCacheOverfetches"] {
+    for name in [
+        "InstructionCacheFills",
+        "InstructionCacheOverfetches",
+        "InstructionCachePrefetchesIssued",
+    ] {
         assert!(columns.contains(&name));
         assert!(columns.contains(&format!("{name}:u").as_str()));
         assert!(columns.contains(&format!("{name}:k").as_str()));

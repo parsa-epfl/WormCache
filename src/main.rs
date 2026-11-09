@@ -291,14 +291,23 @@ fn main() {
     println!("Old L1D Miss Rate: {:.2}%, New L1D Miss Rate: {:.2}%, Old LLC Miss Rate (Data): {:.2}%, New LLC Miss Rate (Data): {:.2}%", old_l1d_mr, new_l1d_mr, old_llc_mr_data, new_llc_mr_data);
     println!("Old L1I Miss Rate: {:.2}%, New L1I Miss Rate: {:.2}%, Old LLC Miss Rate (Instr): {:.2}%, New LLC Miss Rate (Instr): {:.2}%", old_l1i_mr, new_l1i_mr, old_llc_mr_instr, new_llc_mr_instr);
 
-    let (fills, overfetches) = (0..ALLOCATED_CORE_COUNT as u32).fold(
-        (0u64, 0u64),
-        |(fills, overfetches), core_id| {
+    let (fills, overfetches, issued_prefetches) = (0..ALLOCATED_CORE_COUNT as u32).fold(
+        (0u64, 0u64, 0u64),
+        |(fills, overfetches, issued_prefetches), core_id| {
             let core_fills =
                 Statistics::global_query_record(core_id, EventType::InstructionCacheFills).0;
             let core_overfetches =
                 Statistics::global_query_record(core_id, EventType::InstructionCacheOverfetches).0;
-            (fills + core_fills, overfetches + core_overfetches)
+            let core_issued_prefetches = Statistics::global_query_record(
+                core_id,
+                EventType::InstructionCachePrefetchesIssued,
+            )
+            .0;
+            (
+                fills + core_fills,
+                overfetches + core_overfetches,
+                issued_prefetches + core_issued_prefetches,
+            )
         },
     );
     println!(
@@ -308,6 +317,10 @@ fn main() {
     println!(
         "Instruction cache overfetches (unused prefetch replacement evictions): {}",
         overfetches
+    );
+    println!(
+        "Instruction cache prefetches issued beyond L1-I: {}",
+        issued_prefetches
     );
     if fills > 0 {
         println!(

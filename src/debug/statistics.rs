@@ -218,17 +218,21 @@ pub enum EventType {
     InstructionCacheFills,
     /// Instruction-prefetched residencies replaced before any demand instruction use.
     InstructionCacheOverfetches,
+    /// Instruction prefetches absent from L1 and issued to the lower hierarchy.
+    InstructionCachePrefetchesIssued,
 }
 
 impl EventType {
-    /// Instruction-cache fill and overfetch totals are always collected.
+    /// Instruction-cache fill, overfetch, and issued-prefetch totals are always collected.
     /// Other counters retain the general statistics setting.
     #[inline]
     fn is_enabled(self, general_statistics_enabled: bool) -> bool {
         general_statistics_enabled
             || matches!(
                 self,
-                EventType::InstructionCacheFills | EventType::InstructionCacheOverfetches
+                EventType::InstructionCacheFills
+                    | EventType::InstructionCacheOverfetches
+                    | EventType::InstructionCachePrefetchesIssued
             )
     }
 
@@ -731,6 +735,7 @@ mod tests {
         for event in [
             EventType::InstructionCacheFills,
             EventType::InstructionCacheOverfetches,
+            EventType::InstructionCachePrefetchesIssued,
         ] {
             assert!(event.is_enabled(false));
             statistics.record(event, false);
@@ -755,7 +760,9 @@ mod tests {
         for event in EventType::iter() {
             if matches!(
                 event,
-                EventType::InstructionCacheFills | EventType::InstructionCacheOverfetches
+                EventType::InstructionCacheFills
+                    | EventType::InstructionCacheOverfetches
+                    | EventType::InstructionCachePrefetchesIssued
             ) {
                 continue;
             }
@@ -800,6 +807,8 @@ mod tests {
         statistics.record_by(EventType::InstructionCacheFills, false, 3);
         statistics.record_by(EventType::InstructionCacheFills, true, 2);
         statistics.record(EventType::InstructionCacheOverfetches, false);
+        statistics.record_by(EventType::InstructionCachePrefetchesIssued, false, 4);
+        statistics.record(EventType::InstructionCachePrefetchesIssued, true);
         statistics.record(EventType::PrivateICacheMiss, false);
 
         let header = Statistics::get_header();
@@ -814,6 +823,9 @@ mod tests {
         assert_eq!(columns["InstructionCacheOverfetches"], "1");
         assert_eq!(columns["InstructionCacheOverfetches:u"], "1");
         assert_eq!(columns["InstructionCacheOverfetches:k"], "0");
+        assert_eq!(columns["InstructionCachePrefetchesIssued"], "5");
+        assert_eq!(columns["InstructionCachePrefetchesIssued:u"], "4");
+        assert_eq!(columns["InstructionCachePrefetchesIssued:k"], "1");
         assert_eq!(columns["PrivateICacheMiss"], "0");
     }
 }

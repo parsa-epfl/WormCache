@@ -237,8 +237,8 @@ unsafe extern "C" fn qemu_plugin_install(
 
         chronic_behavior_init(&options);
 
-        // Instruction-cache fill and overfetch counters are always recorded
-        // and exported, even when general statistics are disabled.
+        // Instruction-cache fill, overfetch, and issued-prefetch counters are
+        // always recorded and exported, even when general statistics are disabled.
         debug::statistics::create_thread_for_periodic_log();
         assert!(qemu_api::qemu_plugin_register_save_statistics_callback(
             Some(debug::save_statistics_to_certain_file)
