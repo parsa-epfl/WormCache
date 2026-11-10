@@ -87,7 +87,19 @@ static_assertions::const_assert!(CACHE_LINE_SIZE.is_power_of_two());
  * Whether to bypass the OS simulation and only process the userspace trace.
  *
  */
-pub const BYPASSING_OS_SIMULATION: bool = false;
+pub const BYPASSING_OS_SIMULATION: bool = true;
+
+/**
+ * KERNEL_SPIN_HINT_INSN_WEIGHT
+ *
+ * Only used when BYPASSING_OS_SIMULATION is true. Kernel instructions then add no time to the quantum, so a core
+ * spinning in the kernel (e.g., waiting for a lock held by another core) never reaches the quantum barrier, and the
+ * other cores wait for it forever (livelock). To guarantee progress, each kernel WFE or YIELD (the spin-wait hints
+ * of `smp_cond_load_*` / `__cmpwait` and `cpu_relax()` on arm64; WFE and YIELD are NOPs under parallel TCG)
+ * is charged as this many user-space instructions to the time model. It does not appear in the `Instruction` statistics.
+ */
+pub const KERNEL_SPIN_HINT_INSN_WEIGHT: u32 = 100;
+static_assertions::const_assert!(!BYPASSING_OS_SIMULATION || KERNEL_SPIN_HINT_INSN_WEIGHT > 0);
 
 /**
  * ENABLE_MMU

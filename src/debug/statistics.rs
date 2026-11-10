@@ -211,6 +211,10 @@ pub enum EventType {
     SharedMemoryCausalityViolation,
     InterruptCausalityViolation,
     InterruptDelayedWithCausality,
+
+    // Instruction-equivalents charged to the time model for kernel WFE/YIELD when BYPASSING_OS_SIMULATION
+    // (see KERNEL_SPIN_HINT_INSN_WEIGHT). Recorded here for visibility only.
+    KernelSpinChargedInstruction,
 }
 
 impl EventType {
@@ -549,6 +553,26 @@ unsafe extern "C" fn dsb_insn_exec(vcpu_idx: u32, userdata: *mut ffi::c_void) {
     Statistics::global_record(vcpu_idx, EventType::DrainStoreBuffer, is_os);
 }
 
+// AArch64 spin-wait hints: WFE (`__cmpwait` / `smp_cond_load_*`) and YIELD (`cpu_relax()`).
+// Encodings verified with LLVM MC tests, QEMU's a64.decode, and clang.
+const INSN_WFE: u32 = 0xd503205f;
+const INSN_YIELD: u32 = 0xd503203f;
+
+// Only registered for kernel WFE/YIELD when BYPASSING_OS_SIMULATION. Kernel instructions then add no time, so a
+// kernel spin waiting for another core never reaches the quantum barrier (livelock). Charging the hint as
+// KERNEL_SPIN_HINT_INSN_WEIGHT instructions guarantees progress. It goes to QEMU's time model only, not to the
+// `Instruction` statistics.
+unsafe extern "C" fn kernel_spin_hint_exec(vcpu_idx: u32, _: *mut ffi::c_void) {
+    use crate::parameter::KERNEL_SPIN_HINT_INSN_WEIGHT;
+    record_qemu_stat(vcpu_idx, EventType::Instruction, KERNEL_SPIN_HINT_INSN_WEIGHT);
+    GLOBAL_STATISTICS.record_by(
+        vcpu_idx,
+        EventType::KernelSpinChargedInstruction,
+        true,
+        KERNEL_SPIN_HINT_INSN_WEIGHT as u64,
+    );
+}
+
 unsafe extern "C" fn isb_insn_exec(vcpu_idx: u32, userdata: *mut ffi::c_void) {
     // Extract is_os from user data (bit 0: 0=user, 1=kernel/OS)
     let is_os = (userdata as u64) & 1 != 0;
@@ -623,6 +647,19 @@ pub unsafe extern "C" fn on_translation_instructions(tb: *mut qemu_api::qemu_plu
                         Some(dsb_insn_exec),
                         qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
                         os_bit as *mut ffi::c_void,
+                    );
+                }
+
+                // Charge time for kernel spin-wait hints (see kernel_spin_hint_exec)
+                if crate::parameter::BYPASSING_OS_SIMULATION
+                    && is_os
+                    && (insn_word == INSN_WFE || insn_word == INSN_YIELD)
+                {
+                    qemu_api::qemu_plugin_register_vcpu_insn_exec_cb(
+                        insn,
+                        Some(kernel_spin_hint_exec),
+                        qemu_api::qemu_plugin_cb_flags_QEMU_PLUGIN_CB_NO_REGS,
+                        std::ptr::null_mut(),
                     );
                 }
 
