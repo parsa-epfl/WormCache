@@ -125,6 +125,11 @@ pub enum EventType {
     HugeTLBHitDueToData,
 
     BranchCount,
+    /// Actual resolved conditional branches, regardless of whether the BTB recognizes them.
+    ConditionalBranchCount,
+    /// Branches the BTB classifies as conditional, triggering both TAGE and GShare lookups.
+    /// Counted once per branch, including correct predictions.
+    ConditionalBranchLookupCount,
     BTBMiss,
     RASMiss,
     TageMiss,

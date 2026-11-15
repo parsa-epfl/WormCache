@@ -76,7 +76,8 @@ impl<const S: usize> GShare<S> {
         _target: u64,
     ) -> BranchPredictorResult {
         let taken = result.is_taken;
-        let index = ((pc ^ self.history) % S as u64) as usize;
+        // Branch addresses are 4-byte aligned, so discard the alignment bits.
+        let index = (((pc >> 2) ^ self.history) % S as u64) as usize;
         let prediction = self.get_prediction(index);
         if taken {
             self.saturaing_add(index);

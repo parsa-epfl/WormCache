@@ -90,8 +90,24 @@ impl PerCoreFetchUnit {
 
     pub fn train(&mut self, pc: u64, result: BranchResolutionResult, target: u64, core_id: usize) {
         let is_os = pc >> 63 == 1;
+
+        // Count actual conditional branches even when the BTB has not recognized them.
+        if result.branch_type == BranchType::Conditional {
+            Statistics::global_record(core_id as u32, EventType::ConditionalBranchCount, is_os);
+        }
+
         let btb_result = self.btb.train(pc, result, target);
         let btb_miss = btb_result.0 == BranchPredictorResult::Mispredict;
+
+        // This previous BTB classification triggers both TAGE and GShare below.
+        // Count their shared lookup once per branch, regardless of correctness.
+        if btb_result.1 == BranchType::Conditional {
+            Statistics::global_record(
+                core_id as u32,
+                EventType::ConditionalBranchLookupCount,
+                is_os,
+            );
+        }
 
         let tage_miss = if btb_result.1 == BranchType::Conditional {
             self.tage.train(pc, result, target) == BranchPredictorResult::Mispredict
